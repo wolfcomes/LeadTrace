@@ -44,6 +44,7 @@ def create_app(
         redoc_url=None,
         lifespan=lifespan,
     )
+    application.state.settings = runtime_settings
     application.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=runtime_settings.allowed_hosts,

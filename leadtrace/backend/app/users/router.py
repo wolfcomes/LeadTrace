@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth.router import SESSION_COOKIE_NAME
-from app.auth.service import AuthenticatedSession, AuthenticationError, AuthService
 from app.config import Settings
 from app.database import get_db_session
-from app.security.csrf import validate_csrf_token
-from app.users.models import UserRole
+from app.security.permissions import (
+    RouteAccess,
+    declare_route_access,
+    require_permission,
+    require_request_csrf,
+)
+from app.security.policies import Action, Principal
 from app.users.schemas import (
     EnabledUpdateRequest,
     PasswordResetRequest,
@@ -24,72 +27,44 @@ from app.users.service import LastAdminError, UserNotFoundError, UserService
 
 def create_users_router(settings: Settings) -> APIRouter:
     router = APIRouter(prefix="/api/v1/users", tags=["users"])
-    auth_service = AuthService(settings.session_secret.get_secret_value())
     user_service = UserService()
+    require_account_management = require_permission(Action.MANAGE_ACCOUNTS)
 
-    def require_admin(
-        session: Session,
-        token: str | None,
-        csrf_token: str | None = None,
-        *,
-        state_change: bool,
-    ) -> AuthenticatedSession:
-        if not token:
-            raise HTTPException(status_code=401, detail="Authentication required")
-        try:
-            authenticated = auth_service.authenticate(session, token)
-        except AuthenticationError as error:
-            raise HTTPException(
-                status_code=401,
-                detail="Authentication required",
-            ) from error
-        if authenticated.user.must_change_password:
-            raise HTTPException(status_code=403, detail="Password change required")
-        if authenticated.user.role != UserRole.ADMIN:
-            raise HTTPException(status_code=403, detail="Admin access required")
-        if state_change and (
-            not csrf_token
-            or not validate_csrf_token(
-                csrf_token,
-                authenticated.session.csrf_hash,
-                settings.session_secret.get_secret_value(),
-            )
-        ):
-            raise HTTPException(status_code=403, detail="CSRF validation failed")
-        return authenticated
+    def verify_csrf(principal: Principal, csrf_token: str | None) -> None:
+        require_request_csrf(
+            principal,
+            csrf_token,
+            settings.session_secret.get_secret_value(),
+        )
 
     @router.get("", response_model=list[UserResponse])
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
     def list_users(
         session: Session = Depends(get_db_session),
-        token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+        principal: Principal = Depends(require_account_management),
     ) -> list[UserResponse]:
         with session.begin():
-            require_admin(session, token, state_change=False)
             users = user_service.list_users(session)
         return [UserResponse.from_user(user) for user in users]
 
     @router.post("", status_code=201, response_model=UserResponse)
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
     def create_user(
         payload: UserCreateRequest,
         session: Session = Depends(get_db_session),
-        token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+        principal: Principal = Depends(require_account_management),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
     ) -> UserResponse:
         try:
             with session.begin():
-                admin = require_admin(
-                    session,
-                    token,
-                    csrf_token,
-                    state_change=True,
-                )
+                verify_csrf(principal, csrf_token)
                 user = user_service.create_user(
                     session,
                     username=payload.username,
                     display_name=payload.display_name,
                     role=payload.role,
                     initial_password=payload.initial_password,
-                    created_by_id=admin.user.id,
+                    created_by_id=principal.user_id,
                 )
         except IntegrityError as error:
             raise HTTPException(status_code=409, detail="Username already exists") from error
@@ -98,16 +73,17 @@ def create_users_router(settings: Settings) -> APIRouter:
         return UserResponse.from_user(user)
 
     @router.patch("/{user_id}/password", response_model=UserResponse)
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
     def reset_password(
         user_id: UUID,
         payload: PasswordResetRequest,
         session: Session = Depends(get_db_session),
-        token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+        principal: Principal = Depends(require_account_management),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
     ) -> UserResponse:
         try:
             with session.begin():
-                require_admin(session, token, csrf_token, state_change=True)
+                verify_csrf(principal, csrf_token)
                 user = user_service.reset_password(
                     session,
                     user_id,
@@ -120,16 +96,17 @@ def create_users_router(settings: Settings) -> APIRouter:
         return UserResponse.from_user(user)
 
     @router.patch("/{user_id}/enabled", response_model=UserResponse)
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
     def set_enabled(
         user_id: UUID,
         payload: EnabledUpdateRequest,
         session: Session = Depends(get_db_session),
-        token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+        principal: Principal = Depends(require_account_management),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
     ) -> UserResponse:
         try:
             with session.begin():
-                require_admin(session, token, csrf_token, state_change=True)
+                verify_csrf(principal, csrf_token)
                 user = user_service.set_enabled(session, user_id, payload.is_enabled)
         except UserNotFoundError as error:
             raise HTTPException(status_code=404, detail="User not found") from error
@@ -138,16 +115,17 @@ def create_users_router(settings: Settings) -> APIRouter:
         return UserResponse.from_user(user)
 
     @router.patch("/{user_id}/role", response_model=UserResponse)
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
     def set_role(
         user_id: UUID,
         payload: RoleUpdateRequest,
         session: Session = Depends(get_db_session),
-        token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+        principal: Principal = Depends(require_account_management),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
     ) -> UserResponse:
         try:
             with session.begin():
-                require_admin(session, token, csrf_token, state_change=True)
+                verify_csrf(principal, csrf_token)
                 user = user_service.set_role(session, user_id, payload.role)
         except UserNotFoundError as error:
             raise HTTPException(status_code=404, detail="User not found") from error
@@ -156,14 +134,15 @@ def create_users_router(settings: Settings) -> APIRouter:
         return UserResponse.from_user(user)
 
     @router.post("/{user_id}/sessions/revoke", status_code=204, response_model=None)
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
     def revoke_sessions(
         user_id: UUID,
         session: Session = Depends(get_db_session),
-        token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+        principal: Principal = Depends(require_account_management),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
     ) -> None:
         with session.begin():
-            require_admin(session, token, csrf_token, state_change=True)
+            verify_csrf(principal, csrf_token)
             user_service.revoke_sessions(session, user_id)
 
     return router

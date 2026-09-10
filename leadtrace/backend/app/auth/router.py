@@ -13,9 +13,8 @@ from app.auth.service import AuthenticationError, AuthService, CurrentPasswordEr
 from app.config import Settings
 from app.database import get_db_session
 from app.security.csrf import validate_csrf_token
-
-
-SESSION_COOKIE_NAME = "leadtrace_session"
+from app.security.permissions import RouteAccess, declare_route_access
+from app.security.sessions import SESSION_COOKIE_NAME
 
 
 def _set_session_cookie(response: Response, token: str, settings: Settings) -> None:
@@ -45,6 +44,7 @@ def create_auth_router(settings: Settings) -> APIRouter:
     auth_service = AuthService(settings.session_secret.get_secret_value())
 
     @router.post("/login", response_model=AuthenticationResponse)
+    @declare_route_access(RouteAccess.PUBLIC)
     def login(
         payload: LoginRequest,
         request: Request,
@@ -80,6 +80,7 @@ def create_auth_router(settings: Settings) -> APIRouter:
         )
 
     @router.get("/session", response_model=AuthenticationResponse)
+    @declare_route_access(RouteAccess.AUTHENTICATED)
     def restore_session(
         session: Session = Depends(get_db_session),
         token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
@@ -102,6 +103,7 @@ def create_auth_router(settings: Settings) -> APIRouter:
         )
 
     @router.post("/logout", status_code=204, response_model=None)
+    @declare_route_access(RouteAccess.AUTHENTICATED)
     def logout(
         response: Response,
         session: Session = Depends(get_db_session),
@@ -129,6 +131,7 @@ def create_auth_router(settings: Settings) -> APIRouter:
         _clear_session_cookie(response, settings)
 
     @router.post("/password", response_model=AuthenticationResponse)
+    @declare_route_access(RouteAccess.AUTHENTICATED)
     def change_password(
         payload: PasswordChangeRequest,
         response: Response,
