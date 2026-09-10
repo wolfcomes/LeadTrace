@@ -9,6 +9,7 @@ description = "LeadTrace API and background-worker foundation"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.14,<2",
+  "argon2-cffi>=23.1,<26",
   "celery>=5.4,<6",
   "fastapi>=0.115,<0.116",
   "psycopg[binary]>=3.2,<4",

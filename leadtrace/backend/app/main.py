@@ -9,7 +9,9 @@ from starlette.concurrency import run_in_threadpool
 
 from app.config import Settings, get_settings
 from app.database import DatabaseResources, bootstrap_database
+from app.auth.router import create_auth_router
 from app.health.router import DatabaseProbe, create_health_router, probe_database
+from app.users.router import create_users_router
 
 
 DatabaseBootstrap = Callable[[Settings], DatabaseResources | None]
@@ -49,6 +51,8 @@ def create_app(
     application.include_router(
         create_health_router(runtime_settings, database_probe),
     )
+    application.include_router(create_auth_router(runtime_settings))
+    application.include_router(create_users_router(runtime_settings))
     return application
 
 

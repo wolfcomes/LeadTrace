@@ -106,3 +106,31 @@ def test_alembic_cli_uses_runtime_database_url(
 
     assert completed.returncode == 0, completed.stderr
     assert expected_head in completed.stdout
+
+
+def test_alembic_metadata_matches_the_migrated_schema(
+    empty_postgresql_database_url: str,
+) -> None:
+    config = _alembic_config(empty_postgresql_database_url)
+    command.upgrade(config, "head")
+    environment = os.environ.copy()
+    environment["LEADTRACE_DATABASE_URL"] = empty_postgresql_database_url
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "-c",
+            str(ALEMBIC_CONFIG_PATH),
+            "check",
+        ],
+        cwd=BACKEND_ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "No new upgrade operations detected" in completed.stdout
