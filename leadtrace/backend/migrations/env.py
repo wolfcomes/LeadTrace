@@ -7,6 +7,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.auth import models as auth_models  # noqa: F401
+from app.database import postgresql_url
 from app.db.base import Base
 from app.users import models as user_models  # noqa: F401
 
@@ -17,9 +18,12 @@ if config.config_file_name is not None:
 
 runtime_database_url = os.environ.get("LEADTRACE_DATABASE_URL", "").strip()
 if runtime_database_url:
+    normalized_database_url = postgresql_url(runtime_database_url).render_as_string(
+        hide_password=False
+    )
     config.set_main_option(
         "sqlalchemy.url",
-        runtime_database_url.replace("%", "%%"),
+        normalized_database_url.replace("%", "%%"),
     )
 
 target_metadata = Base.metadata

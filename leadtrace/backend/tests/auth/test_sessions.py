@@ -269,3 +269,61 @@ def test_repeated_failures_are_rate_limited_without_revealing_username(
                 remote_address="127.0.0.1",
                 now=now + timedelta(seconds=4),
             )
+
+
+def test_source_rate_limit_cannot_be_bypassed_with_different_usernames(
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    _create_reviewer(auth_session_factory)
+    service = AuthService(SESSION_SECRET, login_attempt_limit=3)
+    now = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
+
+    for attempt in range(3):
+        with auth_session_factory.begin() as session:
+            with pytest.raises(AuthenticationError):
+                service.login(
+                    session,
+                    username=f"unknown.user.{attempt}",
+                    password="wrong password",
+                    remote_address="10.0.0.50",
+                    now=now + timedelta(seconds=attempt),
+                )
+
+    with auth_session_factory.begin() as session:
+        with pytest.raises(AuthenticationError, match="Invalid username or password"):
+            service.login(
+                session,
+                username="reviewer.one",
+                password=INITIAL_PASSWORD,
+                remote_address="10.0.0.50",
+                now=now + timedelta(seconds=4),
+            )
+
+
+def test_identity_rate_limit_cannot_be_bypassed_from_different_sources(
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    _create_reviewer(auth_session_factory)
+    service = AuthService(SESSION_SECRET, login_attempt_limit=3)
+    now = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
+
+    for attempt in range(3):
+        with auth_session_factory.begin() as session:
+            with pytest.raises(AuthenticationError):
+                service.login(
+                    session,
+                    username="reviewer.one",
+                    password="wrong password",
+                    remote_address=f"10.0.0.{attempt + 1}",
+                    now=now + timedelta(seconds=attempt),
+                )
+
+    with auth_session_factory.begin() as session:
+        with pytest.raises(AuthenticationError, match="Invalid username or password"):
+            service.login(
+                session,
+                username="reviewer.one",
+                password=INITIAL_PASSWORD,
+                remote_address="10.0.0.99",
+                now=now + timedelta(seconds=4),
+            )

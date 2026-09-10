@@ -57,6 +57,20 @@ def test_unpublished_id_is_hidden_from_visitor_published_reads() -> None:
     assert denied.value.detail == "Resource not found"
 
 
+def test_visitor_gets_forbidden_for_full_pdf_of_known_published_paper() -> None:
+    visitor = Principal(VISITOR_ID, UserRole.VISITOR)
+
+    with pytest.raises(HTTPException) as denied:
+        enforce_permission(
+            visitor,
+            Action.READ_FULL_PDF,
+            ResourceScope(is_published=True),
+        )
+
+    assert denied.value.status_code == 403
+    assert denied.value.detail == "Permission denied"
+
+
 def test_known_disallowed_action_returns_forbidden() -> None:
     principal = Principal(REVIEWER_ID, UserRole.REVIEWER)
 

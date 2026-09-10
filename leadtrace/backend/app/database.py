@@ -35,7 +35,9 @@ class DatabaseResources:
         self.engine.dispose()
 
 
-def _postgresql_url(database_url: str) -> URL:
+def postgresql_url(database_url: str) -> URL:
+    """Normalize supported PostgreSQL URLs to the installed Psycopg 3 driver."""
+
     parsed_url = make_url(database_url)
     if parsed_url.get_backend_name() != "postgresql":
         raise ValueError("LeadTrace database_url must use PostgreSQL")
@@ -57,7 +59,7 @@ def create_database_engine(
     """Create a bounded PostgreSQL engine with UTC connections."""
 
     engine = create_engine(
-        _postgresql_url(database_url),
+        postgresql_url(database_url),
         pool_size=pool_size,
         max_overflow=max_overflow,
         pool_timeout=pool_timeout_seconds,
@@ -166,4 +168,3 @@ def bootstrap_database(
         engine=engine,
         session_factory=create_session_factory(engine),
     )
-

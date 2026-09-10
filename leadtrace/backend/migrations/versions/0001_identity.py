@@ -66,6 +66,7 @@ def upgrade() -> None:
         sa.Column("csrf_hash", sa.String(length=64), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("reauthenticated_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("idle_expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("absolute_expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
@@ -88,6 +89,7 @@ def upgrade() -> None:
     op.create_table(
         "login_attempts",
         sa.Column("identity_hash", sa.String(length=64), nullable=False),
+        sa.Column("source_hash", sa.String(length=64), nullable=False),
         sa.Column("remote_address", sa.String(length=64), nullable=False),
         sa.Column("was_successful", sa.Boolean(), nullable=False),
         sa.Column("attempted_at", sa.DateTime(timezone=True), nullable=False),
@@ -95,18 +97,23 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
-        "ix_login_attempts_rate_limit",
+        "ix_login_attempts_identity_time",
         "login_attempts",
-        ["identity_hash", "remote_address", "attempted_at"],
+        ["identity_hash", "attempted_at"],
+    )
+    op.create_index(
+        "ix_login_attempts_source_time",
+        "login_attempts",
+        ["source_hash", "attempted_at"],
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_login_attempts_rate_limit", table_name="login_attempts")
+    op.drop_index("ix_login_attempts_source_time", table_name="login_attempts")
+    op.drop_index("ix_login_attempts_identity_time", table_name="login_attempts")
     op.drop_table("login_attempts")
     op.drop_index("uq_auth_sessions_token_hash", table_name="auth_sessions")
     op.drop_index("ix_auth_sessions_user_active", table_name="auth_sessions")
     op.drop_table("auth_sessions")
     op.drop_index("uq_users_normalized_username", table_name="users")
     op.drop_table("users")
-

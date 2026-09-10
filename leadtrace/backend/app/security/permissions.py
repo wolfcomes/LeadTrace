@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Annotated, Any, TypeVar
 
@@ -81,6 +82,7 @@ def get_authenticated_principal(
         role=authenticated.user.role,
         must_change_password=authenticated.user.must_change_password,
         csrf_hash=authenticated.session.csrf_hash,
+        reauthenticated_at=authenticated.session.reauthenticated_at,
     )
 
 
@@ -93,6 +95,7 @@ def require_permission(
         enforce_permission(principal, action, ResourceScope())
         return principal
 
+    setattr(permission_dependency, "__leadtrace_action__", action)
     return permission_dependency
 
 
@@ -108,3 +111,19 @@ def require_request_csrf(
     ):
         raise HTTPException(status_code=403, detail="CSRF validation failed")
 
+
+def require_recent_reauthentication(
+    principal: Principal,
+    *,
+    maximum_age: timedelta,
+    now: datetime | None = None,
+) -> None:
+    checked_at = now or datetime.now(UTC)
+    if (
+        principal.reauthenticated_at is None
+        or checked_at - principal.reauthenticated_at > maximum_age
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Recent reauthentication required",
+        )

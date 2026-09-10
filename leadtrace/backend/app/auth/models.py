@@ -26,6 +26,9 @@ class AuthSession(UUIDPrimaryKeyMixin, Base):
     csrf_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reauthenticated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     idle_expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -42,17 +45,21 @@ class LoginAttempt(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "login_attempts"
     __table_args__ = (
         Index(
-            "ix_login_attempts_rate_limit",
+            "ix_login_attempts_identity_time",
             "identity_hash",
-            "remote_address",
+            "attempted_at",
+        ),
+        Index(
+            "ix_login_attempts_source_time",
+            "source_hash",
             "attempted_at",
         ),
     )
 
     identity_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     remote_address: Mapped[str] = mapped_column(String(64), nullable=False)
     was_successful: Mapped[bool] = mapped_column(Boolean, nullable=False)
     attempted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-

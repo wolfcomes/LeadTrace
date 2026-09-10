@@ -79,14 +79,23 @@ def test_foundation_migration_safely_downgrades_to_base(
     assert _database_revision(empty_postgresql_database_url) is None
 
 
-def test_alembic_cli_uses_runtime_database_url(
+@pytest.mark.parametrize(
+    "url_prefix",
+    ["postgresql+psycopg://", "postgresql://"],
+)
+def test_alembic_cli_uses_supported_runtime_database_urls(
     empty_postgresql_database_url: str,
+    url_prefix: str,
 ) -> None:
     config = _alembic_config(empty_postgresql_database_url)
     command.upgrade(config, "head")
     expected_head = ScriptDirectory.from_config(config).get_current_head()
     environment = os.environ.copy()
-    environment["LEADTRACE_DATABASE_URL"] = empty_postgresql_database_url
+    environment["LEADTRACE_DATABASE_URL"] = empty_postgresql_database_url.replace(
+        "postgresql+psycopg://",
+        url_prefix,
+        1,
+    )
 
     completed = subprocess.run(
         [
@@ -106,6 +115,36 @@ def test_alembic_cli_uses_runtime_database_url(
 
     assert completed.returncode == 0, completed.stderr
     assert expected_head in completed.stdout
+
+
+def test_application_starts_only_after_empty_database_is_migrated(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from app.config import Settings
+    from app.main import create_app
+
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        database_url=empty_postgresql_database_url,
+        redis_url="redis://127.0.0.1:6379/0",
+        session_secret="fresh-deployment-test-secret-over-thirty-two-characters",
+        allowed_hosts=["testserver"],
+        asset_root=tmp_path,
+    )
+    application = create_app(settings=settings, database_probe=lambda _: True)
+
+    with pytest.raises(SchemaVersionError):
+        with TestClient(application):
+            pass
+
+    command.upgrade(_alembic_config(empty_postgresql_database_url), "head")
+
+    with TestClient(application) as client:
+        assert client.get("/health/live").status_code == 200
 
 
 def test_alembic_metadata_matches_the_migrated_schema(

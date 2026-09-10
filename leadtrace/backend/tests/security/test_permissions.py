@@ -8,8 +8,14 @@ from fastapi.routing import APIRoute
 
 from app.config import Settings
 from app.main import create_app
-from app.security.permissions import RouteAccess
-from app.security.policies import Action, Principal, ResourceScope, evaluate_access
+from app.security.permissions import RouteAccess, get_authenticated_principal
+from app.security.policies import (
+    Action,
+    Principal,
+    ResourceScope,
+    WorkflowState,
+    evaluate_access,
+)
 from app.users.models import UserRole
 
 
@@ -30,8 +36,25 @@ PRINCIPALS = {
 PUBLISHED = ResourceScope(is_published=True)
 APPROVED_EVIDENCE = ResourceScope(is_published=True, is_approved=True)
 ASSIGNED = ResourceScope(assigned_reviewer_ids=frozenset({REVIEWER_ID}))
-OWN_ASSIGNED_DRAFT = replace(ASSIGNED, owner_id=REVIEWER_ID)
-OTHER_REVIEWER_DRAFT = replace(ASSIGNED, owner_id=OTHER_REVIEWER_ID)
+OWN_ASSIGNED_DRAFT = replace(
+    ASSIGNED,
+    owner_id=REVIEWER_ID,
+    workflow_state=WorkflowState.DRAFT,
+)
+OTHER_REVIEWER_DRAFT = replace(
+    ASSIGNED,
+    owner_id=OTHER_REVIEWER_ID,
+    workflow_state=WorkflowState.DRAFT,
+)
+SUBMITTED_CHANGESET = replace(
+    OWN_ASSIGNED_DRAFT,
+    workflow_state=WorkflowState.SUBMITTED,
+)
+APPROVED_CHANGESET = replace(
+    OWN_ASSIGNED_DRAFT,
+    workflow_state=WorkflowState.APPROVED,
+)
+PUBLISHED_RELEASE = replace(PUBLISHED, workflow_state=WorkflowState.PUBLISHED)
 
 
 CAPABILITY_MATRIX = [
@@ -54,9 +77,9 @@ CAPABILITY_MATRIX = [
         OWN_ASSIGNED_DRAFT,
         frozenset({"reviewer", "admin"}),
     ),
-    (Action.APPROVE_CHANGESET, OWN_ASSIGNED_DRAFT, frozenset({"admin"})),
-    (Action.PUBLISH_RELEASE, OWN_ASSIGNED_DRAFT, frozenset({"admin"})),
-    (Action.ROLLBACK_RELEASE, PUBLISHED, frozenset({"admin"})),
+    (Action.APPROVE_CHANGESET, SUBMITTED_CHANGESET, frozenset({"admin"})),
+    (Action.PUBLISH_RELEASE, APPROVED_CHANGESET, frozenset({"admin"})),
+    (Action.ROLLBACK_RELEASE, PUBLISHED_RELEASE, frozenset({"admin"})),
     (Action.MANAGE_ACCOUNTS, ResourceScope(), frozenset({"admin"})),
     (
         Action.EXPORT_UNPUBLISHED,
@@ -127,6 +150,63 @@ def test_first_login_principal_is_limited_until_password_change() -> None:
     assert decision.reason == "Password change required"
 
 
+@pytest.mark.parametrize(
+    ("action", "state", "allowed"),
+    [
+        (Action.EDIT_DRAFT, WorkflowState.DRAFT, True),
+        (Action.EDIT_DRAFT, WorkflowState.REVISED_DRAFT, True),
+        (Action.EDIT_DRAFT, WorkflowState.SUBMITTED, False),
+        (Action.EDIT_DRAFT, WorkflowState.APPROVED, False),
+        (Action.EDIT_DRAFT, WorkflowState.PUBLISHED, False),
+        (Action.EDIT_DRAFT, WorkflowState.SUPERSEDED, False),
+        (Action.EDIT_DRAFT, WorkflowState.REJECTED, False),
+        (Action.SUBMIT_CHANGESET, WorkflowState.DRAFT, True),
+        (Action.SUBMIT_CHANGESET, WorkflowState.REVISED_DRAFT, True),
+        (Action.SUBMIT_CHANGESET, WorkflowState.SUBMITTED, False),
+        (Action.SUBMIT_CHANGESET, WorkflowState.APPROVED, False),
+        (Action.SUBMIT_CHANGESET, WorkflowState.PUBLISHED, False),
+    ],
+)
+@pytest.mark.parametrize("principal_name", ["reviewer", "admin"])
+def test_stateful_actions_never_mutate_immutable_workflow_states(
+    principal_name: str,
+    action: Action,
+    state: WorkflowState,
+    allowed: bool,
+) -> None:
+    resource = replace(OWN_ASSIGNED_DRAFT, workflow_state=state)
+
+    decision = evaluate_access(PRINCIPALS[principal_name], action, resource)
+
+    assert decision.allowed is allowed
+
+
+@pytest.mark.parametrize(
+    ("action", "state", "allowed"),
+    [
+        (Action.APPROVE_CHANGESET, WorkflowState.DRAFT, False),
+        (Action.APPROVE_CHANGESET, WorkflowState.SUBMITTED, True),
+        (Action.APPROVE_CHANGESET, WorkflowState.APPROVED, False),
+        (Action.PUBLISH_RELEASE, WorkflowState.SUBMITTED, False),
+        (Action.PUBLISH_RELEASE, WorkflowState.APPROVED, True),
+        (Action.PUBLISH_RELEASE, WorkflowState.PUBLISHED, False),
+        (Action.ROLLBACK_RELEASE, WorkflowState.PUBLISHED, True),
+        (Action.ROLLBACK_RELEASE, WorkflowState.SUPERSEDED, True),
+        (Action.ROLLBACK_RELEASE, WorkflowState.DRAFT, False),
+    ],
+)
+def test_admin_workflow_transitions_require_the_expected_source_state(
+    action: Action,
+    state: WorkflowState,
+    allowed: bool,
+) -> None:
+    resource = replace(OWN_ASSIGNED_DRAFT, workflow_state=state)
+
+    decision = evaluate_access(PRINCIPALS["admin"], action, resource)
+
+    assert decision.allowed is allowed
+
+
 def test_every_api_v1_route_declares_its_access_policy(tmp_path) -> None:
     settings = Settings(
         _env_file=None,
@@ -159,3 +239,34 @@ def test_every_api_v1_route_declares_its_access_policy(tmp_path) -> None:
         for route in api_routes
         if route.path.startswith("/api/v1/users")
     )
+    public_routes: set[tuple[str, str]] = set()
+    for route in api_routes:
+        access = getattr(route.endpoint, "__leadtrace_route_access__")
+        if access == RouteAccess.PUBLIC:
+            public_routes.update((method, route.path) for method in route.methods)
+            continue
+
+        dependencies = list(route.dependant.dependencies)
+        dependency_calls = set()
+        while dependencies:
+            dependency = dependencies.pop()
+            dependency_calls.add(dependency.call)
+            dependencies.extend(dependency.dependencies)
+        assert get_authenticated_principal in dependency_calls, (
+            f"{sorted(route.methods)} {route.path} declares {access} "
+            "without the authentication dependency"
+        )
+
+        declared_action = getattr(route.endpoint, "__leadtrace_action__", None)
+        if declared_action is None:
+            continue
+        enforced_actions = {
+            getattr(dependency_call, "__leadtrace_action__", None)
+            for dependency_call in dependency_calls
+        }
+        assert declared_action in enforced_actions, (
+            f"{sorted(route.methods)} {route.path} declares {declared_action} "
+            "without an equivalent backend permission dependency"
+        )
+
+    assert public_routes == {("POST", "/api/v1/auth/login")}

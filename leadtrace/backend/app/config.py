@@ -27,8 +27,10 @@ class Settings(BaseSettings):
     database_connect_timeout_seconds: int = Field(default=3, ge=1, le=30)
     redis_url: str = "redis://redis:6379/0"
     session_secret: SecretStr = SecretStr("development-only-not-for-production")
+    admin_reauthentication_minutes: int = Field(default=10, ge=1, le=60)
     https_enabled: bool = False
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
+    trusted_proxy_addresses: list[str] = []
     asset_root: Path = Path("/var/lib/leadtrace/assets")
 
     @model_validator(mode="after")

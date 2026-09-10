@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import select
 
+from app.auth.models import AuthSession
+from app.auth.router import resolve_remote_address
 from app.config import Settings
 from app.database import DatabaseResources
 from app.main import create_app
@@ -27,6 +31,54 @@ def _settings(tmp_path: Path, database_url: str, *, https_enabled: bool = False)
         asset_root=tmp_path,
         https_enabled=https_enabled,
     )
+
+
+def test_client_address_ignores_forwarding_headers_from_untrusted_peer(
+    tmp_path: Path,
+) -> None:
+    from starlette.requests import Request
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/auth/login",
+            "headers": [
+                (b"x-real-ip", b"203.0.113.99"),
+                (b"x-forwarded-for", b"198.51.100.50"),
+            ],
+            "client": ("10.0.0.20", 50000),
+        }
+    )
+    settings = _settings(
+        tmp_path,
+        "postgresql+psycopg://leadtrace:test@database/leadtrace_test",
+    )
+
+    assert resolve_remote_address(request, settings) == "10.0.0.20"
+
+
+def test_client_address_accepts_valid_real_ip_from_explicit_trusted_proxy(
+    tmp_path: Path,
+) -> None:
+    from starlette.requests import Request
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/auth/login",
+            "headers": [(b"x-real-ip", b"203.0.113.99")],
+            "client": ("172.30.97.10", 50000),
+        }
+    )
+    settings = _settings(
+        tmp_path,
+        "postgresql+psycopg://leadtrace:test@database/leadtrace_test",
+    )
+    settings.trusted_proxy_addresses = ["172.30.97.10"]
+
+    assert resolve_remote_address(request, settings) == "203.0.113.99"
 
 
 @pytest.fixture
@@ -113,7 +165,7 @@ def test_authenticated_state_change_requires_csrf(api_client: TestClient) -> Non
     assert "max-age=0" in valid_csrf.headers["set-cookie"].lower()
 
 
-def test_existing_cookie_restores_user_and_rotates_csrf_token(
+def test_existing_cookie_restores_a_stable_multitab_csrf_token(
     api_client: TestClient,
 ) -> None:
     anonymous = api_client.get("/api/v1/auth/session")
@@ -122,18 +174,24 @@ def test_existing_cookie_restores_user_and_rotates_csrf_token(
         json={"username": "reviewer.one", "password": PASSWORD},
     )
 
-    restored = api_client.get("/api/v1/auth/session")
+    restored_first_tab = api_client.get("/api/v1/auth/session")
+    restored_second_tab = api_client.get("/api/v1/auth/session")
     assert anonymous.status_code == 401
-    assert restored.status_code == 200
+    assert restored_first_tab.status_code == 200
+    assert restored_second_tab.status_code == 200
 
     logout = api_client.post(
         "/api/v1/auth/logout",
-        headers={"X-CSRF-Token": restored.json()["csrf_token"]},
+        headers={"X-CSRF-Token": restored_first_tab.json()["csrf_token"]},
     )
 
-    assert restored.json()["user"] == login.json()["user"]
-    assert restored.json()["csrf_token"] != login.json()["csrf_token"]
-    assert "session" not in restored.text.casefold()
+    assert restored_first_tab.json()["user"] == login.json()["user"]
+    assert (
+        restored_first_tab.json()["csrf_token"]
+        == restored_second_tab.json()["csrf_token"]
+        == login.json()["csrf_token"]
+    )
+    assert "session" not in restored_first_tab.text.casefold()
     assert logout.status_code == 204
 
 
@@ -299,3 +357,77 @@ def test_only_admin_can_create_accounts_without_exposing_password_material(
     assert "initial_password" not in created.text
     assert PASSWORD not in created.text
     assert forbidden.status_code == 403
+
+
+def test_critical_admin_action_requires_recent_password_reauthentication(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    with auth_session_factory.begin() as session:
+        UserService().create_user(
+            session,
+            username="admin.one",
+            display_name="Admin One",
+            role=UserRole.ADMIN,
+            initial_password=PASSWORD,
+        )
+    settings = _settings(tmp_path, empty_postgresql_database_url)
+    engine = auth_session_factory.kw["bind"]
+    resources = DatabaseResources(engine=engine, session_factory=auth_session_factory)
+    app = create_app(
+        settings=settings,
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+
+    with TestClient(app) as client:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin.one", "password": PASSWORD},
+        )
+        password_change = client.post(
+            "/api/v1/auth/password",
+            headers={"X-CSRF-Token": login.json()["csrf_token"]},
+            json={
+                "current_password": PASSWORD,
+                "new_password": "Updated admin password 2026!",
+            },
+        )
+        with auth_session_factory.begin() as session:
+            active = session.scalar(
+                select(AuthSession).where(AuthSession.revoked_at.is_(None))
+            )
+            assert active is not None
+            active.reauthenticated_at = datetime.now(UTC) - timedelta(hours=1)
+
+        blocked = client.post(
+            "/api/v1/users",
+            headers={"X-CSRF-Token": password_change.json()["csrf_token"]},
+            json={
+                "username": "visitor.blocked",
+                "display_name": "Blocked Visitor",
+                "role": "visitor",
+                "initial_password": "Initial visitor password 2026!",
+            },
+        )
+        reauthenticated = client.post(
+            "/api/v1/auth/reauthenticate",
+            headers={"X-CSRF-Token": password_change.json()["csrf_token"]},
+            json={"password": "Updated admin password 2026!"},
+        )
+        created = client.post(
+            "/api/v1/users",
+            headers={"X-CSRF-Token": password_change.json()["csrf_token"]},
+            json={
+                "username": "visitor.one",
+                "display_name": "Visitor One",
+                "role": "visitor",
+                "initial_password": "Initial visitor password 2026!",
+            },
+        )
+
+    assert blocked.status_code == 403
+    assert blocked.json() == {"detail": "Recent reauthentication required"}
+    assert reauthenticated.status_code == 204
+    assert created.status_code == 201

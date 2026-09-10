@@ -5,6 +5,11 @@ from collections.abc import Iterator
 
 import psycopg
 import pytest
+from alembic import command
+from alembic.config import Config
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.database import create_database_engine, create_session_factory
 
 
 TEST_DATABASE_ENV = "LEADTRACE_TEST_DATABASE_URL"
@@ -54,3 +59,16 @@ def empty_postgresql_database_url(
     yield postgresql_database_url
     _reset_isolated_test_database(postgresql_database_url)
 
+
+@pytest.fixture
+def auth_session_factory(
+    empty_postgresql_database_url: str,
+) -> Iterator[sessionmaker[Session]]:
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", empty_postgresql_database_url)
+    command.upgrade(config, "head")
+    engine = create_database_engine(empty_postgresql_database_url)
+    try:
+        yield create_session_factory(engine)
+    finally:
+        engine.dispose()

@@ -15,6 +15,10 @@ class PasswordChangeRequest(BaseModel):
     new_password: str = Field(min_length=1, max_length=1024)
 
 
+class ReauthenticationRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+
+
 class AuthenticatedUser(BaseModel):
     username: str
     display_name: str
@@ -34,4 +38,3 @@ class AuthenticatedUser(BaseModel):
 class AuthenticationResponse(BaseModel):
     user: AuthenticatedUser
     csrf_token: str
-

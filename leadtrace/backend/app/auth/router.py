@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ipaddress import ip_address
+
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
@@ -8,13 +10,33 @@ from app.auth.schemas import (
     AuthenticationResponse,
     LoginRequest,
     PasswordChangeRequest,
+    ReauthenticationRequest,
 )
 from app.auth.service import AuthenticationError, AuthService, CurrentPasswordError
 from app.config import Settings
 from app.database import get_db_session
-from app.security.csrf import validate_csrf_token
-from app.security.permissions import RouteAccess, declare_route_access
+from app.security.permissions import (
+    RouteAccess,
+    declare_route_access,
+    get_authenticated_principal,
+    require_request_csrf,
+)
+from app.security.policies import Principal
 from app.security.sessions import SESSION_COOKIE_NAME
+from app.users.models import User
+
+
+def resolve_remote_address(request: Request, settings: Settings) -> str:
+    """Resolve a login source without trusting client-supplied proxy chains."""
+
+    peer_address = request.client.host if request.client else "unknown"
+    if peer_address not in settings.trusted_proxy_addresses:
+        return peer_address
+    claimed_address = request.headers.get("X-Real-IP", "").strip()
+    try:
+        return str(ip_address(claimed_address))
+    except ValueError:
+        return peer_address
 
 
 def _set_session_cookie(response: Response, token: str, settings: Settings) -> None:
@@ -55,7 +77,7 @@ def create_auth_router(settings: Settings) -> APIRouter:
             alias=SESSION_COOKIE_NAME,
         ),
     ) -> AuthenticationResponse:
-        remote_address = request.client.host if request.client else "unknown"
+        remote_address = resolve_remote_address(request, settings)
         issued = None
         authentication_error = None
         with session.begin():
@@ -84,21 +106,15 @@ def create_auth_router(settings: Settings) -> APIRouter:
     def restore_session(
         session: Session = Depends(get_db_session),
         token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+        principal: Principal = Depends(get_authenticated_principal),
     ) -> AuthenticationResponse:
-        if not token:
-            raise HTTPException(status_code=401, detail="Authentication required")
-        authenticated = None
         with session.begin():
-            try:
-                authenticated = auth_service.authenticate(session, token)
-            except AuthenticationError as error:
-                raise HTTPException(
-                    status_code=401,
-                    detail="Authentication required",
-                ) from error
-            csrf_token = auth_service.rotate_csrf_token(authenticated.session)
+            user = session.get(User, principal.user_id)
+            if user is None or token is None:
+                raise HTTPException(status_code=401, detail="Authentication required")
+            csrf_token = auth_service.csrf_token_for_session_token(token)
         return AuthenticationResponse(
-            user=AuthenticatedUser.from_user(authenticated.user),
+            user=AuthenticatedUser.from_user(user),
             csrf_token=csrf_token,
         )
 
@@ -109,26 +125,40 @@ def create_auth_router(settings: Settings) -> APIRouter:
         session: Session = Depends(get_db_session),
         token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        principal: Principal = Depends(get_authenticated_principal),
     ) -> None:
-        if not token:
+        if token is None:
             raise HTTPException(status_code=401, detail="Authentication required")
-        error: HTTPException | None = None
+        require_request_csrf(
+            principal,
+            csrf_token,
+            settings.session_secret.get_secret_value(),
+        )
+        with session.begin():
+            auth_service.logout(session, token)
+        _clear_session_cookie(response, settings)
+
+    @router.post("/reauthenticate", status_code=204, response_model=None)
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def reauthenticate(
+        payload: ReauthenticationRequest,
+        session: Session = Depends(get_db_session),
+        token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> None:
+        if token is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        require_request_csrf(
+            principal,
+            csrf_token,
+            settings.session_secret.get_secret_value(),
+        )
         with session.begin():
             try:
-                authenticated = auth_service.authenticate(session, token)
-                if not csrf_token or not validate_csrf_token(
-                    csrf_token,
-                    authenticated.session.csrf_hash,
-                    settings.session_secret.get_secret_value(),
-                ):
-                    error = HTTPException(status_code=403, detail="CSRF validation failed")
-                else:
-                    auth_service.logout(session, token)
-            except AuthenticationError:
-                error = HTTPException(status_code=401, detail="Authentication required")
-        if error is not None:
-            raise error
-        _clear_session_cookie(response, settings)
+                auth_service.reauthenticate(session, token, payload.password)
+            except CurrentPasswordError as error:
+                raise HTTPException(status_code=401, detail=str(error)) from error
 
     @router.post("/password", response_model=AuthenticationResponse)
     @declare_route_access(RouteAccess.AUTHENTICATED)
@@ -138,27 +168,25 @@ def create_auth_router(settings: Settings) -> APIRouter:
         session: Session = Depends(get_db_session),
         token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        principal: Principal = Depends(get_authenticated_principal),
     ) -> AuthenticationResponse:
-        if not token:
+        if token is None:
             raise HTTPException(status_code=401, detail="Authentication required")
+        require_request_csrf(
+            principal,
+            csrf_token,
+            settings.session_secret.get_secret_value(),
+        )
         issued = None
         error: HTTPException | None = None
         with session.begin():
             try:
-                authenticated = auth_service.authenticate(session, token)
-                if not csrf_token or not validate_csrf_token(
-                    csrf_token,
-                    authenticated.session.csrf_hash,
-                    settings.session_secret.get_secret_value(),
-                ):
-                    error = HTTPException(status_code=403, detail="CSRF validation failed")
-                else:
-                    issued = auth_service.change_password(
-                        session,
-                        token,
-                        payload.current_password,
-                        payload.new_password,
-                    )
+                issued = auth_service.change_password(
+                    session,
+                    token,
+                    payload.current_password,
+                    payload.new_password,
+                )
             except CurrentPasswordError as current_password_error:
                 error = HTTPException(status_code=400, detail=str(current_password_error))
             except AuthenticationError:

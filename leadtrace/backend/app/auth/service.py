@@ -3,14 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.auth.models import AuthSession, LoginAttempt
 from app.security.csrf import hash_csrf_token
 from app.security.passwords import hash_password, verify_password
 from app.security.sessions import (
-    generate_csrf_token,
     generate_session_token,
     keyed_token_hash,
 )
@@ -86,20 +85,34 @@ class AuthService:
             self._secret,
             purpose="login-identity",
         )
-        failed_attempts = session.scalar(
+        source_hash = keyed_token_hash(
+            remote_address,
+            self._secret,
+            purpose="login-source",
+        )
+        self._lock_rate_limit_buckets(session, identity_hash, source_hash)
+        failed_identity_attempts = session.scalar(
             select(func.count())
             .select_from(LoginAttempt)
             .where(
                 LoginAttempt.identity_hash == identity_hash,
-                LoginAttempt.remote_address == remote_address,
                 LoginAttempt.was_successful.is_(False),
                 LoginAttempt.attempted_at >= login_time - self._login_attempt_window,
             )
         )
-        if int(failed_attempts or 0) >= self._login_attempt_limit:
-            self._record_attempt(
-                session, identity_hash, remote_address, False, login_time
+        failed_source_attempts = session.scalar(
+            select(func.count())
+            .select_from(LoginAttempt)
+            .where(
+                LoginAttempt.source_hash == source_hash,
+                LoginAttempt.was_successful.is_(False),
+                LoginAttempt.attempted_at >= login_time - self._login_attempt_window,
             )
+        )
+        if (
+            int(failed_identity_attempts or 0) >= self._login_attempt_limit
+            or int(failed_source_attempts or 0) >= self._login_attempt_limit
+        ):
             raise AuthenticationError(GENERIC_LOGIN_ERROR)
 
         user = session.scalar(
@@ -109,7 +122,12 @@ class AuthService:
         password_matches = verify_password(password_hash, password)
         if user is None or not password_matches or not user.is_enabled:
             self._record_attempt(
-                session, identity_hash, remote_address, False, login_time
+                session,
+                identity_hash,
+                source_hash,
+                remote_address,
+                False,
+                login_time,
             )
             raise AuthenticationError(GENERIC_LOGIN_ERROR)
 
@@ -120,7 +138,14 @@ class AuthService:
                 reason="login_rotation",
                 now=login_time,
             )
-        self._record_attempt(session, identity_hash, remote_address, True, login_time)
+        self._record_attempt(
+            session,
+            identity_hash,
+            source_hash,
+            remote_address,
+            True,
+            login_time,
+        )
         user.last_login_at = login_time
         return self._issue_session(session, user, login_time)
 
@@ -172,10 +197,10 @@ class AuthService:
             auth_session.revoked_at = now or _now()
             auth_session.revocation_reason = reason
 
-    def rotate_csrf_token(self, auth_session: AuthSession) -> str:
-        csrf_token = generate_csrf_token()
-        auth_session.csrf_hash = hash_csrf_token(csrf_token, self._secret)
-        return csrf_token
+    def csrf_token_for_session_token(self, session_token: str) -> str:
+        """Derive a stable CSRF value without persisting its plaintext."""
+
+        return keyed_token_hash(session_token, self._secret, purpose="csrf-value")
 
     def change_password(
         self,
@@ -198,6 +223,20 @@ class AuthService:
         )
         return self._issue_session(session, authenticated.user, changed_at)
 
+    def reauthenticate(
+        self,
+        session: Session,
+        token: str,
+        password: str,
+        *,
+        now: datetime | None = None,
+    ) -> None:
+        reauthenticated_at = now or _now()
+        authenticated = self.authenticate(session, token, now=reauthenticated_at)
+        if not verify_password(authenticated.user.password_hash, password):
+            raise CurrentPasswordError("Reauthentication failed")
+        authenticated.session.reauthenticated_at = reauthenticated_at
+
     def _issue_session(
         self,
         session: Session,
@@ -205,13 +244,14 @@ class AuthService:
         issued_at: datetime,
     ) -> IssuedSession:
         token = generate_session_token()
-        csrf_token = generate_csrf_token()
+        csrf_token = self.csrf_token_for_session_token(token)
         auth_session = AuthSession(
             user_id=user.id,
             token_hash=keyed_token_hash(token, self._secret, purpose="session"),
             csrf_hash=hash_csrf_token(csrf_token, self._secret),
             created_at=issued_at,
             last_seen_at=issued_at,
+            reauthenticated_at=issued_at,
             idle_expires_at=issued_at + self._idle_lifetime,
             absolute_expires_at=issued_at + self._absolute_lifetime,
         )
@@ -225,9 +265,28 @@ class AuthService:
         )
 
     @staticmethod
+    def _lock_rate_limit_buckets(
+        session: Session,
+        identity_hash: str,
+        source_hash: str,
+    ) -> None:
+        lock_ids = sorted(
+            {
+                int(identity_hash[:16], 16) & ((1 << 63) - 1),
+                int(source_hash[:16], 16) & ((1 << 63) - 1),
+            }
+        )
+        for lock_id in lock_ids:
+            session.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                {"lock_id": lock_id},
+            )
+
+    @staticmethod
     def _record_attempt(
         session: Session,
         identity_hash: str,
+        source_hash: str,
         remote_address: str,
         successful: bool,
         attempted_at: datetime,
@@ -235,6 +294,7 @@ class AuthService:
         session.add(
             LoginAttempt(
                 identity_hash=identity_hash,
+                source_hash=source_hash,
                 remote_address=remote_address[:64] or "unknown",
                 was_successful=successful,
                 attempted_at=attempted_at,

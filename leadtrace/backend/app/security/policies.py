@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
@@ -23,12 +24,24 @@ class Action(StrEnum):
     READ_AUDIT = "read_audit"
 
 
+class WorkflowState(StrEnum):
+    DRAFT = "draft"
+    REVISED_DRAFT = "revised_draft"
+    SUBMITTED = "submitted"
+    CHANGES_REQUESTED = "changes_requested"
+    APPROVED = "approved"
+    PUBLISHED = "published"
+    SUPERSEDED = "superseded"
+    REJECTED = "rejected"
+
+
 @dataclass(frozen=True, slots=True)
 class Principal:
     user_id: UUID
     role: UserRole
     must_change_password: bool = False
     csrf_hash: str | None = field(default=None, repr=False, compare=False)
+    reauthenticated_at: datetime | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +51,7 @@ class ResourceScope:
     is_approved: bool = False
     assigned_reviewer_ids: frozenset[UUID] = frozenset()
     owner_id: UUID | None = None
+    workflow_state: WorkflowState | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +84,7 @@ def _allow() -> AccessDecision:
 
 
 def _deny(action: Action, resource: ResourceScope) -> AccessDecision:
-    if action in _CONCEALED_READ_ACTIONS or (
+    if (action in _CONCEALED_READ_ACTIONS and not resource.is_published) or (
         action in _CONCEALED_UNPUBLISHED_ACTIONS and not resource.is_published
     ):
         return AccessDecision(False, 404, "Resource not found")
@@ -90,6 +104,22 @@ def evaluate_access(
         return AccessDecision(False, 403, "Password change required")
     if not resource.exists:
         return AccessDecision(False, 404, "Resource not found")
+
+    allowed_states = {
+        Action.EDIT_DRAFT: {WorkflowState.DRAFT, WorkflowState.REVISED_DRAFT},
+        Action.SUBMIT_CHANGESET: {
+            WorkflowState.DRAFT,
+            WorkflowState.REVISED_DRAFT,
+        },
+        Action.APPROVE_CHANGESET: {WorkflowState.SUBMITTED},
+        Action.PUBLISH_RELEASE: {WorkflowState.APPROVED},
+        Action.ROLLBACK_RELEASE: {
+            WorkflowState.PUBLISHED,
+            WorkflowState.SUPERSEDED,
+        },
+    }
+    if action in allowed_states and resource.workflow_state not in allowed_states[action]:
+        return _deny(action, resource)
     if principal.role == UserRole.ADMIN:
         return _allow()
 

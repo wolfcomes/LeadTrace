@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -12,6 +13,7 @@ from app.security.permissions import (
     RouteAccess,
     declare_route_access,
     require_permission,
+    require_recent_reauthentication,
     require_request_csrf,
 )
 from app.security.policies import Action, Principal
@@ -37,6 +39,18 @@ def create_users_router(settings: Settings) -> APIRouter:
             settings.session_secret.get_secret_value(),
         )
 
+    def verify_critical_action(
+        principal: Principal,
+        csrf_token: str | None,
+    ) -> None:
+        verify_csrf(principal, csrf_token)
+        require_recent_reauthentication(
+            principal,
+            maximum_age=timedelta(
+                minutes=settings.admin_reauthentication_minutes
+            ),
+        )
+
     @router.get("", response_model=list[UserResponse])
     @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
     def list_users(
@@ -57,7 +71,7 @@ def create_users_router(settings: Settings) -> APIRouter:
     ) -> UserResponse:
         try:
             with session.begin():
-                verify_csrf(principal, csrf_token)
+                verify_critical_action(principal, csrf_token)
                 user = user_service.create_user(
                     session,
                     username=payload.username,
@@ -83,7 +97,7 @@ def create_users_router(settings: Settings) -> APIRouter:
     ) -> UserResponse:
         try:
             with session.begin():
-                verify_csrf(principal, csrf_token)
+                verify_critical_action(principal, csrf_token)
                 user = user_service.reset_password(
                     session,
                     user_id,
@@ -106,7 +120,7 @@ def create_users_router(settings: Settings) -> APIRouter:
     ) -> UserResponse:
         try:
             with session.begin():
-                verify_csrf(principal, csrf_token)
+                verify_critical_action(principal, csrf_token)
                 user = user_service.set_enabled(session, user_id, payload.is_enabled)
         except UserNotFoundError as error:
             raise HTTPException(status_code=404, detail="User not found") from error
@@ -125,7 +139,7 @@ def create_users_router(settings: Settings) -> APIRouter:
     ) -> UserResponse:
         try:
             with session.begin():
-                verify_csrf(principal, csrf_token)
+                verify_critical_action(principal, csrf_token)
                 user = user_service.set_role(session, user_id, payload.role)
         except UserNotFoundError as error:
             raise HTTPException(status_code=404, detail="User not found") from error
@@ -142,7 +156,7 @@ def create_users_router(settings: Settings) -> APIRouter:
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
     ) -> None:
         with session.begin():
-            verify_csrf(principal, csrf_token)
+            verify_critical_action(principal, csrf_token)
             user_service.revoke_sessions(session, user_id)
 
     return router
