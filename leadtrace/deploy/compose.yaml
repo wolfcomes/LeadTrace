@@ -1,0 +1,125 @@
+name: leadtrace
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+      frontend-dev:
+        condition: service_started
+    ports:
+      - "${LEADTRACE_PORT:-8876}:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - edge
+      - backend
+
+  frontend-dev:
+    image: node:20.19-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npm run dev -- --host 0.0.0.0"]
+    volumes:
+      - ../frontend:/app:ro
+      - frontend_modules:/app/node_modules
+    expose:
+      - "5173"
+    networks:
+      - edge
+
+  web:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    environment:
+      LEADTRACE_ENVIRONMENT: development
+      LEADTRACE_DATABASE_URL: postgresql+psycopg://leadtrace:${POSTGRES_PASSWORD:-leadtrace-development-only}@postgres/leadtrace
+      LEADTRACE_REDIS_URL: redis://redis:6379/0
+      LEADTRACE_SESSION_SECRET: ${LEADTRACE_SESSION_SECRET:-development-only-not-for-production}
+      LEADTRACE_ALLOWED_HOSTS: '${LEADTRACE_ALLOWED_HOSTS:-["localhost","127.0.0.1","leadtrace.lan"]}'
+      LEADTRACE_ASSET_ROOT: /var/lib/leadtrace/assets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8000"
+    volumes:
+      - leadtrace_assets:/var/lib/leadtrace/assets:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    networks:
+      - edge
+      - backend
+
+  worker:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    command: ["celery", "-A", "app.worker:celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    environment:
+      LEADTRACE_ENVIRONMENT: development
+      LEADTRACE_DATABASE_URL: postgresql+psycopg://leadtrace:${POSTGRES_PASSWORD:-leadtrace-development-only}@postgres/leadtrace
+      LEADTRACE_REDIS_URL: redis://redis:6379/0
+      LEADTRACE_SESSION_SECRET: ${LEADTRACE_SESSION_SECRET:-development-only-not-for-production}
+      LEADTRACE_ALLOWED_HOSTS: '${LEADTRACE_ALLOWED_HOSTS:-["localhost","127.0.0.1","leadtrace.lan"]}'
+      LEADTRACE_ASSET_ROOT: /var/lib/leadtrace/assets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - leadtrace_assets:/var/lib/leadtrace/assets
+    networks:
+      - backend
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: leadtrace
+      POSTGRES_USER: leadtrace
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leadtrace-development-only}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leadtrace -d leadtrace"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - backend
+
+networks:
+  edge:
+  backend:
+    internal: true
+
+volumes:
+  frontend_modules:
+  leadtrace_assets:
+  postgres_data:
+  redis_data:
