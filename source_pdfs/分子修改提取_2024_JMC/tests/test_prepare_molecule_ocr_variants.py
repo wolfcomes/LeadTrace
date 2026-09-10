@@ -104,7 +104,10 @@ def test_snapshot_writes_original_and_label_free_variants_with_parent_provenance
     output_dir = tmp_path / "variants"
 
     rows, summary = write_variant_snapshot(
-        [molecule_object("OBJ-2a", str(source))], output_dir, manifest,
+        [molecule_object("OBJ-2a", str(source))],
+        output_dir,
+        manifest,
+        tmp_path / "summary.json",
     )
 
     assert len(rows) == 4
