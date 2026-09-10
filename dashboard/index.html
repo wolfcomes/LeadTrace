@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#172b3c" />
+    <title>Lead Optimization / Paper Workspace</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true"><span>LO</span><i></i></div>
+          <div><p class="brand-kicker">JMC / 2024</p><h1>Lead<br />Optimization</h1></div>
+        </div>
+        <nav class="primary-nav" aria-label="主导航">
+          <button class="nav-item is-active" data-view="overview" type="button"><span class="nav-index">01</span><span>项目总览</span></button>
+          <button class="nav-item" data-view="papers" type="button"><span class="nav-index">02</span><span>Paper 库</span></button>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="live-dot"><span></span>LOCAL SNAPSHOT</div>
+          <p>Pipeline data is read-only<br />Paper reviews are persisted locally</p>
+          <div class="sidebar-rule"></div>
+          <p class="sidebar-path">source_pdfs/<br />分子修改提取_2024_JMC</p>
+        </div>
+      </aside>
+
+      <main class="main-shell">
+        <header class="topbar">
+          <div class="topbar-context"><span class="context-rule"></span><span id="viewCrumb">PROJECT OVERVIEW</span><span class="context-slash">/</span><span id="syncLabel">LOADING SNAPSHOT</span></div>
+          <div class="topbar-actions">
+            <div class="mode-switch" role="group" aria-label="工作模式"><button class="mode-button is-active" data-mode="read" type="button">阅读模式</button><button class="mode-button" data-mode="edit" type="button">修改模式</button></div>
+            <span class="read-only-chip" id="modeLabel"><span class="lock-dot"></span> READ MODE</span>
+            <button class="icon-button" id="refreshButton" type="button" title="刷新数据" aria-label="刷新数据">↻</button>
+          </div>
+        </header>
+
+        <section class="view is-active" id="overviewView" data-view-panel="overview">
+          <div class="page-heading overview-heading">
+            <div><p class="eyebrow">PROJECT CONTROL ROOM</p><h2>From corpus<br /><em>to chemistry.</em></h2></div>
+            <div class="heading-aside"><span class="heading-number">01</span><p>项目总览只显示全局进度。每一条 Paper 都可以进入独立工作台，查看属于它的全部处理内容。</p></div>
+          </div>
+          <div class="metric-grid" id="metricGrid" aria-live="polite"></div>
+          <div class="overview-grid">
+            <section class="panel stage-panel"><div class="panel-heading"><div><p class="section-label">PIPELINE MAP</p><h3>按证据层查看项目进度</h3></div><span class="panel-note">数量不互相替代</span></div><div class="stage-list" id="stageList"></div></section>
+            <section class="panel queue-panel"><div class="panel-heading"><div><p class="section-label">NEXT ACTIONS</p><h3>下一步关注范围</h3></div><span class="queue-total" id="queueTotal">—</span></div><div class="queue-list" id="queueList"></div><button class="text-action" data-overview-filter="candidate_review" type="button">进入 Paper 库筛选 <span>↗</span></button></section>
+          </div>
+          <section class="quality-strip" id="qualityStrip"></section>
+        </section>
+
+        <section class="view" id="papersView" data-view-panel="papers">
+          <div class="page-heading compact-heading"><div><p class="eyebrow">PAPER LIBRARY</p><h2>Review the <em>corpus.</em></h2></div><div class="heading-aside compact-aside"><p>每一行就是一篇 Paper。按原始 manifest 顺序浏览 672 条记录，每页 20 篇，从这里进入该 Paper 的完整工作台。</p></div></div>
+          <div class="paper-toolbar toolbar"><div class="paper-toolbar-summary"><strong id="paperResultMeta">672 papers</strong><span id="paperPageMeta">PAGE 1 / 34</span></div><div class="filter-row"><label class="search-field"><span aria-hidden="true">⌕</span><input id="paperSearch" type="search" placeholder="搜索标题、DOI、目录或 Paper ID" /></label><label class="select-field"><span>Pipeline</span><select id="paperStatusFilter"><option value="all">全部阶段</option><option value="text_ready">Text ready</option><option value="evidence_review">Evidence review</option><option value="candidate_review">Candidate review</option><option value="path_review">Path review</option><option value="lineage">Lineage</option></select></label><label class="select-field"><span>Review</span><select id="paperReviewFilter"><option value="all">全部审阅状态</option><option value="unreviewed">未审阅</option><option value="in_review">审阅中</option><option value="needs_follow_up">需要补充</option><option value="reviewed">已审阅</option></select></label><span class="page-size-note">20 / page</span></div></div>
+          <section class="panel table-panel paper-table-panel"><div class="table-scroll"><table class="data-table paper-table"><thead><tr><th>#</th><th>Paper</th><th>DOI</th><th>Signals</th><th>Pipeline</th><th>Review</th><th></th></tr></thead><tbody id="paperTableBody"></tbody></table></div><div class="pagination" id="paperPagination"></div></section>
+        </section>
+
+        <section class="view" id="paperDetailView" data-view-panel="paper-detail">
+          <div id="paperDetailWorkspace"><div class="detail-empty full-empty"><span class="empty-index">PAPER</span><h3>Select a Paper</h3><p>从 Paper 库选择一篇文章后，这里会展示它的处理进度和全部关联记录。</p></div></div>
+        </section>
+
+        <footer class="app-footer"><span>JMC VOL. 67 / ISSUE 01–22</span><span>Paper-first workspace / source pipeline is read-only</span></footer>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

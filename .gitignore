@@ -1,0 +1,50 @@
+# LeadTrace worktrees
+.worktrees/
+worktrees/
+
+# Python
+.venv*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# JavaScript / frontend builds
+node_modules/
+dist/
+coverage/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Runtime output
+*.log
+*.tmp
+*.lock
+*.sqlite
+*.sqlite3
+leadtrace-data/
+leadtrace-backups/
+
+# The scientific corpus and generated artifacts are immutable migration input.
+# Track only the legacy source code, tests, and its top-level documentation.
+/source_pdfs/*
+!/source_pdfs/分子修改提取_2024_JMC/
+/source_pdfs/分子修改提取_2024_JMC/*
+!/source_pdfs/分子修改提取_2024_JMC/README.md
+!/source_pdfs/分子修改提取_2024_JMC/scripts/
+!/source_pdfs/分子修改提取_2024_JMC/scripts/**
+!/source_pdfs/分子修改提取_2024_JMC/tests/
+!/source_pdfs/分子修改提取_2024_JMC/tests/**
+
+# Keep runtime caches excluded after the source/test allowlist rules above.
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
