@@ -8,11 +8,13 @@ version = "0.1.0"
 description = "LeadTrace API and background-worker foundation"
 requires-python = ">=3.12"
 dependencies = [
+  "alembic>=1.14,<2",
   "celery>=5.4,<6",
   "fastapi>=0.115,<0.116",
   "psycopg[binary]>=3.2,<4",
   "pydantic-settings>=2.6,<3",
   "redis>=5,<7",
+  "SQLAlchemy>=2.0,<2.1",
   "uvicorn[standard]>=0.30,<1",
 ]
 

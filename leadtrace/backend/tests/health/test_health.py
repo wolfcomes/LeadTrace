@@ -3,10 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.config import Settings
+from app.health.router import DatabaseProbe
 from app.main import create_app
 
 
@@ -23,10 +25,18 @@ def _settings(asset_root: Path, **updates: object) -> Settings:
     return Settings(_env_file=None, **values)
 
 
+def _test_app(settings: Settings, database_probe: DatabaseProbe) -> FastAPI:
+    return create_app(
+        settings=settings,
+        database_probe=database_probe,
+        database_bootstrap=lambda _: None,
+    )
+
+
 def test_liveness_does_not_depend_on_database_or_asset_storage(tmp_path: Path) -> None:
     settings = _settings(tmp_path / "missing")
 
-    with TestClient(create_app(settings=settings, database_probe=lambda _: False)) as client:
+    with TestClient(_test_app(settings, lambda _: False)) as client:
         response = client.get("/health/live")
 
     assert response.status_code == 200
@@ -36,7 +46,7 @@ def test_liveness_does_not_depend_on_database_or_asset_storage(tmp_path: Path) -
 def test_readiness_is_unavailable_when_asset_root_is_missing(tmp_path: Path) -> None:
     settings = _settings(tmp_path / "missing")
 
-    with TestClient(create_app(settings=settings, database_probe=lambda _: True)) as client:
+    with TestClient(_test_app(settings, lambda _: True)) as client:
         response = client.get("/health/ready")
 
     assert response.status_code == 503
@@ -52,7 +62,7 @@ def test_readiness_is_unavailable_when_asset_root_is_missing(tmp_path: Path) -> 
 def test_readiness_is_unavailable_when_database_probe_fails(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
 
-    with TestClient(create_app(settings=settings, database_probe=lambda _: False)) as client:
+    with TestClient(_test_app(settings, lambda _: False)) as client:
         response = client.get("/health/ready")
 
     assert response.status_code == 503
@@ -66,7 +76,7 @@ def test_readiness_does_not_disclose_database_probe_errors(tmp_path: Path) -> No
     def failing_probe(_: str) -> bool:
         raise RuntimeError("postgresql://user:secret@database/leadtrace")
 
-    with TestClient(create_app(settings=settings, database_probe=failing_probe)) as client:
+    with TestClient(_test_app(settings, failing_probe)) as client:
         response = client.get("/health/ready")
 
     assert response.status_code == 503
@@ -79,7 +89,7 @@ def test_readiness_reports_ready_when_required_dependencies_are_available(
 ) -> None:
     settings = _settings(tmp_path)
 
-    with TestClient(create_app(settings=settings, database_probe=lambda _: True)) as client:
+    with TestClient(_test_app(settings, lambda _: True)) as client:
         response = client.get("/health/ready")
 
     assert response.status_code == 200

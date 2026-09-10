@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+psycopg://leadtrace:leadtrace-development-only@postgres/leadtrace"
     )
+    database_pool_size: int = Field(default=5, ge=1, le=20)
+    database_max_overflow: int = Field(default=5, ge=0, le=20)
+    database_pool_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    database_connect_timeout_seconds: int = Field(default=3, ge=1, le=30)
     redis_url: str = "redis://redis:6379/0"
     session_secret: SecretStr = SecretStr("development-only-not-for-production")
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]

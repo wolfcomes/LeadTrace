@@ -10,6 +10,8 @@ RUN groupadd --system leadtrace \
 WORKDIR /app
 COPY pyproject.toml ./
 COPY app ./app
+COPY alembic.ini ./
+COPY migrations ./migrations
 RUN python -m pip install --upgrade pip \
     && python -m pip install .
 

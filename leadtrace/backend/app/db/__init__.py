@@ -1,0 +1,2 @@
+"""Shared SQLAlchemy model primitives."""
+
