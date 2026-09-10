@@ -16,7 +16,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-runtime_database_url = os.environ.get("LEADTRACE_DATABASE_URL", "").strip()
+explicit_database_url = config.attributes.get("leadtrace_database_url")
+runtime_database_url = (
+    str(explicit_database_url).strip()
+    if explicit_database_url is not None
+    else os.environ.get("LEADTRACE_DATABASE_URL", "").strip()
+)
 if runtime_database_url:
     normalized_database_url = postgresql_url(runtime_database_url).render_as_string(
         hide_password=False
@@ -50,6 +55,17 @@ def run_migrations_online() -> None:
         future=True,
     )
     with connectable.connect() as connection:
+        expected_database_name = config.attributes.get(
+            "leadtrace_expected_database_name"
+        )
+        if expected_database_name is not None:
+            actual_database_name = connection.connection.driver_connection.info.dbname
+            if actual_database_name != expected_database_name:
+                raise RuntimeError(
+                    "Alembic connected to an unexpected database: "
+                    f"expected database {expected_database_name!r}, "
+                    f"got {actual_database_name!r}"
+                )
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

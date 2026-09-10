@@ -11,6 +11,7 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import String, func, select
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,6 +42,10 @@ class DatabaseTestRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 def _alembic_config(database_url: str) -> Config:
     config = Config(str(ALEMBIC_CONFIG_PATH))
     config.set_main_option("sqlalchemy.url", database_url)
+    config.attributes["leadtrace_database_url"] = database_url
+    config.attributes["leadtrace_expected_database_name"] = make_url(
+        database_url
+    ).database
     return config
 
 

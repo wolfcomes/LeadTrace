@@ -7,6 +7,7 @@ import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import create_database_engine, create_session_factory
@@ -46,6 +47,16 @@ def _reset_isolated_test_database(database_url: str) -> None:
             cursor.execute("CREATE SCHEMA public")
 
 
+def _alembic_config(database_url: str) -> Config:
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+    config.attributes["leadtrace_database_url"] = database_url
+    config.attributes["leadtrace_expected_database_name"] = make_url(
+        database_url
+    ).database
+    return config
+
+
 @pytest.fixture(scope="session")
 def postgresql_database_url() -> str:
     return _required_postgresql_url()
@@ -64,9 +75,7 @@ def empty_postgresql_database_url(
 def auth_session_factory(
     empty_postgresql_database_url: str,
 ) -> Iterator[sessionmaker[Session]]:
-    config = Config("alembic.ini")
-    config.set_main_option("sqlalchemy.url", empty_postgresql_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(_alembic_config(empty_postgresql_database_url), "head")
     engine = create_database_engine(empty_postgresql_database_url)
     try:
         yield create_session_factory(engine)
