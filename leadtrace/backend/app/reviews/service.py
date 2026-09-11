@@ -180,12 +180,6 @@ class ReviewService:
         actor = self._get_actor(session, actor_id)
         if actor.role not in {UserRole.REVIEWER, UserRole.ADMIN}:
             raise ReviewForbidden("Only Reviewer or Admin can create changesets")
-        self._validate_base_release(
-            session,
-            base_release_id=base_release_id,
-            paper_id=paper_id,
-            lock=True,
-        )
         task = session.scalar(
             select(ReviewTask)
             .where(ReviewTask.id == review_task_id)
@@ -207,6 +201,12 @@ class ReviewService:
             or owner.role is not UserRole.REVIEWER
         ):
             raise ReviewForbidden("Changeset owner must be an enabled Reviewer")
+        self._validate_base_release(
+            session,
+            base_release_id=base_release_id,
+            paper_id=paper_id,
+            lock=True,
+        )
         if task.status not in {
             ReviewTaskStatus.OPEN,
             ReviewTaskStatus.IN_PROGRESS,
@@ -253,7 +253,9 @@ class ReviewService:
     ) -> Changeset:
         statement = select(Changeset).where(Changeset.id == changeset_id)
         if for_update:
-            statement = statement.with_for_update()
+            statement = statement.with_for_update().execution_options(
+                populate_existing=True
+            )
         changeset = session.scalar(statement)
         if changeset is None:
             raise ReviewNotFound("Changeset not found")
@@ -411,7 +413,7 @@ class ReviewService:
             select(ChangesetItem).where(
                 ChangesetItem.id == item_id,
                 ChangesetItem.changeset_id == changeset_id,
-            )
+            ).execution_options(populate_existing=True)
         )
         if item is None:
             raise ReviewNotFound("Changeset item not found")
@@ -505,7 +507,7 @@ class ReviewService:
             select(ChangesetItem).where(
                 ChangesetItem.id == item_id,
                 ChangesetItem.changeset_id == changeset_id,
-            )
+            ).execution_options(populate_existing=True)
         )
         if item is None:
             raise ReviewNotFound("Changeset item not found")
@@ -761,7 +763,10 @@ class ReviewService:
         if actor.role is not UserRole.ADMIN:
             raise ReviewForbidden("Only Admin can reassign review tasks")
         task = session.scalar(
-            select(ReviewTask).where(ReviewTask.id == task_id).with_for_update()
+            select(ReviewTask)
+            .where(ReviewTask.id == task_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if task is None:
             raise ReviewNotFound("Review task not found")

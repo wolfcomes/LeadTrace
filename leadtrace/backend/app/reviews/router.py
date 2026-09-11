@@ -2,14 +2,22 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.errors import APIError
+from app.audit.service import (
+    AuditService,
+    canonical_content_hash,
+    persisted_json_value,
+)
+from app.api.errors import APIError, request_id_for
+from app.auth.router import resolve_remote_address
 from app.database import get_db_session
 from app.reviews.schemas import (
     ChangesetCreateRequest,
+    ChangesetDecisionRequest,
     ChangesetItemCreateRequest,
     ChangesetItemDeleteRequest,
     ChangesetItemResponse,
@@ -23,6 +31,18 @@ from app.reviews.schemas import (
     ReviewTaskReassignRequest,
     ReviewTaskResponse,
 )
+from app.reviews.comments import (
+    CommentAction,
+    CommentCreateRequest,
+    CommentEventResponse,
+    CommentForbidden,
+    CommentNotFound,
+    CommentResponse,
+    CommentService,
+    CommentStateConflict,
+    CommentTransitionRequest,
+    InvalidComment,
+)
 from app.reviews.service import (
     BaseReleaseConflict,
     ChangesetItemHasRevisions,
@@ -33,6 +53,9 @@ from app.reviews.service import (
     ReviewService,
     ReviewStateConflict,
 )
+from app.reviews.models import ChangesetItem, ReviewTask
+from app.revisions.diff import build_revision_diff
+from app.revisions.models import ObjectRevision
 from app.security.permissions import (
     RouteAccess,
     declare_route_access,
@@ -48,6 +71,8 @@ def create_reviews_router(session_secret: str) -> APIRouter:
 
     router = APIRouter(prefix="/api/v1/review", tags=["review workflow"])
     service = ReviewService()
+    comment_service = CommentService()
+    audit_service = AuditService()
 
     def require_reviewer_or_admin(principal: Principal) -> None:
         if principal.must_change_password:
@@ -59,6 +84,14 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         require_request_csrf(principal, token, session_secret)
 
     def as_error(error: Exception) -> HTTPException:
+        if isinstance(error, CommentNotFound):
+            return HTTPException(status_code=404, detail="Resource not found")
+        if isinstance(error, CommentForbidden):
+            return HTTPException(status_code=403, detail="Permission denied")
+        if isinstance(error, CommentStateConflict):
+            return APIError(409, "COMMENT_STATE_CONFLICT", str(error))
+        if isinstance(error, InvalidComment):
+            return HTTPException(status_code=422, detail=str(error))
         if isinstance(error, ReviewNotFound):
             return HTTPException(status_code=404, detail="Resource not found")
         if isinstance(error, ReviewForbidden):
@@ -111,6 +144,210 @@ def create_reviews_router(session_secret: str) -> APIRouter:
             status_code=400, detail="The request could not be completed"
         )
 
+    def request_context(request: Request) -> tuple[str, str]:
+        ip_address = resolve_remote_address(request, request.app.state.settings)
+        return ip_address, request_id_for(request)
+
+    def append_review_audit(
+        session: Session,
+        *,
+        request: Request,
+        actor_id: UUID,
+        action: str,
+        target_type: str,
+        target_id: UUID,
+        paper_id: UUID,
+        changeset_id: UUID | None,
+        release_id: UUID | None,
+        reason: str,
+        before: object,
+        after: object,
+    ) -> None:
+        ip_address, request_id = request_context(request)
+        persisted_before = persisted_json_value(session, before)
+        persisted_after = persisted_json_value(session, after)
+        audit_service.append_event(
+            session,
+            actor_id=actor_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            paper_id=paper_id,
+            changeset_id=changeset_id,
+            release_id=release_id,
+            ip_address=ip_address,
+            request_id=request_id,
+            result="success",
+            reason=reason,
+            before_hash=canonical_content_hash(persisted_before),
+            after_hash=canonical_content_hash(persisted_after),
+            details={"before": persisted_before, "after": persisted_after},
+        )
+
+    @router.get(
+        "/changesets/{changeset_id}/comments",
+        response_model=list[CommentResponse],
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def list_comments(
+        changeset_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> list[CommentResponse]:
+        require_reviewer_or_admin(principal)
+        try:
+            with session.begin():
+                comments = comment_service.list_comments(
+                    session,
+                    changeset_id=changeset_id,
+                    actor_id=principal.user_id,
+                )
+        except (CommentNotFound, CommentForbidden) as error:
+            raise as_error(error) from error
+        return [
+            CommentResponse.from_model(comment, state)
+            for comment, state in comments
+        ]
+
+    @router.post(
+        "/changesets/{changeset_id}/comments",
+        response_model=CommentResponse,
+        status_code=201,
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def create_comment(
+        changeset_id: UUID,
+        payload: CommentCreateRequest,
+        request: Request,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    ) -> CommentResponse:
+        require_reviewer_or_admin(principal)
+        verify_csrf(principal, csrf_token)
+        ip_address, request_id = request_context(request)
+        try:
+            with session.begin():
+                comment, state = comment_service.create_comment(
+                    session,
+                    changeset_id=changeset_id,
+                    actor_id=principal.user_id,
+                    target_type=payload.target_type,
+                    target_id=payload.target_id,
+                    changeset_item_id=payload.changeset_item_id,
+                    field_path=payload.field_path,
+                    body=payload.body,
+                    ip_address=ip_address,
+                    request_id=request_id,
+                )
+        except (
+            CommentNotFound,
+            CommentForbidden,
+            InvalidComment,
+            IntegrityError,
+        ) as error:
+            raise as_error(error) from error
+        return CommentResponse.from_model(comment, state)
+
+    @router.get(
+        "/comments/{comment_id}/history",
+        response_model=list[CommentEventResponse],
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def list_comment_history(
+        comment_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> list[CommentEventResponse]:
+        require_reviewer_or_admin(principal)
+        try:
+            with session.begin():
+                events = comment_service.list_history(
+                    session,
+                    comment_id=comment_id,
+                    actor_id=principal.user_id,
+                )
+        except (CommentNotFound, CommentForbidden) as error:
+            raise as_error(error) from error
+        return [CommentEventResponse.model_validate(item) for item in events]
+
+    def transition_comment(
+        *,
+        comment_id: UUID,
+        payload: CommentTransitionRequest,
+        request: Request,
+        session: Session,
+        principal: Principal,
+        csrf_token: str | None,
+        action: CommentAction,
+    ) -> CommentResponse:
+        require_reviewer_or_admin(principal)
+        verify_csrf(principal, csrf_token)
+        ip_address, request_id = request_context(request)
+        try:
+            with session.begin():
+                comment, state = comment_service.transition(
+                    session,
+                    comment_id=comment_id,
+                    actor_id=principal.user_id,
+                    action=action,
+                    reason=payload.reason,
+                    ip_address=ip_address,
+                    request_id=request_id,
+                )
+        except (
+            CommentNotFound,
+            CommentForbidden,
+            InvalidComment,
+            IntegrityError,
+        ) as error:
+            raise as_error(error) from error
+        return CommentResponse.from_model(comment, state)
+
+    @router.post(
+        "/comments/{comment_id}/resolve", response_model=CommentResponse
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def resolve_comment(
+        comment_id: UUID,
+        payload: CommentTransitionRequest,
+        request: Request,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    ) -> CommentResponse:
+        return transition_comment(
+            comment_id=comment_id,
+            payload=payload,
+            request=request,
+            session=session,
+            principal=principal,
+            csrf_token=csrf_token,
+            action=CommentAction.RESOLVED,
+        )
+
+    @router.post(
+        "/comments/{comment_id}/reopen", response_model=CommentResponse
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def reopen_comment(
+        comment_id: UUID,
+        payload: CommentTransitionRequest,
+        request: Request,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    ) -> CommentResponse:
+        return transition_comment(
+            comment_id=comment_id,
+            payload=payload,
+            request=request,
+            session=session,
+            principal=principal,
+            csrf_token=csrf_token,
+            action=CommentAction.REOPENED,
+        )
+
     @router.get("/tasks", response_model=list[ReviewTaskResponse])
     @declare_route_access(RouteAccess.AUTHENTICATED)
     def list_tasks(
@@ -129,6 +366,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
     @declare_route_access(RouteAccess.AUTHENTICATED)
     def create_task(
         payload: ReviewTaskCreateRequest,
+        request: Request,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -146,6 +384,23 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                     created_by_id=principal.user_id,
                     priority=payload.priority,
                 )
+                task_snapshot = ReviewTaskResponse.from_model(task).model_dump(
+                    mode="json"
+                )
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.task.created",
+                    target_type="review_task",
+                    target_id=task.id,
+                    paper_id=task.paper_id,
+                    changeset_id=None,
+                    release_id=None,
+                    reason="Created review task",
+                    before=None,
+                    after=task_snapshot,
+                )
         except (
             ReviewNotFound,
             ReviewForbidden,
@@ -160,6 +415,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
     def reassign_task(
         task_id: UUID,
         payload: ReviewTaskReassignRequest,
+        request: Request,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -170,12 +426,38 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         verify_csrf(principal, csrf_token)
         try:
             with session.begin():
+                existing_task = session.scalar(
+                    select(ReviewTask)
+                    .where(ReviewTask.id == task_id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                before = (
+                    ReviewTaskResponse.from_model(existing_task).model_dump(mode="json")
+                    if existing_task is not None
+                    else None
+                )
                 task = service.reassign_task(
                     session,
                     task_id=task_id,
                     actor_id=principal.user_id,
                     assignee_id=payload.assigned_reviewer_id,
                     expected_version=payload.expected_version,
+                )
+                after = ReviewTaskResponse.from_model(task).model_dump(mode="json")
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.task.reassigned",
+                    target_type="review_task",
+                    target_id=task.id,
+                    paper_id=task.paper_id,
+                    changeset_id=None,
+                    release_id=None,
+                    reason="Reassigned review task",
+                    before=before,
+                    after=after,
                 )
         except (
             ReviewNotFound,
@@ -191,6 +473,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
     @declare_route_access(RouteAccess.AUTHENTICATED)
     def create_changeset(
         payload: ChangesetCreateRequest,
+        request: Request,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -207,6 +490,21 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                     base_release_id=payload.base_release_id,
                     title=payload.title,
                     reason=payload.reason,
+                )
+                after = ChangesetResponse.from_model(changeset).model_dump(mode="json")
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.changeset.created",
+                    target_type="changeset",
+                    target_id=changeset.id,
+                    paper_id=changeset.paper_id,
+                    changeset_id=changeset.id,
+                    release_id=changeset.base_release_id,
+                    reason=changeset.reason,
+                    before=None,
+                    after=after,
                 )
         except (
             ReviewNotFound,
@@ -282,6 +580,58 @@ def create_reviews_router(session_secret: str) -> APIRouter:
             for item in items
         ]
 
+    @router.get(
+        "/changesets/{changeset_id}/diff",
+        response_model=list[dict[str, object]],
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def get_changeset_diff(
+        changeset_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> list[dict[str, object]]:
+        require_reviewer_or_admin(principal)
+        try:
+            with session.begin():
+                _, items = service.list_changeset_items(
+                    session,
+                    changeset_id=changeset_id,
+                    actor_id=principal.user_id,
+                )
+                result = []
+                for item in items:
+                    base = (
+                        session.get(ObjectRevision, item.base_revision_id)
+                        if item.base_revision_id is not None
+                        else None
+                    )
+                    proposed = (
+                        session.get(ObjectRevision, item.proposed_revision_id)
+                        if item.proposed_revision_id is not None
+                        else None
+                    )
+                    result.append(
+                        build_revision_diff(
+                            object_id=item.object_id,
+                            object_kind=item.object_kind,
+                            base_revision_id=item.base_revision_id,
+                            proposed_revision_id=item.proposed_revision_id,
+                            before_snapshot=base.snapshot if base is not None else None,
+                            after_snapshot=(
+                                proposed.snapshot
+                                if proposed is not None
+                                else item.proposed_snapshot
+                            ),
+                            before_tombstone=(base.is_tombstone if base else False),
+                            after_tombstone=(
+                                proposed.is_tombstone if proposed else False
+                            ),
+                        )
+                    )
+        except (ReviewNotFound, ReviewForbidden) as error:
+            raise as_error(error) from error
+        return result
+
     @router.post(
         "/changesets/{changeset_id}/items",
         response_model=ChangesetItemResponse,
@@ -291,6 +641,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
     def create_changeset_item(
         changeset_id: UUID,
         payload: ChangesetItemCreateRequest,
+        request: Request,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -311,6 +662,23 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                     sequence=payload.sequence,
                 )
                 changeset = service.get_changeset(session, changeset_id)
+                after = ChangesetItemResponse.from_model(
+                    item, changeset_version=changeset.version
+                ).model_dump(mode="json")
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.changeset_item.created",
+                    target_type="changeset_item",
+                    target_id=item.id,
+                    paper_id=changeset.paper_id,
+                    changeset_id=changeset.id,
+                    release_id=changeset.base_release_id,
+                    reason="Created changeset item",
+                    before=None,
+                    after=after,
+                )
         except (
             ReviewNotFound,
             ReviewForbidden,
@@ -333,6 +701,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         changeset_id: UUID,
         item_id: UUID,
         payload: ChangesetItemUpdateRequest,
+        request: Request,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -341,6 +710,15 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         verify_csrf(principal, csrf_token)
         try:
             with session.begin():
+                service.get_changeset(session, changeset_id, for_update=True)
+                existing_item = session.get(ChangesetItem, item_id)
+                before = (
+                    ChangesetItemResponse.from_model(
+                        existing_item, changeset_version=payload.expected_version
+                    ).model_dump(mode="json")
+                    if existing_item is not None
+                    else None
+                )
                 changeset, item = service.update_changeset_item(
                     session,
                     changeset_id=changeset_id,
@@ -348,6 +726,23 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                     actor_id=principal.user_id,
                     expected_version=payload.expected_version,
                     proposed_snapshot=payload.proposed_snapshot,
+                )
+                after = ChangesetItemResponse.from_model(
+                    item, changeset_version=changeset.version
+                ).model_dump(mode="json")
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.changeset_item.updated",
+                    target_type="changeset_item",
+                    target_id=item.id,
+                    paper_id=changeset.paper_id,
+                    changeset_id=changeset.id,
+                    release_id=changeset.base_release_id,
+                    reason="Updated changeset item",
+                    before=before,
+                    after=after,
                 )
         except (
             ReviewNotFound,
@@ -370,6 +765,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         changeset_id: UUID,
         item_id: UUID,
         payload: ChangesetItemDeleteRequest,
+        request: Request,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -378,12 +774,35 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         verify_csrf(principal, csrf_token)
         try:
             with session.begin():
+                service.get_changeset(session, changeset_id, for_update=True)
+                existing_item = session.get(ChangesetItem, item_id)
+                before = (
+                    ChangesetItemResponse.from_model(
+                        existing_item, changeset_version=payload.expected_version
+                    ).model_dump(mode="json")
+                    if existing_item is not None
+                    else None
+                )
                 changeset = service.delete_changeset_item(
                     session,
                     changeset_id=changeset_id,
                     item_id=item_id,
                     actor_id=principal.user_id,
                     expected_version=payload.expected_version,
+                )
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.changeset_item.deleted",
+                    target_type="changeset_item",
+                    target_id=item_id,
+                    paper_id=changeset.paper_id,
+                    changeset_id=changeset.id,
+                    release_id=changeset.base_release_id,
+                    reason="Deleted changeset item",
+                    before=before,
+                    after=None,
                 )
         except ChangesetItemHasRevisions as error:
             raise as_error(error) from error
@@ -411,6 +830,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
     def update_changeset(
         changeset_id: UUID,
         payload: ChangesetUpdateRequest,
+        request: Request,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -419,6 +839,16 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         verify_csrf(principal, csrf_token)
         try:
             with session.begin():
+                existing_changeset = service.get_changeset(
+                    session, changeset_id, for_update=True
+                )
+                before = (
+                    ChangesetResponse.from_model(existing_changeset).model_dump(
+                        mode="json"
+                    )
+                    if existing_changeset is not None
+                    else None
+                )
                 changeset = service.update_changeset(
                     session,
                     changeset_id=changeset_id,
@@ -427,6 +857,21 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                     title=payload.title,
                     reason=payload.reason,
                     validation_results=payload.validation_results,
+                )
+                after = ChangesetResponse.from_model(changeset).model_dump(mode="json")
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.changeset.updated",
+                    target_type="changeset",
+                    target_id=changeset.id,
+                    paper_id=changeset.paper_id,
+                    changeset_id=changeset.id,
+                    release_id=changeset.base_release_id,
+                    reason=changeset.reason,
+                    before=before,
+                    after=after,
                 )
         except (
             ReviewNotFound,
@@ -442,6 +887,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
     def submit_changeset(
         changeset_id: UUID,
         payload: ChangesetSubmitRequest,
+        request: Request,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -450,11 +896,36 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         verify_csrf(principal, csrf_token)
         try:
             with session.begin():
+                existing_changeset = service.get_changeset(
+                    session, changeset_id, for_update=True
+                )
+                before = (
+                    ChangesetResponse.from_model(existing_changeset).model_dump(
+                        mode="json"
+                    )
+                    if existing_changeset is not None
+                    else None
+                )
                 changeset = service.submit_changeset(
                     session,
                     changeset_id=changeset_id,
                     actor_id=principal.user_id,
                     expected_version=payload.expected_version,
+                )
+                after = ChangesetResponse.from_model(changeset).model_dump(mode="json")
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.changeset.submitted",
+                    target_type="changeset",
+                    target_id=changeset.id,
+                    paper_id=changeset.paper_id,
+                    changeset_id=changeset.id,
+                    release_id=changeset.base_release_id,
+                    reason=changeset.reason,
+                    before=before,
+                    after=after,
                 )
         except (
             ReviewNotFound,
@@ -471,6 +942,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
     def revise_changeset(
         changeset_id: UUID,
         payload: ChangesetTransitionRequest,
+        request: Request,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
         csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -479,11 +951,36 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         verify_csrf(principal, csrf_token)
         try:
             with session.begin():
+                existing_changeset = service.get_changeset(
+                    session, changeset_id, for_update=True
+                )
+                before = (
+                    ChangesetResponse.from_model(existing_changeset).model_dump(
+                        mode="json"
+                    )
+                    if existing_changeset is not None
+                    else None
+                )
                 changeset = service.revise_changeset(
                     session,
                     changeset_id=changeset_id,
                     actor_id=principal.user_id,
                     expected_version=payload.expected_version,
+                )
+                after = ChangesetResponse.from_model(changeset).model_dump(mode="json")
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.changeset.revised",
+                    target_type="changeset",
+                    target_id=changeset.id,
+                    paper_id=changeset.paper_id,
+                    changeset_id=changeset.id,
+                    release_id=changeset.base_release_id,
+                    reason=changeset.reason,
+                    before=before,
+                    after=after,
                 )
         except (
             ReviewNotFound,
@@ -507,7 +1004,8 @@ def create_reviews_router(session_secret: str) -> APIRouter:
             @declare_route_access(RouteAccess.AUTHENTICATED)
             def transition(
                 changeset_id: UUID,
-                payload: ChangesetTransitionRequest,
+                payload: ChangesetDecisionRequest,
+                request: Request,
                 session: Session = Depends(get_db_session),
                 principal: Principal = Depends(get_authenticated_principal),
                 csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -518,12 +1016,39 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                 verify_csrf(principal, csrf_token)
                 try:
                     with session.begin():
+                        existing_changeset = service.get_changeset(
+                            session, changeset_id, for_update=True
+                        )
+                        before = (
+                            ChangesetResponse.from_model(existing_changeset).model_dump(
+                                mode="json"
+                            )
+                            if existing_changeset is not None
+                            else None
+                        )
                         changeset = service.transition_changeset(
                             session,
                             changeset_id=changeset_id,
                             actor_id=principal.user_id,
                             expected_version=payload.expected_version,
                             next_state=target_state,
+                        )
+                        after = ChangesetResponse.from_model(changeset).model_dump(
+                            mode="json"
+                        )
+                        append_review_audit(
+                            session,
+                            request=request,
+                            actor_id=principal.user_id,
+                            action=f"review.changeset.{target_state.value}",
+                            target_type="changeset",
+                            target_id=changeset.id,
+                            paper_id=changeset.paper_id,
+                            changeset_id=changeset.id,
+                            release_id=changeset.base_release_id,
+                            reason=payload.reason,
+                            before=before,
+                            after=after,
                         )
                 except (
                     ReviewNotFound,

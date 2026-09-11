@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.revisions.models import ObjectKind
 from app.reviews.models import Changeset, ChangesetItem, ReviewTask, ReviewTaskStatus
@@ -83,6 +83,19 @@ class ChangesetResponse(BaseModel):
 
 class ChangesetTransitionRequest(BaseModel):
     expected_version: int = Field(ge=1)
+
+
+class ChangesetDecisionRequest(BaseModel):
+    expected_version: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        clean = value.strip()
+        if not clean:
+            raise ValueError("reason is required")
+        return clean
 
 
 class ChangesetItemCreateRequest(BaseModel):

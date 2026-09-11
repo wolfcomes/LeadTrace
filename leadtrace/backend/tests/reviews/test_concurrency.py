@@ -1,20 +1,32 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from threading import Barrier, Lock, Thread
+from threading import Barrier, Event, Lock, Thread, current_thread
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import cast, delete, func, select, text, update
+from sqlalchemy import cast, delete, event, func, select, text, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import DBAPIError
 
 from app.compounds.models import Compound
+from app.audit.models import AuditChainHead
+from app.audit.service import AuditService, canonical_content_hash
 from app.papers.models import Paper
 from app.releases.models import Release, ReleaseItem
 from app.revisions.models import ObjectKind, ObjectRevision
 from app.revisions.service import RevisionService
-from app.reviews.models import Changeset, ChangesetItem, ChangesetSubmission
+from app.reviews.models import (
+    Changeset,
+    ChangesetItem,
+    ChangesetSubmission,
+    ReviewTask,
+)
+from app.reviews.comments import (
+    CommentAction,
+    CommentService,
+    CommentTargetType,
+)
 from app.reviews.service import RevisionConflict, ReviewService
 from app.security.policies import WorkflowState
 from app.users.models import UserRole
@@ -178,6 +190,236 @@ def test_two_same_version_saves_have_exactly_one_winner(auth_session_factory) ->
         assert changeset is not None
         assert changeset.version == 2
         assert changeset.title in {"Writer 0", "Writer 1"}
+
+
+def test_locking_version_check_refreshes_a_preloaded_identity(
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        changeset_id, reviewer_id, _, _, _ = _review_fixture(session)
+
+    with auth_session_factory() as first_session:
+        with first_session.begin():
+            preloaded = first_session.get(Changeset, changeset_id)
+            assert preloaded is not None
+            assert preloaded.version == 1
+            with auth_session_factory.begin() as second_session:
+                ReviewService().update_changeset(
+                    second_session,
+                    changeset_id=changeset_id,
+                    actor_id=reviewer_id,
+                    expected_version=1,
+                    title="Committed by another session",
+                )
+
+            with pytest.raises(RevisionConflict) as error:
+                ReviewService().update_changeset(
+                    first_session,
+                    changeset_id=changeset_id,
+                    actor_id=reviewer_id,
+                    expected_version=1,
+                    title="Must not overwrite with preloaded state",
+                )
+
+            assert error.value.current_version == 2
+
+
+def test_comment_and_changeset_audits_use_deadlock_free_lock_order(
+    auth_session_factory,
+    monkeypatch,
+) -> None:
+    with auth_session_factory.begin() as session:
+        changeset_id, reviewer_id, _, paper_id, _ = _review_fixture(session)
+        changeset = session.get(Changeset, changeset_id)
+        assert changeset is not None
+        comment, _ = CommentService().create_comment(
+            session,
+            changeset_id=changeset.id,
+            actor_id=reviewer_id,
+            target_type=CommentTargetType.CHANGESET,
+            target_id=changeset.id,
+            changeset_item_id=None,
+            field_path=None,
+            body="Resolve while another editor saves.",
+            ip_address="192.0.2.30",
+            request_id="comment-created",
+        )
+        comment_id = comment.id
+        release_id = changeset.base_release_id
+
+    original_append = AuditService.append_event
+    audit_head_locked = Event()
+    editor_has_changeset = Event()
+    errors: list[BaseException] = []
+    error_guard = Lock()
+
+    def observed_append(self, session, **kwargs):
+        if kwargs["action"] == "review.comment.resolved":
+            session.scalar(
+                select(AuditChainHead)
+                .where(AuditChainHead.id == 1)
+                .with_for_update()
+            )
+            audit_head_locked.set()
+            editor_has_changeset.wait(timeout=0.5)
+        return original_append(self, session, **kwargs)
+
+    monkeypatch.setattr(AuditService, "append_event", observed_append)
+
+    def resolve_comment() -> None:
+        try:
+            with auth_session_factory.begin() as session:
+                CommentService().transition(
+                    session,
+                    comment_id=comment_id,
+                    actor_id=reviewer_id,
+                    action=CommentAction.RESOLVED,
+                    reason="Source checked",
+                    ip_address="192.0.2.30",
+                    request_id="comment-resolved",
+                )
+        except BaseException as error:  # pragma: no cover - asserted below
+            with error_guard:
+                errors.append(error)
+
+    def update_changeset() -> None:
+        assert audit_head_locked.wait(timeout=5)
+        try:
+            with auth_session_factory.begin() as session:
+                changeset = ReviewService().update_changeset(
+                    session,
+                    changeset_id=changeset_id,
+                    actor_id=reviewer_id,
+                    expected_version=1,
+                    title="Saved without a lock cycle",
+                )
+                editor_has_changeset.set()
+                AuditService().append_event(
+                    session,
+                    actor_id=reviewer_id,
+                    action="review.changeset.updated",
+                    target_type="changeset",
+                    target_id=changeset.id,
+                    paper_id=paper_id,
+                    changeset_id=changeset.id,
+                    release_id=release_id,
+                    ip_address="192.0.2.31",
+                    request_id="changeset-updated",
+                    result="success",
+                    reason="Concurrent save",
+                    before_hash=canonical_content_hash({"version": 1}),
+                    after_hash=canonical_content_hash({"version": 2}),
+                    details={},
+                )
+        except BaseException as error:  # pragma: no cover - asserted below
+            with error_guard:
+                errors.append(error)
+
+    threads = [Thread(target=resolve_comment), Thread(target=update_changeset)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
+    with auth_session_factory() as session:
+        assert AuditService().verify_chain(session).valid is True
+
+
+def test_changeset_creation_does_not_hold_release_while_waiting_for_task(
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        changeset_id, reviewer_id, admin_id, paper_id, _ = _review_fixture(session)
+        changeset = session.get(Changeset, changeset_id)
+        assert changeset is not None
+        task_id = changeset.review_task_id
+        release_id = changeset.base_release_id
+
+    task_locked = Event()
+    creator_waiting_for_task = Event()
+    errors: list[BaseException] = []
+    error_guard = Lock()
+    engine = auth_session_factory.kw["bind"]
+
+    def observe_creator_task_lock(
+        _connection, _cursor, statement, _parameters, _context, _many
+    ) -> None:
+        if (
+            current_thread().name == "changeset-creator"
+            and "FROM review_tasks" in statement
+            and "FOR UPDATE" in statement
+        ):
+            creator_waiting_for_task.set()
+
+    event.listen(engine, "before_cursor_execute", observe_creator_task_lock)
+
+    def create_duplicate_changeset() -> None:
+        assert task_locked.wait(timeout=5)
+        try:
+            with auth_session_factory.begin() as session:
+                session.execute(text("SET LOCAL lock_timeout = '5s'"))
+                ReviewService().create_changeset(
+                    session,
+                    paper_id=paper_id,
+                    actor_id=reviewer_id,
+                    review_task_id=task_id,
+                    base_release_id=release_id,
+                    title="Concurrent duplicate",
+                    reason="Exercise task before release lock order",
+                )
+        except Exception as error:
+            if "already has a changeset" not in str(error):
+                with error_guard:
+                    errors.append(error)
+
+    def approve_while_creation_waits() -> None:
+        try:
+            with auth_session_factory.begin() as session:
+                session.execute(text("SET LOCAL lock_timeout = '5s'"))
+                session.scalar(
+                    select(ReviewTask)
+                    .where(ReviewTask.id == task_id)
+                    .with_for_update()
+                )
+                task_locked.set()
+                assert creator_waiting_for_task.wait(timeout=5)
+                AuditService().append_event(
+                    session,
+                    actor_id=admin_id,
+                    action="review.changeset.approved",
+                    target_type="changeset",
+                    target_id=changeset_id,
+                    paper_id=paper_id,
+                    changeset_id=changeset_id,
+                    release_id=release_id,
+                    ip_address="192.0.2.32",
+                    request_id="concurrent-approval",
+                    result="success",
+                    reason="Verify lock order",
+                    before_hash=canonical_content_hash({"state": "submitted"}),
+                    after_hash=canonical_content_hash({"state": "approved"}),
+                    details={},
+                )
+        except BaseException as error:  # pragma: no cover - asserted below
+            with error_guard:
+                errors.append(error)
+
+    threads = [
+        Thread(target=approve_while_creation_waits, name="changeset-approver"),
+        Thread(target=create_duplicate_changeset, name="changeset-creator"),
+    ]
+    try:
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=12)
+    finally:
+        event.remove(engine, "before_cursor_execute", observe_creator_task_lock)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
 
 
 def test_database_rejects_submitted_content_and_item_mutation(
