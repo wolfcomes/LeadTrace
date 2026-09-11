@@ -99,6 +99,20 @@ def require_permission(
     return permission_dependency
 
 
+def require_published_data(
+    principal: Principal = Depends(get_authenticated_principal),
+) -> Principal:
+    enforce_permission(
+        principal,
+        Action.READ_PUBLISHED_DATA,
+        ResourceScope(is_published=True),
+    )
+    return principal
+
+
+setattr(require_published_data, "__leadtrace_action__", Action.READ_PUBLISHED_DATA)
+
+
 def require_request_csrf(
     principal: Principal,
     csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")],

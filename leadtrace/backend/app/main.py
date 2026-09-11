@@ -8,10 +8,13 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.assets.router import create_assets_router
+from app.api.errors import install_api_error_handling
 from app.config import Settings, get_settings
 from app.database import DatabaseResources, bootstrap_database
 from app.auth.router import create_auth_router
 from app.health.router import DatabaseProbe, create_health_router, probe_database
+from app.papers.router import create_papers_router
+from app.releases.router import create_releases_router
 from app.users.router import create_users_router
 
 
@@ -46,6 +49,7 @@ def create_app(
         lifespan=lifespan,
     )
     application.state.settings = runtime_settings
+    install_api_error_handling(application)
     application.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=runtime_settings.allowed_hosts,
@@ -56,6 +60,8 @@ def create_app(
     application.include_router(create_auth_router(runtime_settings))
     application.include_router(create_users_router(runtime_settings))
     application.include_router(create_assets_router())
+    application.include_router(create_releases_router())
+    application.include_router(create_papers_router())
     return application
 
 

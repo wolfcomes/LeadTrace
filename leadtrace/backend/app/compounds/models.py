@@ -3,7 +3,7 @@ from __future__ import annotations
 import unicodedata
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,6 +25,7 @@ class Compound(RevisionedObject):
             "local_identity",
             name="uq_compounds_paper_local_identity",
         ),
+        Index("ix_compounds_normalized_label", "normalized_label"),
     )
 
     id: Mapped[UUID] = mapped_column(

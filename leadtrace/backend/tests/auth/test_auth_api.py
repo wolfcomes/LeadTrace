@@ -143,9 +143,15 @@ def test_login_error_does_not_reveal_username_or_disabled_state(
     )
 
     assert missing.status_code == wrong.status_code == 401
-    assert missing.json() == wrong.json() == {
-        "detail": "Invalid username or password"
-    }
+    for response in (missing, wrong):
+        assert response.json() == {
+            "code": "AUTHENTICATION_REQUIRED",
+            "message": "Invalid username or password",
+            "details": {},
+            "request_id": response.headers["X-Request-ID"],
+        }
+    assert "does.not.exist" not in missing.text
+    assert "reviewer.one" not in wrong.text
 
 
 def test_authenticated_state_change_requires_csrf(api_client: TestClient) -> None:
@@ -348,7 +354,10 @@ def test_only_admin_can_create_accounts_without_exposing_password_material(
 
     assert blocked_before_password_change.status_code == 403
     assert blocked_before_password_change.json() == {
-        "detail": "Password change required"
+        "code": "PASSWORD_CHANGE_REQUIRED",
+        "message": "Password change required",
+        "details": {},
+        "request_id": blocked_before_password_change.headers["X-Request-ID"],
     }
     assert admin_password_change.status_code == 200
     assert created.status_code == 201
@@ -428,6 +437,11 @@ def test_critical_admin_action_requires_recent_password_reauthentication(
         )
 
     assert blocked.status_code == 403
-    assert blocked.json() == {"detail": "Recent reauthentication required"}
+    assert blocked.json() == {
+        "code": "RECENT_REAUTHENTICATION_REQUIRED",
+        "message": "Recent reauthentication required",
+        "details": {},
+        "request_id": blocked.headers["X-Request-ID"],
+    }
     assert reauthenticated.status_code == 204
     assert created.status_code == 201

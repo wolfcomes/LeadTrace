@@ -98,6 +98,11 @@ class ObjectRevision(UUIDPrimaryKeyMixin, Base):
             "revision_number",
             name="uq_object_revision_number",
         ),
+        UniqueConstraint(
+            "object_id",
+            "id",
+            name="uq_object_revisions_object_id_id",
+        ),
         CheckConstraint(
             "revision_number > 0",
             name="ck_object_revisions_positive_number",
@@ -126,6 +131,27 @@ class ObjectRevision(UUIDPrimaryKeyMixin, Base):
             name="ck_object_revisions_region_rotation",
         ),
         Index("ix_object_revisions_object", "object_id", "revision_number"),
+        Index("ix_object_revisions_relation_status", "relation_status"),
+        Index("ix_object_revisions_structure_state", "structure_state"),
+        Index(
+            "ix_object_revisions_normalized_title",
+            text(
+                "lower(snapshot #>> "
+                "'{normalized_values,title_guess}'::text[])"
+            ),
+        ),
+        Index(
+            "ix_object_revisions_review_status",
+            text(
+                "(snapshot #>> "
+                "'{normalized_values,review_status}'::text[])"
+            ),
+        ),
+        Index(
+            "ix_object_revisions_search_tsv",
+            text("to_tsvector('simple', coalesce(search_text, ''))"),
+            postgresql_using="gin",
+        ),
         Index(
             "uq_object_revisions_current_published",
             "object_id",
