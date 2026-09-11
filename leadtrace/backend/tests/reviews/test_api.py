@@ -401,6 +401,60 @@ def test_review_api_enforces_roles_scope_csrf_and_version_conflicts(
         )
 
 
+def test_review_audit_hashes_match_redacted_persisted_details(
+    tmp_path: Path,
+    postgresql_database_url: str,
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        seeded = _seed_review(session)
+        changeset = ReviewService().create_changeset(
+            session,
+            paper_id=seeded["paper"],
+            actor_id=seeded["review-api-reviewer"],
+            review_task_id=seeded["task"],
+            base_release_id=seeded["release"],
+            title="Verify redacted audit content",
+            reason="Exercise the persisted audit hash contract",
+        )
+        changeset_id = changeset.id
+
+    resources = DatabaseResources(
+        engine=auth_session_factory.kw["bind"],
+        session_factory=auth_session_factory,
+    )
+    application = create_app(
+        settings=_settings(tmp_path, postgresql_database_url),
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+    with TestClient(application) as client:
+        reviewer_csrf = _login(
+            client,
+            str(seeded["review-api-reviewer-username"]),
+        )
+        response = client.patch(
+            f"/api/v1/review/changesets/{changeset_id}",
+            headers={"X-CSRF-Token": reviewer_csrf},
+            json={
+                "expected_version": 1,
+                "validation_results": {"csrf": "must-not-enter-audit"},
+            },
+        )
+
+    assert response.status_code == 200
+    with auth_session_factory() as session:
+        event = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.action == "review.changeset.updated"
+            )
+        )
+        assert event is not None
+        assert event.details["after"]["validation_results"]["csrf"] == "[REDACTED]"
+        assert event.before_hash == canonical_content_hash(event.details["before"])
+        assert event.after_hash == canonical_content_hash(event.details["after"])
+
+
 def test_changeset_diff_includes_visual_region_revision_columns(
     tmp_path: Path,
     postgresql_database_url: str,

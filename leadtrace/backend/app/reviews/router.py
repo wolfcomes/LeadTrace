@@ -11,6 +11,7 @@ from app.audit.service import (
     AuditService,
     canonical_content_hash,
     persisted_json_value,
+    redact_secrets,
 )
 from app.api.errors import APIError, request_id_for
 from app.auth.router import resolve_remote_address
@@ -202,8 +203,8 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         after: object,
     ) -> None:
         ip_address, request_id = request_context(request)
-        persisted_before = persisted_json_value(session, before)
-        persisted_after = persisted_json_value(session, after)
+        persisted_before = persisted_json_value(session, redact_secrets(before))
+        persisted_after = persisted_json_value(session, redact_secrets(after))
         audit_service.append_event(
             session,
             actor_id=actor_id,
