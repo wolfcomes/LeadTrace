@@ -1,0 +1,1 @@
+"""Protected source-document access."""

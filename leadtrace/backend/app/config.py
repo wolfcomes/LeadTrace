@@ -29,9 +29,11 @@ class Settings(BaseSettings):
     session_secret: SecretStr = SecretStr("development-only-not-for-production")
     admin_reauthentication_minutes: int = Field(default=10, ge=1, le=60)
     https_enabled: bool = False
+    nginx_internal_transfer: bool = False
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
     trusted_proxy_addresses: list[str] = []
     asset_root: Path = Path("/var/lib/leadtrace/assets")
+    source_roots: dict[str, Path] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_production_safety(self) -> "Settings":
@@ -64,6 +66,11 @@ class Settings(BaseSettings):
             raise ValueError("production asset_root must be explicitly configured")
         if not self.asset_root.is_absolute() or self.asset_root == Path("/"):
             raise ValueError("production asset_root must be a dedicated absolute path")
+        if any(
+            not path.is_absolute() or path == Path("/")
+            for path in self.source_roots.values()
+        ):
+            raise ValueError("production source_roots must be dedicated absolute paths")
         return self
 
 

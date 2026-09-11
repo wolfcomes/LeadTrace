@@ -74,6 +74,8 @@ export LEADTRACE_DATABASE_URL='postgresql+psycopg://leadtrace@127.0.0.1/leadtrac
 export LEADTRACE_SESSION_SECRET='replace-with-a-long-random-development-secret'
 export LEADTRACE_ALLOWED_HOSTS='["127.0.0.1","localhost","leadtrace.lan"]'
 export LEADTRACE_ASSET_ROOT='/absolute/path/to/leadtrace-data/assets'
+export LEADTRACE_SOURCE_ROOTS='{"baseline":"/absolute/path/to/source-workspace"}'
+export LEADTRACE_NGINX_INTERNAL_TRANSFER='false'
 cd leadtrace/backend
 ../../.venv/bin/python -m alembic -c alembic.ini upgrade head
 ../../.venv/bin/python -m app.cli.users create admin \
