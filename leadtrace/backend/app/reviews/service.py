@@ -545,12 +545,6 @@ class ReviewService:
                 changeset.workflow_state.value,
                 "Only a draft changeset can be submitted",
             )
-        self._validate_base_release(
-            session,
-            base_release_id=changeset.base_release_id,
-            paper_id=changeset.paper_id,
-            lock=True,
-        )
         actor = session.get(User, actor_id)
         if actor is None:
             raise ReviewNotFound("User not found")
@@ -570,6 +564,15 @@ class ReviewService:
             }
         ):
             raise ReviewForbidden("Changeset is outside its active review task")
+        # Keep the lock order consistent with create_changeset: ReviewTask
+        # before the base Release. This prevents create/submit deadlocks when
+        # both transactions concurrently inspect the same review scope.
+        self._validate_base_release(
+            session,
+            base_release_id=changeset.base_release_id,
+            paper_id=changeset.paper_id,
+            lock=True,
+        )
         transition_state(changeset.workflow_state, WorkflowState.SUBMITTED)
         items = list(
             session.scalars(

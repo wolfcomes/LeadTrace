@@ -27,7 +27,7 @@ from app.reviews.comments import (
     CommentService,
     CommentTargetType,
 )
-from app.reviews.service import RevisionConflict, ReviewService
+from app.reviews.service import RevisionConflict, ReviewService, ReviewStateConflict
 from app.security.policies import WorkflowState
 from app.users.models import UserRole
 from app.users.service import UserService
@@ -419,6 +419,134 @@ def test_changeset_creation_does_not_hold_release_while_waiting_for_task(
         event.remove(engine, "before_cursor_execute", observe_creator_task_lock)
 
     assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
+
+
+def test_changeset_creation_and_submission_share_task_then_release_lock_order(
+    auth_session_factory,
+    monkeypatch,
+) -> None:
+    """The create/submit pair must not deadlock on Task and base Release."""
+
+    with auth_session_factory.begin() as session:
+        changeset_id, reviewer_id, _, paper_id, paper_revision_id = _review_fixture(
+            session
+        )
+        changeset = session.get(Changeset, changeset_id)
+        assert changeset is not None
+        ReviewService().add_changeset_item(
+            session,
+            changeset_id=changeset_id,
+            actor_id=reviewer_id,
+            expected_version=1,
+            object_id=paper_id,
+            object_kind=ObjectKind.PAPER.value,
+            base_revision_id=paper_revision_id,
+            proposed_snapshot={"paper_key": "concurrent proposal"},
+        )
+        task_id = changeset.review_task_id
+        release_id = changeset.base_release_id
+
+    engine = auth_session_factory.kw["bind"]
+    submit_task_acquired = Event()
+    submit_ready = Event()
+    creator_entered_release_validation = Event()
+    errors: list[BaseException] = []
+    error_guard = Lock()
+
+    def observe_submit_task_lock(
+        _connection, _cursor, statement, _parameters, _context, _many
+    ) -> None:
+        if (
+            current_thread().name == "changeset-submitter"
+            and "FROM review_tasks" in statement
+            and "FOR UPDATE" in statement
+        ):
+            submit_task_acquired.set()
+            submit_ready.set()
+
+    event.listen(engine, "after_cursor_execute", observe_submit_task_lock)
+    original_validate = ReviewService._validate_base_release
+
+    def observed_validate(
+        session,
+        *,
+        base_release_id,
+        paper_id,
+        lock,
+    ):
+        if current_thread().name == "changeset-creator":
+            creator_entered_release_validation.set()
+            assert submit_ready.wait(timeout=5)
+        result = original_validate(
+            session,
+            base_release_id=base_release_id,
+            paper_id=paper_id,
+            lock=lock,
+        )
+        if current_thread().name == "changeset-submitter":
+            # In the old Release -> Task implementation this is reached before
+            # the submitter has acquired the Task. In the fixed Task -> Release
+            # implementation the SQL event above has already fired.
+            if not submit_task_acquired.is_set():
+                submit_ready.set()
+                assert creator_entered_release_validation.wait(timeout=5)
+        return result
+
+    monkeypatch.setattr(
+        ReviewService,
+        "_validate_base_release",
+        staticmethod(observed_validate),
+    )
+
+    def submit() -> None:
+        try:
+            with auth_session_factory.begin() as session:
+                session.execute(text("SET LOCAL lock_timeout = '2s'"))
+                ReviewService().submit_changeset(
+                    session,
+                    changeset_id=changeset_id,
+                    actor_id=reviewer_id,
+                    expected_version=2,
+                )
+        except BaseException as error:  # pragma: no cover - asserted below
+            with error_guard:
+                errors.append(error)
+
+    def create_duplicate() -> None:
+        assert submit_ready.wait(timeout=5)
+        try:
+            with auth_session_factory.begin() as session:
+                session.execute(text("SET LOCAL lock_timeout = '2s'"))
+                ReviewService().create_changeset(
+                    session,
+                    paper_id=paper_id,
+                    actor_id=reviewer_id,
+                    review_task_id=task_id,
+                    base_release_id=release_id,
+                    title="Concurrent duplicate",
+                    reason="Exercise create and submit lock order",
+                )
+        except BaseException as error:  # pragma: no cover - asserted below
+            # A duplicate is expected after the submitter releases the Task;
+            # lock timeouts/deadlocks are not.
+            if not isinstance(error, ReviewStateConflict):
+                with error_guard:
+                    errors.append(error)
+
+    submitter = Thread(target=submit, name="changeset-submitter")
+    creator = Thread(target=create_duplicate, name="changeset-creator")
+    try:
+        submitter.start()
+        assert submit_ready.wait(timeout=5)
+        creator.start()
+        submitter.join(timeout=8)
+        creator.join(timeout=8)
+    finally:
+        event.remove(engine, "after_cursor_execute", observe_submit_task_lock)
+
+    assert not submitter.is_alive()
+    assert not creator.is_alive()
     assert errors == []
 
 

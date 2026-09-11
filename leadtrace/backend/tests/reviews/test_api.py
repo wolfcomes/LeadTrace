@@ -676,6 +676,74 @@ def test_comment_api_preserves_resolution_history_and_scope_boundaries(
             },
         )
         assert unanchored_field.status_code == 422
+        changeset_with_item_anchor = client.post(
+            f"/api/v1/review/changesets/{changeset_id}/comments",
+            headers={"X-CSRF-Token": reviewer_csrf},
+            json={
+                "target_type": "changeset",
+                "target_id": str(changeset_id),
+                "changeset_item_id": str(paper_item_id),
+                "body": "A changeset comment cannot also target an item.",
+            },
+        )
+        assert changeset_with_item_anchor.status_code == 422
+        changeset_with_field_anchor = client.post(
+            f"/api/v1/review/changesets/{changeset_id}/comments",
+            headers={"X-CSRF-Token": reviewer_csrf},
+            json={
+                "target_type": "changeset",
+                "target_id": str(changeset_id),
+                "field_path": "/title",
+                "body": "A changeset comment cannot also target a field.",
+            },
+        )
+        assert changeset_with_field_anchor.status_code == 422
+        compound_with_field_anchor = client.post(
+            f"/api/v1/review/changesets/{changeset_id}/comments",
+            headers={"X-CSRF-Token": reviewer_csrf},
+            json={
+                "target_type": "compound",
+                "target_id": str(compound_id),
+                "field_path": "/display_label",
+                "body": "A compound comment cannot also carry a field path.",
+            },
+        )
+        assert compound_with_field_anchor.status_code == 422
+        change_item_with_field_anchor = client.post(
+            f"/api/v1/review/changesets/{changeset_id}/comments",
+            headers={"X-CSRF-Token": reviewer_csrf},
+            json={
+                "target_type": "change_item",
+                "target_id": str(paper_item_id),
+                "changeset_item_id": str(paper_item_id),
+                "field_path": "/title",
+                "body": "A change-item comment cannot also carry a field path.",
+            },
+        )
+        assert change_item_with_field_anchor.status_code == 422
+        change_item_mismatched_target = client.post(
+            f"/api/v1/review/changesets/{changeset_id}/comments",
+            headers={"X-CSRF-Token": reviewer_csrf},
+            json={
+                "target_type": "change_item",
+                "target_id": str(compound_id),
+                "changeset_item_id": str(paper_item_id),
+                "body": "A change-item target must identify that same item.",
+            },
+        )
+        assert change_item_mismatched_target.status_code == 422
+        valid_change_item = client.post(
+            f"/api/v1/review/changesets/{changeset_id}/comments",
+            headers={"X-CSRF-Token": reviewer_csrf},
+            json={
+                "target_type": "change_item",
+                "target_id": str(paper_item_id),
+                "changeset_item_id": str(paper_item_id),
+                "body": "The paper item is a valid change-item anchor.",
+            },
+        )
+        assert valid_change_item.status_code == 201
+        valid_change_item_id = valid_change_item.json()["id"]
         for target_type in ("field", "compound"):
             cross_item = client.post(
                 f"/api/v1/review/changesets/{changeset_id}/comments",
@@ -728,6 +796,7 @@ def test_comment_api_preserves_resolution_history_and_scope_boundaries(
         )
         assert listed.status_code == 200
         assert [item["id"] for item in listed.json()] == [
+            valid_change_item_id,
             anchored_comment_id,
             comment_id,
         ]

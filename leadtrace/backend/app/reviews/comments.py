@@ -422,12 +422,29 @@ class CommentService:
             if item is None or item.changeset_id != changeset.id:
                 raise InvalidComment("Comment item is outside the Changeset")
             scoped_item = item
+
+        if target_type is not CommentTargetType.FIELD and field_path is not None:
+            raise InvalidComment("field_path is only valid for field comments")
+
         if target_type is CommentTargetType.CHANGESET:
+            if scoped_item is not None:
+                raise InvalidComment(
+                    "Changeset comments cannot target a changeset item"
+                )
             if target_id not in {None, changeset.id}:
                 raise InvalidComment("Changeset comment target does not match scope")
             return changeset.id
-        if target_type is CommentTargetType.CHANGE_ITEM and changeset_item_id is None:
-            raise InvalidComment("change_item comments require changeset_item_id")
+
+        if target_type is CommentTargetType.CHANGE_ITEM:
+            if scoped_item is None:
+                raise InvalidComment("change_item comments require changeset_item_id")
+            if target_id is not None and target_id not in {
+                scoped_item.id,
+                scoped_item.object_id,
+            }:
+                raise InvalidComment("Change item comment target does not match item")
+            return target_id or scoped_item.id
+
         if target_type is CommentTargetType.FIELD:
             if not (field_path or "").strip():
                 raise InvalidComment("field comments require field_path")
@@ -445,8 +462,6 @@ class CommentService:
                 {scoped_item.id, scoped_item.object_id}
                 if scoped_item is not None
                 else {
-                    changeset.id,
-                    changeset.paper_id,
                     *(item.id for item in changeset_items),
                     *(item.object_id for item in changeset_items),
                 }
@@ -473,14 +488,7 @@ class CommentService:
                 raise InvalidComment(
                     f"{target_type.value} comment target is outside the Changeset"
                 )
-        if (
-            target_type is CommentTargetType.CHANGE_ITEM
-            and target_id is not None
-            and scoped_item is not None
-            and target_id not in {scoped_item.id, scoped_item.object_id}
-        ):
-            raise InvalidComment("Change item comment target does not match item")
-        return target_id or changeset_item_id
+        return target_id or (scoped_item.id if scoped_item is not None else None)
 
     @staticmethod
     def _state(session: Session, comment_id: UUID) -> CommentState:
