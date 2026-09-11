@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import pytest
 from sqlalchemy import delete, select, update
-from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.exc import DBAPIError
 
 from app.releases.models import Release, ReleaseItem
 from app.revisions.models import ObjectKind
