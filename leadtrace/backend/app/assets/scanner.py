@@ -150,9 +150,7 @@ class SourceScanner:
         )
         for path in candidates:
             report.discovered += 1
-            source_key = unicodedata.normalize(
-                "NFC", path.relative_to(root).as_posix()
-            )
+            source_key = path.relative_to(root).as_posix()
             try:
                 storage_key = self.store.source_storage_key(
                     source_root_key,
@@ -166,7 +164,18 @@ class SourceScanner:
                 )
                 continue
             except AssetMimeMismatchError:
-                inspected = self.store.inspect(storage_key, validate_extension=False)
+                try:
+                    inspected = self.store.inspect(
+                        storage_key,
+                        validate_extension=False,
+                        validate_content=False,
+                    )
+                except FileNotFoundError:
+                    self._reject(report, source_key, "missing")
+                    continue
+                except (AssetPathError, OSError):
+                    self._reject(report, source_key, "unreadable")
+                    continue
                 if self._has_checkpoint(
                     session,
                     source_root_key,
@@ -199,6 +208,12 @@ class SourceScanner:
                         sha256=asset.sha256,
                     )
                 )
+                continue
+            except FileNotFoundError:
+                self._reject(report, source_key, "missing")
+                continue
+            except OSError:
+                self._reject(report, source_key, "unreadable")
                 continue
             if self._has_checkpoint(
                 session,
@@ -258,6 +273,13 @@ class SourceScanner:
         if report_path is not None:
             self._write_report(report_path, report)
         return report
+
+    @staticmethod
+    def _reject(report: ScanReport, source_key: str, reason: str) -> None:
+        report.rejected += 1
+        report.items.append(
+            ScanItem(source_key=source_key, status="rejected", reason=reason)
+        )
 
     @staticmethod
     def _safe_category(source_key: str) -> AssetCategory:

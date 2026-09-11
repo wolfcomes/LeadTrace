@@ -17,6 +17,7 @@ from app.imports.readers.lineages import (
 )
 from app.imports.readers.manifest import (
     StagedSourceRecord,
+    hash_source_file,
     read_csv_records,
 )
 from app.imports.readers.structures import (
@@ -300,11 +301,27 @@ def _counts(data: BaselineSourceData) -> dict[str, int]:
 
 
 def _integrity(data: BaselineSourceData) -> dict[str, int]:
-    compounds = {
-        record.original_id: record.normalized_values for record in data.compounds
+    paper_ids = {record.original_id for record in data.papers}
+    compound_papers = {
+        record.original_id: record.normalized_values.get("paper_id")
+        for record in data.compounds
     }
-    edge_ids = {record.original_id for record in data.edges}
-    evidence_ids = {record.original_id for record in data.evidence}
+    compounds = {
+        record.original_id: record.normalized_values
+        for record in data.compounds
+    }
+    lineage_papers = {
+        record.original_id: record.normalized_values.get("paper_id")
+        for record in data.lineages
+    }
+    edge_papers = {
+        record.original_id: record.normalized_values.get("paper_id")
+        for record in data.edges
+    }
+    evidence_papers = {
+        record.original_id: record.normalized_values.get("paper_id")
+        for record in data.evidence
+    }
     directed_edges = Counter(
         (
             record.normalized_values.get("lineage_id"),
@@ -318,18 +335,30 @@ def _integrity(data: BaselineSourceData) -> dict[str, int]:
     dangling_entities = 0
     dangling_evidence = 0
     invalid_pair_endpoints = 0
+    dangling_entities += sum(
+        paper_id not in paper_ids for paper_id in compound_papers.values()
+    )
+    dangling_entities += sum(
+        paper_id not in paper_ids for paper_id in lineage_papers.values()
+    )
     for edge in data.edges:
         values = edge.normalized_values
+        paper_id = values.get("paper_id")
+        lineage_id = values.get("lineage_id")
         parent_id = values.get("parent_entity_id")
         derived_id = values.get("derived_entity_id")
         if parent_id is not None and parent_id == derived_id:
             self_loops += 1
-        if parent_id is not None and parent_id not in compounds:
+        if paper_id not in paper_ids:
             dangling_entities += 1
-        if derived_id not in compounds:
+        if lineage_papers.get(lineage_id) != paper_id:
+            dangling_entities += 1
+        if parent_id is not None and compound_papers.get(parent_id) != paper_id:
+            dangling_entities += 1
+        if compound_papers.get(derived_id) != paper_id:
             dangling_entities += 1
         evidence_id = values.get("evidence_ids")
-        if evidence_id is not None and evidence_id not in evidence_ids:
+        if evidence_id is not None and evidence_papers.get(evidence_id) != paper_id:
             dangling_evidence += 1
         if values.get("pair_eligible") != "yes":
             continue
@@ -341,23 +370,34 @@ def _integrity(data: BaselineSourceData) -> dict[str, int]:
         endpoints = (parent, derived)
         if parent_id == derived_id or any(
             endpoint is None
+            or endpoint.get("paper_id") != paper_id
             or endpoint.get("structure_status") != "complete_structure_resolved"
             or endpoint.get("structure_review_status") != "structure_confirmed"
             for endpoint in endpoints
         ):
             invalid_pair_endpoints += 1
+    for record in (*data.activities, *data.structures):
+        paper_id = record.normalized_values.get("paper_id")
+        compound_id = record.normalized_values.get("compound_entity_id")
+        if paper_id not in paper_ids:
+            dangling_entities += 1
+        if compound_papers.get(compound_id) != paper_id:
+            dangling_entities += 1
     dangling_entities += sum(
-        record.normalized_values.get("compound_entity_id") not in compounds
-        for record in data.activities
+        record.normalized_values.get("paper_id") not in paper_ids
+        for record in data.visual_objects
     )
-    dangling_entities += sum(
-        record.normalized_values.get("compound_entity_id") not in compounds
-        for record in data.structures
-    )
-    dangling_evidence += sum(
-        record.normalized_values.get("lineage_edge_id") not in edge_ids
-        for record in data.evidence
-    )
+    for record in data.evidence:
+        values = record.normalized_values
+        paper_id = values.get("paper_id")
+        edge_id = values.get("lineage_edge_id")
+        lineage_id = values.get("lineage_id")
+        if paper_id not in paper_ids:
+            dangling_evidence += 1
+        if edge_papers.get(edge_id) != paper_id:
+            dangling_evidence += 1
+        if lineage_papers.get(lineage_id) != paper_id:
+            dangling_evidence += 1
     return {
         "self_loops": self_loops,
         "duplicate_directed_edges": sum(
@@ -423,6 +463,7 @@ class _AssetResolver:
             for record in data.papers
         }
         self.structure_paths: dict[tuple[str, str], list[str]] = defaultdict(list)
+        self.inspection_cache: dict[str, str] = {}
         for record in data.structure_sources:
             values = record.normalized_values
             paper_id = values.get("paper_id")
@@ -496,6 +537,21 @@ class _AssetResolver:
             or not isinstance(sha256, str)
             or target.stat().st_size != byte_size
         ):
+            self._issue(record, link_role, "corrupt")
+            return
+        actual_sha256 = self.inspection_cache.get(manifest_path)
+        if actual_sha256 is None:
+            digest = hashlib.sha256()
+            try:
+                with target.open("rb") as handle:
+                    while chunk := handle.read(1024 * 1024):
+                        digest.update(chunk)
+            except OSError:
+                self._issue(record, link_role, "corrupt")
+                return
+            actual_sha256 = digest.hexdigest()
+            self.inspection_cache[manifest_path] = actual_sha256
+        if actual_sha256 != sha256:
             self._issue(record, link_role, "corrupt")
             return
         self.report.resolved_references += 1
@@ -622,8 +678,9 @@ def _differences(
     return differences
 
 
-def reconcile_baseline(
+def reconcile_loaded_baseline(
     source_root: Path,
+    data: BaselineSourceData,
     *,
     expected: dict[str, object] | None = None,
     expected_path: Path | None = None,
@@ -633,7 +690,6 @@ def reconcile_baseline(
 
     resolved_source_root = source_root.resolve()
     resolved_manifest_path = source_manifest_path.resolve()
-    data = load_baseline_source(resolved_source_root)
     expected_counts, expected_integrity = _load_expected(
         expected=expected,
         expected_path=expected_path,
@@ -646,15 +702,66 @@ def reconcile_baseline(
         actual_integrity,
         expected_integrity,
     )
+    asset_linkage = _asset_linkage(
+        resolved_source_root,
+        resolved_manifest_path,
+        data,
+    )
+    if asset_linkage.corrupt_references:
+        differences["asset_linkage.corrupt_references"] = {
+            "expected": 0,
+            "actual": asset_linkage.corrupt_references,
+        }
+    if asset_linkage.ambiguous_references:
+        differences["asset_linkage.ambiguous_references"] = {
+            "expected": 0,
+            "actual": asset_linkage.ambiguous_references,
+        }
     return ReconciliationReport(
         source_fingerprint=_source_fingerprint(data, resolved_manifest_path),
         counts=actual_counts,
         integrity=actual_integrity,
         matches_expected=not differences,
         differences=differences,
-        asset_linkage=_asset_linkage(
-            resolved_source_root,
-            resolved_manifest_path,
-            data,
-        ),
+        asset_linkage=asset_linkage,
+    )
+
+
+def source_snapshot_is_unchanged(
+    source_root: Path,
+    data: BaselineSourceData,
+    source_manifest_path: Path,
+    expected_fingerprint: str,
+) -> bool:
+    expected_hashes = {
+        record.source_file: record.source_hash
+        for record in data.fingerprint_records
+    }
+    for source_file, expected_hash in expected_hashes.items():
+        try:
+            actual_hash = hash_source_file(source_root, source_file)
+        except (OSError, ValueError):
+            return False
+        if actual_hash != expected_hash:
+            return False
+    return _source_fingerprint(data, source_manifest_path) == expected_fingerprint
+
+
+def reconcile_baseline(
+    source_root: Path,
+    *,
+    expected: dict[str, object] | None = None,
+    expected_path: Path | None = None,
+    source_manifest_path: Path = DEFAULT_SOURCE_MANIFEST,
+) -> ReconciliationReport:
+    """Read all baseline facts and produce a path-safe, write-free comparison."""
+
+    resolved_source_root = source_root.resolve()
+    data = load_baseline_source(resolved_source_root)
+    return reconcile_loaded_baseline(
+        resolved_source_root,
+        data,
+        expected=expected,
+        expected_path=expected_path,
+        source_manifest_path=source_manifest_path,
     )

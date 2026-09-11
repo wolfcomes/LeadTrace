@@ -36,6 +36,8 @@ from app.imports.reconcile import (
     ResolvedAssetReference,
     load_baseline_source,
     reconcile_baseline,
+    reconcile_loaded_baseline,
+    source_snapshot_is_unchanged,
 )
 from app.lineages.models import Lineage, LineageEdge
 from app.papers.models import Paper
@@ -151,8 +153,15 @@ class BaselineImporter:
         )
 
     def apply(self, session: Session) -> ImportApplyResult:
-        report = self.reconcile()
-        if not report.matches_expected:
+        data = load_baseline_source(self.source_root)
+        report = reconcile_loaded_baseline(
+            self.source_root,
+            data,
+            expected=self.expected,
+            expected_path=self.expected_path,
+            source_manifest_path=self.source_manifest_path,
+        )
+        if not report.matches_expected or any(report.integrity.values()):
             raise ImportValidationError(
                 "Baseline reconcile failed; no import records were written"
             )
@@ -177,7 +186,6 @@ class BaselineImporter:
                 created=False,
             )
 
-        data = load_baseline_source(self.source_root)
         batch = ImportBatch(
             id=uuid4(),
             source_fingerprint=report.source_fingerprint,
@@ -214,6 +222,15 @@ class BaselineImporter:
         session.add(candidate)
         batch.status = "completed"
         batch.completed_at = datetime.now(UTC)
+        if not source_snapshot_is_unchanged(
+            self.source_root,
+            data,
+            self.source_manifest_path,
+            report.source_fingerprint,
+        ):
+            raise ImportValidationError(
+                "Baseline source facts changed during import; transaction rolled back"
+            )
         session.flush()
         return ImportApplyResult(
             batch_id=batch.id,
@@ -344,6 +361,10 @@ class BaselineImporter:
                 raise ImportValidationError(
                     f"Structure {record.original_id!r} has an unknown reference"
                 )
+            if compound.paper_id != paper.id:
+                raise ImportValidationError(
+                    f"Structure {record.original_id!r} crosses Paper boundaries"
+                )
             structures[record.original_id] = Structure(
                 id=uuid4(),
                 paper_id=paper.id,
@@ -372,6 +393,10 @@ class BaselineImporter:
                 raise ImportValidationError(
                     f"Activity {record.original_id!r} has an unknown reference"
                 )
+            if compound.paper_id != paper.id:
+                raise ImportValidationError(
+                    f"Activity {record.original_id!r} crosses Paper boundaries"
+                )
             activities[record.original_id] = Activity(
                 id=uuid4(),
                 paper_id=paper.id,
@@ -393,6 +418,14 @@ class BaselineImporter:
             if parent_key is not None and parent is None:
                 raise ImportValidationError(
                     f"Edge {record.original_id!r} references an unknown parent"
+                )
+            if (
+                lineage.paper_id != paper.id
+                or derived.paper_id != paper.id
+                or (parent is not None and parent.paper_id != paper.id)
+            ):
+                raise ImportValidationError(
+                    f"Edge {record.original_id!r} crosses Paper boundaries"
                 )
             edges[record.original_id] = LineageEdge(
                 id=uuid4(),
@@ -537,6 +570,26 @@ class BaselineImporter:
             expected_hash = next(iter(expected_hashes))
             existing = existing_by_key.get((storage_key, expected_hash))
             if existing is not None:
+                try:
+                    inspected = store.inspect(storage_key)
+                    expected_state = AssetIntegrityState.VERIFIED
+                except AssetMimeMismatchError:
+                    inspected = store.inspect(storage_key, validate_extension=False)
+                    expected_state = AssetIntegrityState.QUARANTINED
+                if (
+                    inspected.sha256 != expected_hash
+                    or inspected.byte_size != existing.byte_size
+                    or inspected.mime_type != existing.mime_type
+                ):
+                    raise ImportValidationError(
+                        f"Existing asset content failed integrity verification: "
+                        f"{manifest_path}"
+                    )
+                if existing.integrity_state is not expected_state:
+                    raise ImportValidationError(
+                        f"Existing asset has an unacceptable integrity state: "
+                        f"{manifest_path}"
+                    )
                 assets[manifest_path] = existing
                 continue
             integrity_state = AssetIntegrityState.VERIFIED

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.activities.models import Activity
 from app.assets.models import Asset, AssetIntegrityState
+from app.assets.models import AssetAccessLevel, AssetCategory
 from app.compounds.models import Compound
 from app.evidence.models import Evidence
 from app.imports.models import (
@@ -202,3 +203,99 @@ def test_apply_quarantines_a_non_utf8_source_table_without_losing_exact_link(
         assert asset is not None
         assert asset.integrity_state is AssetIntegrityState.QUARANTINED
         assert _count(session, ImportAssetLink) == 4
+
+
+def test_apply_rolls_back_if_a_fact_file_changes_after_reconciliation(
+    tmp_path: Path,
+    baseline_fixture: dict[str, object],
+    auth_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_root = baseline_fixture["source_root"]
+    manifest_path = baseline_fixture["manifest_path"]
+    expected = baseline_fixture["expected"]
+    assert isinstance(source_root, Path)
+    assert isinstance(manifest_path, Path)
+    assert isinstance(expected, dict)
+    facts = (
+        source_root
+        / "09_paper_review"
+        / "auto_fill"
+        / "compound_activities.csv"
+    )
+    original_stage = BaselineImporter._stage_records
+
+    def mutate_then_stage(
+        session: Session,
+        batch_id: object,
+        data: object,
+    ) -> None:
+        facts.write_bytes(facts.read_bytes() + b"\n")
+        original_stage(session, batch_id, data)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        BaselineImporter,
+        "_stage_records",
+        staticmethod(mutate_then_stage),
+    )
+    importer = BaselineImporter(
+        source_root,
+        managed_asset_root=tmp_path / "managed",
+        expected=expected,
+        source_manifest_path=manifest_path,
+    )
+
+    with pytest.raises(ImportValidationError, match="changed"):
+        with auth_session_factory.begin() as session:
+            importer.apply(session)
+
+    with auth_session_factory() as session:
+        assert _count(session, ImportBatch) == 0
+        assert _count(session, ImportReleaseCandidate) == 0
+        assert _count(session, ObjectRevision) == 0
+
+
+def test_apply_rejects_a_preexisting_corrupt_asset_instead_of_reusing_it(
+    tmp_path: Path,
+    baseline_fixture: dict[str, object],
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    source_root = baseline_fixture["source_root"]
+    manifest_path = baseline_fixture["manifest_path"]
+    expected = baseline_fixture["expected"]
+    paper_pdf = baseline_fixture["paper_pdf"]
+    assert isinstance(source_root, Path)
+    assert isinstance(manifest_path, Path)
+    assert isinstance(expected, dict)
+    assert isinstance(paper_pdf, Path)
+    content = paper_pdf.read_bytes()
+    with auth_session_factory.begin() as session:
+        session.add(
+            Asset(
+                storage_key="source/baseline/source_pdfs/articles/paper.pdf",
+                original_filename="paper.pdf",
+                sha256=hashlib.sha256(content).hexdigest(),
+                byte_size=len(content),
+                mime_type="application/pdf",
+                category=AssetCategory.ARTICLE_PDF,
+                access_level=AssetAccessLevel.REVIEWER,
+                integrity_state=AssetIntegrityState.CORRUPT,
+                derivation_metadata={},
+                source_metadata={},
+            )
+        )
+    importer = BaselineImporter(
+        source_root,
+        managed_asset_root=tmp_path / "managed",
+        expected=expected,
+        source_manifest_path=manifest_path,
+    )
+
+    with pytest.raises(ImportValidationError, match="integrity"):
+        with auth_session_factory.begin() as session:
+            importer.apply(session)
+
+    with auth_session_factory() as session:
+        assert _count(session, ImportBatch) == 0
+        assert _count(session, ImportReleaseCandidate) == 0
+        assert _count(session, Asset) == 1

@@ -147,3 +147,77 @@ def test_integrity_verification_marks_changed_source_corrupt(
         asset = session.get(Asset, asset_id)
         assert asset is not None
         assert asset.integrity_state is AssetIntegrityState.CORRUPT
+
+
+def test_scanner_preserves_distinct_nfc_and_nfd_filesystem_names(
+    tmp_path: Path,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    nfc_name = "café.pdf"
+    nfd_name = "cafe\N{COMBINING ACUTE ACCENT}.pdf"
+    assert nfc_name != nfd_name
+    (source / nfc_name).write_bytes(b"%PDF-1.4\nnfc\n%%EOF\n")
+    (source / nfd_name).write_bytes(b"%PDF-1.4\nnfd\n%%EOF\n")
+    scanner = SourceScanner(
+        LocalAssetStore(
+            tmp_path / "managed",
+            source_roots={"baseline": source},
+        )
+    )
+
+    with auth_session_factory.begin() as session:
+        report = scanner.scan(
+            session,
+            source_root_key="baseline",
+            source_root=source,
+        )
+
+    assert report.discovered == 2
+    assert report.registered == 2
+    assert {item.source_key for item in report.items} == {nfc_name, nfd_name}
+    with auth_session_factory() as session:
+        assert set(session.scalars(select(Asset.storage_key))) == {
+            f"source/baseline/{nfc_name}",
+            f"source/baseline/{nfd_name}",
+        }
+
+
+def test_scanner_continues_after_malformed_or_disappearing_source_files(
+    tmp_path: Path,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "good.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+    (source / "broken.png").write_bytes(b"\x89PNG\r\n\x1a\ntruncated")
+    (source / "missing.pdf").symlink_to(source / "already-gone.pdf")
+    scanner = SourceScanner(
+        LocalAssetStore(
+            tmp_path / "managed",
+            source_roots={"baseline": source},
+        )
+    )
+
+    with auth_session_factory.begin() as session:
+        report = scanner.scan(
+            session,
+            source_root_key="baseline",
+            source_root=source,
+        )
+
+    assert report.discovered == 3
+    assert report.registered == 1
+    assert report.quarantined == 1
+    assert report.rejected == 1
+    assert {(item.source_key, item.status, item.reason) for item in report.items} == {
+        ("broken.png", "quarantined", "mime_mismatch"),
+        ("good.pdf", "registered", None),
+        ("missing.pdf", "rejected", "missing"),
+    }
+    with auth_session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(Asset)) == 2
+        assert (
+            session.scalar(select(func.count()).select_from(AssetScanCheckpoint)) == 2
+        )

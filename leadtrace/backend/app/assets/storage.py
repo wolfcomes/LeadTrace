@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
-from io import BytesIO
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -150,6 +149,7 @@ class LocalAssetStore:
         storage_key: str,
         *,
         validate_extension: bool = True,
+        validate_content: bool = True,
     ) -> InspectedFile:
         path = self.path_for(storage_key)
         with path.open("rb") as handle:
@@ -165,11 +165,11 @@ class LocalAssetStore:
             )
 
         width = height = None
-        if mime_type.startswith("image/"):
+        if validate_content and mime_type.startswith("image/"):
             try:
-                with Image.open(BytesIO(path.read_bytes())) as image:
+                with Image.open(path) as image:
                     width, height = image.size
-            except UnidentifiedImageError as error:
+            except (OSError, UnidentifiedImageError) as error:
                 raise AssetMimeMismatchError("Image content is invalid") from error
         page_count = None
         if mime_type == "application/pdf":

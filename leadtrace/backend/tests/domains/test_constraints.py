@@ -167,7 +167,7 @@ def test_published_snapshot_cannot_be_updated_or_deleted(
         )
         revision_id = revision.id
 
-    with pytest.raises(DBAPIError, match="published revision is immutable"):
+    with pytest.raises(DBAPIError, match="revision is immutable"):
         with auth_session_factory.begin() as session:
             session.execute(
                 text(
@@ -175,7 +175,40 @@ def test_published_snapshot_cannot_be_updated_or_deleted(
                 ),
                 {"snapshot": '{"title": "tampered"}', "id": revision_id},
             )
-    with pytest.raises(DBAPIError, match="published revision is immutable"):
+    with pytest.raises(DBAPIError, match="revision is immutable"):
+        with auth_session_factory.begin() as session:
+            session.execute(
+                text("DELETE FROM object_revisions WHERE id = :id"),
+                {"id": revision_id},
+            )
+
+
+def test_approved_baseline_revision_cannot_be_updated_or_deleted(
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    service = RevisionService()
+    with auth_session_factory.begin() as session:
+        actor, paper = _actor_and_paper(session, paper_key="immutable-approved")
+        revision = service.create_revision(
+            session,
+            object_identity=paper,
+            actor_id=actor.id,
+            reason="Authoritative baseline import",
+            snapshot={"title": "Approved baseline"},
+            workflow_state=WorkflowState.APPROVED,
+            is_current_published=False,
+        )
+        revision_id = revision.id
+
+    with pytest.raises(DBAPIError, match="revision is immutable"):
+        with auth_session_factory.begin() as session:
+            session.execute(
+                text(
+                    "UPDATE object_revisions SET snapshot = :snapshot WHERE id = :id"
+                ),
+                {"snapshot": '{"title": "tampered"}', "id": revision_id},
+            )
+    with pytest.raises(DBAPIError, match="revision is immutable"):
         with auth_session_factory.begin() as session:
             session.execute(
                 text("DELETE FROM object_revisions WHERE id = :id"),
