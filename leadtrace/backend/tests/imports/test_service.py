@@ -299,3 +299,196 @@ def test_apply_rejects_a_preexisting_corrupt_asset_instead_of_reusing_it(
         assert _count(session, ImportBatch) == 0
         assert _count(session, ImportReleaseCandidate) == 0
         assert _count(session, Asset) == 1
+
+
+def test_apply_rejects_a_preexisting_article_pdf_with_visitor_access(
+    tmp_path: Path,
+    baseline_fixture: dict[str, object],
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    source_root = baseline_fixture["source_root"]
+    manifest_path = baseline_fixture["manifest_path"]
+    expected = baseline_fixture["expected"]
+    paper_pdf = baseline_fixture["paper_pdf"]
+    assert isinstance(source_root, Path)
+    assert isinstance(manifest_path, Path)
+    assert isinstance(expected, dict)
+    assert isinstance(paper_pdf, Path)
+    content = paper_pdf.read_bytes()
+    with auth_session_factory.begin() as session:
+        session.add(
+            Asset(
+                storage_key="source/baseline/source_pdfs/articles/paper.pdf",
+                original_filename="paper.pdf",
+                sha256=hashlib.sha256(content).hexdigest(),
+                byte_size=len(content),
+                mime_type="application/pdf",
+                category=AssetCategory.ARTICLE_PDF,
+                access_level=AssetAccessLevel.VISITOR,
+                integrity_state=AssetIntegrityState.VERIFIED,
+                derivation_metadata={},
+                source_metadata={},
+            )
+        )
+    importer = BaselineImporter(
+        source_root,
+        managed_asset_root=tmp_path / "managed",
+        expected=expected,
+        source_manifest_path=manifest_path,
+    )
+
+    with pytest.raises(ImportValidationError, match="policy"):
+        with auth_session_factory.begin() as session:
+            importer.apply(session)
+
+    with auth_session_factory() as session:
+        assert _count(session, ImportBatch) == 0
+        assert _count(session, ImportReleaseCandidate) == 0
+        assert _count(session, Asset) == 1
+
+
+def test_apply_rejects_a_preexisting_article_pdf_with_the_wrong_category(
+    tmp_path: Path,
+    baseline_fixture: dict[str, object],
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    source_root = baseline_fixture["source_root"]
+    manifest_path = baseline_fixture["manifest_path"]
+    expected = baseline_fixture["expected"]
+    paper_pdf = baseline_fixture["paper_pdf"]
+    assert isinstance(source_root, Path)
+    assert isinstance(manifest_path, Path)
+    assert isinstance(expected, dict)
+    assert isinstance(paper_pdf, Path)
+    content = paper_pdf.read_bytes()
+    with auth_session_factory.begin() as session:
+        session.add(
+            Asset(
+                storage_key="source/baseline/source_pdfs/articles/paper.pdf",
+                original_filename="paper.pdf",
+                sha256=hashlib.sha256(content).hexdigest(),
+                byte_size=len(content),
+                mime_type="application/pdf",
+                category=AssetCategory.EXTERNAL_SOURCE,
+                access_level=AssetAccessLevel.REVIEWER,
+                integrity_state=AssetIntegrityState.VERIFIED,
+                derivation_metadata={},
+                source_metadata={},
+            )
+        )
+    importer = BaselineImporter(
+        source_root,
+        managed_asset_root=tmp_path / "managed",
+        expected=expected,
+        source_manifest_path=manifest_path,
+    )
+
+    with pytest.raises(ImportValidationError, match="policy"):
+        with auth_session_factory.begin() as session:
+            importer.apply(session)
+
+    with auth_session_factory() as session:
+        assert _count(session, ImportBatch) == 0
+        assert _count(session, ImportReleaseCandidate) == 0
+        assert _count(session, Asset) == 1
+
+
+def test_apply_quarantines_a_truncated_image_and_requires_admin_access(
+    tmp_path: Path,
+    baseline_fixture: dict[str, object],
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    source_root = baseline_fixture["source_root"]
+    manifest_path = baseline_fixture["manifest_path"]
+    expected = baseline_fixture["expected"]
+    crop = baseline_fixture["crop"]
+    assert isinstance(source_root, Path)
+    assert isinstance(manifest_path, Path)
+    assert isinstance(expected, dict)
+    assert isinstance(crop, Path)
+    crop.write_bytes(b"\x89PNG\r\n\x1a\ntruncated")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    crop_key = next(
+        item["path"]
+        for item in manifest["files"]
+        if item["path"].endswith("/OBJ-1.png")
+    )
+    for item in manifest["files"]:
+        if item["path"] == crop_key:
+            item["byte_size"] = crop.stat().st_size
+            item["sha256"] = hashlib.sha256(crop.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    importer = BaselineImporter(
+        source_root,
+        managed_asset_root=tmp_path / "managed",
+        expected=expected,
+        source_manifest_path=manifest_path,
+    )
+
+    with auth_session_factory.begin() as session:
+        importer.apply(session)
+
+    with auth_session_factory() as session:
+        asset = session.scalar(select(Asset).where(Asset.original_filename == "OBJ-1.png"))
+        assert asset is not None
+        assert asset.category is AssetCategory.REVIEWED_CROP
+        assert asset.integrity_state is AssetIntegrityState.QUARANTINED
+        assert asset.access_level is AssetAccessLevel.ADMIN
+
+
+def test_apply_rejects_a_preexisting_quarantined_asset_without_admin_access(
+    tmp_path: Path,
+    baseline_fixture: dict[str, object],
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    source_root = baseline_fixture["source_root"]
+    manifest_path = baseline_fixture["manifest_path"]
+    expected = baseline_fixture["expected"]
+    crop = baseline_fixture["crop"]
+    assert isinstance(source_root, Path)
+    assert isinstance(manifest_path, Path)
+    assert isinstance(expected, dict)
+    assert isinstance(crop, Path)
+    crop.write_bytes(b"\x89PNG\r\n\x1a\ntruncated")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    crop_key = next(
+        item["path"]
+        for item in manifest["files"]
+        if item["path"].endswith("/OBJ-1.png")
+    )
+    content_hash = hashlib.sha256(crop.read_bytes()).hexdigest()
+    for item in manifest["files"]:
+        if item["path"] == crop_key:
+            item["byte_size"] = crop.stat().st_size
+            item["sha256"] = content_hash
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with auth_session_factory.begin() as session:
+        session.add(
+            Asset(
+                storage_key=f"source/baseline/{crop_key}",
+                original_filename="OBJ-1.png",
+                sha256=content_hash,
+                byte_size=crop.stat().st_size,
+                mime_type="image/png",
+                category=AssetCategory.REVIEWED_CROP,
+                access_level=AssetAccessLevel.REVIEWER,
+                integrity_state=AssetIntegrityState.QUARANTINED,
+                derivation_metadata={},
+                source_metadata={},
+            )
+        )
+    importer = BaselineImporter(
+        source_root,
+        managed_asset_root=tmp_path / "managed",
+        expected=expected,
+        source_manifest_path=manifest_path,
+    )
+
+    with pytest.raises(ImportValidationError, match="policy"):
+        with auth_session_factory.begin() as session:
+            importer.apply(session)
+
+    with auth_session_factory() as session:
+        assert _count(session, ImportBatch) == 0
+        assert _count(session, ImportReleaseCandidate) == 0
+        assert _count(session, Asset) == 1

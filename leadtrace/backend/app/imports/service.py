@@ -568,14 +568,27 @@ class BaselineImporter:
                     f"Manifest path {manifest_path!r} has conflicting hashes"
                 )
             expected_hash = next(iter(expected_hashes))
+            category, normal_access_level = self._asset_policy(
+                manifest_path,
+                references,
+            )
+            try:
+                inspected = store.inspect(storage_key)
+                expected_state = AssetIntegrityState.VERIFIED
+            except AssetMimeMismatchError:
+                inspected = store.inspect(
+                    storage_key,
+                    validate_extension=False,
+                    validate_content=False,
+                )
+                expected_state = AssetIntegrityState.QUARANTINED
+            expected_access_level = (
+                AssetAccessLevel.ADMIN
+                if expected_state is AssetIntegrityState.QUARANTINED
+                else normal_access_level
+            )
             existing = existing_by_key.get((storage_key, expected_hash))
             if existing is not None:
-                try:
-                    inspected = store.inspect(storage_key)
-                    expected_state = AssetIntegrityState.VERIFIED
-                except AssetMimeMismatchError:
-                    inspected = store.inspect(storage_key, validate_extension=False)
-                    expected_state = AssetIntegrityState.QUARANTINED
                 if (
                     inspected.sha256 != expected_hash
                     or inspected.byte_size != existing.byte_size
@@ -590,14 +603,16 @@ class BaselineImporter:
                         f"Existing asset has an unacceptable integrity state: "
                         f"{manifest_path}"
                     )
+                if (
+                    existing.category is not category
+                    or existing.access_level is not expected_access_level
+                ):
+                    raise ImportValidationError(
+                        "Existing asset policy does not match the resolved "
+                        f"reference: {manifest_path}"
+                    )
                 assets[manifest_path] = existing
                 continue
-            integrity_state = AssetIntegrityState.VERIFIED
-            try:
-                inspected = store.inspect(storage_key)
-            except AssetMimeMismatchError:
-                inspected = store.inspect(storage_key, validate_extension=False)
-                integrity_state = AssetIntegrityState.QUARANTINED
             if inspected.sha256 != expected_hash:
                 raise ImportValidationError(
                     f"Source asset changed after reconciliation: {manifest_path}"
@@ -612,9 +627,6 @@ class BaselineImporter:
                     }
                 ):
                     prior.integrity_state = AssetIntegrityState.SUPERSEDED
-            category, access_level = self._asset_policy(manifest_path, references)
-            if integrity_state is AssetIntegrityState.QUARANTINED:
-                access_level = AssetAccessLevel.ADMIN
             asset = Asset(
                 id=uuid4(),
                 storage_key=storage_key,
@@ -626,8 +638,8 @@ class BaselineImporter:
                 height=inspected.height,
                 page_count=inspected.page_count,
                 category=category,
-                access_level=access_level,
-                integrity_state=integrity_state,
+                access_level=expected_access_level,
+                integrity_state=expected_state,
                 import_batch_id=batch_id,
                 derivation_metadata={},
                 source_metadata={
@@ -635,13 +647,13 @@ class BaselineImporter:
                     "manifest_path": manifest_path,
                     **(
                         {"reason": "mime_mismatch"}
-                        if integrity_state is AssetIntegrityState.QUARANTINED
+                        if expected_state is AssetIntegrityState.QUARANTINED
                         else {}
                     ),
                 },
                 verified_at=(
                     datetime.now(UTC)
-                    if integrity_state is AssetIntegrityState.VERIFIED
+                    if expected_state is AssetIntegrityState.VERIFIED
                     else None
                 ),
             )
