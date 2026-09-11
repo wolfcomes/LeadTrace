@@ -4,7 +4,8 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import cast, func, select, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -13,8 +14,10 @@ from app.compounds.models import Compound
 from app.evidence.models import Evidence, EvidenceState
 from app.lineages.models import Lineage, LineageEdge
 from app.papers.models import Paper
+from app.releases.models import Release
 from app.revisions.models import ObjectRevision
 from app.revisions.service import RevisionService
+from app.reviews.models import Changeset, ChangesetItem, ReviewTask, ReviewTaskStatus
 from app.security.policies import WorkflowState
 from app.structures.models import Structure, StructureState
 from app.users.models import UserRole
@@ -57,6 +60,48 @@ def test_stable_identity_and_revision_metadata_are_preserved(
         )
         session.add(compound)
         session.flush()
+        admin = UserService().create_user(
+            session,
+            username="domain.changeset.admin",
+            display_name="Domain Changeset Admin",
+            role=UserRole.ADMIN,
+            initial_password=PASSWORD,
+        )
+        release = Release(
+            release_key=f"domain-release-{uuid4().hex[:8]}",
+            title="Domain test base release",
+            notes="",
+            metrics={},
+            published_by_id=admin.id,
+            published_at=datetime.now(UTC),
+            is_current=False,
+            manifest_finalized=False,
+        )
+        session.add(release)
+        session.flush()
+        task = ReviewTask(
+            paper_id=paper.id,
+            assigned_reviewer_id=actor.id,
+            created_by_id=admin.id,
+            status=ReviewTaskStatus.IN_PROGRESS,
+            priority=0,
+            version=1,
+        )
+        session.add(task)
+        session.flush()
+        changeset = Changeset(
+            review_task_id=task.id,
+            paper_id=paper.id,
+            owner_id=actor.id,
+            base_release_id=release.id,
+            title="Clarify preferred label",
+            reason="Domain metadata test",
+            workflow_state=WorkflowState.DRAFT,
+            version=1,
+            validation_results={},
+        )
+        session.add(changeset)
+        session.flush()
         first = service.create_revision(
             session,
             object_identity=compound,
@@ -65,6 +110,27 @@ def test_stable_identity_and_revision_metadata_are_preserved(
             snapshot={"display_label": "26a′", "source_row": 10},
             search_text="26a′",
         )
+        proposed_snapshot = {
+            "display_label": "26a′",
+            "preferred_name": "Example",
+        }
+        proposed_content_hash = session.scalar(
+            select(func.leadtrace_jsonb_sha256(cast(proposed_snapshot, JSONB)))
+        )
+        assert proposed_content_hash is not None
+        session.add(
+            ChangesetItem(
+                changeset_id=changeset.id,
+                paper_id=paper.id,
+                object_id=compound.id,
+                object_kind="compound",
+                base_revision_id=first.id,
+                proposed_snapshot=proposed_snapshot,
+                content_hash=proposed_content_hash,
+                sequence=1,
+            )
+        )
+        session.flush()
         second = service.create_revision(
             session,
             object_identity=compound,
@@ -72,7 +138,7 @@ def test_stable_identity_and_revision_metadata_are_preserved(
             reason="Clarify preferred label",
             snapshot={"display_label": "26a′", "preferred_name": "Example"},
             predecessor=first,
-            changeset_id=uuid4(),
+            changeset_id=changeset.id,
             search_text="26a′ Example",
         )
 
@@ -81,7 +147,7 @@ def test_stable_identity_and_revision_metadata_are_preserved(
         assert second.revision_number == 2
         assert second.predecessor_id == first.id
         assert second.actor_id == actor.id
-        assert second.changeset_id is not None
+        assert second.changeset_id == changeset.id
         assert len(first.content_hash) == 64
         assert first.snapshot["source_row"] == 10
 

@@ -11,6 +11,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -98,10 +99,23 @@ class ObjectRevision(UUIDPrimaryKeyMixin, Base):
             "revision_number",
             name="uq_object_revision_number",
         ),
+        ForeignKeyConstraint(
+            ["changeset_id", "object_id"],
+            ["changeset_items.changeset_id", "changeset_items.object_id"],
+            name="fk_object_revisions_changeset_item",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
         UniqueConstraint(
             "object_id",
             "id",
             name="uq_object_revisions_object_id_id",
+        ),
+        UniqueConstraint(
+            "changeset_id",
+            "object_id",
+            "id",
+            name="uq_object_revisions_changeset_object_id",
         ),
         CheckConstraint(
             "revision_number > 0",

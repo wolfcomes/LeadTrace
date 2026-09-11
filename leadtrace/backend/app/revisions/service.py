@@ -4,7 +4,8 @@ import hashlib
 import json
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import cast, func, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.revisions.models import (
@@ -62,6 +63,44 @@ class RevisionService:
             raise ValueError("Only a published revision can be current")
         if predecessor is not None and predecessor.object_id != object_identity.id:
             raise ValueError("Revision predecessor belongs to another object")
+        content_hash = canonical_snapshot_hash(snapshot)
+        if changeset_id is not None:
+            from app.reviews.models import Changeset, ChangesetItem
+            from app.reviews.state_machine import content_mutable
+
+            if workflow_state not in {
+                WorkflowState.DRAFT,
+                WorkflowState.REVISED_DRAFT,
+            } or is_current_published:
+                raise ValueError(
+                    "A changeset-linked revision cannot be published before approval"
+                )
+
+            changeset = session.scalar(
+                select(Changeset)
+                .where(Changeset.id == changeset_id)
+                .with_for_update()
+            )
+            if changeset is None or not content_mutable(changeset.workflow_state):
+                raise ValueError("Revision must belong to an editable draft changeset")
+
+            changeset_item = session.scalar(
+                select(ChangesetItem.id)
+                .where(
+                    ChangesetItem.changeset_id == changeset_id,
+                    ChangesetItem.object_id == object_identity.id,
+                )
+                .limit(1)
+            )
+            if changeset_item is None:
+                raise ValueError(
+                    "Revision changeset must contain the same revisioned object"
+                )
+            content_hash = str(
+                session.scalar(
+                    select(func.leadtrace_jsonb_sha256(cast(snapshot, JSONB)))
+                )
+            )
 
         session.execute(
             select(RevisionedObject.id)
@@ -97,7 +136,7 @@ class RevisionService:
             changeset_id=changeset_id,
             actor_id=actor_id,
             reason=clean_reason,
-            content_hash=canonical_snapshot_hash(snapshot),
+            content_hash=content_hash,
             search_text=search_text,
             snapshot=snapshot,
             workflow_state=workflow_state,

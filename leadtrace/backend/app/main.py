@@ -15,6 +15,7 @@ from app.auth.router import create_auth_router
 from app.health.router import DatabaseProbe, create_health_router, probe_database
 from app.papers.router import create_papers_router
 from app.releases.router import create_releases_router
+from app.reviews.router import create_reviews_router
 from app.users.router import create_users_router
 
 
@@ -62,6 +63,9 @@ def create_app(
     application.include_router(create_assets_router())
     application.include_router(create_releases_router())
     application.include_router(create_papers_router())
+    application.include_router(
+        create_reviews_router(runtime_settings.session_secret.get_secret_value())
+    )
     return application
 
 
