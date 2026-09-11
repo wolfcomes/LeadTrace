@@ -6,11 +6,19 @@ import os
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from app.activities import models as activity_models  # noqa: F401
 from app.assets import models as asset_models  # noqa: F401
 from app.auth import models as auth_models  # noqa: F401
+from app.compounds import models as compound_models  # noqa: F401
 from app.database import postgresql_url
 from app.db.base import Base
+from app.evidence import models as evidence_models  # noqa: F401
+from app.lineages import models as lineage_models  # noqa: F401
+from app.papers import models as paper_models  # noqa: F401
+from app.revisions import models as revision_models  # noqa: F401
+from app.structures import models as structure_models  # noqa: F401
 from app.users import models as user_models  # noqa: F401
+from app.visual_objects import models as visual_object_models  # noqa: F401
 
 
 config = context.config

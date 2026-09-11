@@ -1,0 +1,1 @@
+"""Typed activity measurement identities."""
