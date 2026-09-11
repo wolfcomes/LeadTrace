@@ -3,10 +3,13 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 
 import App from "./App.vue";
+import { createAppRouter } from "./app/router";
+import "./styles/tokens.css";
 
 
 const application = createApp(App);
 application.use(createPinia());
+application.use(createAppRouter());
 application.use(VueQueryPlugin, {
   queryClient: new QueryClient({
     defaultOptions: {
