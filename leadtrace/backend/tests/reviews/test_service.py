@@ -14,9 +14,11 @@ from app.papers.models import Paper
 from app.releases.models import Release, ReleaseItem
 from app.revisions.models import ObjectKind, ObjectRevision
 from app.revisions.service import RevisionService
+from app.reviews.comments import CommentService, CommentTargetType
 from app.reviews.models import ChangesetSubmission, ReviewTaskStatus
 from app.reviews.service import (
     BaseReleaseConflict,
+    ChangesetItemHasComments,
     InvalidReview,
     RevisionConflict,
     ReviewForbidden,
@@ -109,6 +111,91 @@ def _add_paper_item(session, service, changeset, reviewer, paper, paper_revision
         base_revision_id=paper_revision.id,
         proposed_snapshot={"paper_key": paper.paper_key, "reviewed": True},
     )
+
+
+def test_item_delete_preserves_paper_field_anchor_but_rejects_unbound_object_comment(
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        reviewer, _, admin, paper, paper_revision, release = _setup(session)
+        service = ReviewService()
+        task = service.create_task(
+            session,
+            paper_id=paper.id,
+            assignee_id=reviewer.id,
+            created_by_id=admin.id,
+        )
+        changeset = service.create_changeset(
+            session,
+            paper_id=paper.id,
+            actor_id=reviewer.id,
+            review_task_id=task.id,
+            base_release_id=release.id,
+            title="Delete comment-anchored items",
+            reason="Verify review comment traceability",
+        )
+        paper_item = _add_paper_item(
+            session, service, changeset, reviewer, paper, paper_revision
+        )
+        CommentService().create_comment(
+            session,
+            changeset_id=changeset.id,
+            actor_id=reviewer.id,
+            target_type=CommentTargetType.FIELD,
+            target_id=paper.id,
+            changeset_item_id=None,
+            field_path="/title",
+            body="Paper field anchor predates the item.",
+            ip_address="192.0.2.10",
+            request_id="paper-field-anchor",
+        )
+        service.delete_changeset_item(
+            session,
+            changeset_id=changeset.id,
+            item_id=paper_item.id,
+            actor_id=reviewer.id,
+            expected_version=2,
+        )
+
+        compound = Compound(
+            paper_id=paper.id,
+            local_identity=f"comment-compound-{uuid4().hex[:8]}",
+            display_label="Comment compound",
+            normalized_label="comment compound",
+        )
+        session.add(compound)
+        session.flush()
+        compound_item = service.add_changeset_item(
+            session,
+            changeset_id=changeset.id,
+            actor_id=reviewer.id,
+            expected_version=3,
+            object_id=compound.id,
+            object_kind=ObjectKind.COMPOUND.value,
+            proposed_snapshot={"display_label": compound.display_label},
+        )
+        CommentService().create_comment(
+            session,
+            changeset_id=changeset.id,
+            actor_id=reviewer.id,
+            target_type=CommentTargetType.COMPOUND,
+            target_id=compound.id,
+            changeset_item_id=None,
+            field_path=None,
+            body="This object comment must remain traceable to the item.",
+            ip_address="192.0.2.10",
+            request_id="compound-object-anchor",
+        )
+
+        with pytest.raises(ChangesetItemHasComments) as error:
+            service.delete_changeset_item(
+                session,
+                changeset_id=changeset.id,
+                item_id=compound_item.id,
+                actor_id=reviewer.id,
+                expected_version=4,
+            )
+        assert error.value.item_id == compound_item.id
 
 
 def test_reviewer_can_create_and_submit_owned_changeset(

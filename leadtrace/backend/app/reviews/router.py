@@ -45,6 +45,7 @@ from app.reviews.comments import (
 )
 from app.reviews.service import (
     BaseReleaseConflict,
+    ChangesetItemHasComments,
     ChangesetItemHasRevisions,
     InvalidReview,
     RevisionConflict,
@@ -77,6 +78,22 @@ def _region_fields_for_revision(
         "x1": revision.region_x1,
         "y1": revision.region_y1,
         "rotation": revision.region_rotation,
+    }
+
+
+def _dedicated_fields_for_revision(
+    revision: ObjectRevision | None,
+) -> dict[str, object] | None:
+    if revision is None:
+        return None
+    return {
+        "activity_metric": revision.activity_metric,
+        "activity_unit": revision.activity_unit,
+        "activity_value": revision.activity_value,
+        "canonical_smiles": revision.canonical_smiles,
+        "evidence_text": revision.evidence_text,
+        "relation_status": revision.relation_status,
+        "relation_type": revision.relation_type,
     }
 
 
@@ -144,6 +161,13 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                 409,
                 "CHANGESET_ITEM_HAS_REVISIONS",
                 "Changeset item has linked revisions and cannot be deleted",
+                details={"item_id": str(error.item_id)},
+            )
+        if isinstance(error, ChangesetItemHasComments):
+            return APIError(
+                409,
+                "CHANGESET_ITEM_HAS_COMMENTS",
+                "Changeset item has linked comments and cannot be deleted",
                 details={"item_id": str(error.item_id)},
             )
         if isinstance(error, InvalidReview):
@@ -636,6 +660,12 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                                 if proposed is not None
                                 else item.proposed_snapshot
                             ),
+                            before_dedicated_fields=_dedicated_fields_for_revision(
+                                base
+                            ),
+                            after_dedicated_fields=_dedicated_fields_for_revision(
+                                proposed
+                            ),
                             before_region_fields=_region_fields_for_revision(base),
                             after_region_fields=_region_fields_for_revision(proposed),
                             before_tombstone=(base.is_tombstone if base else False),
@@ -820,7 +850,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                     before=before,
                     after=None,
                 )
-        except ChangesetItemHasRevisions as error:
+        except (ChangesetItemHasRevisions, ChangesetItemHasComments) as error:
             raise as_error(error) from error
         except IntegrityError as error:
             raise APIError(

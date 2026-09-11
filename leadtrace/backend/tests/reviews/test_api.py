@@ -20,7 +20,12 @@ from app.releases.models import Release, ReleaseItem
 from app.revisions.models import ObjectKind, ObjectRevision
 from app.revisions.service import RevisionService
 from app.reviews.models import Changeset
-from app.reviews.comments import ReviewComment, ReviewCommentEvent
+from app.reviews.comments import (
+    CommentService,
+    CommentTargetType,
+    ReviewComment,
+    ReviewCommentEvent,
+)
 from app.reviews.service import ReviewService
 from app.security.policies import WorkflowState
 from app.users.models import UserRole
@@ -494,6 +499,146 @@ def test_changeset_diff_includes_visual_region_revision_columns(
     ]
 
 
+def test_changeset_diff_includes_dedicated_revision_columns_when_snapshot_is_unchanged(
+    tmp_path: Path,
+    postgresql_database_url: str,
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        seeded = _seed_review(session)
+        service = ReviewService()
+        changeset = service.create_changeset(
+            session,
+            paper_id=seeded["paper"],
+            actor_id=seeded["review-api-reviewer"],
+            review_task_id=seeded["task"],
+            base_release_id=seeded["release"],
+            title="Correct dedicated revision fields",
+            reason="Compare searchable scientific columns",
+        )
+        base_revision = session.get(ObjectRevision, seeded["paper_revision"])
+        paper = session.get(Paper, seeded["paper"])
+        assert base_revision is not None
+        assert paper is not None
+        item = service.add_changeset_item(
+            session,
+            changeset_id=changeset.id,
+            actor_id=seeded["review-api-reviewer"],
+            expected_version=1,
+            object_id=paper.id,
+            object_kind=ObjectKind.PAPER.value,
+            base_revision_id=base_revision.id,
+            proposed_snapshot=base_revision.snapshot,
+        )
+        proposed_revision = RevisionService().create_revision(
+            session,
+            object_identity=paper,
+            actor_id=seeded["review-api-reviewer"],
+            reason="Correct dedicated searchable fields",
+            snapshot=base_revision.snapshot,
+            predecessor=base_revision,
+            changeset_id=changeset.id,
+            canonical_smiles="CCN",
+            evidence_text="IC50 = 12 nM",
+            activity_metric="IC50",
+            activity_value="12",
+            activity_unit="nM",
+            relation_type="direct_optimization",
+            relation_status="text_explicit",
+        )
+        submitted = service.submit_changeset(
+            session,
+            changeset_id=changeset.id,
+            actor_id=seeded["review-api-reviewer"],
+            expected_version=2,
+        )
+        session.refresh(item)
+        assert item.proposed_revision_id == proposed_revision.id
+        changeset_id = submitted.id
+
+    resources = DatabaseResources(
+        engine=auth_session_factory.kw["bind"],
+        session_factory=auth_session_factory,
+    )
+    application = create_app(
+        settings=_settings(tmp_path, postgresql_database_url),
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+    with TestClient(application) as client:
+        _login(client, str(seeded["review-api-reviewer-username"]))
+        response = client.get(f"/api/v1/review/changesets/{changeset_id}/diff")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "object_id": str(seeded["paper"]),
+            "object_kind": ObjectKind.PAPER.value,
+            "base_revision_id": str(seeded["paper_revision"]),
+            "proposed_revision_id": str(proposed_revision.id),
+            "change_type": "update",
+            "changes": [
+                {
+                    "path": "/activity_metric",
+                    "category": "scalar",
+                    "before_present": True,
+                    "after_present": True,
+                    "before": None,
+                    "after": "IC50",
+                },
+                {
+                    "path": "/activity_unit",
+                    "category": "scalar",
+                    "before_present": True,
+                    "after_present": True,
+                    "before": None,
+                    "after": "nM",
+                },
+                {
+                    "path": "/activity_value",
+                    "category": "scalar",
+                    "before_present": True,
+                    "after_present": True,
+                    "before": None,
+                    "after": "12",
+                },
+                {
+                    "path": "/canonical_smiles",
+                    "category": "smiles",
+                    "before_present": True,
+                    "after_present": True,
+                    "before": None,
+                    "after": "CCN",
+                },
+                {
+                    "path": "/evidence_text",
+                    "category": "text",
+                    "before_present": True,
+                    "after_present": True,
+                    "before": None,
+                    "after": "IC50 = 12 nM",
+                },
+                {
+                    "path": "/relation_status",
+                    "category": "scalar",
+                    "before_present": True,
+                    "after_present": True,
+                    "before": None,
+                    "after": "text_explicit",
+                },
+                {
+                    "path": "/relation_type",
+                    "category": "scalar",
+                    "before_present": True,
+                    "after_present": True,
+                    "before": None,
+                    "after": "direct_optimization",
+                },
+            ],
+        }
+    ]
+
+
 def test_admin_can_create_edit_and_submit_for_assigned_reviewer(
     tmp_path: Path,
     postgresql_database_url: str,
@@ -923,3 +1068,75 @@ def test_field_comment_can_target_paper_before_paper_item_is_added(
 
     assert response.status_code == 201
     assert response.json()["target_id"] == str(seeded["paper"])
+
+
+def test_delete_item_rejects_unbound_object_comment_anchor(
+    tmp_path: Path,
+    postgresql_database_url: str,
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        seeded = _seed_review(session)
+        service = ReviewService()
+        changeset = service.create_changeset(
+            session,
+            paper_id=seeded["paper"],
+            actor_id=seeded["review-api-reviewer"],
+            review_task_id=seeded["task"],
+            base_release_id=seeded["release"],
+            title="Retain object comment anchors",
+            reason="Do not delete an item with an unbound object comment",
+        )
+        compound = Compound(
+            paper_id=seeded["paper"],
+            local_identity=f"delete-comment-compound-{uuid4().hex[:8]}",
+            display_label="Delete comment compound",
+            normalized_label="delete comment compound",
+        )
+        session.add(compound)
+        session.flush()
+        item = service.add_changeset_item(
+            session,
+            changeset_id=changeset.id,
+            actor_id=seeded["review-api-reviewer"],
+            expected_version=1,
+            object_id=compound.id,
+            object_kind=ObjectKind.COMPOUND.value,
+            proposed_snapshot={"display_label": compound.display_label},
+        )
+        CommentService().create_comment(
+            session,
+            changeset_id=changeset.id,
+            actor_id=seeded["review-api-reviewer"],
+            target_type=CommentTargetType.COMPOUND,
+            target_id=compound.id,
+            changeset_item_id=None,
+            field_path=None,
+            body="This comment must remain anchored to the compound item.",
+            ip_address="192.0.2.10",
+            request_id="delete-comment-anchor",
+        )
+        changeset_id = changeset.id
+        item_id = item.id
+
+    resources = DatabaseResources(
+        engine=auth_session_factory.kw["bind"],
+        session_factory=auth_session_factory,
+    )
+    application = create_app(
+        settings=_settings(tmp_path, postgresql_database_url),
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+    with TestClient(application) as client:
+        csrf = _login(client, str(seeded["review-api-reviewer-username"]))
+        response = client.request(
+            "DELETE",
+            f"/api/v1/review/changesets/{changeset_id}/items/{item_id}",
+            headers={"X-CSRF-Token": csrf},
+            json={"expected_version": 2},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "CHANGESET_ITEM_HAS_COMMENTS"
+    assert response.json()["details"] == {"item_id": str(item_id)}

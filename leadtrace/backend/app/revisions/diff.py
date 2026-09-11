@@ -43,6 +43,18 @@ def _overlay_region_fields(
         flattened[f"/region/{_pointer_segment(str(key))}"] = region_fields[key]
 
 
+def _overlay_dedicated_fields(
+    flattened: dict[str, Any],
+    dedicated_fields: Mapping[str, object] | None,
+) -> None:
+    """Overlay searchable/scientific columns stored outside ``snapshot``."""
+
+    if dedicated_fields is None:
+        return
+    for key in sorted(dedicated_fields, key=str):
+        flattened[f"/{_pointer_segment(str(key))}"] = dedicated_fields[key]
+
+
 def _values_equal(before: Any, after: Any) -> bool:
     if type(before) is not type(after):
         return False
@@ -95,6 +107,8 @@ def build_revision_diff(
     proposed_revision_id: UUID | str | None,
     before_snapshot: Mapping[str, Any] | None,
     after_snapshot: Mapping[str, Any] | None,
+    before_dedicated_fields: Mapping[str, object] | None = None,
+    after_dedicated_fields: Mapping[str, object] | None = None,
     before_region_fields: Mapping[str, object] | None = None,
     after_region_fields: Mapping[str, object] | None = None,
     before_tombstone: bool = False,
@@ -102,14 +116,16 @@ def build_revision_diff(
 ) -> dict[str, object]:
     """Return a deterministic, identity-preserving structured revision diff.
 
-    ``*_region_fields`` carries values stored in dedicated ``ObjectRevision``
-    columns. ``None`` means that the region envelope is absent; keys whose
-    values are ``None`` remain present so callers can distinguish SQL ``NULL``
-    from a missing field via the ``*_present`` flags.
+    ``*_dedicated_fields`` and ``*_region_fields`` carry values stored in
+    dedicated ``ObjectRevision`` columns. ``None`` means that the envelope is
+    absent; keys whose values are ``None`` remain present so callers can
+    distinguish SQL ``NULL`` from a missing field via the ``*_present`` flags.
     """
 
     before_values = _flatten(before_snapshot)
     after_values = _flatten(after_snapshot)
+    _overlay_dedicated_fields(before_values, before_dedicated_fields)
+    _overlay_dedicated_fields(after_values, after_dedicated_fields)
     if str(object_kind).casefold() == "visual_region":
         _overlay_region_fields(before_values, before_region_fields)
         _overlay_region_fields(after_values, after_region_fields)

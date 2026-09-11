@@ -120,6 +120,7 @@ def test_audit_details_recursively_redact_credentials_and_tokens() -> None:
         {
             "password": "plain text",
             "session_id": "opaque session",
+            "csrf": "bare csrf value",
             "csrfToken": "csrf value",
             "Authorization": "Bearer token",
             "Cookie": "leadtrace_session=secret",
@@ -142,6 +143,7 @@ def test_audit_details_recursively_redact_credentials_and_tokens() -> None:
     assert sanitized == {
         "password": "[REDACTED]",
         "session_id": "[REDACTED]",
+        "csrf": "[REDACTED]",
         "csrfToken": "[REDACTED]",
         "Authorization": "[REDACTED]",
         "Cookie": "[REDACTED]",
@@ -159,6 +161,46 @@ def test_audit_details_recursively_redact_credentials_and_tokens() -> None:
         },
         "items": [{"api-key": "[REDACTED]"}, "ordinary"],
     }
+
+
+def test_audit_reason_redacts_inline_credentials_and_hashes_persisted_reason(
+    auth_session_factory,
+) -> None:
+    secret_reason = (
+        "Reviewer note password=plain-password token: bearer-secret "
+        "api_key=vendor-secret authorization=Bearer auth-secret "
+        "csrf=bare-csrf-key csrf_token=csrf-token session=session-secret "
+        "session_id=session-id-secret"
+    )
+    with auth_session_factory.begin() as session:
+        actor_id, paper_id, release_id = _setup_scope(session)
+        event = AuditService().append_event(
+            session,
+            actor_id=actor_id,
+            action="review.changeset.updated",
+            target_type="changeset",
+            target_id=uuid4(),
+            paper_id=paper_id,
+            changeset_id=None,
+            release_id=release_id,
+            ip_address="192.0.2.10",
+            request_id="reason-redaction",
+            result="success",
+            reason=secret_reason,
+            before_hash=canonical_content_hash({"before": True}),
+            after_hash=canonical_content_hash({"after": True}),
+            details={},
+        )
+        assert "plain-password" not in event.reason
+        assert "bearer-secret" not in event.reason
+        assert "vendor-secret" not in event.reason
+        assert "auth-secret" not in event.reason
+        assert "bare-csrf-key" not in event.reason
+        assert "csrf-token" not in event.reason
+        assert "session-secret" not in event.reason
+        assert "session-id-secret" not in event.reason
+        assert event.reason.count("[REDACTED]") == 8
+        assert AuditService().verify_chain(session).valid is True
 
 
 def test_audit_hash_uses_persisted_jsonb_numeric_representation(

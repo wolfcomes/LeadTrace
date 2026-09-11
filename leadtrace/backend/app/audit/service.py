@@ -23,6 +23,15 @@ from app.releases.models import Release
 
 GENESIS_HASH = "0" * 64
 _HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_SENSITIVE_REASON_PATTERN = re.compile(
+    r"(?P<prefix>\b(?:password|passwd|secret|token|"
+    r"api(?:[_ -]?key)|authorization(?:[_ -]?header)?|credential|cookie|"
+    r"private(?:[_ -]?key)|csrf(?:[_ -]?(?:token|value|secret))?|"
+    r"session(?:[_ -]?(?:id|token|secret))?)"
+    r"\b\s*(?:=|:|\bis\b)\s*)"
+    r"(?P<value>\"[^\"]*\"|'[^']*'|(?:Bearer|Basic)\s+[^\s,;]+|[^\s,;]+)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +65,15 @@ def persisted_content_hash(session: Session, value: object) -> str:
     return canonical_content_hash(persisted_json_value(session, value))
 
 
+def redact_sensitive_text(value: str) -> str:
+    """Remove inline credential values from free-form audit text."""
+
+    return _SENSITIVE_REASON_PATTERN.sub(
+        lambda match: f"{match.group('prefix')}[REDACTED]",
+        value,
+    )
+
+
 def _sensitive_key(key: object) -> bool:
     normalized = re.sub(r"[^a-z0-9]", "", str(key).casefold())
     return (
@@ -70,6 +88,7 @@ def _sensitive_key(key: object) -> bool:
         or "accesskey" in normalized
         or "apikey" in normalized
         or "privatekey" in normalized
+        or normalized == "csrf"
         or normalized == "setcookie"
     )
 
@@ -194,7 +213,7 @@ class AuditService:
             ip_address=_required_text(ip_address, "ip_address", 64),
             request_id=_required_text(request_id, "request_id", 128),
             result=_required_text(result, "result", 32),
-            reason=_required_text(reason, "reason"),
+            reason=_required_text(redact_sensitive_text(reason), "reason"),
             before_hash=_required_hash(before_hash, "before_hash"),
             after_hash=_required_hash(after_hash, "after_hash"),
             details=persisted_details,
@@ -264,4 +283,5 @@ __all__ = [
     "persisted_content_hash",
     "persisted_json_value",
     "redact_secrets",
+    "redact_sensitive_text",
 ]

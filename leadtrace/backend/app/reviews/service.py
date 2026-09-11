@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import cast, func, select
+from sqlalchemy import cast, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
@@ -77,6 +77,14 @@ class ChangesetItemHasRevisions(RuntimeError):
     def __init__(self, item_id: UUID) -> None:
         self.item_id = item_id
         super().__init__("Changeset item has linked revisions")
+
+
+class ChangesetItemHasComments(RuntimeError):
+    """A changeset item still has comments anchored to its identity."""
+
+    def __init__(self, item_id: UUID) -> None:
+        self.item_id = item_id
+        super().__init__("Changeset item has linked comments")
 
 
 def _clean_required(value: str, field: str) -> str:
@@ -521,6 +529,32 @@ class ReviewService:
         )
         if linked_revision is not None:
             raise ChangesetItemHasRevisions(item.id)
+        from app.reviews.comments import CommentTargetType, ReviewComment
+
+        comment_anchors = [
+            ReviewComment.changeset_item_id == item.id,
+            ReviewComment.target_id == item.id,
+        ]
+        # A Paper field comment may intentionally predate its changeset item.
+        # Keep that compatibility anchor, while preserving traceability for
+        # all object-level anchors (and field anchors on non-Paper objects).
+        if item.object_kind == ObjectKind.PAPER.value:
+            comment_anchors.append(
+                (ReviewComment.target_id == item.object_id)
+                & (ReviewComment.target_type != CommentTargetType.FIELD.value)
+            )
+        else:
+            comment_anchors.append(ReviewComment.target_id == item.object_id)
+        linked_comment = session.scalar(
+            select(ReviewComment.id)
+            .where(
+                ReviewComment.changeset_id == changeset.id,
+                or_(*comment_anchors),
+            )
+            .limit(1)
+        )
+        if linked_comment is not None:
+            raise ChangesetItemHasComments(item.id)
         session.delete(item)
         changeset.version += 1
         session.flush()
