@@ -1,6 +1,8 @@
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { createPinia } from "pinia";
 import { createApp } from "vue";
+import "@fontsource-variable/noto-sans-sc";
+import "@fontsource-variable/noto-serif-sc";
 
 import App from "./App.vue";
 import { createAppRouter } from "./app/router";

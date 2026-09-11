@@ -96,17 +96,17 @@ async function submit(): Promise<void> {
 .brand-lockup { display: flex; align-items: center; gap: 14px; }
 .brand-mark { display: grid; width: 46px; height: 46px; place-items: center; border: 1px solid rgba(255,255,255,.24); border-radius: 12px; background: rgba(255,255,255,.08); font: 700 .83rem/1 Georgia, serif; letter-spacing: .08em; }
 .brand-lockup strong, .brand-lockup span { display: block; }
-.brand-lockup strong { font: 600 1.3rem/1.2 Georgia, "Noto Serif SC", serif; letter-spacing: .02em; }
+.brand-lockup strong { font: 600 1.3rem/1.2 Georgia, "Noto Serif SC Variable", serif; letter-spacing: .02em; }
 .brand-lockup span { margin-top: 3px; color: #c7d4ce; font-size: .78rem; }
 .brand-message { max-width: 600px; margin: 14vh 0 auto; }
 .brand-message .eyebrow { color: #d6b66f; }
-.brand-message h1 { margin: 0; font: 500 clamp(2.25rem, 4.2vw, 4.5rem)/1.17 Georgia, "Noto Serif SC", serif; letter-spacing: -.025em; }
+.brand-message h1 { margin: 0; font: 500 clamp(2.25rem, 4.2vw, 4.5rem)/1.17 Georgia, "Noto Serif SC Variable", serif; letter-spacing: -.025em; }
 .brand-message > p:last-child { max-width: 470px; margin: 28px 0 0; color: #bfd0c8; font-size: 1rem; line-height: 1.8; }
 .environment { display: flex; align-items: center; gap: 9px; margin: 48px 0 0; color: #b7c8c0; font-size: .76rem; }
 .environment span { width: 7px; height: 7px; border-radius: 50%; background: #85c5a1; box-shadow: 0 0 0 4px rgba(133,197,161,.1); }
 .form-panel { display: grid; min-height: 100vh; place-items: center; padding: 48px clamp(28px, 8vw, 120px); background: radial-gradient(circle at 100% 0, var(--gold-100), transparent 28%), var(--paper); }
 .login-card { width: min(100%, 430px); }
-.login-card h2 { margin: 0; color: var(--ink-950); font: 600 clamp(2rem, 4vw, 2.7rem)/1.15 Georgia, "Noto Serif SC", serif; }
+.login-card h2 { margin: 0; color: var(--ink-950); font: 600 clamp(2rem, 4vw, 2.7rem)/1.15 Georgia, "Noto Serif SC Variable", serif; }
 .description { margin: 16px 0 34px; color: var(--ink-650); line-height: 1.7; }
 label { display: block; margin: 18px 0 8px; color: var(--ink-800); font-size: .83rem; font-weight: 720; }
 input { width: 100%; min-height: 48px; padding: 11px 13px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink-950); background: #fbfcfb; transition: border-color .15s ease, box-shadow .15s ease; }

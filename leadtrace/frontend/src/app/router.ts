@@ -12,6 +12,9 @@ import ChangePasswordPage from "../auth/ChangePasswordPage.vue";
 import LoginPage from "../auth/LoginPage.vue";
 import { useAuthStore } from "../auth/store";
 import { zhCN } from "../i18n/zh-CN";
+import OverviewPage from "../papers/OverviewPage.vue";
+import PaperDetailPage from "../papers/PaperDetailPage.vue";
+import PaperLibraryPage from "../papers/PaperLibraryPage.vue";
 import AppShell from "./AppShell.vue";
 
 const PlaceholderPage = defineComponent({
@@ -45,9 +48,9 @@ export function createAppRouter(
         component: AppShell,
         children: [
           { path: "", redirect: "/overview" },
-          { path: "overview", component: PlaceholderPage, meta: { roles: publishedRoles } },
-          { path: "papers", component: PlaceholderPage, meta: { roles: publishedRoles } },
-          { path: "papers/:paperId", component: PlaceholderPage, meta: { roles: publishedRoles } },
+          { path: "overview", name: "overview", component: OverviewPage, meta: { roles: publishedRoles } },
+          { path: "papers", name: "papers", component: PaperLibraryPage, meta: { roles: publishedRoles } },
+          { path: "papers/:paperId", name: "paper-detail", component: PaperDetailPage, meta: { roles: publishedRoles } },
           { path: "review/tasks", component: PlaceholderPage, meta: { roles: reviewRoles } },
           { path: "review/changesets", component: PlaceholderPage, meta: { roles: reviewRoles } },
           { path: "review/changesets/:changesetId", component: PlaceholderPage, meta: { roles: reviewRoles } },

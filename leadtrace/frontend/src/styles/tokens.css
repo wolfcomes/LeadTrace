@@ -1,7 +1,7 @@
 :root {
   color: #17211d;
   background: #f4f6f3;
-  font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  font-family: "Noto Sans SC Variable", Inter, "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --ink-950: #13221c;

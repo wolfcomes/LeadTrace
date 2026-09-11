@@ -57,7 +57,7 @@ async function submit(): Promise<void> {
 .password-stage { display: grid; min-height: 100vh; place-items: center; padding: 36px 20px; background: radial-gradient(circle at 12% 15%, var(--forest-100), transparent 30%), radial-gradient(circle at 88% 82%, var(--gold-100), transparent 25%), var(--canvas); }
 .password-card { width: min(100%, 510px); padding: clamp(30px, 5vw, 52px); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--paper); box-shadow: var(--shadow-md); }
 .security-mark { display: grid; width: 48px; height: 48px; margin-bottom: 28px; place-items: center; border-radius: 14px; color: var(--paper); background: var(--forest-900); font-weight: 800; }
-h1 { margin: 0; color: var(--ink-950); font: 600 2.25rem/1.2 Georgia, "Noto Serif SC", serif; }
+h1 { margin: 0; color: var(--ink-950); font: 600 2.25rem/1.2 Georgia, "Noto Serif SC Variable", serif; }
 .description { margin: 14px 0 28px; color: var(--ink-650); line-height: 1.7; }
 label { display: block; margin: 16px 0 7px; color: var(--ink-800); font-size: .83rem; font-weight: 720; }
 input { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: #fbfcfb; }
