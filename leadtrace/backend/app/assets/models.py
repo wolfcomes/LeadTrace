@@ -110,6 +110,7 @@ class Asset(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     import_batch_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
+        ForeignKey("import_batches.id", ondelete="SET NULL"),
         nullable=True,
     )
     source_asset_id: Mapped[UUID | None] = mapped_column(

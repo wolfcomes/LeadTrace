@@ -13,6 +13,7 @@ from app.compounds import models as compound_models  # noqa: F401
 from app.database import postgresql_url
 from app.db.base import Base
 from app.evidence import models as evidence_models  # noqa: F401
+from app.imports import models as import_models  # noqa: F401
 from app.lineages import models as lineage_models  # noqa: F401
 from app.papers import models as paper_models  # noqa: F401
 from app.revisions import models as revision_models  # noqa: F401
