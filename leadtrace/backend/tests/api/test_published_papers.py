@@ -152,4 +152,3 @@ def test_no_current_release_is_reported_without_falling_back_to_drafts(
     assert response.status_code == 404
     assert response.json()["code"] == "CURRENT_RELEASE_NOT_FOUND"
     assert response.json()["details"] == {}
-

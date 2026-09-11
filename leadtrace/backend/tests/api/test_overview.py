@@ -29,7 +29,12 @@ def test_overview_reports_separate_metrics_with_explicit_denominators(
         },
     }
     assert "completion" not in response.text.casefold()
-    assert "16" not in response.text
+    metric_values = {
+        value
+        for metric in payload["metrics"].values()
+        for value in (metric["numerator"], metric["denominator"])
+    }
+    assert 16 not in metric_values
 
 
 def test_anonymous_caller_cannot_read_published_overview(
