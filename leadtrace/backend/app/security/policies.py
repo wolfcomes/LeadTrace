@@ -20,6 +20,7 @@ class Action(StrEnum):
     PUBLISH_RELEASE = "publish_release"
     ROLLBACK_RELEASE = "rollback_release"
     MANAGE_ACCOUNTS = "manage_accounts"
+    MANAGE_FILES = "manage_files"
     EXPORT_UNPUBLISHED = "export_unpublished"
     READ_AUDIT = "read_audit"
 

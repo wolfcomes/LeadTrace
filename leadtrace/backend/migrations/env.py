@@ -6,6 +6,7 @@ import os
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from app.assets import models as asset_models  # noqa: F401
 from app.auth import models as auth_models  # noqa: F401
 from app.database import postgresql_url
 from app.db.base import Base

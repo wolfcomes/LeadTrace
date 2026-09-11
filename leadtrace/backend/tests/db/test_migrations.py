@@ -196,7 +196,9 @@ def test_existing_identity_schema_upgrades_through_security_hardening(
     config = _alembic_config(empty_postgresql_database_url)
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "0002_identity_hardening"
+    identity_hardening = script.get_revision("0002_identity_hardening")
+    assert identity_hardening is not None
+    assert identity_hardening.down_revision == "0001_identity"
     command.upgrade(config, "0001_identity")
 
     engine = create_database_engine(empty_postgresql_database_url)
@@ -214,7 +216,7 @@ def test_existing_identity_schema_upgrades_through_security_hardening(
         assert "source_hash" not in {
             column["name"] for column in legacy_schema.get_columns("login_attempts")
         }
-        with pytest.raises(SchemaVersionError, match="0002_identity_hardening"):
+        with pytest.raises(SchemaVersionError, match="does not match Alembic head"):
             validate_schema_version(engine, ALEMBIC_CONFIG_PATH)
 
         with engine.begin() as connection:

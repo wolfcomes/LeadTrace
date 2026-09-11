@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 
+from app.assets.router import create_assets_router
 from app.config import Settings, get_settings
 from app.database import DatabaseResources, bootstrap_database
 from app.auth.router import create_auth_router
@@ -54,6 +55,7 @@ def create_app(
     )
     application.include_router(create_auth_router(runtime_settings))
     application.include_router(create_users_router(runtime_settings))
+    application.include_router(create_assets_router())
     return application
 
 

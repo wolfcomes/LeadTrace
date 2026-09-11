@@ -12,6 +12,7 @@ dependencies = [
   "argon2-cffi>=23.1,<26",
   "celery>=5.4,<6",
   "fastapi>=0.115,<0.116",
+  "pillow>=10,<13",
   "psycopg[binary]>=3.2,<4",
   "pydantic-settings>=2.6,<3",
   "redis>=5,<7",
@@ -23,7 +24,6 @@ dependencies = [
 test = [
   "anyio>=4.4,<4.15",
   "httpx>=0.27,<0.29",
-  "pillow>=10,<13",
   "pytest>=8,<10",
   "PyYAML>=6,<7",
 ]
