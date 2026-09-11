@@ -76,7 +76,10 @@ test("Visitor browses only the current release with shareable filters", async ({
           { id: "50000000-0000-4000-8000-000000000001", revision_id: "51000000-0000-4000-8000-000000000001", lineage_id: "40000000-0000-4000-8000-000000000001", parent_compound_id: "30000000-0000-4000-8000-000000000001", derived_compound_id: "30000000-0000-4000-8000-000000000002", relation_type: "direct_optimization", relation_status: "text_explicit", pair_ready: true },
           { id: "50000000-0000-4000-8000-000000000002", revision_id: "51000000-0000-4000-8000-000000000002", lineage_id: "40000000-0000-4000-8000-000000000001", parent_compound_id: null, derived_compound_id: "30000000-0000-4000-8000-000000000003", relation_type: null, relation_status: "unresolved", pair_ready: false },
         ],
-        structures: [{ id: "60000000-0000-4000-8000-000000000001", revision_id: "61000000-0000-4000-8000-000000000001", compound_id: "30000000-0000-4000-8000-000000000002", state: "structure_confirmed", canonical_smiles: "CCN" }],
+        structures: [
+          { id: "60000000-0000-4000-8000-000000000000", revision_id: "61000000-0000-4000-8000-000000000000", compound_id: "30000000-0000-4000-8000-000000000001", state: "structure_confirmed", canonical_smiles: "CCO" },
+          { id: "60000000-0000-4000-8000-000000000001", revision_id: "61000000-0000-4000-8000-000000000001", compound_id: "30000000-0000-4000-8000-000000000002", state: "structure_confirmed", canonical_smiles: "CCN" },
+        ],
         evidence: [{ id: "70000000-0000-4000-8000-000000000001", revision_id: "71000000-0000-4000-8000-000000000001", state: "confirmed", text: "Potency improved." }],
         activities: [{ id: "80000000-0000-4000-8000-000000000001", revision_id: "81000000-0000-4000-8000-000000000001", compound_id: "30000000-0000-4000-8000-000000000002", state: "confirmed", metric: "IC50", value: "12", unit: "nM", qualifier: "=" }],
         quality_summary: {
@@ -116,7 +119,7 @@ test("Visitor browses only the current release with shareable filters", async ({
   await expect(page.getByRole("heading", { name: "Published optimization study 24" })).toBeVisible();
   await expect(page.getByText("LINEAGE-1")).toBeVisible();
   await expect(page.locator("[data-edge-status='unresolved']")).toContainText("关系待解析");
-  await expect(page.locator("[data-confirmed-structure]")).toContainText("CCN");
+  await expect(page.getByText("CCN", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("已核查证据")).toBeVisible();
   await expect(page.getByText("Potency improved.")).toBeVisible();
   await expect(page.getByRole("link", { name: /原始 PDF/ })).toHaveCount(0);

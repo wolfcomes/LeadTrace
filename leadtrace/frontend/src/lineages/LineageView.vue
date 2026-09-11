@@ -49,7 +49,16 @@ function compoundLabel(compoundId: string | null): string {
 }
 
 function canRenderPair(edge: LineageEdge): boolean {
-  return edge.pair_ready && edgeState(edge) === "resolved";
+  if (!edge.pair_ready || edgeState(edge) !== "resolved" || !edge.parent_compound_id) {
+    return false;
+  }
+  const hasConfirmedStructure = (compoundId: string): boolean => props.structures.some(
+    (structure) => structure.compound_id === compoundId
+      && structure.state === "structure_confirmed"
+      && Boolean(structure.canonical_smiles),
+  );
+  return hasConfirmedStructure(edge.parent_compound_id)
+    && hasConfirmedStructure(edge.derived_compound_id);
 }
 </script>
 

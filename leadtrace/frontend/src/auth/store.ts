@@ -17,6 +17,7 @@ export const useAuthStore = defineStore("auth", () => {
   const initialized = ref(false);
   const busy = ref(false);
   const loginError = ref<string | null>(null);
+  const serviceUnavailable = ref(false);
   const authenticated = computed(() => user.value !== null);
 
   function acceptSession(session: AuthenticationResponse): void {
@@ -24,6 +25,7 @@ export const useAuthStore = defineStore("auth", () => {
     csrfToken.value = session.csrf_token;
     initialized.value = true;
     loginError.value = null;
+    serviceUnavailable.value = false;
   }
 
   function clearSession(): void {
@@ -42,6 +44,11 @@ export const useAuthStore = defineStore("auth", () => {
       ));
     } catch (error) {
       clearSession();
+      if (error instanceof ApiError && error.kind === "unavailable") {
+        serviceUnavailable.value = true;
+        loginError.value = zhCN.auth.unavailableError;
+        return;
+      }
       if (!(error instanceof ApiError && error.status === 401)) throw error;
     }
   }
@@ -49,6 +56,7 @@ export const useAuthStore = defineStore("auth", () => {
   async function login(username: string, password: string): Promise<boolean> {
     busy.value = true;
     loginError.value = null;
+    serviceUnavailable.value = false;
     try {
       acceptSession(await apiRequest(
         "/api/v1/auth/login",
@@ -60,8 +68,10 @@ export const useAuthStore = defineStore("auth", () => {
         },
       ));
       return true;
-    } catch {
-      loginError.value = zhCN.auth.genericError;
+    } catch (error) {
+      loginError.value = error instanceof ApiError && error.kind === "unavailable"
+        ? zhCN.auth.unavailableError
+        : zhCN.auth.genericError;
       return false;
     } finally {
       busy.value = false;
@@ -101,6 +111,7 @@ export const useAuthStore = defineStore("auth", () => {
     initialized,
     busy,
     loginError,
+    serviceUnavailable,
     authenticated,
     acceptSession,
     clearSession,

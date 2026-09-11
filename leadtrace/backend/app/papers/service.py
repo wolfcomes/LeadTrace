@@ -9,18 +9,23 @@ from sqlalchemy.orm import Session
 
 from app.activities.models import Activity
 from app.api.errors import APIError
+from app.compounds.models import Compound
 from app.evidence.models import Evidence
 from app.lineages.models import Lineage, LineageEdge
 from app.papers.repository import (
     PaperListFilters,
     PublishedPaperRow,
-    compounds_by_ids,
     get_published_paper,
     list_published_papers,
     release_items_for_paper,
 )
 from app.releases.models import Release
-from app.revisions.models import ObjectKind, StructureState
+from app.revisions.models import (
+    ActivityState,
+    EvidenceState,
+    ObjectKind,
+    StructureState,
+)
 from app.structures.models import Structure
 
 
@@ -76,10 +81,21 @@ def paper_list_payload(
     }
 
 
-def _models_by_id(session: Session, model: type, ids: set[UUID]) -> dict[UUID, object]:
+def _models_by_id(
+    session: Session,
+    model: type,
+    ids: set[UUID],
+    *,
+    paper_id: UUID,
+) -> dict[UUID, object]:
     if not ids:
         return {}
-    return {item.id: item for item in session.scalars(select(model).where(model.id.in_(ids)))}
+    return {
+        item.id: item
+        for item in session.scalars(
+            select(model).where(model.id.in_(ids), model.paper_id == paper_id)
+        )
+    }
 
 
 def paper_detail_payload(
@@ -96,31 +112,44 @@ def paper_detail_payload(
     ids_by_kind: dict[ObjectKind, set[UUID]] = {}
     for item, _ in entries:
         ids_by_kind.setdefault(item.object_kind, set()).add(item.object_id)
-    compounds = compounds_by_ids(session, ids_by_kind.get(ObjectKind.COMPOUND, set()))
+    compounds = {
+        compound.id: compound
+        for compound in session.scalars(
+            select(Compound).where(
+                Compound.id.in_(ids_by_kind.get(ObjectKind.COMPOUND, set())),
+                Compound.paper_id == paper_id,
+            )
+        )
+    }
     lineages = _models_by_id(
         session,
         Lineage,
         ids_by_kind.get(ObjectKind.LINEAGE, set()),
+        paper_id=paper_id,
     )
     structures = _models_by_id(
         session,
         Structure,
         ids_by_kind.get(ObjectKind.STRUCTURE, set()),
+        paper_id=paper_id,
     )
     evidence = _models_by_id(
         session,
         Evidence,
         ids_by_kind.get(ObjectKind.EVIDENCE, set()),
+        paper_id=paper_id,
     )
     activities = _models_by_id(
         session,
         Activity,
         ids_by_kind.get(ObjectKind.ACTIVITY, set()),
+        paper_id=paper_id,
     )
     edges = _models_by_id(
         session,
         LineageEdge,
         ids_by_kind.get(ObjectKind.LINEAGE_EDGE, set()),
+        paper_id=paper_id,
     )
 
     compound_payload: list[dict[str, object]] = []
@@ -129,6 +158,14 @@ def paper_detail_payload(
     evidence_payload: list[dict[str, object]] = []
     activity_payload: list[dict[str, object]] = []
     edge_payload: list[dict[str, object]] = []
+    confirmed_structure_ids = {
+        structure.compound_id
+        for item, revision in entries
+        if item.object_kind is ObjectKind.STRUCTURE
+        and (structure := structures.get(item.object_id)) is not None
+        and revision.structure_state is StructureState.STRUCTURE_CONFIRMED
+        and bool(revision.canonical_smiles)
+    }
     reviewed = 0
     for item, revision in entries:
         normalized = revision.snapshot.get("normalized_values", {})
@@ -139,7 +176,9 @@ def paper_detail_payload(
         }:
             reviewed += 1
         if item.object_kind is ObjectKind.COMPOUND:
-            compound = compounds[item.object_id]
+            compound = compounds.get(item.object_id)
+            if compound is None:
+                continue
             compound_payload.append(
                 {
                     "id": str(compound.id),
@@ -149,8 +188,9 @@ def paper_detail_payload(
                 }
             )
         elif item.object_kind is ObjectKind.LINEAGE:
-            lineage = lineages[item.object_id]
-            assert isinstance(lineage, Lineage)
+            lineage = lineages.get(item.object_id)
+            if lineage is None:
+                continue
             lineage_payload.append(
                 {
                     "id": str(lineage.id),
@@ -159,8 +199,9 @@ def paper_detail_payload(
                 }
             )
         elif item.object_kind is ObjectKind.STRUCTURE:
-            structure = structures[item.object_id]
-            assert isinstance(structure, Structure)
+            structure = structures.get(item.object_id)
+            if structure is None:
+                continue
             structure_payload.append(
                 {
                     "id": str(structure.id),
@@ -173,8 +214,9 @@ def paper_detail_payload(
                 }
             )
         elif item.object_kind is ObjectKind.EVIDENCE:
-            evidence_record = evidence[item.object_id]
-            assert isinstance(evidence_record, Evidence)
+            evidence_record = evidence.get(item.object_id)
+            if evidence_record is None or revision.evidence_state is not EvidenceState.CONFIRMED:
+                continue
             evidence_payload.append(
                 {
                     "id": str(evidence_record.id),
@@ -186,8 +228,9 @@ def paper_detail_payload(
                 }
             )
         elif item.object_kind is ObjectKind.ACTIVITY:
-            activity = activities[item.object_id]
-            assert isinstance(activity, Activity)
+            activity = activities.get(item.object_id)
+            if activity is None or revision.activity_state is not ActivityState.CONFIRMED:
+                continue
             activity_payload.append(
                 {
                     "id": str(activity.id),
@@ -205,14 +248,31 @@ def paper_detail_payload(
                 }
             )
         elif item.object_kind is ObjectKind.LINEAGE_EDGE:
-            edge = edges[item.object_id]
-            assert isinstance(edge, LineageEdge)
-            pair_eligible = (
-                isinstance(normalized, dict)
-                and normalized.get("pair_eligible") == "yes"
-                and edge.parent_compound_id is not None
-                and edge.parent_compound_id != edge.derived_compound_id
-            )
+            edge = edges.get(item.object_id)
+            if edge is None:
+                continue
+            parent_id = edge.parent_compound_id
+            derived_id = edge.derived_compound_id
+            # Pair readiness is derived from release-pinned, confirmed data;
+            # a snapshot hint alone can never promote a pair.
+            pair_blockers: list[str] = []
+            if not isinstance(normalized, dict) or normalized.get("pair_eligible") != "yes":
+                pair_blockers.append("not_marked_eligible")
+            if revision.relation_status in {None, "unresolved", "invalid"}:
+                pair_blockers.append("relation_unresolved")
+            if parent_id is None:
+                pair_blockers.append("parent_missing")
+            elif parent_id == derived_id:
+                pair_blockers.append("self_loop")
+            elif parent_id not in compounds:
+                pair_blockers.append("parent_not_in_paper")
+            if derived_id not in compounds:
+                pair_blockers.append("derived_not_in_paper")
+            if parent_id is not None and parent_id not in confirmed_structure_ids:
+                pair_blockers.append("parent_structure_unconfirmed")
+            if derived_id not in confirmed_structure_ids:
+                pair_blockers.append("derived_structure_unconfirmed")
+            pair_eligible = not pair_blockers
             edge_payload.append(
                 {
                     "id": str(edge.id),
@@ -225,6 +285,7 @@ def paper_detail_payload(
                     "relation_type": revision.relation_type,
                     "relation_status": revision.relation_status,
                     "pair_ready": pair_eligible,
+                    "pair_blockers": pair_blockers,
                 }
             )
 

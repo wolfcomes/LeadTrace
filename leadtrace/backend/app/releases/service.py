@@ -31,7 +31,12 @@ class PublishedRelease:
 
 
 def get_current_release(session: Session) -> Release:
-    release = session.scalar(select(Release).where(Release.is_current.is_(True)))
+    release = session.scalar(
+        select(Release).where(
+            Release.is_current.is_(True),
+            Release.manifest_finalized.is_(True),
+        )
+    )
     if release is None:
         raise APIError(
             404,

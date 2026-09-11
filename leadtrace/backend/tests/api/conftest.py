@@ -174,13 +174,18 @@ def _add_detail_objects(
         compound_id=derived.id,
         structure_key="STRUCTURE-1",
     )
+    parent_structure = Structure(
+        paper_id=paper.id,
+        compound_id=parent.id,
+        structure_key="STRUCTURE-PARENT",
+    )
     evidence = Evidence(paper_id=paper.id, evidence_key="EVIDENCE-1")
     activity = Activity(
         paper_id=paper.id,
         compound_id=derived.id,
         activity_key="ACTIVITY-1",
     )
-    session.add_all([lineage, structure, evidence, activity])
+    session.add_all([lineage, structure, parent_structure, evidence, activity])
     session.flush()
     edge = LineageEdge(
         paper_id=paper.id,
@@ -206,6 +211,14 @@ def _add_detail_objects(
     )
     structure_revision.structure_state = StructureState.STRUCTURE_CONFIRMED
     structure_revision.canonical_smiles = "CCN"
+    parent_structure_revision = _revision(
+        parent_structure,
+        actor_id=actor_id,
+        revision_number=1,
+        snapshot={"normalized_values": {"compound_label": "26a′"}},
+    )
+    parent_structure_revision.structure_state = StructureState.STRUCTURE_CONFIRMED
+    parent_structure_revision.canonical_smiles = "CCO"
     evidence_revision = _revision(
         evidence,
         actor_id=actor_id,
@@ -235,6 +248,7 @@ def _add_detail_objects(
     revisions = [
         lineage_revision,
         structure_revision,
+        parent_structure_revision,
         evidence_revision,
         activity_revision,
         edge_revision,
@@ -247,6 +261,7 @@ def _add_detail_objects(
         (derived, derived_revision),
         (lineage, lineage_revision),
         (structure, structure_revision),
+        (parent_structure, parent_structure_revision),
         (evidence, evidence_revision),
         (activity, activity_revision),
         (edge, edge_revision),
@@ -300,6 +315,7 @@ def published_api(
             published_by_id=admin.id,
             published_at=datetime(2026, 9, 11, 1, 0, tzinfo=UTC),
             is_current=True,
+            manifest_finalized=False,
         )
         session.add(release)
         session.flush()
@@ -363,8 +379,10 @@ def published_api(
                 snapshot=_paper_snapshot(99, "Hidden draft"),
                 workflow_state=WorkflowState.DRAFT,
             )
-        )
+            )
         _add_detail_objects(session, release, detail_paper, admin.id)
+        session.flush()
+        release.manifest_finalized = True
         session.flush()
 
         ordered = list(reversed(papers))

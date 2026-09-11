@@ -50,6 +50,10 @@ function restoreFormFromRoute(): void {
 }
 
 function currentQuery(): PaperQuery {
+  const requestedSort = queryValue("sort");
+  const normalizedSort = ["manifest", "paper_id", "-paper_id", "title", "-title"].includes(requestedSort)
+    ? requestedSort as PaperQuery["sort"]
+    : "manifest";
   return {
     page: pageFromQuery(),
     page_size: 20,
@@ -62,7 +66,7 @@ function currentQuery(): PaperQuery {
     relation_status: queryValue("relation_status") || undefined,
     structure_state: queryValue("structure_state") || undefined,
     review_status: queryValue("review_status") || undefined,
-    sort: (queryValue("sort") || "manifest") as PaperQuery["sort"],
+    sort: normalizedSort,
   };
 }
 

@@ -65,7 +65,10 @@ def _published_paper_query(release_id: UUID) -> Select:
             (ObjectRevision.id == ReleaseItem.revision_id)
             & (ObjectRevision.object_id == Paper.id),
         )
-        .where(ReleaseItem.release_id == release_id)
+        .where(
+            ReleaseItem.release_id == release_id,
+            ReleaseItem.paper_id == Paper.id,
+        )
     )
 
 

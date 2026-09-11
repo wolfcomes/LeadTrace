@@ -94,4 +94,12 @@ describe("role-aware application navigation", () => {
     expect(wrapper.get(".skip-link").attributes("href")).toBe("#main-content");
     expect(wrapper.get("main").attributes("id")).toBe("main-content");
   });
+
+  it("blocks direct navigation to role-restricted routes", async () => {
+    const router = createAppRouter(createMemoryHistory());
+    useAuthStore().acceptSession({ user: users.visitor, csrf_token: "csrf" });
+    await router.push("/admin/users");
+    await router.isReady();
+    expect(router.currentRoute.value.path).toBe("/overview");
+  });
 });

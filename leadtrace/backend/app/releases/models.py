@@ -56,6 +56,11 @@ class Release(UUIDPrimaryKeyMixin, Base):
         nullable=False,
     )
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    manifest_finalized: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

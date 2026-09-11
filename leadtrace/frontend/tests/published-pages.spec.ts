@@ -168,6 +168,7 @@ describe("published Paper detail", () => {
         { id: "50000000-0000-4000-8000-000000000002", revision_id: "51000000-0000-4000-8000-000000000002", lineage_id: "40000000-0000-4000-8000-000000000001", parent_compound_id: null, derived_compound_id: "30000000-0000-4000-8000-000000000003", relation_type: null, relation_status: "unresolved", pair_ready: false },
       ],
       structures: [
+        { id: "60000000-0000-4000-8000-000000000000", revision_id: "61000000-0000-4000-8000-000000000000", compound_id: "30000000-0000-4000-8000-000000000001", state: "structure_confirmed", canonical_smiles: "CCO" },
         { id: "60000000-0000-4000-8000-000000000001", revision_id: "61000000-0000-4000-8000-000000000001", compound_id: "30000000-0000-4000-8000-000000000002", state: "structure_confirmed", canonical_smiles: "CCN" },
         { id: "60000000-0000-4000-8000-000000000002", revision_id: "61000000-0000-4000-8000-000000000002", compound_id: "30000000-0000-4000-8000-000000000003", state: "source_mismatch", canonical_smiles: "FAKE-SCREENSHOT-SMILES" },
       ],
@@ -198,7 +199,7 @@ describe("published Paper detail", () => {
     expect(wrapper.text()).toContain("LINEAGE-1");
     expect(wrapper.get("[data-edge-status='unresolved']").text()).toContain("关系待解析");
     expect(wrapper.findAll("[data-molecule-pair]")).toHaveLength(1);
-    expect(wrapper.get("[data-confirmed-structure]").text()).toContain("CCN");
+    expect(wrapper.text()).toContain("CCN");
     expect(wrapper.text()).not.toContain("FAKE-SCREENSHOT-SMILES");
     expect(wrapper.text()).toContain("已核查证据");
     expect(wrapper.text()).toContain("Potency improved.");

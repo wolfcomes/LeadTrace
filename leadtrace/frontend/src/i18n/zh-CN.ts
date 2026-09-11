@@ -16,6 +16,7 @@ export const zhCN = {
     signIn: "登录",
     signingIn: "正在验证…",
     genericError: "用户名或密码错误，请重试。",
+    unavailableError: "服务暂时不可用，请稍后重试。",
     changeEyebrow: "首次登录保护",
     changeTitle: "设置新的登录密码",
     changeDescription: "继续前必须更换管理员提供的一次性密码。",
