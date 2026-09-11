@@ -462,6 +462,8 @@ class CommentService:
                 {scoped_item.id, scoped_item.object_id}
                 if scoped_item is not None
                 else {
+                    changeset.id,
+                    changeset.paper_id,
                     *(item.id for item in changeset_items),
                     *(item.object_id for item in changeset_items),
                 }

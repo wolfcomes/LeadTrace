@@ -876,3 +876,50 @@ def test_comment_api_preserves_resolution_history_and_scope_boundaries(
                 )
             )
         session.rollback()
+
+
+def test_field_comment_can_target_paper_before_paper_item_is_added(
+    tmp_path: Path,
+    postgresql_database_url: str,
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        seeded = _seed_review(session)
+        changeset = ReviewService().create_changeset(
+            session,
+            paper_id=seeded["paper"],
+            actor_id=seeded["review-api-reviewer"],
+            review_task_id=seeded["task"],
+            base_release_id=seeded["release"],
+            title="Paper field review",
+            reason="Discuss a Paper field before creating an item",
+        )
+        changeset_id = changeset.id
+
+    resources = DatabaseResources(
+        engine=auth_session_factory.kw["bind"],
+        session_factory=auth_session_factory,
+    )
+    application = create_app(
+        settings=_settings(tmp_path, postgresql_database_url),
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+    with TestClient(application) as client:
+        reviewer_csrf = _login(
+            client,
+            str(seeded["review-api-reviewer-username"]),
+        )
+        response = client.post(
+            f"/api/v1/review/changesets/{changeset_id}/comments",
+            headers={"X-CSRF-Token": reviewer_csrf},
+            json={
+                "target_type": "field",
+                "target_id": str(seeded["paper"]),
+                "field_path": "/title",
+                "body": "The Paper title needs source verification.",
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.json()["target_id"] == str(seeded["paper"])
