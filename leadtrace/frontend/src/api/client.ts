@@ -16,6 +16,7 @@ export class ApiError extends Error {
     readonly code: string,
     readonly requestId: string | undefined,
     readonly kind: ApiFailureKind,
+    readonly details: Record<string, unknown> = {},
   ) {
     super(`LeadTrace API request failed (${code})`);
     this.name = "ApiError";
@@ -70,10 +71,17 @@ export async function apiRequest<T>(
     const requestId = parsed.success
       ? parsed.data.request_id
       : response.headers.get("X-Request-ID") ?? undefined;
+    const details = parsed.success ? parsed.data.details : {};
     if (response.status === 401 && !suppressUnauthorizedHandler) {
       unauthorizedHandler?.();
     }
-    throw new ApiError(response.status, code, requestId, failureKind(response.status));
+    throw new ApiError(
+      response.status,
+      code,
+      requestId,
+      failureKind(response.status),
+      details,
+    );
   }
   if (response.status === 204) return schema.parse(undefined);
   return schema.parse(await response.json());

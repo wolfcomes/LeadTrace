@@ -26,7 +26,7 @@ from app.reviews.comments import (
     ReviewComment,
     ReviewCommentEvent,
 )
-from app.reviews.service import ReviewService
+from app.reviews.service import InvalidReview, ReviewService
 from app.security.policies import WorkflowState
 from app.users.models import UserRole
 from app.users.service import UserService
@@ -550,6 +550,158 @@ def test_changeset_diff_includes_visual_region_revision_columns(
                 },
             ],
         }
+    ]
+
+
+def test_changeset_item_can_copy_complete_release_pinned_base_snapshot(
+    tmp_path: Path,
+    postgresql_database_url: str,
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        seeded = _seed_review(session)
+        changeset = ReviewService().create_changeset(
+            session,
+            paper_id=seeded["paper"],
+            actor_id=seeded["review-api-reviewer"],
+            review_task_id=seeded["task"],
+            base_release_id=seeded["release"],
+            title="Copy complete release snapshot",
+            reason="Initialize a lossless review draft",
+        )
+        base_revision = session.get(ObjectRevision, seeded["paper_revision"])
+        assert base_revision is not None
+        expected_snapshot = base_revision.snapshot
+        changeset_id = changeset.id
+
+    resources = DatabaseResources(
+        engine=auth_session_factory.kw["bind"],
+        session_factory=auth_session_factory,
+    )
+    application = create_app(
+        settings=_settings(tmp_path, postgresql_database_url),
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+    with TestClient(application) as client:
+        csrf = _login(client, str(seeded["review-api-reviewer-username"]))
+        response = client.post(
+            f"/api/v1/review/changesets/{changeset_id}/items/from-base",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "expected_version": 1,
+                "object_id": str(seeded["paper"]),
+                "object_kind": ObjectKind.PAPER.value,
+            },
+        )
+        diff_response = client.get(
+            f"/api/v1/review/changesets/{changeset_id}/diff"
+        )
+
+    assert response.status_code == 201
+    assert response.json()["base_revision_id"] == str(seeded["paper_revision"])
+    assert response.json()["proposed_snapshot"] == expected_snapshot
+    assert response.json()["changeset_version"] == 2
+    assert diff_response.status_code == 200
+    assert diff_response.json()[0]["change_type"] == "no_change"
+    assert diff_response.json()[0]["changes"] == []
+
+
+def test_changeset_base_initialization_rolls_back_if_an_item_cannot_be_copied(
+    tmp_path: Path,
+    postgresql_database_url: str,
+    auth_session_factory,
+    monkeypatch,
+) -> None:
+    with auth_session_factory.begin() as session:
+        seeded = _seed_review(session)
+
+    def reject_copy(*args, **kwargs):
+        raise InvalidReview("Injected base-copy failure")
+
+    monkeypatch.setattr(ReviewService, "add_changeset_item", reject_copy)
+    resources = DatabaseResources(
+        engine=auth_session_factory.kw["bind"],
+        session_factory=auth_session_factory,
+    )
+    application = create_app(
+        settings=_settings(tmp_path, postgresql_database_url),
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+    with TestClient(application) as client:
+        csrf = _login(client, str(seeded["review-api-reviewer-username"]))
+        response = client.post(
+            "/api/v1/review/changesets",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "review_task_id": str(seeded["task"]),
+                "paper_id": str(seeded["paper"]),
+                "base_release_id": str(seeded["release"]),
+                "title": "Initialize a complete review draft",
+                "reason": "Copy the release-pinned metadata and evidence",
+                "initialize_from_base": True,
+            },
+        )
+        listed = client.get("/api/v1/review/changesets")
+
+    assert response.status_code == 422
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+
+def test_changeset_base_initialization_copies_scoped_release_items_atomically(
+    tmp_path: Path,
+    postgresql_database_url: str,
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        seeded = _seed_review(session)
+
+    resources = DatabaseResources(
+        engine=auth_session_factory.kw["bind"],
+        session_factory=auth_session_factory,
+    )
+    application = create_app(
+        settings=_settings(tmp_path, postgresql_database_url),
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+    with TestClient(application) as client:
+        csrf = _login(client, str(seeded["review-api-reviewer-username"]))
+        response = client.post(
+            "/api/v1/review/changesets",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "review_task_id": str(seeded["task"]),
+                "paper_id": str(seeded["paper"]),
+                "base_release_id": str(seeded["release"]),
+                "title": "Initialize a complete review draft",
+                "reason": "Copy the release-pinned metadata and evidence",
+                "initialize_from_base": True,
+            },
+        )
+        items = client.get(
+            f"/api/v1/review/changesets/{response.json()['id']}/items"
+        )
+
+    with auth_session_factory.begin() as session:
+        audit_actions = list(
+            session.scalars(
+                select(AuditEvent.action)
+                .where(AuditEvent.changeset_id == UUID(response.json()["id"]))
+                .order_by(AuditEvent.sequence_number)
+            )
+        )
+
+    assert response.status_code == 201
+    assert response.json()["version"] == 2
+    assert items.status_code == 200
+    assert [item["object_kind"] for item in items.json()] == ["paper"]
+    assert items.json()[0]["base_revision_id"] == str(seeded["paper_revision"])
+    assert audit_actions == [
+        "review.changeset.created",
+        "review.changeset_item.created_from_base",
     ]
 
 

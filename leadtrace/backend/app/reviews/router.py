@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -21,6 +22,7 @@ from app.reviews.schemas import (
     ChangesetDecisionRequest,
     ChangesetItemCreateRequest,
     ChangesetItemDeleteRequest,
+    ChangesetItemFromBaseRequest,
     ChangesetItemResponse,
     ChangesetItemUpdateRequest,
     ChangesetMutationResponse,
@@ -55,9 +57,10 @@ from app.reviews.service import (
     ReviewService,
     ReviewStateConflict,
 )
+from app.releases.models import ReleaseItem
 from app.reviews.models import ChangesetItem, ReviewTask
 from app.revisions.diff import build_revision_diff
-from app.revisions.models import ObjectRevision
+from app.revisions.models import ObjectKind, ObjectRevision
 from app.security.permissions import (
     RouteAccess,
     declare_route_access,
@@ -96,6 +99,33 @@ def _dedicated_fields_for_revision(
         "relation_status": revision.relation_status,
         "relation_type": revision.relation_type,
     }
+
+
+_MISSING = object()
+_DEDICATED_FIELD_NAMES = (
+    "activity_metric",
+    "activity_unit",
+    "activity_value",
+    "canonical_smiles",
+    "evidence_text",
+    "relation_status",
+    "relation_type",
+)
+
+
+def _draft_dedicated_fields(
+    base: ObjectRevision | None,
+    snapshot: Mapping[str, object],
+) -> dict[str, object] | None:
+    fields = _dedicated_fields_for_revision(base) or {}
+    normalized = snapshot.get("normalized_values")
+    for field in _DEDICATED_FIELD_NAMES:
+        candidate = snapshot.get(field, _MISSING)
+        if candidate is _MISSING and isinstance(normalized, Mapping):
+            candidate = normalized.get(field, _MISSING)
+        if candidate is not _MISSING:
+            fields[field] = candidate
+    return fields or None
 
 
 def create_reviews_router(session_secret: str) -> APIRouter:
@@ -530,7 +560,9 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                     title=payload.title,
                     reason=payload.reason,
                 )
-                after = ChangesetResponse.from_model(changeset).model_dump(mode="json")
+                created = ChangesetResponse.from_model(changeset).model_dump(
+                    mode="json"
+                )
                 append_review_audit(
                     session,
                     request=request,
@@ -543,8 +575,67 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                     release_id=changeset.base_release_id,
                     reason=changeset.reason,
                     before=None,
-                    after=after,
+                    after=created,
                 )
+                if payload.initialize_from_base:
+                    base_entries = list(
+                        session.execute(
+                            select(ReleaseItem, ObjectRevision)
+                            .join(
+                                ObjectRevision,
+                                (ObjectRevision.id == ReleaseItem.revision_id)
+                                & (ObjectRevision.object_id == ReleaseItem.object_id),
+                            )
+                            .where(
+                                ReleaseItem.release_id == changeset.base_release_id,
+                                ReleaseItem.paper_id == changeset.paper_id,
+                                ReleaseItem.object_kind.in_(
+                                    [ObjectKind.PAPER, ObjectKind.EVIDENCE]
+                                ),
+                            )
+                            .order_by(ReleaseItem.manifest_order, ReleaseItem.id)
+                        )
+                    )
+                    if not any(
+                        release_item.object_kind is ObjectKind.PAPER
+                        for release_item, _ in base_entries
+                    ):
+                        raise ReviewNotFound("Base release Paper item not found")
+                    for sequence, (release_item, base_revision) in enumerate(
+                        base_entries,
+                        start=1,
+                    ):
+                        item = service.add_changeset_item(
+                            session,
+                            changeset_id=changeset.id,
+                            actor_id=principal.user_id,
+                            expected_version=changeset.version,
+                            object_id=release_item.object_id,
+                            object_kind=release_item.object_kind.value,
+                            base_revision_id=base_revision.id,
+                            proposed_snapshot=base_revision.snapshot,
+                            sequence=sequence,
+                        )
+                        item_after = ChangesetItemResponse.from_model(
+                            item,
+                            changeset_version=changeset.version,
+                        ).model_dump(mode="json")
+                        append_review_audit(
+                            session,
+                            request=request,
+                            actor_id=principal.user_id,
+                            action="review.changeset_item.created_from_base",
+                            target_type="changeset_item",
+                            target_id=item.id,
+                            paper_id=changeset.paper_id,
+                            changeset_id=changeset.id,
+                            release_id=changeset.base_release_id,
+                            reason=(
+                                "Copied release-pinned revision into review draft"
+                            ),
+                            before=None,
+                            after=item_after,
+                        )
         except (
             ReviewNotFound,
             ReviewForbidden,
@@ -664,11 +755,20 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                             before_dedicated_fields=_dedicated_fields_for_revision(
                                 base
                             ),
-                            after_dedicated_fields=_dedicated_fields_for_revision(
-                                proposed
+                            after_dedicated_fields=(
+                                _dedicated_fields_for_revision(proposed)
+                                if proposed is not None
+                                else _draft_dedicated_fields(
+                                    base,
+                                    item.proposed_snapshot,
+                                )
                             ),
                             before_region_fields=_region_fields_for_revision(base),
-                            after_region_fields=_region_fields_for_revision(proposed),
+                            after_region_fields=(
+                                _region_fields_for_revision(proposed)
+                                if proposed is not None
+                                else _region_fields_for_revision(base)
+                            ),
                             before_tombstone=(base.is_tombstone if base else False),
                             after_tombstone=(
                                 proposed.is_tombstone if proposed else False
@@ -723,6 +823,88 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                     changeset_id=changeset.id,
                     release_id=changeset.base_release_id,
                     reason="Created changeset item",
+                    before=None,
+                    after=after,
+                )
+        except (
+            ReviewNotFound,
+            ReviewForbidden,
+            InvalidReview,
+            RevisionConflict,
+            IntegrityError,
+        ) as error:
+            raise as_error(error) from error
+        return ChangesetItemResponse.from_model(
+            item,
+            changeset_version=changeset.version,
+        )
+
+    @router.post(
+        "/changesets/{changeset_id}/items/from-base",
+        response_model=ChangesetItemResponse,
+        status_code=201,
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def create_changeset_item_from_base(
+        changeset_id: UUID,
+        payload: ChangesetItemFromBaseRequest,
+        request: Request,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    ) -> ChangesetItemResponse:
+        require_reviewer_or_admin(principal)
+        verify_csrf(principal, csrf_token)
+        try:
+            with session.begin():
+                changeset = service.get_changeset(
+                    session,
+                    changeset_id,
+                    for_update=True,
+                )
+                release_entry = session.execute(
+                    select(ReleaseItem, ObjectRevision)
+                    .join(
+                        ObjectRevision,
+                        (ObjectRevision.id == ReleaseItem.revision_id)
+                        & (ObjectRevision.object_id == ReleaseItem.object_id),
+                    )
+                    .where(
+                        ReleaseItem.release_id == changeset.base_release_id,
+                        ReleaseItem.paper_id == changeset.paper_id,
+                        ReleaseItem.object_id == payload.object_id,
+                        ReleaseItem.object_kind == payload.object_kind,
+                    )
+                ).one_or_none()
+                if release_entry is None:
+                    raise ReviewNotFound("Base release item not found")
+                _, base_revision = release_entry
+                item = service.add_changeset_item(
+                    session,
+                    changeset_id=changeset.id,
+                    actor_id=principal.user_id,
+                    expected_version=payload.expected_version,
+                    object_id=payload.object_id,
+                    object_kind=payload.object_kind.value,
+                    base_revision_id=base_revision.id,
+                    proposed_snapshot=base_revision.snapshot,
+                    sequence=payload.sequence,
+                )
+                after = ChangesetItemResponse.from_model(
+                    item,
+                    changeset_version=changeset.version,
+                ).model_dump(mode="json")
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.changeset_item.created_from_base",
+                    target_type="changeset_item",
+                    target_id=item.id,
+                    paper_id=changeset.paper_id,
+                    changeset_id=changeset.id,
+                    release_id=changeset.base_release_id,
+                    reason="Copied release-pinned revision into review draft",
                     before=None,
                     after=after,
                 )

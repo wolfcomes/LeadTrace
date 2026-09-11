@@ -102,4 +102,12 @@ describe("role-aware application navigation", () => {
     await router.isReady();
     expect(router.currentRoute.value.path).toBe("/overview");
   });
+
+  it("keeps Visitor sessions out of Reviewer changeset routes", async () => {
+    const router = createAppRouter(createMemoryHistory());
+    useAuthStore().acceptSession({ user: users.visitor, csrf_token: "csrf" });
+    await router.push("/review/changesets/60000000-0000-4000-8000-000000000001");
+    await router.isReady();
+    expect(router.currentRoute.value.path).toBe("/overview");
+  });
 });

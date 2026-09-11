@@ -10,9 +10,10 @@ from sqlalchemy import select, text, update
 from sqlalchemy.engine import make_url
 
 from app.compounds.models import Compound
+from app.evidence.models import Evidence
 from app.papers.models import Paper
 from app.releases.models import Release, ReleaseItem
-from app.revisions.models import ObjectKind, ObjectRevision
+from app.revisions.models import EvidenceState, ObjectKind, ObjectRevision
 from app.revisions.service import RevisionService
 from app.reviews.comments import CommentService, CommentTargetType
 from app.reviews.models import ChangesetSubmission, ReviewTaskStatus
@@ -34,7 +35,7 @@ from app.users.service import UserService
 PASSWORD = "Review workflow test password 2026!"
 
 
-def _setup(session):
+def _setup(session, *, finalize_release: bool = True):
     users = UserService()
     reviewer = users.create_user(
         session,
@@ -95,8 +96,9 @@ def _setup(session):
         )
     )
     session.flush()
-    release.manifest_finalized = True
-    session.flush()
+    if finalize_release:
+        release.manifest_finalized = True
+        session.flush()
     return reviewer, other, admin, paper, paper_revision, release
 
 
@@ -233,6 +235,236 @@ def test_reviewer_can_create_and_submit_owned_changeset(
         assert changeset.workflow_state is WorkflowState.SUBMITTED
         assert task.status.value == "submitted"
         assert changeset.version == 3
+
+
+def test_evidence_edit_preserves_dedicated_state_and_updates_searchable_text(
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        reviewer, _, admin, paper, _, release = _setup(
+            session,
+            finalize_release=False,
+        )
+        evidence = Evidence(
+            paper_id=paper.id,
+            evidence_key=f"review-evidence-{uuid4().hex[:8]}",
+        )
+        session.add(evidence)
+        session.flush()
+        base_snapshot = {
+            "normalized_values": {
+                "evidence_text": "Published evidence text",
+                "source_locator": "page 4",
+            }
+        }
+        evidence_revision = RevisionService().create_revision(
+            session,
+            object_identity=evidence,
+            actor_id=admin.id,
+            reason="Published evidence base",
+            snapshot=base_snapshot,
+            workflow_state=WorkflowState.PUBLISHED,
+            is_current_published=True,
+            evidence_state=EvidenceState.CONFIRMED,
+            evidence_text="Published evidence text",
+            search_text="Published evidence text page 4",
+        )
+        session.add(
+            ReleaseItem(
+                release_id=release.id,
+                object_id=evidence.id,
+                revision_id=evidence_revision.id,
+                paper_id=paper.id,
+                object_kind=ObjectKind.EVIDENCE,
+                manifest_order=2,
+            )
+        )
+        session.flush()
+        release.manifest_finalized = True
+        session.flush()
+
+        service = ReviewService()
+        task = service.create_task(
+            session,
+            paper_id=paper.id,
+            assignee_id=reviewer.id,
+            created_by_id=admin.id,
+        )
+        changeset = service.create_changeset(
+            session,
+            paper_id=paper.id,
+            actor_id=reviewer.id,
+            review_task_id=task.id,
+            base_release_id=release.id,
+            title="Correct evidence transcription",
+            reason="Compare the excerpt against the source",
+        )
+        corrected_snapshot = {
+            "normalized_values": {
+                "evidence_text": "Corrected evidence text",
+                "source_locator": "page 4",
+            }
+        }
+        service.add_changeset_item(
+            session,
+            changeset_id=changeset.id,
+            actor_id=reviewer.id,
+            expected_version=1,
+            object_id=evidence.id,
+            object_kind=ObjectKind.EVIDENCE.value,
+            base_revision_id=evidence_revision.id,
+            proposed_snapshot=corrected_snapshot,
+        )
+        service.submit_changeset(
+            session,
+            changeset_id=changeset.id,
+            actor_id=reviewer.id,
+            expected_version=2,
+        )
+        proposed = session.scalar(
+            select(ObjectRevision).where(
+                ObjectRevision.changeset_id == changeset.id,
+                ObjectRevision.object_id == evidence.id,
+            )
+        )
+
+        assert proposed is not None
+        assert proposed.evidence_state is EvidenceState.CONFIRMED
+        assert proposed.evidence_text == "Corrected evidence text"
+        assert proposed.search_text == "Corrected evidence text page 4"
+
+
+def test_clearing_evidence_text_removes_it_from_searchable_text(
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        reviewer, _, admin, paper, _, release = _setup(
+            session,
+            finalize_release=False,
+        )
+        evidence = Evidence(
+            paper_id=paper.id,
+            evidence_key=f"review-evidence-{uuid4().hex[:8]}",
+        )
+        session.add(evidence)
+        session.flush()
+        evidence_revision = RevisionService().create_revision(
+            session,
+            object_identity=evidence,
+            actor_id=admin.id,
+            reason="Published evidence base",
+            snapshot={
+                "normalized_values": {
+                    "evidence_text": "Published evidence text",
+                    "source_locator": "page 4",
+                }
+            },
+            workflow_state=WorkflowState.PUBLISHED,
+            is_current_published=True,
+            evidence_state=EvidenceState.CONFIRMED,
+            evidence_text="Published evidence text",
+            search_text="Published evidence text page 4",
+        )
+        session.add(
+            ReleaseItem(
+                release_id=release.id,
+                object_id=evidence.id,
+                revision_id=evidence_revision.id,
+                paper_id=paper.id,
+                object_kind=ObjectKind.EVIDENCE,
+                manifest_order=2,
+            )
+        )
+        session.flush()
+        release.manifest_finalized = True
+        session.flush()
+
+        service = ReviewService()
+        task = service.create_task(
+            session,
+            paper_id=paper.id,
+            assignee_id=reviewer.id,
+            created_by_id=admin.id,
+        )
+        changeset = service.create_changeset(
+            session,
+            paper_id=paper.id,
+            actor_id=reviewer.id,
+            review_task_id=task.id,
+            base_release_id=release.id,
+            title="Clear invalid evidence transcription",
+            reason="The source does not contain this excerpt",
+        )
+        service.add_changeset_item(
+            session,
+            changeset_id=changeset.id,
+            actor_id=reviewer.id,
+            expected_version=1,
+            object_id=evidence.id,
+            object_kind=ObjectKind.EVIDENCE.value,
+            base_revision_id=evidence_revision.id,
+            proposed_snapshot={
+                "normalized_values": {
+                    "evidence_text": None,
+                    "source_locator": "page 4",
+                }
+            },
+        )
+        service.submit_changeset(
+            session,
+            changeset_id=changeset.id,
+            actor_id=reviewer.id,
+            expected_version=2,
+        )
+        proposed = session.scalar(
+            select(ObjectRevision).where(
+                ObjectRevision.changeset_id == changeset.id,
+                ObjectRevision.object_id == evidence.id,
+            )
+        )
+
+        assert proposed is not None
+        assert proposed.evidence_text is None
+        assert proposed.search_text == "page 4"
+
+
+def test_paper_edit_rejects_dedicated_fields_owned_by_other_object_kinds(
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        reviewer, _, admin, paper, paper_revision, release = _setup(session)
+        service = ReviewService()
+        task = service.create_task(
+            session,
+            paper_id=paper.id,
+            assignee_id=reviewer.id,
+            created_by_id=admin.id,
+        )
+        changeset = service.create_changeset(
+            session,
+            paper_id=paper.id,
+            actor_id=reviewer.id,
+            review_task_id=task.id,
+            base_release_id=release.id,
+            title="Correct Paper metadata",
+            reason="Review the title against the source",
+        )
+        with pytest.raises(InvalidReview, match="evidence_text is not valid for paper"):
+            service.add_changeset_item(
+                session,
+                changeset_id=changeset.id,
+                actor_id=reviewer.id,
+                expected_version=1,
+                object_id=paper.id,
+                object_kind=ObjectKind.PAPER.value,
+                base_revision_id=paper_revision.id,
+                proposed_snapshot={
+                    "normalized_values": {
+                        "title_guess": "Corrected Paper title",
+                        "evidence_text": "This field belongs to Evidence",
+                    }
+                },
+            )
 
 
 def test_reviewer_cannot_submit_another_reviewers_changeset(

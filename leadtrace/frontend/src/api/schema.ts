@@ -132,6 +132,102 @@ export const qualitySummarySchema = z.object({
   human_review: qualityCountSchema.extend({ reviewed: z.number().int().nonnegative() }),
 });
 
+export const reviewTaskStatusSchema = z.enum([
+  "open",
+  "in_progress",
+  "submitted",
+  "changes_requested",
+  "completed",
+]);
+
+export const workflowStateSchema = z.enum([
+  "draft",
+  "revised_draft",
+  "submitted",
+  "changes_requested",
+  "approved",
+  "published",
+  "superseded",
+  "rejected",
+]);
+
+export const reviewTaskSchema = z.object({
+  id: z.string().uuid(),
+  paper_id: z.string().uuid(),
+  assigned_reviewer_id: z.string().uuid(),
+  created_by_id: z.string().uuid(),
+  status: reviewTaskStatusSchema,
+  priority: z.number().int().nonnegative(),
+  version: z.number().int().positive(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const changesetSchema = z.object({
+  id: z.string().uuid(),
+  review_task_id: z.string().uuid(),
+  paper_id: z.string().uuid(),
+  owner_id: z.string().uuid(),
+  base_release_id: z.string().uuid(),
+  title: z.string(),
+  reason: z.string(),
+  workflow_state: workflowStateSchema,
+  version: z.number().int().positive(),
+  validation_results: z.record(z.string(), z.unknown()),
+  submitted_snapshot: z.record(z.string(), z.unknown()).nullable(),
+  submitted_at: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const changesetItemSchema = z.object({
+  id: z.string().uuid(),
+  changeset_id: z.string().uuid(),
+  paper_id: z.string().uuid(),
+  object_id: z.string().uuid(),
+  object_kind: z.enum([
+    "paper",
+    "compound",
+    "structure",
+    "evidence",
+    "activity",
+    "lineage",
+    "lineage_edge",
+    "visual_region",
+    "visual_object",
+  ]),
+  base_revision_id: z.string().uuid().nullable(),
+  proposed_revision_id: z.string().uuid().nullable(),
+  proposed_snapshot: z.record(z.string(), z.unknown()),
+  content_hash: z.string().length(64),
+  sequence: z.number().int().positive(),
+  changeset_version: z.number().int().positive(),
+  created_at: z.string(),
+});
+
+export const changesetMutationSchema = z.object({
+  changeset_id: z.string().uuid(),
+  version: z.number().int().positive(),
+});
+
+export const revisionChangeSchema = z.object({
+  path: z.string(),
+  category: z.string(),
+  before_present: z.boolean(),
+  after_present: z.boolean(),
+  before: z.unknown().nullable(),
+  after: z.unknown().nullable(),
+});
+
+export const revisionDiffSchema = z.object({
+  object_id: z.string().uuid(),
+  object_kind: z.string(),
+  base_revision_id: z.string().uuid().nullable(),
+  proposed_revision_id: z.string().uuid().nullable(),
+  change_type: z.enum(["no_change", "create", "update", "tombstone"]),
+  changes: z.array(revisionChangeSchema),
+});
+
 export const paperDetailSchema = z.object({
   request_id: z.string(),
   release: releaseSchema,
@@ -160,3 +256,10 @@ export type Structure = z.infer<typeof structureSchema>;
 export type Evidence = z.infer<typeof evidenceSchema>;
 export type Activity = z.infer<typeof activitySchema>;
 export type QualitySummary = z.infer<typeof qualitySummarySchema>;
+export type ReviewTaskStatus = z.infer<typeof reviewTaskStatusSchema>;
+export type WorkflowState = z.infer<typeof workflowStateSchema>;
+export type ReviewTask = z.infer<typeof reviewTaskSchema>;
+export type Changeset = z.infer<typeof changesetSchema>;
+export type ChangesetItem = z.infer<typeof changesetItemSchema>;
+export type ChangesetMutation = z.infer<typeof changesetMutationSchema>;
+export type RevisionDiff = z.infer<typeof revisionDiffSchema>;

@@ -15,6 +15,9 @@ import { zhCN } from "../i18n/zh-CN";
 import OverviewPage from "../papers/OverviewPage.vue";
 import PaperDetailPage from "../papers/PaperDetailPage.vue";
 import PaperLibraryPage from "../papers/PaperLibraryPage.vue";
+import ChangesetPage from "../review/changesets/ChangesetPage.vue";
+import ChangesetIndexPage from "../review/changesets/ChangesetIndexPage.vue";
+import TaskListPage from "../review/tasks/TaskListPage.vue";
 import AppShell from "./AppShell.vue";
 
 const PlaceholderPage = defineComponent({
@@ -51,9 +54,9 @@ export function createAppRouter(
           { path: "overview", name: "overview", component: OverviewPage, meta: { roles: publishedRoles } },
           { path: "papers", name: "papers", component: PaperLibraryPage, meta: { roles: publishedRoles } },
           { path: "papers/:paperId", name: "paper-detail", component: PaperDetailPage, meta: { roles: publishedRoles } },
-          { path: "review/tasks", component: PlaceholderPage, meta: { roles: reviewRoles } },
-          { path: "review/changesets", component: PlaceholderPage, meta: { roles: reviewRoles } },
-          { path: "review/changesets/:changesetId", component: PlaceholderPage, meta: { roles: reviewRoles } },
+          { path: "review/tasks", name: "review-tasks", component: TaskListPage, meta: { roles: reviewRoles } },
+          { path: "review/changesets", name: "review-changesets", component: ChangesetIndexPage, meta: { roles: reviewRoles } },
+          { path: "review/changesets/:changesetId", name: "review-changeset", component: ChangesetPage, meta: { roles: reviewRoles } },
           { path: "admin/approvals", component: PlaceholderPage, meta: { roles: adminRoles } },
           { path: "admin/files", component: PlaceholderPage, meta: { roles: adminRoles } },
           { path: "admin/imports", component: PlaceholderPage, meta: { roles: adminRoles } },

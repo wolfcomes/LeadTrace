@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -102,6 +103,123 @@ def _snapshot_hash(session: Session, snapshot: dict[str, object]) -> str:
 
 def _revision_reason(reason: str) -> str:
     return reason[:500]
+
+
+_MISSING = object()
+_EDITABLE_DEDICATED_FIELDS = (
+    "canonical_smiles",
+    "evidence_text",
+    "activity_metric",
+    "activity_value",
+    "activity_unit",
+    "relation_type",
+    "relation_status",
+)
+_DEDICATED_FIELDS_BY_KIND = {
+    ObjectKind.STRUCTURE: frozenset({"canonical_smiles"}),
+    ObjectKind.EVIDENCE: frozenset({"evidence_text"}),
+    ObjectKind.ACTIVITY: frozenset(
+        {"activity_metric", "activity_value", "activity_unit"}
+    ),
+    ObjectKind.LINEAGE_EDGE: frozenset({"relation_type", "relation_status"}),
+}
+
+
+def _snapshot_field(snapshot: Mapping[str, object], field: str) -> object:
+    if field in snapshot:
+        return snapshot[field]
+    normalized = snapshot.get("normalized_values")
+    if isinstance(normalized, Mapping) and field in normalized:
+        return normalized[field]
+    return _MISSING
+
+
+def _evidence_search_text(
+    snapshot: Mapping[str, object],
+    evidence_text: object,
+) -> str | None:
+    normalized = snapshot.get("normalized_values")
+    if not isinstance(normalized, Mapping):
+        return evidence_text if isinstance(evidence_text, str) else None
+    values: list[str] = []
+    evidence_in_normalized = False
+    for field, value in normalized.items():
+        if field == "evidence_text":
+            evidence_in_normalized = True
+            value = evidence_text
+        if isinstance(value, str) and value:
+            values.append(value)
+    if (
+        not evidence_in_normalized
+        and isinstance(evidence_text, str)
+        and evidence_text
+    ):
+        values.insert(0, evidence_text)
+    return " ".join(values) or None
+
+
+def _revision_column_values(
+    predecessor: ObjectRevision | None,
+    snapshot: Mapping[str, object],
+    *,
+    object_kind: ObjectKind,
+) -> dict[str, object]:
+    """Carry immutable revision columns while applying supported text edits."""
+
+    allowed_fields = _DEDICATED_FIELDS_BY_KIND.get(object_kind, frozenset())
+    values: dict[str, object] = {}
+    if predecessor is not None:
+        values["search_text"] = predecessor.search_text
+        if object_kind is ObjectKind.STRUCTURE:
+            values.update(
+                structure_state=predecessor.structure_state,
+                canonical_smiles=predecessor.canonical_smiles,
+            )
+        elif object_kind is ObjectKind.EVIDENCE:
+            values.update(
+                evidence_state=predecessor.evidence_state,
+                evidence_text=predecessor.evidence_text,
+            )
+        elif object_kind is ObjectKind.ACTIVITY:
+            values.update(
+                activity_state=predecessor.activity_state,
+                activity_metric=predecessor.activity_metric,
+                activity_value=predecessor.activity_value,
+                activity_unit=predecessor.activity_unit,
+            )
+        elif object_kind is ObjectKind.LINEAGE_EDGE:
+            values.update(
+                relation_type=predecessor.relation_type,
+                relation_status=predecessor.relation_status,
+            )
+        elif object_kind is ObjectKind.VISUAL_REGION:
+            values["region_rotation"] = predecessor.region_rotation
+
+    for field in _EDITABLE_DEDICATED_FIELDS:
+        candidate = _snapshot_field(snapshot, field)
+        if candidate is _MISSING:
+            continue
+        if field not in allowed_fields:
+            raise InvalidReview(f"{field} is not valid for {object_kind.value}")
+        if candidate is not None and not isinstance(candidate, str):
+            raise InvalidReview(f"{field} must be text or null")
+        values[field] = candidate
+    if predecessor is not None and object_kind is ObjectKind.VISUAL_REGION:
+        region_coordinates = (
+            predecessor.region_x0,
+            predecessor.region_y0,
+            predecessor.region_x1,
+            predecessor.region_y1,
+        )
+        if all(coordinate is not None for coordinate in region_coordinates):
+            values["region_bounds"] = region_coordinates
+
+    if object_kind is ObjectKind.EVIDENCE:
+        old_evidence = predecessor.evidence_text if predecessor is not None else None
+        new_evidence = values.get("evidence_text")
+        if "evidence_text" in values and old_evidence != new_evidence:
+            values["search_text"] = _evidence_search_text(snapshot, new_evidence)
+    return values
 
 
 class ReviewService:
@@ -356,6 +474,16 @@ class ReviewService:
             object_id=object_id,
             base_revision_id=base_revision_id,
         )
+        base_revision = (
+            session.get(ObjectRevision, base_revision_id)
+            if base_revision_id is not None
+            else None
+        )
+        _revision_column_values(
+            base_revision,
+            proposed_snapshot,
+            object_kind=parsed_kind,
+        )
         if sequence is None:
             latest = session.scalar(
                 select(ChangesetItem.sequence)
@@ -425,6 +553,20 @@ class ReviewService:
         )
         if item is None:
             raise ReviewNotFound("Changeset item not found")
+        validation_predecessor = (
+            session.get(
+                ObjectRevision,
+                item.proposed_revision_id or item.base_revision_id,
+            )
+            if item.proposed_revision_id is not None
+            or item.base_revision_id is not None
+            else None
+        )
+        _revision_column_values(
+            validation_predecessor,
+            proposed_snapshot,
+            object_kind=ObjectKind(item.object_kind),
+        )
         proposed_content_hash = _snapshot_hash(session, proposed_snapshot)
         content_changed = (
             item.proposed_snapshot != proposed_snapshot
@@ -489,6 +631,11 @@ class ReviewService:
                 predecessor=predecessor,
                 changeset_id=changeset.id,
                 workflow_state=changeset.workflow_state,
+                **_revision_column_values(
+                    predecessor,
+                    item.proposed_snapshot,
+                    object_kind=ObjectKind(item.object_kind),
+                ),
             )
             item.proposed_revision_id = revision.id
             session.flush([item])
@@ -624,6 +771,20 @@ class ReviewService:
                 object_id=item.object_id,
                 base_revision_id=item.base_revision_id,
             )
+            validation_predecessor = (
+                session.get(
+                    ObjectRevision,
+                    item.proposed_revision_id or item.base_revision_id,
+                )
+                if item.proposed_revision_id is not None
+                or item.base_revision_id is not None
+                else None
+            )
+            _revision_column_values(
+                validation_predecessor,
+                item.proposed_snapshot,
+                object_kind=ObjectKind(item.object_kind),
+            )
             matching_revision = session.scalar(
                 select(ObjectRevision)
                 .where(
@@ -671,6 +832,11 @@ class ReviewService:
                     predecessor=predecessor,
                     changeset_id=changeset.id,
                     workflow_state=changeset.workflow_state,
+                    **_revision_column_values(
+                        predecessor,
+                        item.proposed_snapshot,
+                        object_kind=ObjectKind(item.object_kind),
+                    ),
                 )
             item.proposed_revision_id = matching_revision.id
         session.flush(items)

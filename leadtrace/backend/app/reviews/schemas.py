@@ -45,6 +45,7 @@ class ChangesetCreateRequest(BaseModel):
     base_release_id: UUID
     title: str = Field(min_length=1, max_length=255)
     reason: str = Field(min_length=1, max_length=4000)
+    initialize_from_base: bool = False
 
 
 class ChangesetUpdateRequest(BaseModel):
@@ -104,6 +105,13 @@ class ChangesetItemCreateRequest(BaseModel):
     object_kind: ObjectKind
     base_revision_id: UUID | None = None
     proposed_snapshot: dict[str, object]
+    sequence: int | None = Field(default=None, ge=1)
+
+
+class ChangesetItemFromBaseRequest(BaseModel):
+    expected_version: int = Field(ge=1)
+    object_id: UUID
+    object_kind: ObjectKind
     sequence: int | None = Field(default=None, ge=1)
 
 
