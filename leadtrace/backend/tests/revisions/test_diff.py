@@ -232,3 +232,94 @@ def test_visual_region_snapshot_envelope_maps_coordinates_by_object_kind() -> No
         "/normalized_values/rotation": "region_coordinate",
         "/normalized_values/x0": "region_coordinate",
     }
+
+
+def test_dedicated_region_columns_are_diffed_when_snapshots_match() -> None:
+    result = build_revision_diff(
+        object_id=uuid4(),
+        object_kind="visual_region",
+        base_revision_id=uuid4(),
+        proposed_revision_id=uuid4(),
+        before_snapshot={"normalized_values": {"label": "Figure 1"}},
+        after_snapshot={"normalized_values": {"label": "Figure 1"}},
+        before_region_fields={
+            "x0": 0.1,
+            "y0": 0.2,
+            "x1": 0.4,
+            "y1": 0.5,
+            "rotation": 0,
+        },
+        after_region_fields={
+            "x0": 0.2,
+            "y0": 0.2,
+            "x1": 0.4,
+            "y1": 0.5,
+            "rotation": 90,
+        },
+    )
+
+    assert result["change_type"] == "update"
+    assert result["changes"] == [
+        {
+            "path": "/region/rotation",
+            "category": "region_coordinate",
+            "before_present": True,
+            "after_present": True,
+            "before": 0,
+            "after": 90,
+        },
+        {
+            "path": "/region/x0",
+            "category": "region_coordinate",
+            "before_present": True,
+            "after_present": True,
+            "before": 0.1,
+            "after": 0.2,
+        },
+    ]
+
+
+def test_dedicated_region_columns_preserve_missing_and_explicit_null() -> None:
+    missing_to_null = build_revision_diff(
+        object_id=uuid4(),
+        object_kind="visual_region",
+        base_revision_id=uuid4(),
+        proposed_revision_id=uuid4(),
+        before_snapshot={},
+        after_snapshot={},
+        before_region_fields=None,
+        after_region_fields={"x0": None},
+    )
+
+    assert missing_to_null["changes"] == [
+        {
+            "path": "/region/x0",
+            "category": "region_coordinate",
+            "before_present": False,
+            "after_present": True,
+            "before": None,
+            "after": None,
+        }
+    ]
+
+    value_to_null = build_revision_diff(
+        object_id=uuid4(),
+        object_kind="visual_region",
+        base_revision_id=uuid4(),
+        proposed_revision_id=uuid4(),
+        before_snapshot={},
+        after_snapshot={},
+        before_region_fields={"x0": 0.1},
+        after_region_fields={"x0": None},
+    )
+
+    assert value_to_null["changes"] == [
+        {
+            "path": "/region/x0",
+            "category": "region_coordinate",
+            "before_present": True,
+            "after_present": True,
+            "before": 0.1,
+            "after": None,
+        }
+    ]

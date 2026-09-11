@@ -25,6 +25,7 @@ from app.reviews.service import ReviewService
 from app.security.policies import WorkflowState
 from app.users.models import UserRole
 from app.users.service import UserService
+from app.visual_objects.models import VisualRegion
 
 
 PASSWORD = "Review API password 2026!"
@@ -86,6 +87,24 @@ def _seed_review(session) -> dict[str, UUID | str]:
         workflow_state=WorkflowState.PUBLISHED,
         is_current_published=True,
     )
+    visual_region = VisualRegion(
+        paper_id=paper.id,
+        region_key=f"review-api-region-{uuid4().hex[:8]}",
+        page_number=1,
+    )
+    session.add(visual_region)
+    session.flush()
+    visual_region_revision = RevisionService().create_revision(
+        session,
+        object_identity=visual_region,
+        actor_id=identities["review-api-admin"],
+        reason="Review API published visual region base",
+        snapshot={"normalized_values": {"label": "Figure 1"}},
+        workflow_state=WorkflowState.PUBLISHED,
+        is_current_published=True,
+        region_bounds=(0.1, 0.2, 0.4, 0.5),
+        region_rotation=0,
+    )
     session.add(
         ReleaseItem(
             release_id=release.id,
@@ -94,6 +113,16 @@ def _seed_review(session) -> dict[str, UUID | str]:
             paper_id=paper.id,
             object_kind=ObjectKind.PAPER,
             manifest_order=1,
+        )
+    )
+    session.add(
+        ReleaseItem(
+            release_id=release.id,
+            object_id=visual_region.id,
+            revision_id=visual_region_revision.id,
+            paper_id=paper.id,
+            object_kind=ObjectKind.VISUAL_REGION,
+            manifest_order=2,
         )
     )
     session.flush()
@@ -109,6 +138,8 @@ def _seed_review(session) -> dict[str, UUID | str]:
     identities["release"] = release.id
     identities["task"] = task.id
     identities["paper_revision"] = paper_revision.id
+    identities["visual_region"] = visual_region.id
+    identities["visual_region_revision"] = visual_region_revision.id
     return identities
 
 
@@ -363,6 +394,104 @@ def test_review_api_enforces_roles_scope_csrf_and_version_conflicts(
         assert approval_event.after_hash == canonical_content_hash(
             approval_event.details["after"]
         )
+
+
+def test_changeset_diff_includes_visual_region_revision_columns(
+    tmp_path: Path,
+    postgresql_database_url: str,
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        seeded = _seed_review(session)
+        service = ReviewService()
+        changeset = service.create_changeset(
+            session,
+            paper_id=seeded["paper"],
+            actor_id=seeded["review-api-reviewer"],
+            review_task_id=seeded["task"],
+            base_release_id=seeded["release"],
+            title="Correct visual region",
+            reason="Align the figure crop with the source PDF",
+        )
+        base_revision = session.get(
+            ObjectRevision,
+            seeded["visual_region_revision"],
+        )
+        visual_region = session.get(VisualRegion, seeded["visual_region"])
+        assert base_revision is not None
+        assert visual_region is not None
+        item = service.add_changeset_item(
+            session,
+            changeset_id=changeset.id,
+            actor_id=seeded["review-api-reviewer"],
+            expected_version=1,
+            object_id=visual_region.id,
+            object_kind=ObjectKind.VISUAL_REGION.value,
+            base_revision_id=base_revision.id,
+            proposed_snapshot=base_revision.snapshot,
+        )
+        proposed_revision = RevisionService().create_revision(
+            session,
+            object_identity=visual_region,
+            actor_id=seeded["review-api-reviewer"],
+            reason="Correct crop coordinates and rotation",
+            snapshot=base_revision.snapshot,
+            predecessor=base_revision,
+            changeset_id=changeset.id,
+            region_bounds=(0.2, 0.2, 0.4, 0.5),
+            region_rotation=90,
+        )
+        submitted = service.submit_changeset(
+            session,
+            changeset_id=changeset.id,
+            actor_id=seeded["review-api-reviewer"],
+            expected_version=2,
+        )
+        session.refresh(item)
+        assert item.proposed_revision_id == proposed_revision.id
+        changeset_id = submitted.id
+
+    resources = DatabaseResources(
+        engine=auth_session_factory.kw["bind"],
+        session_factory=auth_session_factory,
+    )
+    application = create_app(
+        settings=_settings(tmp_path, postgresql_database_url),
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+    with TestClient(application) as client:
+        _login(client, str(seeded["review-api-reviewer-username"]))
+        response = client.get(f"/api/v1/review/changesets/{changeset_id}/diff")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "object_id": str(seeded["visual_region"]),
+            "object_kind": ObjectKind.VISUAL_REGION.value,
+            "base_revision_id": str(seeded["visual_region_revision"]),
+            "proposed_revision_id": str(proposed_revision.id),
+            "change_type": "update",
+            "changes": [
+                {
+                    "path": "/region/rotation",
+                    "category": "region_coordinate",
+                    "before_present": True,
+                    "after_present": True,
+                    "before": 0,
+                    "after": 90,
+                },
+                {
+                    "path": "/region/x0",
+                    "category": "region_coordinate",
+                    "before_present": True,
+                    "after_present": True,
+                    "before": 0.1,
+                    "after": 0.2,
+                },
+            ],
+        }
+    ]
 
 
 def test_admin_can_create_edit_and_submit_for_assigned_reviewer(

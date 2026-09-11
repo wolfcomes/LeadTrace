@@ -31,6 +31,18 @@ def _flatten(snapshot: Mapping[str, Any] | None) -> dict[str, Any]:
     return flattened
 
 
+def _overlay_region_fields(
+    flattened: dict[str, Any],
+    region_fields: Mapping[str, object] | None,
+) -> None:
+    """Overlay dedicated region columns using stable JSON-pointer paths."""
+
+    if region_fields is None:
+        return
+    for key in sorted(region_fields, key=str):
+        flattened[f"/region/{_pointer_segment(str(key))}"] = region_fields[key]
+
+
 def _values_equal(before: Any, after: Any) -> bool:
     if type(before) is not type(after):
         return False
@@ -83,13 +95,24 @@ def build_revision_diff(
     proposed_revision_id: UUID | str | None,
     before_snapshot: Mapping[str, Any] | None,
     after_snapshot: Mapping[str, Any] | None,
+    before_region_fields: Mapping[str, object] | None = None,
+    after_region_fields: Mapping[str, object] | None = None,
     before_tombstone: bool = False,
     after_tombstone: bool = False,
 ) -> dict[str, object]:
-    """Return a deterministic, identity-preserving structured revision diff."""
+    """Return a deterministic, identity-preserving structured revision diff.
+
+    ``*_region_fields`` carries values stored in dedicated ``ObjectRevision``
+    columns. ``None`` means that the region envelope is absent; keys whose
+    values are ``None`` remain present so callers can distinguish SQL ``NULL``
+    from a missing field via the ``*_present`` flags.
+    """
 
     before_values = _flatten(before_snapshot)
     after_values = _flatten(after_snapshot)
+    if str(object_kind).casefold() == "visual_region":
+        _overlay_region_fields(before_values, before_region_fields)
+        _overlay_region_fields(after_values, after_region_fields)
     changes: list[dict[str, object]] = []
     for path in sorted(before_values.keys() | after_values.keys()):
         before = before_values.get(path, _MISSING)

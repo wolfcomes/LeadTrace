@@ -66,6 +66,20 @@ from app.security.policies import Principal, WorkflowState
 from app.users.models import UserRole
 
 
+def _region_fields_for_revision(
+    revision: ObjectRevision | None,
+) -> dict[str, object] | None:
+    if revision is None:
+        return None
+    return {
+        "x0": revision.region_x0,
+        "y0": revision.region_y0,
+        "x1": revision.region_x1,
+        "y1": revision.region_y1,
+        "rotation": revision.region_rotation,
+    }
+
+
 def create_reviews_router(session_secret: str) -> APIRouter:
     """Build the review router with the application CSRF secret."""
 
@@ -622,6 +636,8 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                                 if proposed is not None
                                 else item.proposed_snapshot
                             ),
+                            before_region_fields=_region_fields_for_revision(base),
+                            after_region_fields=_region_fields_for_revision(proposed),
                             before_tombstone=(base.is_tombstone if base else False),
                             after_tombstone=(
                                 proposed.is_tombstone if proposed else False
