@@ -1,0 +1,10 @@
+<script setup lang="ts">
+import { onMounted, ref } from "vue";
+import { fetchAdminJobs, retryAdminJob } from "./api";
+const jobs=ref<Record<string,unknown>[]>([]);const loading=ref(true);const error=ref<string|null>(null);const retrying=ref<string|null>(null);
+async function load(){try{jobs.value=await fetchAdminJobs()}catch{error.value="任务未能读取。"}finally{loading.value=false}}
+async function retry(job:Record<string,unknown>){retrying.value=String(job.id);try{const result=await retryAdminJob(String(job.id));Object.assign(job,result)}catch{error.value="失败任务未能重试。"}finally{retrying.value=null}}
+onMounted(load);
+</script>
+<template><div class="admin-page"><header class="page-heading"><div><p class="eyebrow">BACKGROUND WORK</p><h1>任务队列</h1><p>查看裁剪任务状态、失败摘要与可重试操作。</p></div></header><section v-if="loading" class="page-state"><span class="state-spinner"></span></section><section v-else-if="error" class="page-state"><p>{{ error }}</p></section><section v-else class="admin-panel"><table><thead><tr><th>任务</th><th>状态</th><th>错误摘要</th><th>创建时间</th><th></th></tr></thead><tbody><tr v-for="job in jobs" :key="String(job.id)" :data-job-id="String(job.id)"><td><code>{{ job.id }}</code></td><td>{{ job.status }}</td><td>{{ job.error_message || "-" }}</td><td>{{ job.created_at || "-" }}</td><td><button v-if="job.status==='failed'" type="button" :disabled="retrying===String(job.id)" @click="retry(job)">重试</button></td></tr><tr v-if="jobs.length===0"><td colspan="5" class="empty">暂无任务</td></tr></tbody></table></section></div></template>
+<style scoped>.admin-page{padding:clamp(24px,4vw,52px)}.admin-panel{padding:20px;border:1px solid var(--line);background:#fff;overflow:auto}table{width:100%;border-collapse:collapse;font-size:.78rem}th,td{padding:13px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{color:var(--ink-500);font-size:.67rem}.admin-panel button{padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}.empty{text-align:center;color:var(--ink-500)}</style>

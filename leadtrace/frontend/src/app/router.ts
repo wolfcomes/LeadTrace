@@ -18,6 +18,12 @@ import PaperLibraryPage from "../papers/PaperLibraryPage.vue";
 import ChangesetPage from "../review/changesets/ChangesetPage.vue";
 import ChangesetIndexPage from "../review/changesets/ChangesetIndexPage.vue";
 import TaskListPage from "../review/tasks/TaskListPage.vue";
+import UsersPage from "../admin/UsersPage.vue";
+import FilesPage from "../admin/FilesPage.vue";
+import ImportsPage from "../admin/ImportsPage.vue";
+import AuditPage from "../admin/AuditPage.vue";
+import JobsPage from "../admin/JobsPage.vue";
+import SystemPage from "../admin/SystemPage.vue";
 import AppShell from "./AppShell.vue";
 
 const PlaceholderPage = defineComponent({
@@ -58,12 +64,13 @@ export function createAppRouter(
           { path: "review/changesets", name: "review-changesets", component: ChangesetIndexPage, meta: { roles: reviewRoles } },
           { path: "review/changesets/:changesetId", name: "review-changeset", component: ChangesetPage, meta: { roles: reviewRoles } },
           { path: "admin/approvals", component: PlaceholderPage, meta: { roles: adminRoles } },
-          { path: "admin/files", component: PlaceholderPage, meta: { roles: adminRoles } },
-          { path: "admin/imports", component: PlaceholderPage, meta: { roles: adminRoles } },
+          { path: "admin/files", component: FilesPage, meta: { roles: adminRoles } },
+          { path: "admin/imports", component: ImportsPage, meta: { roles: adminRoles } },
           { path: "admin/releases", component: PlaceholderPage, meta: { roles: adminRoles } },
-          { path: "admin/users", component: PlaceholderPage, meta: { roles: adminRoles } },
-          { path: "admin/audit", component: PlaceholderPage, meta: { roles: adminRoles } },
-          { path: "admin/system", component: PlaceholderPage, meta: { roles: adminRoles } },
+          { path: "admin/users", component: UsersPage, meta: { roles: adminRoles } },
+          { path: "admin/audit", component: AuditPage, meta: { roles: adminRoles } },
+          { path: "admin/jobs", name: "admin-jobs", component: JobsPage, meta: { roles: adminRoles } },
+          { path: "admin/system", component: SystemPage, meta: { roles: adminRoles } },
         ],
       },
       { path: "/:pathMatch(.*)*", redirect: "/" },
