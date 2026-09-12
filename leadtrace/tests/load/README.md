@@ -36,7 +36,8 @@ crop jobs are queued for worker execution. Each `cold structure preview` request
 uses a unique, valid atom-map/drawing-key combination and fails if the API says
 the drawing was reused, so the named statistic measures synchronous validation
 and RDKit rendering rather than cache reads. It is an automated hard gate with
-p95 below 2000 ms and at least 25 non-reused samples. Run a separate
+p95 below 2000 ms, at least 25 successful non-reused samples, and zero failed
+cold-preview samples. Run a separate
 cold-browser trace for actual PDF painting because browser rendering time is
 not represented accurately by an HTTP-only Locust client.
 

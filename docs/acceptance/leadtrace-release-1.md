@@ -27,7 +27,7 @@ production cutover.
 |---|---|---|
 | Protected source regression suite | PASS | 323 passed; bytecode and pytest cache writes disabled; approved source manifest separately reports 0 changed, 0 missing, 0 unexpected |
 | Legacy Dashboard regression suite | PASS | 71 passed in a fresh invocation |
-| LeadTrace backend suite | PASS | 694 passed, 2 skipped because the optional real Redis/Celery integration URL was not configured; isolated PostgreSQL test URL used |
+| LeadTrace backend suite | PASS | 695 passed, 2 skipped because the optional real Redis/Celery integration URL was not configured; isolated PostgreSQL test URL used |
 | Frontend typecheck, unit tests, and build | PASS | Typecheck passed; 68 unit tests passed; Vite production build passed |
 | Browser E2E suite | PASS | 6 Chromium tests passed, including accessibility, Visitor, concurrent editor, and approval-gated Reviewer flows |
 | Cutover preflight code tests | PASS | 80 ops tests passed, including self-contained source bundles, concurrent incremental-chain restore, protected aggregate/RTO binding, complete Release validation, preflight, worker, CLI, and fallback contracts |

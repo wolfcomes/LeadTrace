@@ -16,3 +16,30 @@ def cold_preview_payload(unique_token: int | None = None) -> dict[str, object]:
         "atom_indices": False,
         "transparent_background": False,
     }
+
+
+def evaluate_request_gate(
+    *,
+    name: str,
+    target_ms: int,
+    num_requests: int,
+    num_failures: int,
+    p95_ms: int,
+    minimum_successful_samples: int = 1,
+    require_zero_failures: bool = False,
+) -> tuple[str, ...]:
+    failures: list[str] = []
+    successful_samples = max(0, num_requests - num_failures)
+    if successful_samples < minimum_successful_samples:
+        failures.append(
+            f"{name}: {successful_samples} successful samples is below "
+            f"{minimum_successful_samples}"
+        )
+    if require_zero_failures and num_failures:
+        sample_label = "sample" if num_failures == 1 else "samples"
+        failures.append(
+            f"{name}: {num_failures} failed {sample_label} is not allowed"
+        )
+    if successful_samples >= minimum_successful_samples and p95_ms > target_ms:
+        failures.append(f"{name}: p95 {p95_ms}ms exceeds {target_ms}ms")
+    return tuple(failures)

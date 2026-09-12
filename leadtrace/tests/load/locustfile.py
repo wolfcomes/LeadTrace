@@ -9,6 +9,7 @@ from locust.clients import HttpSession
 from leadtrace.tests.load.scenario_data import (
     COLD_PREVIEW_MIN_SAMPLES,
     cold_preview_payload,
+    evaluate_request_gate,
 )
 
 
@@ -227,9 +228,10 @@ P95_TARGETS_MS = {
     ("POST", "cold structure preview"): 2000,
     ("GET", "release validation"): 1000,
 }
-MIN_REQUEST_SAMPLES = {
+MIN_SUCCESSFUL_SAMPLES = {
     ("POST", "cold structure preview"): COLD_PREVIEW_MIN_SAMPLES,
 }
+ZERO_FAILURE_REQUESTS = {("POST", "cold structure preview")}
 
 
 @events.quitting.add_listener
@@ -237,15 +239,20 @@ def enforce_p95_targets(environment, **_: object) -> None:
     failures: list[str] = []
     for (method, name), target_ms in P95_TARGETS_MS.items():
         entry = environment.stats.get(name, method)
-        minimum_samples = MIN_REQUEST_SAMPLES.get((method, name), 1)
-        if entry.num_requests < minimum_samples:
-            failures.append(
-                f"{name}: {entry.num_requests} samples is below {minimum_samples}"
-            )
-            continue
         p95 = entry.get_response_time_percentile(0.95)
-        if p95 > target_ms:
-            failures.append(f"{name}: p95 {p95}ms exceeds {target_ms}ms")
+        failures.extend(
+            evaluate_request_gate(
+                name=name,
+                target_ms=target_ms,
+                num_requests=entry.num_requests,
+                num_failures=entry.num_failures,
+                p95_ms=p95,
+                minimum_successful_samples=MIN_SUCCESSFUL_SAMPLES.get(
+                    (method, name), 1
+                ),
+                require_zero_failures=(method, name) in ZERO_FAILURE_REQUESTS,
+            )
+        )
     if environment.stats.total.fail_ratio > 0.01:
         failures.append(
             f"failure ratio {environment.stats.total.fail_ratio:.2%} exceeds 1%"

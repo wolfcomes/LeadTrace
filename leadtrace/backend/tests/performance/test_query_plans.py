@@ -13,6 +13,7 @@ from app.papers.repository import PaperListFilters, published_paper_statement
 from leadtrace.tests.load.scenario_data import (
     COLD_PREVIEW_MIN_SAMPLES,
     cold_preview_payload,
+    evaluate_request_gate,
 )
 
 
@@ -85,7 +86,8 @@ def test_load_profile_covers_queues_release_validation_and_pdf_latency() -> None
         "/structures/drawings",
         "cold structure preview",
         '("POST", "cold structure preview"): 2000',
-        "MIN_REQUEST_SAMPLES",
+        "MIN_SUCCESSFUL_SAMPLES",
+        "ZERO_FAILURE_REQUESTS",
         "drawing_was_reused",
     ):
         assert required in profile
@@ -106,3 +108,32 @@ def test_load_profile_generates_distinct_parseable_cold_preview_requests() -> No
     assert len(drawing_keys) == len(payloads)
     assert all(Chem.MolFromSmiles(payload["smiles"]) is not None for payload in payloads)
     assert COLD_PREVIEW_MIN_SAMPLES >= 25
+
+
+def test_cold_preview_gate_requires_25_successful_requests_and_zero_failures() -> None:
+    failures = evaluate_request_gate(
+        name="cold structure preview",
+        target_ms=2_000,
+        num_requests=25,
+        num_failures=1,
+        p95_ms=100,
+        minimum_successful_samples=COLD_PREVIEW_MIN_SAMPLES,
+        require_zero_failures=True,
+    )
+
+    assert failures == (
+        "cold structure preview: 24 successful samples is below 25",
+        "cold structure preview: 1 failed sample is not allowed",
+    )
+    assert (
+        evaluate_request_gate(
+            name="cold structure preview",
+            target_ms=2_000,
+            num_requests=25,
+            num_failures=0,
+            p95_ms=1_999,
+            minimum_successful_samples=COLD_PREVIEW_MIN_SAMPLES,
+            require_zero_failures=True,
+        )
+        == ()
+    )
