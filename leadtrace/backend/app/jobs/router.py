@@ -13,7 +13,12 @@ from app.assets.storage import LocalAssetStore
 from app.config import Settings
 from app.database import get_db_session
 from app.documents.service import DocumentKind, DocumentNotFound, DocumentService
-from app.jobs.models import CropJob, CropJobRetryOperation, CropJobStatus
+from app.jobs.models import (
+    CropJob,
+    CropJobRetryOperation,
+    CropJobStatus,
+    CropJobSubscription,
+)
 from app.jobs.reconciler import JobReconciler
 from app.jobs.service import (
     PDF_RENDERER_VERSION,
@@ -22,6 +27,7 @@ from app.jobs.service import (
     CropValidationError,
 )
 from app.maintenance.service import MaintenanceConflict, MaintenanceService
+from app.reviews.models import ReviewTask, ReviewTaskStatus
 from app.security.permissions import (
     RouteAccess,
     declare_route_access,
@@ -85,6 +91,9 @@ def _job_payload(job: CropJob) -> dict[str, object]:
         "input_hash": job.input_hash,
         "source_pdf_sha256": job.source_pdf_sha256,
         "page_number": job.page_number,
+        "error_code": (
+            "CROP_JOB_EXECUTION_FAILED" if job.error_message is not None else None
+        ),
         "error_message": job.error_message,
         "created_at": job.created_at.isoformat(),
         "started_at": job.started_at.isoformat() if job.started_at else None,
@@ -97,6 +106,18 @@ def _job_payload(job: CropJob) -> dict[str, object]:
         "superseded_by_id": (
             str(job.superseded_by_id) if job.superseded_by_id else None
         ),
+    }
+
+
+def _reviewer_job_payload(job: CropJob) -> dict[str, object]:
+    return {
+        "id": str(job.id),
+        "status": job.status.value,
+        "asset_id": str(job.asset_id) if job.asset_id else None,
+        "error_code": (
+            "CROP_JOB_EXECUTION_FAILED" if job.error_message is not None else None
+        ),
+        "error_message": job.error_message,
     }
 
 
@@ -311,8 +332,10 @@ def create_crop_jobs_router(settings: Settings) -> APIRouter:
                     request,
                     source_asset_id=document.asset.id,
                     created_by_id=principal.user_id,
+                    paper_id=paper_id,
+                    region_id=region_id,
                 )
-                response = _job_payload(job)
+                response = _reviewer_job_payload(job)
             return response
         except DocumentNotFound as error:
             raise HTTPException(status_code=404, detail="Resource not found") from error
@@ -331,12 +354,22 @@ def create_crop_jobs_router(settings: Settings) -> APIRouter:
     ) -> dict[str, object]:
         with session.begin():
             job = session.get(CropJob, job_id)
-            if job is None or (
-                principal.role is not UserRole.ADMIN
-                and job.created_by_id != principal.user_id
-            ):
+            subscribed = principal.role is UserRole.ADMIN or session.scalar(
+                select(CropJobSubscription.id)
+                .join(
+                    ReviewTask,
+                    ReviewTask.paper_id == CropJobSubscription.paper_id,
+                )
+                .where(
+                    CropJobSubscription.job_id == job_id,
+                    CropJobSubscription.requested_by_id == principal.user_id,
+                    ReviewTask.assigned_reviewer_id == principal.user_id,
+                    ReviewTask.status != ReviewTaskStatus.COMPLETED,
+                )
+            ) is not None
+            if job is None or not subscribed:
                 raise HTTPException(status_code=404, detail="Resource not found")
-            return _job_payload(job)
+            return _reviewer_job_payload(job)
 
     return router
 

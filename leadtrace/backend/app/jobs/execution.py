@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import logging
 from pathlib import Path
 from uuid import UUID
 
@@ -21,6 +22,9 @@ from app.jobs.service import (
     CropValidationError,
 )
 from app.maintenance.service import MaintenanceModeActive
+
+
+logger = logging.getLogger(__name__)
 
 
 class CropExecutionStatus(StrEnum):
@@ -192,12 +196,24 @@ def execute_crop_delivery(
             attempt_id=attempt_id,
         )
     except Exception as error:
+        logger.exception(
+            "Crop job delivery failed",
+            extra={
+                "crop_job_id": str(job_id),
+                "delivery_token": str(delivery_token),
+            },
+        )
+        public_message = (
+            str(error)
+            if isinstance(error, CropValidationError)
+            else "Crop job execution failed"
+        )
         with factory.begin() as session:
             reconciler.fail_delivery(
                 session,
                 job_id=job_id,
                 delivery_token=delivery_token,
-                error_message=str(error),
+                error_message=public_message,
             )
         raise
 

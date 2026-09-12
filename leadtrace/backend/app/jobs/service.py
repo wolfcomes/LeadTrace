@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.assets.models import Asset, AssetAccessLevel, AssetCategory, AssetIntegrityState
 from app.assets.service import AssetService
 from app.assets.storage import LocalAssetStore, StoredFile
-from app.jobs.models import CropJob, CropJobStatus
+from app.jobs.models import CropJob, CropJobStatus, CropJobSubscription
 from app.maintenance.service import MaintenanceService
 
 
@@ -142,6 +142,8 @@ class CropService:
         *,
         source_asset_id: UUID,
         created_by_id: UUID,
+        paper_id: UUID,
+        region_id: UUID,
     ) -> CropJob:
         """Create or reuse one PostgreSQL-authoritative crop job."""
 
@@ -171,17 +173,33 @@ class CropService:
         if created_id is not None:
             job = session.get(CropJob, created_id)
             assert job is not None
-            return job
-
-        job = session.scalar(
-            select(CropJob)
-            .where(CropJob.input_hash == input_hash)
-            .with_for_update()
-        )
-        if job is None:
-            raise CropValidationError("Crop job could not be created")
+        else:
+            job = session.scalar(
+                select(CropJob)
+                .where(CropJob.input_hash == input_hash)
+                .with_for_update()
+            )
+            if job is None:
+                raise CropValidationError("Crop job could not be created")
         if job.status is CropJobStatus.SUPERSEDED:
             raise CropValidationError("Crop job was superseded by newer work")
+        session.execute(
+            insert(CropJobSubscription)
+            .values(
+                job_id=job.id,
+                paper_id=paper_id,
+                region_id=region_id,
+                requested_by_id=created_by_id,
+            )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    CropJobSubscription.job_id,
+                    CropJobSubscription.paper_id,
+                    CropJobSubscription.region_id,
+                    CropJobSubscription.requested_by_id,
+                ]
+            )
+        )
         return job
 
     def run_persisted(

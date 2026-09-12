@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.assets.models import (
+    Asset,
     AssetAccessLevel,
     AssetCategory,
     AssetIntegrityState,
@@ -35,7 +36,7 @@ from app.jobs.models import CropJob, CropJobStatus
 from app.jobs.reconciler import JobReconciler
 from app.main import create_app
 from app.papers.models import Paper
-from app.reviews.models import ReviewTask
+from app.reviews.models import ReviewTask, ReviewTaskStatus
 from app.users.models import UserRole
 from app.users.service import UserService
 from app.visual_objects.regions import RegionService, normalize_bounds
@@ -52,7 +53,9 @@ class CropApiFixture:
     session_factory: sessionmaker[Session]
     paper_id: UUID
     region_id: UUID
+    reviewer_id: UUID
     reviewer_username: str
+    second_reviewer_username: str
     unassigned_reviewer_username: str
     visitor_username: str
 
@@ -92,6 +95,13 @@ def crop_api_fixture(
             role=UserRole.REVIEWER,
             initial_password=PASSWORD,
         )
+        second_reviewer = UserService().create_user(
+            session,
+            username="crop.api.second-reviewer",
+            display_name="Second Crop API Reviewer",
+            role=UserRole.REVIEWER,
+            initial_password=PASSWORD,
+        )
         unassigned_reviewer = UserService().create_user(
             session,
             username="crop.api.unassigned",
@@ -108,6 +118,7 @@ def crop_api_fixture(
         )
         admin.must_change_password = False
         reviewer.must_change_password = False
+        second_reviewer.must_change_password = False
         unassigned_reviewer.must_change_password = False
         visitor.must_change_password = False
         paper = Paper(paper_key="crop-api-paper")
@@ -146,6 +157,13 @@ def crop_api_fixture(
             ReviewTask(
                 paper_id=paper.id,
                 assigned_reviewer_id=reviewer.id,
+                created_by_id=admin.id,
+            )
+        )
+        session.add(
+            ReviewTask(
+                paper_id=paper.id,
+                assigned_reviewer_id=second_reviewer.id,
                 created_by_id=admin.id,
             )
         )
@@ -191,7 +209,9 @@ def crop_api_fixture(
             session_factory=auth_session_factory,
             paper_id=paper_id,
             region_id=region_id,
+            reviewer_id=reviewer.id,
             reviewer_username=reviewer.username,
+            second_reviewer_username=second_reviewer.username,
             unassigned_reviewer_username=unassigned_reviewer.username,
             visitor_username=visitor.username,
         )
@@ -204,6 +224,28 @@ def _login(client: TestClient, username: str) -> str:
     )
     assert response.status_code == 200
     return str(response.json()["csrf_token"])
+
+
+def _enqueue_crop(fixture: CropApiFixture) -> tuple[UUID, UUID]:
+    csrf = _login(fixture.client, fixture.reviewer_username)
+    path = (
+        f"/api/v1/papers/{fixture.paper_id}/regions/"
+        f"{fixture.region_id}/crop-jobs"
+    )
+    response = fixture.client.post(
+        path,
+        headers={"X-CSRF-Token": csrf},
+        json={"source_kind": "article", "padding": 0, "dpi": 72},
+    )
+    assert response.status_code == 202
+    job_id = UUID(response.json()["id"])
+    deliveries: list[tuple[UUID, UUID]] = []
+    JobReconciler().reconcile(
+        fixture.session_factory,
+        lambda queued_job_id, token: deliveries.append((queued_job_id, token)),
+    )
+    assert deliveries[0][0] == job_id
+    return job_id, deliveries[0][1]
 
 
 def test_reviewer_enqueues_idempotent_crop_then_worker_completes_it(
@@ -256,6 +298,13 @@ def test_reviewer_enqueues_idempotent_crop_then_worker_completes_it(
     assert report.status is CropExecutionStatus.COMPLETED
     status = fixture.client.get(f"/api/v1/crop-jobs/{job_id}")
     assert status.status_code == 200
+    assert set(status.json()) == {
+        "id",
+        "status",
+        "asset_id",
+        "error_code",
+        "error_message",
+    }
     assert status.json()["id"] == str(job_id)
     assert status.json()["status"] == "completed"
     assert status.json()["asset_id"] == str(report.asset_id)
@@ -297,6 +346,116 @@ def test_crop_enqueue_requires_csrf_and_an_active_paper_assignment(
     assert visitor.status_code == 403
     with fixture.session_factory.begin() as session:
         assert session.scalar(select(func.count()).select_from(CropJob)) == 0
+
+
+def test_each_authorized_reviewer_can_track_a_globally_reused_crop_job(
+    crop_api_fixture: CropApiFixture,
+) -> None:
+    fixture = crop_api_fixture
+    path = (
+        f"/api/v1/papers/{fixture.paper_id}/regions/"
+        f"{fixture.region_id}/crop-jobs"
+    )
+    payload = {"source_kind": "article", "padding": 0, "dpi": 72}
+    first_csrf = _login(fixture.client, fixture.reviewer_username)
+    first = fixture.client.post(
+        path,
+        headers={"X-CSRF-Token": first_csrf},
+        json=payload,
+    )
+    assert first.status_code == 202
+
+    fixture.client.cookies.clear()
+    second_csrf = _login(fixture.client, fixture.second_reviewer_username)
+    second = fixture.client.post(
+        path,
+        headers={"X-CSRF-Token": second_csrf},
+        json=payload,
+    )
+
+    assert second.status_code == 202
+    assert second.json()["id"] == first.json()["id"]
+    status = fixture.client.get(f"/api/v1/crop-jobs/{second.json()['id']}")
+    assert status.status_code == 200
+    assert status.json()["id"] == second.json()["id"]
+    with fixture.session_factory.begin() as session:
+        assert session.scalar(select(func.count()).select_from(CropJob)) == 1
+
+
+def test_reviewer_cannot_track_a_job_after_their_assignment_is_completed(
+    crop_api_fixture: CropApiFixture,
+) -> None:
+    fixture = crop_api_fixture
+    job_id, _ = _enqueue_crop(fixture)
+    with fixture.session_factory.begin() as session:
+        task = session.scalar(
+            select(ReviewTask).where(
+                ReviewTask.paper_id == fixture.paper_id,
+                ReviewTask.assigned_reviewer_id == fixture.reviewer_id,
+            )
+        )
+        assert task is not None
+        task.status = ReviewTaskStatus.COMPLETED
+
+    status = fixture.client.get(f"/api/v1/crop-jobs/{job_id}")
+    assert status.status_code == 404
+
+
+def test_reviewer_job_status_hides_a_missing_source_absolute_path(
+    crop_api_fixture: CropApiFixture,
+) -> None:
+    fixture = crop_api_fixture
+    job_id, delivery_token = _enqueue_crop(fixture)
+    with fixture.session_factory.begin() as session:
+        job = session.get(CropJob, job_id)
+        assert job is not None
+        source_asset = session.get(Asset, job.source_asset_id)
+        assert source_asset is not None
+        source_path = LocalAssetStore(fixture.settings.asset_root).path_for(
+            source_asset.storage_key
+        )
+    source_path.unlink()
+
+    with pytest.raises(FileNotFoundError):
+        execute_crop_delivery(
+            fixture.session_factory,
+            fixture.settings,
+            job_id=job_id,
+            delivery_token=delivery_token,
+        )
+
+    status = fixture.client.get(f"/api/v1/crop-jobs/{job_id}")
+    assert status.status_code == 200
+    assert status.json()["error_code"] == "CROP_JOB_EXECUTION_FAILED"
+    assert status.json()["error_message"] == "Crop job execution failed"
+    assert str(source_path) not in status.text
+
+
+def test_reviewer_job_status_hides_an_unexpected_renderer_error(
+    crop_api_fixture: CropApiFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = crop_api_fixture
+    job_id, delivery_token = _enqueue_crop(fixture)
+    internal_path = "/srv/leadtrace/private/render-cache/secret.pdf"
+
+    def fail_render(*_: object, **__: object) -> bytes:
+        raise RuntimeError(f"renderer crashed while reading {internal_path}")
+
+    monkeypatch.setattr("app.jobs.execution.render_pdf_crop", fail_render)
+    with pytest.raises(RuntimeError):
+        execute_crop_delivery(
+            fixture.session_factory,
+            fixture.settings,
+            job_id=job_id,
+            delivery_token=delivery_token,
+        )
+
+    status = fixture.client.get(f"/api/v1/crop-jobs/{job_id}")
+    assert status.status_code == 200
+    assert status.json()["error_code"] == "CROP_JOB_EXECUTION_FAILED"
+    assert status.json()["error_message"] == "Crop job execution failed"
+    assert internal_path not in status.text
 
 
 @pytest.mark.skipif(
