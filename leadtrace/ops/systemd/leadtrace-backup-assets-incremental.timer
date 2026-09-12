@@ -1,0 +1,11 @@
+[Unit]
+Description=Run LeadTrace incremental asset backup daily
+
+[Timer]
+OnCalendar=*-*-* 01:15:00
+Persistent=true
+RandomizedDelaySec=5m
+Unit=leadtrace-backup-assets-incremental.service
+
+[Install]
+WantedBy=timers.target

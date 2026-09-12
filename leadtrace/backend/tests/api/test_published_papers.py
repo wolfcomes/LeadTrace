@@ -137,6 +137,24 @@ def test_paper_filters_are_url_compatible_and_release_scoped(
         }
 
 
+def test_search_treats_sql_injection_syntax_as_plain_text(
+    published_api: PublishedApiFixture,
+) -> None:
+    attempted_injection = published_api.client.get(
+        "/api/v1/papers",
+        params={"search": "') OR TRUE; DROP TABLE papers; --"},
+    )
+    normal_query = published_api.client.get(
+        "/api/v1/papers",
+        params={"search": "study 07"},
+    )
+
+    assert attempted_injection.status_code == 200
+    assert attempted_injection.json()["pagination"]["total_items"] == 0
+    assert normal_query.status_code == 200
+    assert normal_query.json()["items"][0]["paper_key"] == "paper-07"
+
+
 def test_no_current_release_is_reported_without_falling_back_to_drafts(
     published_api: PublishedApiFixture,
 ) -> None:

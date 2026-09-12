@@ -1,0 +1,11 @@
+[Unit]
+Description=Run LeadTrace restore drill monthly
+
+[Timer]
+OnCalendar=monthly
+Persistent=true
+RandomizedDelaySec=30m
+Unit=leadtrace-restore-drill.service
+
+[Install]
+WantedBy=timers.target

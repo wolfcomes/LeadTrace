@@ -3,12 +3,15 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 import subprocess
 
 import pytest
 
+from leadtrace.ops.backup.prune_backups import expired_backup_directories
 from leadtrace.ops.backup.verify_backup import verify_backup
+from leadtrace.ops.restore.verify_restored_system import verify_asset_restore
 
 
 def _sha256(payload: bytes) -> str:
@@ -133,6 +136,25 @@ def test_backup_metadata_rejects_artifact_path_escape(tmp_path: Path) -> None:
         verify_backup(metadata_path)
 
 
+def test_asset_backup_metadata_requires_a_restorable_chain_identity(
+    tmp_path: Path,
+) -> None:
+    metadata_path, metadata = _write_complete_backup(tmp_path)
+    metadata["backup_scope"] = "assets"
+    metadata["artifacts"].pop("database_dump")
+    snapshot = tmp_path / "tar.snapshot"
+    snapshot.write_bytes(b"snapshot state")
+    metadata["artifacts"]["asset_snapshot"] = {
+        "path": snapshot.name,
+        "sha256": _sha256(snapshot.read_bytes()),
+        "size_bytes": snapshot.stat().st_size,
+    }
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="chain"):
+        verify_backup(metadata_path)
+
+
 @pytest.mark.parametrize(
     "field_path",
     [
@@ -174,6 +196,7 @@ def test_backup_scripts_reject_unresolved_or_broad_destinations(
     script_path = Path(__file__).parents[3] / "ops" / "backup" / script
     environment = {
         **os.environ,
+        "LEADTRACE_BACKUP_ALLOWED_PARENT": "/tmp",
         "LEADTRACE_BACKUP_DESTINATION": destination,
         "LEADTRACE_DATABASE_URL": "postgresql://example.invalid/leadtrace",
         "LEADTRACE_ASSET_ROOT": "/var/lib/leadtrace/assets",
@@ -196,6 +219,38 @@ def test_backup_scripts_reject_unresolved_or_broad_destinations(
     assert "destination" in (result.stderr + result.stdout).casefold()
 
 
+def test_default_backup_ids_include_scope_to_avoid_gate_collisions(
+    tmp_path: Path,
+) -> None:
+    common = Path(__file__).parents[3] / "ops" / "backup" / "common.sh"
+    script = """
+source "$1"
+BACKUP_DESTINATION="$2"
+date() { printf '%s\n' '20260912T100000Z'; }
+new_staging_directory database
+database_id="$BACKUP_ID"
+cleanup_staging_directory
+unset BACKUP_ID
+new_staging_directory assets
+assets_id="$BACKUP_ID"
+cleanup_staging_directory
+printf '%s\n%s\n' "$database_id" "$assets_id"
+"""
+
+    result = subprocess.run(
+        ["bash", "-c", script, "leadtrace-test", str(common), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "20260912T100000Z-database",
+        "20260912T100000Z-assets",
+    ]
+
+
 def test_postgres_backup_finalizes_an_encrypted_verified_set(tmp_path: Path) -> None:
     destination = tmp_path / "backups"
     destination.mkdir()
@@ -214,6 +269,7 @@ def test_postgres_backup_finalizes_an_encrypted_verified_set(tmp_path: Path) -> 
     environment = {
         **os.environ,
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "LEADTRACE_BACKUP_ALLOWED_PARENT": str(tmp_path),
         "LEADTRACE_BACKUP_DESTINATION": str(destination),
         "LEADTRACE_DATABASE_URL": "postgresql://example.invalid/leadtrace",
         "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
@@ -254,16 +310,14 @@ def test_asset_backup_finalizes_manifest_and_encrypted_archive(tmp_path: Path) -
         "#!/usr/bin/env bash\nset -euo pipefail\nout=''\ninput=''\nwhile (($#)); do case \"$1\" in -o) out=$2; shift 2;; -r) shift 2;; *) input=$1; shift;; esac; done\ncp -- \"$input\" \"$out\"\n",
         encoding="utf-8",
     )
-    (fake_bin / "tar").write_text(
-        "#!/usr/bin/env bash\nset -euo pipefail\nout=''\nwhile (($#)); do case \"$1\" in -f) out=$2; shift 2;; --file=*) out=${1#--file=}; shift;; *) shift;; esac; done\nprintf 'archive bytes' > \"$out\"\n",
-        encoding="utf-8",
-    )
-    for command in ("age", "tar"):
+    for command in ("age",):
         (fake_bin / command).chmod(0o755)
     environment = {
         **os.environ,
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "LEADTRACE_BACKUP_ALLOWED_PARENT": str(tmp_path),
         "LEADTRACE_BACKUP_DESTINATION": str(destination),
+        "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
         "LEADTRACE_ASSET_ROOT": str(asset_root),
         "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
         "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
@@ -287,4 +341,345 @@ def test_asset_backup_finalizes_manifest_and_encrypted_archive(tmp_path: Path) -
     assert result.returncode == 0, result.stderr
     final_directory = destination / "test-assets-backup"
     report = verify_backup(final_directory / "backup-metadata.json")
-    assert report.verified_artifacts == ("asset_archive", "asset_manifest")
+    assert report.verified_artifacts == (
+        "asset_archive",
+        "asset_manifest",
+        "asset_snapshot",
+    )
+    metadata = json.loads(
+        (final_directory / "backup-metadata.json").read_text(encoding="utf-8")
+    )
+    assert metadata["asset_chain"] == {
+        "mode": "full",
+        "parent_backup_id": None,
+        "position": 0,
+    }
+
+
+def test_asset_backup_rejects_source_and_destination_overlap(tmp_path: Path) -> None:
+    destination = tmp_path / "backups"
+    destination.mkdir()
+    asset_root = destination / "assets"
+    asset_root.mkdir()
+    script_path = Path(__file__).parents[3] / "ops" / "backup" / "backup_assets.sh"
+    environment = {
+        **os.environ,
+        "LEADTRACE_BACKUP_ALLOWED_PARENT": str(tmp_path),
+        "LEADTRACE_BACKUP_DESTINATION": str(destination),
+        "LEADTRACE_ASSET_ALLOWED_PARENT": str(destination),
+        "LEADTRACE_ASSET_ROOT": str(asset_root),
+        "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
+        "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
+        "LEADTRACE_DESTINATION_ID": "test-destination",
+        "LEADTRACE_APPLICATION_VERSION": "0.1.0",
+        "LEADTRACE_SCHEMA_VERSION": "0015",
+        "LEADTRACE_RELEASE_VERSION": "release-test",
+    }
+
+    result = subprocess.run(
+        ["bash", str(script_path)],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "overlap" in (result.stderr + result.stdout).casefold()
+
+
+def test_full_and_incremental_asset_chain_restores_with_real_tar(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "backups"
+    destination.mkdir()
+    asset_root = tmp_path / "assets"
+    asset_root.mkdir()
+    first = asset_root / "first.txt"
+    first.write_text("first revision", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "age").write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\nout=''\ninput=''\n"
+        "while (($#)); do case \"$1\" in -o) out=$2; shift 2;; -r) shift 2;; *) input=$1; shift;; esac; done\n"
+        "cp -- \"$input\" \"$out\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "age").chmod(0o755)
+    script_path = Path(__file__).parents[3] / "ops" / "backup" / "backup_assets.sh"
+    common_environment = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "LEADTRACE_BACKUP_ALLOWED_PARENT": str(tmp_path),
+        "LEADTRACE_BACKUP_DESTINATION": str(destination),
+        "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
+        "LEADTRACE_ASSET_ROOT": str(asset_root),
+        "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
+        "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
+        "LEADTRACE_DESTINATION_ID": "test-destination",
+        "LEADTRACE_APPLICATION_VERSION": "0.1.0",
+        "LEADTRACE_SCHEMA_VERSION": "0015",
+        "LEADTRACE_RELEASE_VERSION": "release-test",
+    }
+
+    full = subprocess.run(
+        ["bash", str(script_path)],
+        env={
+            **common_environment,
+            "LEADTRACE_BACKUP_ID": "assets-full",
+            "LEADTRACE_ASSET_BACKUP_MODE": "full",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert full.returncode == 0, full.stderr
+    first.unlink()
+    (asset_root / "second.txt").write_text("second revision", encoding="utf-8")
+    incremental = subprocess.run(
+        ["bash", str(script_path)],
+        env={
+            **common_environment,
+            "LEADTRACE_BACKUP_ID": "assets-incremental",
+            "LEADTRACE_ASSET_BACKUP_MODE": "incremental",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert incremental.returncode == 0, incremental.stderr
+    assert (destination / ".leadtrace-latest-assets").resolve() == (
+        destination / "assets-incremental"
+    )
+
+    terminal_metadata = destination / "assets-incremental" / "backup-metadata.json"
+    chain_helper = Path(__file__).parents[3] / "ops" / "backup" / "asset_chain.py"
+    chain = subprocess.run(
+        ["python", str(chain_helper), "--metadata", str(terminal_metadata)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert chain.returncode == 0, chain.stderr
+    metadata_paths = [Path(value) for value in chain.stdout.splitlines()]
+    assert [path.parent.name for path in metadata_paths] == [
+        "assets-full",
+        "assets-incremental",
+    ]
+
+    restored = tmp_path / "restored"
+    restored.mkdir()
+    for metadata_path in metadata_paths:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        archive = metadata_path.parent / payload["artifacts"]["asset_archive"]["path"]
+        extraction = subprocess.run(
+            [
+                "tar",
+                "--extract",
+                "--listed-incremental=/dev/null",
+                f"--file={archive}",
+                f"--directory={restored}",
+                "--no-same-owner",
+                "--no-same-permissions",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert extraction.returncode == 0, extraction.stderr
+    terminal = json.loads(terminal_metadata.read_text(encoding="utf-8"))
+    manifest = terminal_metadata.parent / terminal["artifacts"]["asset_manifest"]["path"]
+    report = verify_asset_restore(manifest, restored)
+    assert report.ok is True
+    assert first.relative_to(asset_root).as_posix() not in {
+        path.relative_to(restored).as_posix() for path in restored.rglob("*")
+    }
+
+
+def test_retention_prunes_only_verified_expired_direct_children(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "backups"
+    destination.mkdir()
+
+    def write_database_backup(backup_id: str, completed_at: str) -> Path:
+        root = destination / backup_id
+        root.mkdir()
+        artifact = root / "database.dump.age"
+        artifact.write_bytes(backup_id.encode())
+        metadata = {
+            "schema_version": 1,
+            "backup_id": backup_id,
+            "backup_scope": "database",
+            "started_at": completed_at,
+            "completed_at": completed_at,
+            "outcome": "success",
+            "versions": {"application": "0.1.0", "schema": "0015", "release": "r1"},
+            "encryption": {
+                "algorithm": "age-x25519",
+                "recipient_fingerprint": "SHA256:key",
+                "payloads_encrypted": True,
+            },
+            "destination": {"kind": "separate_disk", "identity": "disk-a"},
+            "artifacts": {
+                "database_dump": {
+                    "path": artifact.name,
+                    "sha256": _sha256(artifact.read_bytes()),
+                    "size_bytes": artifact.stat().st_size,
+                }
+            },
+        }
+        (root / "backup-metadata.json").write_text(
+            json.dumps(metadata), encoding="utf-8"
+        )
+        return root
+
+    expired = write_database_backup("database-expired", "2026-07-01T00:00:00Z")
+    current = write_database_backup("database-current", "2026-09-10T00:00:00Z")
+    unmanaged = destination / "operator-notes"
+    unmanaged.mkdir()
+    tool = Path(__file__).parents[3] / "ops" / "backup" / "prune_backups.py"
+    command = [
+        "python",
+        str(tool),
+        "--destination",
+        str(destination),
+        "--allowed-parent",
+        str(tmp_path),
+        "--retention-days",
+        "30",
+        "--now",
+        "2026-09-12T00:00:00Z",
+    ]
+
+    preview = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert preview.returncode == 0, preview.stderr
+    assert "database-expired" in preview.stdout
+    assert expired.exists() and current.exists() and unmanaged.exists()
+
+    applied = subprocess.run(
+        [*command, "--apply"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert applied.returncode == 0, applied.stderr
+    assert not expired.exists()
+    assert current.exists()
+    assert unmanaged.exists()
+
+
+def test_retention_preserves_expired_parents_of_retained_asset_backups(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "backups"
+    destination.mkdir()
+
+    def write_asset_backup(
+        backup_id: str,
+        completed_at: str,
+        *,
+        mode: str,
+        parent_backup_id: str | None,
+        position: int,
+    ) -> Path:
+        root = destination / backup_id
+        root.mkdir()
+        artifacts: dict[str, dict[str, object]] = {}
+        for artifact_name, filename in {
+            "asset_manifest": "assets.manifest.json",
+            "asset_archive": "assets.tar.age",
+            "asset_snapshot": "tar.snapshot",
+        }.items():
+            artifact = root / filename
+            artifact.write_bytes(f"{backup_id}:{artifact_name}".encode())
+            artifacts[artifact_name] = {
+                "path": filename,
+                "sha256": _sha256(artifact.read_bytes()),
+                "size_bytes": artifact.stat().st_size,
+            }
+        metadata = {
+            "schema_version": 1,
+            "backup_id": backup_id,
+            "backup_scope": "assets",
+            "started_at": completed_at,
+            "completed_at": completed_at,
+            "outcome": "success",
+            "versions": {"application": "0.1.0", "schema": "0015", "release": "r1"},
+            "encryption": {
+                "algorithm": "age-x25519",
+                "recipient_fingerprint": "SHA256:key",
+                "payloads_encrypted": True,
+            },
+            "destination": {"kind": "separate_disk", "identity": "disk-a"},
+            "asset_chain": {
+                "mode": mode,
+                "parent_backup_id": parent_backup_id,
+                "position": position,
+            },
+            "artifacts": artifacts,
+        }
+        (root / "backup-metadata.json").write_text(
+            json.dumps(metadata), encoding="utf-8"
+        )
+        return root
+
+    full = write_asset_backup(
+        "assets-full",
+        "2026-08-12T00:00:00Z",
+        mode="full",
+        parent_backup_id=None,
+        position=0,
+    )
+    write_asset_backup(
+        "assets-incremental",
+        "2026-08-14T00:00:00Z",
+        mode="incremental",
+        parent_backup_id="assets-full",
+        position=1,
+    )
+
+    candidates = expired_backup_directories(
+        destination,
+        allowed_parent=tmp_path,
+        cutoff=datetime(2026, 8, 13, tzinfo=UTC),
+    )
+
+    assert full not in candidates
+
+
+def test_systemd_units_define_backup_retention_and_restore_schedules() -> None:
+    systemd_root = Path(__file__).parents[3] / "ops" / "systemd"
+    expected = {
+        "leadtrace-backup-postgres.timer": "OnCalendar=*-*-* 00/4:00:00",
+        "leadtrace-backup-assets-incremental.timer": "OnCalendar=*-*-* 01:15:00",
+        "leadtrace-backup-assets-full.timer": "OnCalendar=Sun *-*-* 02:30:00",
+        "leadtrace-backup-retention.timer": "OnCalendar=*-*-* 03:30:00",
+        "leadtrace-restore-drill.timer": "OnCalendar=monthly",
+        "leadtrace-backup-gate.service": "LEADTRACE_ASSET_BACKUP_MODE=full",
+    }
+
+    for filename, required in expected.items():
+        content = (systemd_root / filename).read_text(encoding="utf-8")
+        assert required in content
+        assert "Persistent=true" in content if filename.endswith(".timer") else True
+
+    restore_service = (systemd_root / "leadtrace-restore-drill.service").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "Environment=LEADTRACE_PYTHON_BIN=/opt/leadtrace/.venv/bin/python"
+        in restore_service
+    )
+    restore_script = (
+        Path(__file__).parents[3] / "ops" / "restore" / "restore_drill.sh"
+    ).read_text(encoding="utf-8")
+    assert 'PYTHON_BIN="${LEADTRACE_PYTHON_BIN:-python}"' in restore_script
+    assert '"${PYTHON_BIN}" "${SCRIPT_DIRECTORY}/validate_restore_target.py"' in restore_script

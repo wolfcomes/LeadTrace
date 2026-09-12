@@ -27,8 +27,30 @@ resolve_dedicated_directory() {
   printf '%s\n' "${resolved}"
 }
 
+resolve_directory_below() {
+  local label="$1"
+  local raw_path="$2"
+  local raw_parent="$3"
+  local resolved parent
+
+  resolved="$(resolve_dedicated_directory "${label}" "${raw_path}")"
+  parent="$(resolve_dedicated_directory "${label} allowed parent" "${raw_parent}")"
+  [[ "${resolved}" == "${parent}/"* ]] \
+    || fail "${label} must be below its configured allowed parent"
+  printf '%s\n' "${resolved}"
+}
+
+reject_path_overlap() {
+  local first="$1"
+  local second="$2"
+  if [[ "${first}" == "${second}" || "${first}" == "${second}/"* || "${second}" == "${first}/"* ]]; then
+    fail "backup source and destination paths must not overlap"
+  fi
+}
+
 validate_backup_environment() {
   require_value LEADTRACE_BACKUP_DESTINATION
+  require_value LEADTRACE_BACKUP_ALLOWED_PARENT
   require_value LEADTRACE_DESTINATION_ID
   require_value LEADTRACE_ENCRYPTION_RECIPIENT
   require_value LEADTRACE_ENCRYPTION_FINGERPRINT
@@ -36,20 +58,26 @@ validate_backup_environment() {
   require_value LEADTRACE_SCHEMA_VERSION
   require_value LEADTRACE_RELEASE_VERSION
 
-  BACKUP_DESTINATION="$(resolve_dedicated_directory \
-    'backup destination' "${LEADTRACE_BACKUP_DESTINATION}")"
+  BACKUP_DESTINATION="$(resolve_directory_below \
+    'backup destination' \
+    "${LEADTRACE_BACKUP_DESTINATION}" \
+    "${LEADTRACE_BACKUP_ALLOWED_PARENT}")"
   export BACKUP_DESTINATION
 }
 
 validate_backup_id() {
-  BACKUP_ID="${LEADTRACE_BACKUP_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+  local backup_scope="$1"
+  [[ "${backup_scope}" =~ ^[a-z][a-z0-9-]{0,31}$ ]] \
+    || fail "backup scope contains unsupported path characters"
+  BACKUP_ID="${LEADTRACE_BACKUP_ID:-$(date -u +%Y%m%dT%H%M%SZ)-${backup_scope}}"
   [[ "${BACKUP_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] \
     || fail "backup id contains unsupported path characters"
   export BACKUP_ID
 }
 
 new_staging_directory() {
-  validate_backup_id
+  local backup_scope="$1"
+  validate_backup_id "${backup_scope}"
   FINAL_DIRECTORY="${BACKUP_DESTINATION}/${BACKUP_ID}"
   [[ ! -e "${FINAL_DIRECTORY}" ]] || fail "backup destination already exists: ${BACKUP_ID}"
   STAGING_DIRECTORY="$(mktemp -d "${BACKUP_DESTINATION}/.leadtrace-${BACKUP_ID}.staging.XXXXXX")"

@@ -1,0 +1,12 @@
+[Unit]
+Description=Prune verified LeadTrace backups past retention
+
+[Service]
+Type=oneshot
+User=leadtrace
+Group=leadtrace
+WorkingDirectory=/opt/leadtrace
+EnvironmentFile=/etc/leadtrace/backup.env
+ExecStart=/opt/leadtrace/.venv/bin/python leadtrace/ops/backup/prune_backups.py --destination ${LEADTRACE_BACKUP_DESTINATION} --allowed-parent ${LEADTRACE_BACKUP_ALLOWED_PARENT} --retention-days 30 --apply
+PrivateTmp=true
+NoNewPrivileges=true

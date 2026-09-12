@@ -4,11 +4,19 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Sequence
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from leadtrace.ops.backup.asset_chain import resolve_asset_chain  # noqa: E402
+from leadtrace.ops.backup.verify_backup import verify_backup  # noqa: E402
 
 
 CHUNK_SIZE = 1024 * 1024
@@ -34,6 +42,57 @@ def _sha256(path: Path) -> str:
         while chunk := handle.read(CHUNK_SIZE):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def build_backup_evidence(
+    database_metadata: Path,
+    asset_metadata: Path,
+) -> dict[str, object]:
+    database_path = Path(database_metadata).resolve(strict=True)
+    asset_path = Path(asset_metadata).resolve(strict=True)
+    database_report = verify_backup(database_path)
+    asset_report = verify_backup(asset_path)
+    if database_report.backup_scope != "database":
+        raise ValueError("database backup evidence has the wrong scope")
+    if asset_report.backup_scope != "assets":
+        raise ValueError("asset backup evidence has the wrong scope")
+    chain = resolve_asset_chain(asset_path)
+    database_payload = json.loads(database_path.read_text(encoding="utf-8"))
+    asset_payload = json.loads(asset_path.read_text(encoding="utf-8"))
+    versions = database_payload.get("versions")
+    if versions != asset_payload.get("versions"):
+        raise ValueError("database and asset backup versions do not match")
+    chain_rows: list[dict[str, object]] = []
+    for node in chain:
+        payload = json.loads(node.metadata_path.read_text(encoding="utf-8"))
+        archive = payload["artifacts"]["asset_archive"]
+        chain_rows.append(
+            {
+                "backup_id": node.backup_id,
+                "metadata_sha256": _sha256(node.metadata_path),
+                "archive_sha256": archive["sha256"],
+            }
+        )
+    return {
+        "database": {
+            "backup_id": database_report.backup_id,
+            "metadata_sha256": _sha256(database_path),
+            "artifact_sha256": database_payload["artifacts"]["database_dump"][
+                "sha256"
+            ],
+            "versions": versions,
+        },
+        "assets": {
+            "backup_id": asset_report.backup_id,
+            "metadata_sha256": _sha256(asset_path),
+            "manifest_sha256": asset_payload["artifacts"]["asset_manifest"][
+                "sha256"
+            ],
+            "chain_backup_ids": [node.backup_id for node in chain],
+            "chain": chain_rows,
+            "versions": versions,
+        },
+    }
 
 
 def verify_asset_restore(
@@ -87,17 +146,33 @@ def verify_asset_restore(
     return AssetRestoreReport(not unique_errors, len(files), unique_errors)
 
 
-def _safe_database_counts(database_url: str) -> dict[str, int]:
+def _safe_database_counts(database_url: str) -> dict[str, object]:
     import psycopg
 
     connection_url = database_url.replace("postgresql+psycopg://", "postgresql://", 1)
     with psycopg.connect(connection_url, connect_timeout=3) as connection:
         with connection.cursor() as cursor:
-            counts: dict[str, int] = {}
+            physical_counts: dict[str, int] = {}
             for table in ("papers", "releases", "audit_events"):
                 cursor.execute(f'SELECT count(*) FROM "{table}"')
-                counts[table] = int(cursor.fetchone()[0])
-            return counts
+                physical_counts[table] = int(cursor.fetchone()[0])
+            cursor.execute(
+                """
+                SELECT counts, integrity
+                FROM import_batches
+                WHERE completed_at IS NOT NULL
+                ORDER BY completed_at DESC
+                LIMIT 1
+                """
+            )
+            aggregate = cursor.fetchone()
+            if aggregate is None:
+                raise ValueError("completed import baseline is missing")
+            return {
+                "counts": aggregate[0],
+                "integrity": aggregate[1],
+                "physical_counts": physical_counts,
+            }
 
 
 def verify_restored_system(
@@ -105,26 +180,55 @@ def verify_restored_system(
     asset_manifest: Path,
     restored_asset_root: Path,
     database_url: str | None = None,
-    expected_counts: dict[str, int] | None = None,
+    expected_aggregate: dict[str, object],
     base_url: str | None = None,
     drill_username: str | None = None,
     drill_password: str | None = None,
+    backup_evidence: dict[str, object],
+    started_at: datetime,
+    completed_at: datetime | None = None,
+    rto_target_seconds: int,
 ) -> dict[str, object]:
+    finished_at = (completed_at or datetime.now(UTC)).astimezone(UTC)
+    began_at = started_at.astimezone(UTC)
+    duration_seconds = max(0, int((finished_at - began_at).total_seconds()))
     asset_report = verify_asset_restore(asset_manifest, restored_asset_root)
-    checks: dict[str, object] = {"assets": asset_report.as_dict()}
+    checks: dict[str, object] = {
+        "schema_version": 1,
+        "assets": asset_report.as_dict(),
+        "backup_evidence": backup_evidence,
+        "started_at": began_at.isoformat().replace("+00:00", "Z"),
+        "completed_at": finished_at.isoformat().replace("+00:00", "Z"),
+        "duration_seconds": duration_seconds,
+        "rto": {
+            "target_seconds": rto_target_seconds,
+            "met": duration_seconds <= rto_target_seconds,
+        },
+    }
     errors = list(asset_report.errors)
+    expected_counts = expected_aggregate.get("counts")
+    expected_integrity = expected_aggregate.get("integrity_expectations")
+    if (
+        expected_aggregate.get("schema_version") != 1
+        or not isinstance(expected_counts, dict)
+        or not isinstance(expected_integrity, dict)
+    ):
+        raise ValueError("approved expected aggregate is invalid")
     if database_url:
         try:
-            counts = _safe_database_counts(database_url)
-            checks["database"] = {"ok": True, "counts": counts}
-            if expected_counts and counts != expected_counts:
-                checks["database"] = {"ok": False, "counts": counts}
+            baseline = _safe_database_counts(database_url)
+            baseline_ok = (
+                baseline.get("counts") == expected_counts
+                and baseline.get("integrity") == expected_integrity
+            )
+            checks["baseline"] = {"ok": baseline_ok, **baseline}
+            if not baseline_ok:
                 errors.append("database_baseline_mismatch")
         except Exception:
-            checks["database"] = {"ok": False, "error": "database_unavailable"}
+            checks["baseline"] = {"ok": False, "error": "database_unavailable"}
             errors.append("database_unavailable")
     else:
-        checks["database"] = {"ok": False, "error": "database_not_configured"}
+        checks["baseline"] = {"ok": False, "error": "database_not_configured"}
         errors.append("database_not_configured")
 
     if base_url:
@@ -138,9 +242,10 @@ def verify_restored_system(
     else:
         checks["http"] = {"ok": False, "error": "http_not_configured"}
         errors.append("http_not_configured")
+    if duration_seconds > rto_target_seconds:
+        errors.append("rto_target_exceeded")
     checks["errors"] = list(dict.fromkeys(errors))
     checks["ok"] = not errors
-    checks["completed_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     return checks
 
 
@@ -193,26 +298,47 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Verify an isolated LeadTrace restore drill.")
     parser.add_argument("--asset-manifest", type=Path, required=True)
     parser.add_argument("--restored-asset-root", type=Path, required=True)
-    parser.add_argument("--database-url")
-    parser.add_argument("--expected-counts", type=Path)
-    parser.add_argument("--base-url")
+    parser.add_argument("--database-url", required=True)
+    parser.add_argument("--expected-aggregate", type=Path, required=True)
+    parser.add_argument("--database-backup-metadata", type=Path, required=True)
+    parser.add_argument("--asset-backup-metadata", type=Path, required=True)
+    parser.add_argument("--started-at", required=True)
+    parser.add_argument("--rto-target-seconds", type=int, required=True)
+    parser.add_argument("--base-url", required=True)
     parser.add_argument("--report", type=Path, required=True)
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
-    expected_counts = None
-    if args.expected_counts:
-        expected_counts = json.loads(args.expected_counts.read_text(encoding="utf-8"))
+    expected_aggregate = json.loads(
+        args.expected_aggregate.resolve(strict=True).read_text(encoding="utf-8")
+    )
+    if not isinstance(expected_aggregate, dict):
+        raise SystemExit("expected aggregate must contain a JSON object")
+    try:
+        started_at = datetime.fromisoformat(args.started_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise SystemExit("started-at must be an ISO timestamp") from error
+    if started_at.tzinfo is None or started_at.utcoffset() is None:
+        raise SystemExit("started-at must include a UTC offset")
+    if args.rto_target_seconds <= 0:
+        raise SystemExit("rto-target-seconds must be positive")
+    backup_evidence = build_backup_evidence(
+        args.database_backup_metadata,
+        args.asset_backup_metadata,
+    )
     report = verify_restored_system(
         asset_manifest=args.asset_manifest,
         restored_asset_root=args.restored_asset_root,
         database_url=args.database_url,
-        expected_counts=expected_counts,
+        expected_aggregate=expected_aggregate,
         base_url=args.base_url,
         drill_username=os.environ.get("LEADTRACE_DRILL_USERNAME"),
         drill_password=os.environ.get("LEADTRACE_DRILL_PASSWORD"),
+        backup_evidence=backup_evidence,
+        started_at=started_at,
+        rto_target_seconds=args.rto_target_seconds,
     )
     destination = args.report.resolve(strict=False)
     destination.parent.mkdir(parents=True, exist_ok=True)

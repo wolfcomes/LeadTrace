@@ -15,7 +15,7 @@ REQUIRED_ARTIFACTS = frozenset(
 )
 REQUIRED_ARTIFACTS_BY_SCOPE = {
     "database": frozenset({"database_dump"}),
-    "assets": frozenset({"asset_manifest", "asset_archive"}),
+    "assets": frozenset({"asset_manifest", "asset_archive", "asset_snapshot"}),
     "full": REQUIRED_ARTIFACTS,
 }
 REQUIRED_VERSION_FIELDS = frozenset({"application", "schema", "release"})
@@ -116,6 +116,31 @@ def verify_backup(metadata_path: Path) -> BackupVerificationReport:
     artifacts = payload["artifacts"]
     if set(artifacts) != required_artifacts:
         raise ValueError("backup metadata must describe the complete artifact set for its scope")
+    if backup_scope == "assets":
+        chain = payload.get("asset_chain")
+        if not isinstance(chain, dict) or set(chain) != {
+            "mode",
+            "parent_backup_id",
+            "position",
+        }:
+            raise ValueError("asset backup chain identity is required")
+        mode = chain.get("mode")
+        parent_backup_id = chain.get("parent_backup_id")
+        position = chain.get("position")
+        if mode == "full":
+            if parent_backup_id is not None or position != 0:
+                raise ValueError("full asset backup chain identity is invalid")
+        elif mode == "incremental":
+            if (
+                not isinstance(parent_backup_id, str)
+                or not parent_backup_id.strip()
+                or not isinstance(position, int)
+                or isinstance(position, bool)
+                or position < 1
+            ):
+                raise ValueError("incremental asset backup chain identity is invalid")
+        else:
+            raise ValueError("asset backup chain mode is invalid")
 
     verified: list[str] = []
     for artifact_name in sorted(artifacts):

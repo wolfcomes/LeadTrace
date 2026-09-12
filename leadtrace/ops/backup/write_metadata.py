@@ -47,6 +47,9 @@ def write_metadata(
     schema_version: str,
     release_version: str,
     artifacts: Sequence[str],
+    asset_mode: str | None = None,
+    parent_backup_id: str | None = None,
+    chain_position: int | None = None,
 ) -> None:
     parsed_artifacts = dict(_parse_artifact(value) for value in artifacts)
     if not parsed_artifacts:
@@ -82,6 +85,20 @@ def write_metadata(
             for name, path in sorted(parsed_artifacts.items())
         },
     }
+    if backup_scope == "assets":
+        if asset_mode not in {"full", "incremental"} or chain_position is None:
+            raise ValueError("asset backup chain identity is required")
+        if asset_mode == "full" and (parent_backup_id is not None or chain_position != 0):
+            raise ValueError("full asset backup must start a new chain")
+        if asset_mode == "incremental" and (
+            not parent_backup_id or chain_position < 1
+        ):
+            raise ValueError("incremental asset backup must identify its parent")
+        payload["asset_chain"] = {
+            "mode": asset_mode,
+            "parent_backup_id": parent_backup_id,
+            "position": chain_position,
+        }
     destination = Path(output).resolve(strict=False)
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -114,6 +131,9 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--schema-version", required=True)
     parser.add_argument("--release-version", required=True)
     parser.add_argument("--artifact", action="append", required=True)
+    parser.add_argument("--asset-mode", choices=("full", "incremental"))
+    parser.add_argument("--parent-backup-id")
+    parser.add_argument("--chain-position", type=int)
     return parser.parse_args(argv)
 
 
@@ -131,6 +151,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         schema_version=args.schema_version,
         release_version=args.release_version,
         artifacts=args.artifact,
+        asset_mode=args.asset_mode,
+        parent_backup_id=args.parent_backup_id,
+        chain_position=args.chain_position,
     )
     return 0
 

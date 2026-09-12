@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -21,6 +22,7 @@ for module_root in (REPOSITORY_ROOT, BACKEND_ROOT):
     if str(module_root) not in sys.path:
         sys.path.insert(0, str(module_root))
 
+from leadtrace.ops.backup.asset_chain import resolve_asset_chain  # noqa: E402
 from leadtrace.ops.backup.verify_backup import verify_backup  # noqa: E402
 
 
@@ -189,15 +191,71 @@ def _restore_check(
             return CheckResult.failed(
                 "restore_drill", "Restore drill evidence is stale"
             )
+        if payload.get("schema_version") != 1:
+            raise ValueError("restore report schema is unsupported")
+        rto = payload.get("rto")
+        if not isinstance(rto, dict) or rto.get("met") is not True:
+            raise ValueError("restore drill exceeded its RTO")
+        evidence = payload.get("backup_evidence")
+        if not isinstance(evidence, dict):
+            raise ValueError("restore backup evidence is missing")
+        expected_versions = {
+            "application": config["application_version"],
+            "schema": config["schema_revision"],
+            "release": config["release_key"],
+        }
+        selected = {
+            "database": Path(
+                str(_required_config(config, "database_backup_metadata", str))
+            ).resolve(strict=True),
+            "assets": Path(
+                str(_required_config(config, "asset_backup_metadata", str))
+            ).resolve(strict=True),
+        }
+        for key, metadata_path in selected.items():
+            verification = verify_backup(metadata_path)
+            actual = evidence.get(key)
+            if not isinstance(actual, dict):
+                raise ValueError("restore backup evidence is incomplete")
+            metadata_hash = hashlib.sha256(metadata_path.read_bytes()).hexdigest()
+            if (
+                actual.get("backup_id") != verification.backup_id
+                or actual.get("metadata_sha256") != metadata_hash
+                or actual.get("versions") != expected_versions
+            ):
+                raise ValueError("restore evidence references different backups")
+        asset_evidence = evidence["assets"]
+        assert isinstance(asset_evidence, dict)
+        resolved_chain = resolve_asset_chain(selected["assets"])
+        expected_chain = []
+        for node in resolved_chain:
+            node_payload = json.loads(node.metadata_path.read_text(encoding="utf-8"))
+            expected_chain.append(
+                {
+                    "backup_id": node.backup_id,
+                    "metadata_sha256": hashlib.sha256(
+                        node.metadata_path.read_bytes()
+                    ).hexdigest(),
+                    "archive_sha256": node_payload["artifacts"]["asset_archive"][
+                        "sha256"
+                    ],
+                }
+            )
+        if (
+            asset_evidence.get("chain_backup_ids")
+            != [node.backup_id for node in resolved_chain]
+            or asset_evidence.get("chain") != expected_chain
+        ):
+            raise ValueError("restore asset chain evidence is invalid")
         return CheckResult.passed(
             "restore_drill",
-            "Recent isolated restore drill passed",
+            "Recent isolated restore drill passed for the selected backups",
             completed_at=completed_at.isoformat().replace("+00:00", "Z"),
         )
     except Exception:
         return CheckResult.failed(
             "restore_drill",
-            "Restore drill evidence is missing or invalid",
+            "Restore drill backup evidence is missing, mismatched, or invalid",
         )
 
 
@@ -338,7 +396,9 @@ def _services_probe(config: Mapping[str, object]) -> CheckResult:
         asset_root = Path(str(_required_config(config, "asset_root", str))).resolve(
             strict=True
         )
-        if not asset_root.is_dir() or not os.access(asset_root, os.R_OK | os.X_OK):
+        if not asset_root.is_dir() or not os.access(
+            asset_root, os.R_OK | os.W_OK | os.X_OK
+        ):
             raise ValueError("asset storage is unavailable")
         redis_url = os.environ.get("LEADTRACE_REDIS_URL", "").strip()
         if not redis_url or not redis.Redis.from_url(redis_url).ping():

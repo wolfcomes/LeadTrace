@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
@@ -17,6 +18,7 @@ from leadtrace.ops.cutover.preflight import (
     run_preflight,
 )
 from leadtrace.ops.cutover.smoke_test import run_smoke_test
+from leadtrace.ops.restore.verify_restored_system import build_backup_evidence
 
 
 def _write_backup(
@@ -26,12 +28,15 @@ def _write_backup(
     scope: str,
     now: datetime,
 ) -> Path:
+    if scope == "assets":
+        root = root.parent / backup_id
     root.mkdir()
     names = {
         "database": {"database_dump": "database.dump.age"},
         "assets": {
             "asset_manifest": "assets.manifest.json",
             "asset_archive": "assets.tar.age",
+            "asset_snapshot": "tar.snapshot",
         },
     }[scope]
     artifacts: dict[str, dict[str, object]] = {}
@@ -59,9 +64,19 @@ def _write_backup(
         "destination": {"kind": "separate_disk", "identity": "disk-a"},
         "artifacts": artifacts,
     }
+    if scope == "assets":
+        payload["asset_chain"] = {
+            "mode": "full",
+            "parent_backup_id": None,
+            "position": 0,
+        }
     metadata = root / "backup-metadata.json"
     metadata.write_text(json.dumps(payload), encoding="utf-8")
     return metadata
+
+
+def _restore_evidence(database_metadata: Path, asset_metadata: Path) -> dict[str, object]:
+    return build_backup_evidence(database_metadata, asset_metadata)
 
 
 def test_preflight_aggregates_required_evidence_into_machine_readable_report(
@@ -76,7 +91,20 @@ def test_preflight_aggregates_required_evidence_into_machine_readable_report(
     )
     restore_report = tmp_path / "restore-report.json"
     restore_report.write_text(
-        json.dumps({"ok": True, "completed_at": now.isoformat(), "errors": []}),
+        json.dumps(
+            {
+                "schema_version": 1,
+                "ok": True,
+                "started_at": (now - timedelta(minutes=5)).isoformat(),
+                "completed_at": now.isoformat(),
+                "duration_seconds": 300,
+                "rto": {"target_seconds": 3600, "met": True},
+                "errors": [],
+                "backup_evidence": _restore_evidence(
+                    database_backup, asset_backup
+                ),
+            }
+        ),
         encoding="utf-8",
     )
     config = {
@@ -161,6 +189,158 @@ def test_preflight_fails_closed_when_restore_drill_is_stale(tmp_path: Path) -> N
     stale = next(check for check in report.checks if check.name == "restore_drill")
     assert stale.status == "FAIL"
     assert "stale" in stale.summary.casefold()
+
+
+def test_preflight_rejects_restore_evidence_for_different_backups(
+    tmp_path: Path,
+) -> None:
+    now = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
+    database_backup = _write_backup(
+        tmp_path / "database", backup_id="db-current", scope="database", now=now
+    )
+    asset_backup = _write_backup(
+        tmp_path / "assets", backup_id="assets-current", scope="assets", now=now
+    )
+    restore_report = tmp_path / "restore-report.json"
+    restore_report.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "ok": True,
+                "started_at": (now - timedelta(minutes=5)).isoformat(),
+                "completed_at": now.isoformat(),
+                "duration_seconds": 300,
+                "rto": {"target_seconds": 3600, "met": True},
+                "errors": [],
+                "backup_evidence": {
+                    "database": {
+                        "backup_id": "db-older",
+                        "metadata_sha256": "a" * 64,
+                        "versions": {
+                            "application": "0.1.0",
+                            "schema": "0015",
+                            "release": "r1",
+                        },
+                    },
+                    "assets": {
+                        "backup_id": "assets-older",
+                        "metadata_sha256": "b" * 64,
+                        "chain_backup_ids": ["assets-older"],
+                        "versions": {
+                            "application": "0.1.0",
+                            "schema": "0015",
+                            "release": "r1",
+                        },
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = {
+        "schema_version": 1,
+        "application_version": "0.1.0",
+        "schema_revision": "0015",
+        "release_key": "r1",
+        "database_backup_metadata": str(database_backup),
+        "asset_backup_metadata": str(asset_backup),
+        "restore_report": str(restore_report),
+        "max_backup_age_hours": 4,
+        "max_restore_age_days": 31,
+    }
+
+    def passed(name: str) -> CheckResult:
+        return CheckResult.passed(name, "ok")
+
+    report = run_preflight(
+        config,
+        probes=PreflightProbes(
+            database=lambda _: passed("database"),
+            services=lambda _: passed("services"),
+            permissions=lambda _: passed("permissions"),
+            source_manifest=lambda _: passed("source_manifest"),
+        ),
+        now=now,
+    )
+
+    restore = next(check for check in report.checks if check.name == "restore_drill")
+    assert restore.status == "FAIL"
+    assert "backup" in restore.summary.casefold()
+
+
+def test_preflight_rejects_restore_evidence_for_a_different_asset_chain(
+    tmp_path: Path,
+) -> None:
+    now = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
+    database_backup = _write_backup(
+        tmp_path / "database", backup_id="db-current", scope="database", now=now
+    )
+    _write_backup(
+        tmp_path / "assets-full", backup_id="assets-full", scope="assets", now=now
+    )
+    asset_backup = _write_backup(
+        tmp_path / "assets-current",
+        backup_id="assets-current",
+        scope="assets",
+        now=now,
+    )
+    incremental = json.loads(asset_backup.read_text(encoding="utf-8"))
+    incremental["asset_chain"] = {
+        "mode": "incremental",
+        "parent_backup_id": "assets-full",
+        "position": 1,
+    }
+    asset_backup.write_text(json.dumps(incremental), encoding="utf-8")
+
+    evidence = build_backup_evidence(database_backup, asset_backup)
+    asset_evidence = evidence["assets"]
+    assert isinstance(asset_evidence, dict)
+    asset_evidence["chain_backup_ids"] = ["forged-parent", "assets-current"]
+    restore_report = tmp_path / "restore-report.json"
+    restore_report.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "ok": True,
+                "started_at": (now - timedelta(minutes=5)).isoformat(),
+                "completed_at": now.isoformat(),
+                "duration_seconds": 300,
+                "rto": {"target_seconds": 3600, "met": True},
+                "errors": [],
+                "backup_evidence": evidence,
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = {
+        "schema_version": 1,
+        "application_version": "0.1.0",
+        "schema_revision": "0015",
+        "release_key": "r1",
+        "database_backup_metadata": str(database_backup),
+        "asset_backup_metadata": str(asset_backup),
+        "restore_report": str(restore_report),
+        "max_backup_age_hours": 4,
+        "max_restore_age_days": 31,
+    }
+
+    def passed(name: str) -> CheckResult:
+        return CheckResult.passed(name, "ok")
+
+    report = run_preflight(
+        config,
+        probes=PreflightProbes(
+            database=lambda _: passed("database"),
+            services=lambda _: passed("services"),
+            permissions=lambda _: passed("permissions"),
+            source_manifest=lambda _: passed("source_manifest"),
+        ),
+        now=now,
+    )
+
+    restore = next(check for check in report.checks if check.name == "restore_drill")
+    assert restore.status == "FAIL"
+    assert "backup" in restore.summary.casefold()
 
 
 def test_cutover_smoke_report_requires_new_site_and_read_only_fallback() -> None:
@@ -283,6 +463,54 @@ def test_services_probe_requires_a_responsive_celery_worker(
     assert result.status == expected_status
 
 
+def test_services_probe_requires_writable_asset_storage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class Response:
+        status_code = 200
+
+    class Client:
+        def __enter__(self) -> "Client":
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def get(self, _: str) -> Response:
+            return Response()
+
+    class RedisClient:
+        @staticmethod
+        def from_url(_: str) -> SimpleNamespace:
+            return SimpleNamespace(ping=lambda: True)
+
+    inspector = SimpleNamespace(ping=lambda: {"worker": {"ok": "pong"}})
+    celery_app = SimpleNamespace(
+        control=SimpleNamespace(inspect=lambda **_: inspector),
+    )
+    monkeypatch.setitem(
+        sys.modules, "httpx", SimpleNamespace(Client=lambda **_: Client())
+    )
+    monkeypatch.setitem(sys.modules, "redis", SimpleNamespace(Redis=RedisClient))
+    monkeypatch.setitem(
+        sys.modules, "app.worker", SimpleNamespace(celery_app=celery_app)
+    )
+    monkeypatch.setenv("LEADTRACE_REDIS_URL", "redis://127.0.0.1:6379/0")
+    read_execute = os.R_OK | os.X_OK
+    monkeypatch.setattr(os, "access", lambda _path, mode: mode == read_execute)
+
+    result = _services_probe(
+        {
+            "asset_root": str(tmp_path),
+            "base_url": "https://127.0.0.1:8877",
+            "old_dashboard_url": "http://127.0.0.1:8765",
+        }
+    )
+
+    assert result.status == "FAIL"
+
+
 @pytest.mark.parametrize(
     "script",
     [
@@ -332,6 +560,9 @@ def test_cutover_artifacts_require_explicit_evidence_and_native_fallback() -> No
     native_fallback_nginx = (
         repository_root / "leadtrace/deploy/nginx/nginx.native-fallback.conf"
     ).read_text(encoding="utf-8")
+    native_preflight_nginx = (
+        repository_root / "leadtrace/deploy/nginx/nginx.native-preflight.conf"
+    ).read_text(encoding="utf-8")
     example = json.loads(
         (repository_root / "leadtrace/ops/cutover/preflight.example.json").read_text(
             encoding="utf-8"
@@ -340,6 +571,7 @@ def test_cutover_artifacts_require_explicit_evidence_and_native_fallback() -> No
 
     for required in (
         "maintenance",
+        "/api/v1/admin/maintenance",
         "backup_postgres.sh",
         "backup_assets.sh",
         "preflight.py",
@@ -347,8 +579,17 @@ def test_cutover_artifacts_require_explicit_evidence_and_native_fallback() -> No
         "nginx -t",
         "read-only",
         "rollback-cutover.md",
+        "nginx.native-preflight.conf",
     ):
         assert required in cutover
+    rollback_backup = cutover.index("## Enter maintenance and take rollback backups")
+    final_import = cutover.index("## Apply the final import and validate")
+    candidate_restore = cutover.index("## Back up and restore the cutover candidate")
+    preflight = cutover.index("## Preflight the staged candidate")
+    route_switch = cutover.index("## Switch the primary route")
+    assert rollback_backup < final_import < candidate_restore < preflight < route_switch
+    assert "restore_drill.sh" in cutover[candidate_restore:preflight]
+    assert "selected candidate backup IDs" in cutover[candidate_restore:preflight]
     for required in ("preserve", "new revisions", "read-only", "smoke_test.py"):
         assert required in rollback
     for required in (
@@ -379,6 +620,8 @@ def test_cutover_artifacts_require_explicit_evidence_and_native_fallback() -> No
         assert required in acceptance
     assert example["application_version"] == "0.1.0"
     assert example["schema_revision"] == "0015_crop_job_subscriptions"
+    assert example["base_url"] == "https://127.0.0.1:8877"
+    assert example["old_dashboard_url"] == "http://127.0.0.1:8765"
     assert "listen 8876 ssl;" in native_nginx
     assert "proxy_pass http://127.0.0.1:8000;" in native_nginx
     assert "root /srv/leadtrace/current-frontend;" in native_nginx
@@ -387,3 +630,5 @@ def test_cutover_artifacts_require_explicit_evidence_and_native_fallback() -> No
     assert "limit_except GET" in native_nginx
     assert "proxy_pass http://127.0.0.1:8765;" in native_fallback_nginx
     assert "limit_except GET" in native_fallback_nginx
+    assert "listen 127.0.0.1:8877 ssl;" in native_preflight_nginx
+    assert "proxy_pass http://127.0.0.1:8000;" in native_preflight_nginx

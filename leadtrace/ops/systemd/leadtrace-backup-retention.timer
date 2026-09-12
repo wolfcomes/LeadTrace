@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply LeadTrace backup retention daily
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=leadtrace-backup-retention.service
+
+[Install]
+WantedBy=timers.target

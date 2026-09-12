@@ -50,7 +50,7 @@ async function submit(): Promise<void> {
         <h2>{{ zhCN.auth.signInTitle }}</h2>
         <p class="description">{{ zhCN.auth.signInDescription }}</p>
 
-        <div v-if="auth.loginError" class="form-alert" role="alert">
+        <div v-if="auth.loginError" id="login-error" class="form-alert" role="alert">
           <span aria-hidden="true"></span>
           <p>{{ auth.loginError }}</p>
         </div>
@@ -66,6 +66,7 @@ async function submit(): Promise<void> {
           spellcheck="false"
           required
           autofocus
+          :aria-describedby="auth.loginError ? 'login-error' : undefined"
         >
 
         <label for="password">{{ zhCN.auth.password }}</label>
@@ -76,6 +77,7 @@ async function submit(): Promise<void> {
           type="password"
           autocomplete="current-password"
           required
+          :aria-describedby="auth.loginError ? 'login-error' : undefined"
         >
 
         <button class="button-primary" type="submit" :disabled="auth.busy">

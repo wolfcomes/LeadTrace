@@ -1,0 +1,11 @@
+[Unit]
+Description=Run LeadTrace full asset backup weekly
+
+[Timer]
+OnCalendar=Sun *-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=leadtrace-backup-assets-full.service
+
+[Install]
+WantedBy=timers.target

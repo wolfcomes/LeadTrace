@@ -1,0 +1,13 @@
+[Unit]
+Description=Run isolated LeadTrace restore drill
+
+[Service]
+Type=oneshot
+User=leadtrace
+Group=leadtrace
+WorkingDirectory=/opt/leadtrace
+EnvironmentFile=/etc/leadtrace/restore-drill.env
+Environment=LEADTRACE_PYTHON_BIN=/opt/leadtrace/.venv/bin/python
+ExecStart=/usr/bin/bash leadtrace/ops/restore/restore_drill.sh
+PrivateTmp=true
+NoNewPrivileges=true

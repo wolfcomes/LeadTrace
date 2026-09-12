@@ -204,3 +204,23 @@ def test_nginx_lan_entrypoint_requires_tls_and_keeps_metrics_internal() -> None:
     assert "location = /internal/metrics" in config
     assert "return 404;" in config
     assert "ws:" not in config
+
+
+def test_compose_documentation_uses_the_tls_entrypoint() -> None:
+    readme = (Path(__file__).parents[3] / "README.md").read_text(encoding="utf-8")
+
+    assert "https://leadtrace.lan:8876/" in readme
+    assert "deploy/nginx/tls/leadtrace.crt" in readme
+    assert "deploy/nginx/tls/leadtrace.key" in readme
+    assert "http://127.0.0.1:8876/" not in readme
+
+
+def test_current_api_exposes_no_remote_url_or_archive_ingestion_surface(
+    tmp_path: Path,
+) -> None:
+    schema = _test_app(_settings(tmp_path)).openapi()
+    serialized = json.dumps(schema).casefold()
+
+    assert "source_url" not in serialized
+    assert "archive_url" not in serialized
+    assert "archive_upload" not in serialized

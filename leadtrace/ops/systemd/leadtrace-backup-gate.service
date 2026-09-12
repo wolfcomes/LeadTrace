@@ -1,0 +1,13 @@
+[Unit]
+Description=LeadTrace pre-migration or pre-release backup gate
+
+[Service]
+Type=oneshot
+User=leadtrace
+Group=leadtrace
+WorkingDirectory=/opt/leadtrace
+EnvironmentFile=/etc/leadtrace/backup.env
+ExecStart=/usr/bin/bash leadtrace/ops/backup/backup_postgres.sh
+ExecStart=/usr/bin/env LEADTRACE_ASSET_BACKUP_MODE=full /usr/bin/bash leadtrace/ops/backup/backup_assets.sh
+PrivateTmp=true
+NoNewPrivileges=true

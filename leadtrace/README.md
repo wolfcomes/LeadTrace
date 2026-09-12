@@ -41,7 +41,9 @@ npm run build
 ## Development stack
 
 Copy `deploy/env/example.env` to a private `.env` next to `compose.yaml`, replace
-the placeholders, and run from the repository root:
+the placeholders, provision the internal-CA certificate and private key as
+`deploy/nginx/tls/leadtrace.crt` and `deploy/nginx/tls/leadtrace.key`, and run
+from the repository root:
 
 ```bash
 docker compose --env-file leadtrace/deploy/.env \
@@ -50,10 +52,11 @@ docker compose --env-file leadtrace/deploy/.env \
   -f leadtrace/deploy/compose.yaml up -d --build
 ```
 
-Without `--env-file`, Compose uses explicitly development-only defaults. Open
-`http://127.0.0.1:8876/`. Formal LAN rollout will add an internal-CA TLS
-certificate and choose the final fixed port without disturbing the legacy
-Dashboard on port 8765.
+Without `--env-file`, Compose uses explicitly development-only defaults. After
+the internal CA is trusted by the client and the certificate SAN includes
+`leadtrace.lan`, open `https://leadtrace.lan:8876/`. The Compose Nginx service
+always expects TLS; its port must not be documented or operated as plain HTTP.
+The legacy Dashboard remains separate on port 8765.
 
 The one-shot `migrate` service upgrades a fresh PostgreSQL volume before the
 web process and worker start. The application itself never changes schemas at
@@ -66,6 +69,9 @@ Docker is optional during the current development phase. Point LeadTrace at a
 dedicated PostgreSQL database whose name ends in `_test` for tests, or at a
 dedicated development database for manual use. Do not use a production or
 scientific source-data database.
+
+This native Uvicorn command is a direct HTTP development mode without Nginx.
+It is not accepted for production cutover or LAN TLS validation.
 
 ```bash
 python -m venv .venv

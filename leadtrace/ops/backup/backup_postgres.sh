@@ -13,7 +13,7 @@ command -v pg_dump >/dev/null 2>&1 || fail "pg_dump is required"
 command -v age >/dev/null 2>&1 || fail "age is required"
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
 
-new_staging_directory
+new_staging_directory database
 trap cleanup_staging_directory EXIT
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 PLAIN_DUMP="${STAGING_DIRECTORY}/database.dump"

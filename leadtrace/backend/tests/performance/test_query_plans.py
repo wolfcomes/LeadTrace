@@ -5,6 +5,7 @@ from uuid import uuid4
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
+from pathlib import Path
 
 from app.database import create_database_engine
 from app.papers.repository import PaperListFilters, published_paper_statement
@@ -57,3 +58,21 @@ def test_published_paper_list_statement_is_release_scoped_and_bounded() -> None:
     assert "LIMIT 20" in compiled
     assert "OFFSET 20" in compiled
     assert "ORDER BY release_items.manifest_order" in compiled
+
+
+def test_load_profile_covers_queues_release_validation_and_pdf_latency() -> None:
+    profile = (
+        Path(__file__).parents[3] / "tests" / "load" / "locustfile.py"
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        "LEADTRACE_LOAD_REGION_ID",
+        "LEADTRACE_LOAD_RELEASE_ID",
+        "/crop-jobs",
+        "/validation",
+        "PDF first visible content",
+        "cached PDF page",
+        "crop job enqueue",
+        "release validation",
+    ):
+        assert required in profile

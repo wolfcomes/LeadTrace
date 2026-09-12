@@ -1,0 +1,13 @@
+[Unit]
+Description=LeadTrace encrypted incremental asset backup
+
+[Service]
+Type=oneshot
+User=leadtrace
+Group=leadtrace
+WorkingDirectory=/opt/leadtrace
+EnvironmentFile=/etc/leadtrace/backup.env
+Environment=LEADTRACE_ASSET_BACKUP_MODE=incremental
+ExecStart=/usr/bin/bash leadtrace/ops/backup/backup_assets.sh
+PrivateTmp=true
+NoNewPrivileges=true

@@ -66,15 +66,29 @@ python -m alembic -c alembic.ini upgrade head
 python -m alembic -c alembic.ini current
 ```
 
-## Enter maintenance and take final backups
+## Enter maintenance and take rollback backups
 
-Use the Admin maintenance control backed by `PUT /api/v1/jobs/maintenance`.
+Use the Admin maintenance control backed by `PUT /api/v1/admin/maintenance`.
 Set a specific reason and expected end time. Verify Visitor published reads
 continue and Reviewer write attempts are rejected before continuing.
 
-Load the protected backup environment and run final database and full asset
-backups. The metadata versions must equal the application, schema, and target
-release in the preflight configuration.
+Use the authenticated Admin session cookie and the CSRF token returned by
+login. Keep both values in protected shell variables and out of shell history:
+
+```bash
+curl --fail-with-body --request PUT \
+  --cookie "leadtrace_session=${LEADTRACE_ADMIN_SESSION}" \
+  --header "X-CSRF-Token: ${LEADTRACE_ADMIN_CSRF}" \
+  --header 'Content-Type: application/json' \
+  --data '{"active":true,"reason":"Release 1 cutover","expected_end":"2026-09-13T02:00:00Z"}' \
+  https://127.0.0.1:8877/api/v1/admin/maintenance
+```
+
+Load the protected backup environment and capture database and full asset
+backups of the state that exists before the final import. These are rollback
+backups: their metadata must identify the currently deployed application,
+schema, and release, and they must not be substituted for the later cutover
+candidate evidence.
 
 ```bash
 bash leadtrace/ops/backup/backup_postgres.sh
@@ -85,7 +99,7 @@ python leadtrace/ops/backup/verify_backup.py \
   /srv/leadtrace-backups/<asset-backup-id>/backup-metadata.json
 ```
 
-Record the finalized backup IDs and destination identity. Stop if verification
+Record the rollback backup IDs and destination identity. Stop if verification
 fails or the configured age exceeds the four-hour database RPO.
 
 ## Apply the final import and validate
@@ -105,10 +119,61 @@ python -m app.cli.import_baseline \
 
 If and only if the dry run matches exactly, repeat with `--apply`. Admin must
 validate the resulting candidate and publish through the approval workflow.
-Update the preflight configuration with the actual current release key and
-fresh backup metadata paths.
+Record the actual current release key and keep maintenance mode active.
 
-Run the machine-readable gate from the repository root:
+## Back up and restore the cutover candidate
+
+After the final import is applied, validated, approved, and published, create a
+second database backup and a second full asset backup. Set the protected backup
+environment to the candidate application version, schema revision, and actual
+current release key. Use new backup IDs; do not overwrite or relabel the
+rollback backups.
+
+```bash
+bash leadtrace/ops/backup/backup_postgres.sh
+LEADTRACE_ASSET_BACKUP_MODE=full bash leadtrace/ops/backup/backup_assets.sh
+python leadtrace/ops/backup/verify_backup.py \
+  /srv/leadtrace-backups/<candidate-database-backup-id>/backup-metadata.json
+python leadtrace/ops/backup/verify_backup.py \
+  /srv/leadtrace-backups/<candidate-asset-backup-id>/backup-metadata.json
+```
+
+Provision a new allowlisted empty drill database, a new restore root, and the
+isolated HTTPS drill application described in `restore.md`. Point
+`LEADTRACE_DATABASE_METADATA` and `LEADTRACE_ASSET_METADATA` at the selected
+candidate backup IDs and run the complete restore drill:
+
+```bash
+LEADTRACE_PYTHON_BIN=/opt/leadtrace/.venv/bin/python \
+  bash leadtrace/ops/restore/restore_drill.sh
+```
+
+Stop unless `restore-report.json` is `PASS`, meets the agreed RTO, and its
+database ID, terminal asset ID, full asset chain, metadata hashes, and versions
+match the selected candidate backup IDs exactly. Update the protected preflight
+configuration with these candidate metadata paths, the new restore report, and
+the actual current release key. The earlier monthly report and rollback backup
+IDs are not valid substitutes.
+
+## Preflight the staged candidate
+
+Before running the machine-readable gate, stage the new site on a loopback-only
+TLS listener. This does not change the LAN primary route. Install the committed
+preflight server alongside the current route, validate the complete Nginx
+configuration, and reload:
+
+```bash
+sudo install -m 0644 leadtrace/deploy/nginx/nginx.native-preflight.conf \
+  /etc/nginx/conf.d/leadtrace-preflight.conf
+sudo nginx -t
+sudo nginx -s reload
+```
+
+The certificate must include `127.0.0.1` in its SAN for the example config, or
+the protected config must use a loopback-resolving hostname present in the SAN.
+Set preflight `base_url` to this listener and `old_dashboard_url` directly to
+`http://127.0.0.1:8765`. Then run the machine-readable gate from the repository
+root:
 
 ```bash
 .venv/bin/python leadtrace/ops/cutover/preflight.py \
@@ -116,7 +181,8 @@ Run the machine-readable gate from the repository root:
   --report /srv/leadtrace/acceptance/preflight-report.json
 ```
 
-Proceed only when the process exits `0` and every check is `PASS`. This includes
+Proceed to the LAN route switch only when the process exits `0` and every check
+is `PASS`. This includes
 backup and restore recency, exact import counts, zero configured integrity
 defects, asset hashes, audit chain, current release, source manifest, database,
 Redis, Celery worker, storage, HTTPS, role permissions, and old Dashboard.
@@ -135,6 +201,12 @@ sudo install -m 0644 leadtrace/deploy/nginx/nginx.native.conf \
 sudo nginx -t
 sudo nginx -s reload
 ```
+
+The public `/legacy-dashboard/` check belongs to the post-switch smoke test;
+the preflight uses the direct loopback Dashboard health URL. Keep the
+loopback-only preflight server until the second LeadTrace smoke test succeeds,
+then remove `/etc/nginx/conf.d/leadtrace-preflight.conf`, run `nginx -t`, and
+reload.
 
 From a LAN client that trusts the internal CA, run:
 

@@ -13,8 +13,8 @@
   "source_roots": {
     "jmc": "/absolute/path/inside-manifest-workspace/source_pdfs/approved-corpus"
   },
-  "base_url": "https://leadtrace.lan:8876",
-  "old_dashboard_url": "https://leadtrace.lan:8876/legacy-dashboard",
+  "base_url": "https://127.0.0.1:8877",
+  "old_dashboard_url": "http://127.0.0.1:8765",
   "representative_paper_id": "TO_BE_REPLACED_WITH_PUBLISHED_PAPER_UUID",
   "source_manifest": "/srv/leadtrace/config/2026-09-10-source-manifest.json"
 }

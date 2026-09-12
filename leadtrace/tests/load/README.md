@@ -12,8 +12,12 @@ LEADTRACE_LOAD_VISITOR_USERNAME
 LEADTRACE_LOAD_VISITOR_PASSWORD
 LEADTRACE_LOAD_REVIEWER_USERNAME
 LEADTRACE_LOAD_REVIEWER_PASSWORD
+LEADTRACE_LOAD_ADMIN_USERNAME
+LEADTRACE_LOAD_ADMIN_PASSWORD
 LEADTRACE_LOAD_PAPER_ID
 LEADTRACE_LOAD_CHANGESET_ID
+LEADTRACE_LOAD_REGION_ID
+LEADTRACE_LOAD_RELEASE_ID
 ```
 
 Example execution:
@@ -26,9 +30,11 @@ locust -f leadtrace/tests/load/locustfile.py \
 
 The process exits non-zero when a named p95 target is missed, a required
 scenario has no samples, or the aggregate failure rate exceeds one percent.
-Run a separate cold-browser trace for "PDF first visible content < 2 s" and a
-single RDKit structure preview for "normally < 2 s"; browser rendering time is
-not represented accurately by an HTTP-only Locust client.
+The profile records both uncached and cached PDF Range requests, crop-job queue
+submission, and Admin release validation. Run a separate cold-browser trace for
+actual PDF painting and a single RDKit structure preview for "normally < 2 s";
+browser rendering time and the synchronous browser RDKit path are not
+represented accurately by an HTTP-only Locust client.
 
 During a second five-minute acceptance run, restart Redis once and then one
 worker process. PostgreSQL-backed jobs must reconcile without duplicate assets
