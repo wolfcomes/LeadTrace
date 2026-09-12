@@ -9,10 +9,17 @@ from pathlib import Path
 import subprocess
 from uuid import UUID
 
+import pytest
 from sqlalchemy import delete, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.activities.models import Activity
+from app.assets.models import (
+    Asset,
+    AssetAccessLevel,
+    AssetCategory,
+    AssetIntegrityState,
+)
 from app.compounds.models import Compound
 from app.evidence.models import Evidence
 from app.imports.models import ImportBatch
@@ -30,6 +37,9 @@ from app.security.policies import WorkflowState
 from app.structures.models import Structure
 from app.users.models import UserRole
 from app.users.service import UserService
+from app.visual_objects.models import MoleculeObjectType, VisualObject, VisualRegion
+from app.releases.aggregate import _reference_ids
+import leadtrace.ops.restore.verify_restored_system as restore_verification
 from leadtrace.ops.backup.verify_backup import verify_backup
 from leadtrace.ops.restore.verify_restored_system import (
     _safe_database_counts,
@@ -65,6 +75,21 @@ EXPECTED_RELEASE_AGGREGATE = {
 }
 
 
+def test_release_reference_keys_are_scoped_to_their_paper() -> None:
+    first_paper = UUID(int=1)
+    second_paper = UUID(int=2)
+    first_compound = UUID(int=3)
+    second_compound = UUID(int=4)
+    keys = {
+        (first_paper, "CMP-1"): first_compound,
+        (second_paper, "CMP-1"): second_compound,
+    }
+
+    assert _reference_ids("CMP-1", keys=keys, paper_id=second_paper) == (
+        second_compound,
+    )
+
+
 def _published_revision(
     session: Session,
     *,
@@ -95,6 +120,9 @@ def _published_revision(
 
 def _seed_current_release(
     session_factory: sessionmaker[Session],
+    *,
+    invalid_activity_evidence: bool = False,
+    source_root: Path | None = None,
 ) -> dict[str, UUID]:
     with session_factory.begin() as session:
         actor = UserService().create_user(
@@ -152,7 +180,38 @@ def _seed_current_release(
             parent_compound_id=compounds[0].id,
             derived_compound_id=compounds[1].id,
         )
-        session.add_all([*structures, activity, edge])
+        source_asset = None
+        if source_root is not None:
+            source_root.mkdir(parents=True, exist_ok=True)
+            source_file = source_root / "source.txt"
+            source_file.write_bytes(b"release source asset\n")
+            source_asset = Asset(
+                storage_key="source/baseline/source.txt",
+                original_filename=source_file.name,
+                sha256=hashlib.sha256(source_file.read_bytes()).hexdigest(),
+                byte_size=source_file.stat().st_size,
+                mime_type="text/plain",
+                category=AssetCategory.EXTERNAL_SOURCE,
+                access_level=AssetAccessLevel.REVIEWER,
+                integrity_state=AssetIntegrityState.VERIFIED,
+                derivation_metadata={},
+                source_metadata={},
+                created_by_id=actor.id,
+            )
+            session.add(source_asset)
+            session.flush()
+        visual_region = VisualRegion(
+            paper_id=paper.id,
+            region_key="REGION-1",
+            page_number=1,
+            asset_id=source_asset.id if source_asset is not None else None,
+        )
+        visual_object = VisualObject(
+            paper_id=paper.id,
+            object_key="VISUAL-1",
+            object_type=MoleculeObjectType.LINKER,
+        )
+        session.add_all([*structures, activity, edge, visual_region, visual_object])
         session.flush()
 
         revisions = [
@@ -211,7 +270,11 @@ def _seed_current_release(
                 actor_id=actor.id,
                 snapshot={
                     "compound_id": str(compounds[1].id),
-                    "evidence_ids": [str(evidence.id)],
+                    "evidence_ids": (
+                        ["NOT-A-REAL-EVIDENCE"]
+                        if invalid_activity_evidence
+                        else [str(evidence.id)]
+                    ),
                 },
                 activity_state=ActivityState.CONFIRMED,
             ),
@@ -229,6 +292,21 @@ def _seed_current_release(
                 },
                 relation_status="confirmed",
             ),
+            _published_revision(
+                session,
+                domain_object=visual_region,
+                actor_id=actor.id,
+                snapshot={"page_number": 1, "region_key": "REGION-1"},
+            ),
+            _published_revision(
+                session,
+                domain_object=visual_object,
+                actor_id=actor.id,
+                snapshot={
+                    "object_key": "VISUAL-1",
+                    "object_type": MoleculeObjectType.LINKER.value,
+                },
+            ),
         ]
         session.flush()
         release = Release(
@@ -243,7 +321,17 @@ def _seed_current_release(
         )
         session.add(release)
         session.flush()
-        objects = [paper, *compounds, *structures, lineage, evidence, activity, edge]
+        objects = [
+            paper,
+            *compounds,
+            *structures,
+            lineage,
+            evidence,
+            activity,
+            edge,
+            visual_region,
+            visual_object,
+        ]
         for order, (domain_object, revision) in enumerate(zip(objects, revisions, strict=True)):
             session.add(
                 ReleaseItem(
@@ -371,6 +459,169 @@ def test_database_restore_integrity_detects_changed_release_relationships(
     aggregate = _safe_database_counts(empty_postgresql_database_url)
 
     assert aggregate["integrity"]["invalid_pair_endpoints"] > 0  # type: ignore[index]
+
+
+def test_database_restore_integrity_counts_unparseable_references(
+    auth_session_factory: sessionmaker[Session],
+    empty_postgresql_database_url: str,
+) -> None:
+    _seed_current_release(
+        auth_session_factory,
+        invalid_activity_evidence=True,
+    )
+
+    aggregate = _safe_database_counts(empty_postgresql_database_url)
+
+    assert aggregate["integrity"]["dangling_evidence_references"] == 1  # type: ignore[index]
+
+
+def test_database_restore_validates_configured_source_assets(
+    auth_session_factory: sessionmaker[Session],
+    empty_postgresql_database_url: str,
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source"
+    managed_root = tmp_path / "managed"
+    _seed_current_release(auth_session_factory, source_root=source_root)
+
+    without_source_root = _safe_database_counts(
+        empty_postgresql_database_url,
+        asset_root=managed_root,
+    )
+    with_source_root = _safe_database_counts(
+        empty_postgresql_database_url,
+        asset_root=managed_root,
+        source_roots={"baseline": source_root},
+    )
+
+    assert without_source_root["integrity"]["published_missing_or_corrupt_assets"] == 1  # type: ignore[index]
+    assert with_source_root["integrity"]["published_missing_or_corrupt_assets"] == 0  # type: ignore[index]
+
+
+def test_restored_asset_layout_maps_only_bundled_roots(tmp_path: Path) -> None:
+    bundle_root = tmp_path / "bundle"
+    managed_root = bundle_root / "managed"
+    source_root = bundle_root / "sources" / "baseline"
+    managed_root.mkdir(parents=True)
+    source_root.mkdir(parents=True)
+    manifest = tmp_path / "assets.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "layout": {
+                    "managed_root": "managed",
+                    "source_roots": {"baseline": "sources/baseline"},
+                },
+                "file_count": 0,
+                "total_bytes": 0,
+                "files": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    managed, sources = restore_verification._restored_asset_layout(  # type: ignore[attr-defined]
+        manifest,
+        bundle_root,
+    )
+
+    assert managed == managed_root
+    assert sources == {"baseline": source_root}
+
+
+def test_restore_report_completion_includes_database_and_http_verification(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    started_at = datetime(2026, 9, 13, 10, 0, tzinfo=UTC)
+    current_time = started_at + timedelta(seconds=5)
+
+    class TestClock:
+        @classmethod
+        def now(cls, timezone):
+            return current_time.astimezone(timezone)
+
+    def recompute_database(*_args, **kwargs):
+        nonlocal current_time
+        assert kwargs["source_roots"] == {"baseline": tmp_path}
+        current_time += timedelta(seconds=7)
+        return {"counts": {}, "integrity": {}, "physical_counts": {}}
+
+    def verify_http(*_args, **_kwargs):
+        nonlocal current_time
+        current_time += timedelta(seconds=3)
+        return {"ok": True, "checks": {}}
+
+    manifest = tmp_path / "assets.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "file_count": 0,
+                "total_bytes": 0,
+                "files": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    asset_root = tmp_path / "assets"
+    asset_root.mkdir()
+    monkeypatch.setattr(restore_verification, "datetime", TestClock)
+    monkeypatch.setattr(
+        restore_verification,
+        "_safe_database_counts",
+        recompute_database,
+    )
+    monkeypatch.setattr(restore_verification, "_verify_http_workflow", verify_http)
+
+    report = restore_verification.verify_restored_system(
+        asset_manifest=manifest,
+        restored_asset_root=asset_root,
+        source_roots={"baseline": tmp_path},
+        database_url="postgresql+psycopg://drill",
+        expected_aggregate={
+            "schema_version": 1,
+            "counts": {},
+            "integrity_expectations": {},
+        },
+        base_url="https://drill.local",
+        drill_username="reviewer",
+        drill_password="password",
+        backup_evidence={},
+        started_at=started_at,
+        rto_target_seconds=60,
+    )
+
+    assert report["completed_at"] == "2026-09-13T10:00:15Z"
+    assert report["duration_seconds"] == 15
+
+
+def test_restored_asset_layout_rejects_a_broad_source_root(tmp_path: Path) -> None:
+    bundle_root = tmp_path / "bundle"
+    bundle_root.mkdir()
+    manifest = tmp_path / "assets.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "layout": {
+                    "managed_root": "managed",
+                    "source_roots": {"baseline": "/"},
+                },
+                "file_count": 0,
+                "total_bytes": 0,
+                "files": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="inside the restored bundle"):
+        restore_verification._restored_asset_layout(  # type: ignore[attr-defined]
+            manifest,
+            bundle_root,
+        )
 
 
 def test_restore_report_requires_complete_scientific_baseline_and_evidence(

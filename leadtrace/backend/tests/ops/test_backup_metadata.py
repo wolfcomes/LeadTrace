@@ -377,6 +377,9 @@ def test_asset_backup_finalizes_manifest_and_encrypted_archive(tmp_path: Path) -
     asset_root.mkdir()
     (asset_root / "objects").mkdir()
     (asset_root / "objects" / "one.txt").write_text("one", encoding="utf-8")
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / "paper.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     (fake_bin / "age").write_text(
@@ -392,6 +395,7 @@ def test_asset_backup_finalizes_manifest_and_encrypted_archive(tmp_path: Path) -
         "LEADTRACE_BACKUP_DESTINATION": str(destination),
         "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
         "LEADTRACE_ASSET_ROOT": str(asset_root),
+        "LEADTRACE_SOURCE_ROOTS": json.dumps({"baseline": str(source_root)}),
         "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
         "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
         "LEADTRACE_DESTINATION_ID": "test-destination",
@@ -426,6 +430,17 @@ def test_asset_backup_finalizes_manifest_and_encrypted_archive(tmp_path: Path) -
         "mode": "full",
         "parent_backup_id": None,
         "position": 0,
+    }
+    manifest = json.loads(
+        (final_directory / "assets.manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["layout"] == {
+        "managed_root": "managed",
+        "source_roots": {"baseline": "sources/baseline"},
+    }
+    assert {row["path"] for row in manifest["files"]} == {
+        "managed/objects/one.txt",
+        "sources/baseline/paper.pdf",
     }
 
 
@@ -470,6 +485,10 @@ def test_full_and_incremental_asset_chain_restores_with_real_tar(
     asset_root.mkdir()
     first = asset_root / "first.txt"
     first.write_text("first revision", encoding="utf-8")
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    source_file = source_root / "paper.txt"
+    source_file.write_text("source revision one", encoding="utf-8")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     (fake_bin / "age").write_text(
@@ -487,6 +506,7 @@ def test_full_and_incremental_asset_chain_restores_with_real_tar(
         "LEADTRACE_BACKUP_DESTINATION": str(destination),
         "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
         "LEADTRACE_ASSET_ROOT": str(asset_root),
+        "LEADTRACE_SOURCE_ROOTS": json.dumps({"baseline": str(source_root)}),
         "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
         "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
         "LEADTRACE_DESTINATION_ID": "test-destination",
@@ -509,6 +529,7 @@ def test_full_and_incremental_asset_chain_restores_with_real_tar(
     assert full.returncode == 0, full.stderr
     first.unlink()
     (asset_root / "second.txt").write_text("second revision", encoding="utf-8")
+    source_file.write_text("source revision two", encoding="utf-8")
     incremental = subprocess.run(
         ["bash", str(script_path)],
         env={
@@ -564,9 +585,13 @@ def test_full_and_incremental_asset_chain_restores_with_real_tar(
     manifest = terminal_metadata.parent / terminal["artifacts"]["asset_manifest"]["path"]
     report = verify_asset_restore(manifest, restored)
     assert report.ok is True
-    assert first.relative_to(asset_root).as_posix() not in {
-        path.relative_to(restored).as_posix() for path in restored.rglob("*")
-    }
+    assert not (restored / "managed" / first.name).exists()
+    assert (restored / "managed" / "second.txt").read_text(encoding="utf-8") == (
+        "second revision"
+    )
+    assert (restored / "sources" / "baseline" / source_file.name).read_text(
+        encoding="utf-8"
+    ) == "source revision two"
 
 
 def test_retention_prunes_only_verified_expired_direct_children(

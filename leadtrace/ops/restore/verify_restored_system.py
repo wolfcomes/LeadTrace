@@ -8,7 +8,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Sequence
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -146,10 +146,54 @@ def verify_asset_restore(
     return AssetRestoreReport(not unique_errors, len(files), unique_errors)
 
 
+def _restored_asset_layout(
+    manifest_path: Path,
+    restored_root: Path,
+) -> tuple[Path, dict[str, Path]]:
+    manifest = json.loads(Path(manifest_path).resolve(strict=True).read_text(encoding="utf-8"))
+    root = Path(restored_root).resolve(strict=True)
+    layout = manifest.get("layout")
+    if layout is None:
+        return root, {}
+    if not isinstance(layout, dict):
+        raise ValueError("asset manifest layout is invalid")
+    managed_value = layout.get("managed_root")
+    source_values = layout.get("source_roots")
+    if not isinstance(managed_value, str) or not isinstance(source_values, dict):
+        raise ValueError("asset manifest layout is incomplete")
+
+    def bundled_directory(value: object) -> Path:
+        if not isinstance(value, str) or not value:
+            raise ValueError("asset layout path must be inside the restored bundle")
+        relative = PurePosixPath(value)
+        if relative.is_absolute() or any(
+            part in {"", ".", ".."} for part in relative.parts
+        ):
+            raise ValueError("asset layout path must be inside the restored bundle")
+        resolved = root.joinpath(*relative.parts).resolve(strict=True)
+        try:
+            resolved.relative_to(root)
+        except ValueError as error:
+            raise ValueError(
+                "asset layout path must be inside the restored bundle"
+            ) from error
+        if not resolved.is_dir():
+            raise ValueError("asset layout path must be a restored directory")
+        return resolved
+
+    source_roots: dict[str, Path] = {}
+    for key, value in source_values.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError("asset source root key is invalid")
+        source_roots[key] = bundled_directory(value)
+    return bundled_directory(managed_value), source_roots
+
+
 def _safe_database_counts(
     database_url: str,
     *,
     asset_root: Path | None = None,
+    source_roots: dict[str, Path] | None = None,
 ) -> dict[str, object]:
     from sqlalchemy import select
     from sqlalchemy.orm import Session
@@ -167,7 +211,11 @@ def _safe_database_counts(
             )
             if release is None or not release.manifest_finalized:
                 raise ValueError("current finalized release is missing")
-            store = LocalAssetStore(asset_root) if asset_root is not None else None
+            store = (
+                LocalAssetStore(asset_root, source_roots=source_roots)
+                if asset_root is not None
+                else None
+            )
             return recompute_release_aggregate(
                 session,
                 release,
@@ -181,6 +229,7 @@ def verify_restored_system(
     *,
     asset_manifest: Path,
     restored_asset_root: Path,
+    source_roots: dict[str, Path] | None = None,
     database_url: str | None = None,
     expected_aggregate: dict[str, object],
     base_url: str | None = None,
@@ -191,21 +240,19 @@ def verify_restored_system(
     completed_at: datetime | None = None,
     rto_target_seconds: int,
 ) -> dict[str, object]:
-    finished_at = (completed_at or datetime.now(UTC)).astimezone(UTC)
     began_at = started_at.astimezone(UTC)
-    duration_seconds = max(0, int((finished_at - began_at).total_seconds()))
     asset_report = verify_asset_restore(asset_manifest, restored_asset_root)
+    managed_root, bundled_source_roots = _restored_asset_layout(
+        asset_manifest,
+        restored_asset_root,
+    )
+    active_source_roots = (
+        source_roots if source_roots is not None else bundled_source_roots
+    )
     checks: dict[str, object] = {
         "schema_version": 1,
         "assets": asset_report.as_dict(),
         "backup_evidence": backup_evidence,
-        "started_at": began_at.isoformat().replace("+00:00", "Z"),
-        "completed_at": finished_at.isoformat().replace("+00:00", "Z"),
-        "duration_seconds": duration_seconds,
-        "rto": {
-            "target_seconds": rto_target_seconds,
-            "met": duration_seconds <= rto_target_seconds,
-        },
     }
     errors = list(asset_report.errors)
     expected_counts = expected_aggregate.get("counts")
@@ -220,7 +267,8 @@ def verify_restored_system(
         try:
             baseline = _safe_database_counts(
                 database_url,
-                asset_root=restored_asset_root,
+                asset_root=managed_root,
+                source_roots=active_source_roots,
             )
             baseline_ok = (
                 baseline.get("counts") == expected_counts
@@ -247,6 +295,17 @@ def verify_restored_system(
     else:
         checks["http"] = {"ok": False, "error": "http_not_configured"}
         errors.append("http_not_configured")
+    finished_at = (completed_at or datetime.now(UTC)).astimezone(UTC)
+    duration_seconds = max(0, int((finished_at - began_at).total_seconds()))
+    checks.update(
+        started_at=began_at.isoformat().replace("+00:00", "Z"),
+        completed_at=finished_at.isoformat().replace("+00:00", "Z"),
+        duration_seconds=duration_seconds,
+        rto={
+            "target_seconds": rto_target_seconds,
+            "met": duration_seconds <= rto_target_seconds,
+        },
+    )
     if duration_seconds > rto_target_seconds:
         errors.append("rto_target_exceeded")
     checks["errors"] = list(dict.fromkeys(errors))

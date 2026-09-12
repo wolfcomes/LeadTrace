@@ -7,16 +7,16 @@ separate disk or a controlled network destination:
 
 - PostgreSQL: every four hours, and immediately before a schema migration or
   release publication.
-- Assets: a daily incremental archive and a weekly full archive. The first
-  incremental archive after a full archive is a full tar snapshot; retain the
-  complete chain.
+- Assets: one encrypted bundle containing the managed asset root and every
+  configured read-only source root, with a daily incremental archive and a
+  weekly full archive. Retain the complete chain.
 - Retention: 30 days, subject to the organization's legal hold policy.
 - Restore drill: monthly, using a new database and a new asset directory.
 
 The destination must be provisioned before scheduling. It must be an existing,
 dedicated absolute directory, and `LEADTRACE_DESTINATION_ID` must identify the
-disk or controlled network share. Never point a backup job at `/`, `$HOME`, `~`,
-the source asset tree, or the application worktree.
+disk or controlled network share. Never point the backup destination at `/`,
+`$HOME`, `~`, a managed/source asset tree, or the application worktree.
 
 Each finalized directory contains encrypted payloads and
 `backup-metadata.json`. Metadata records the application, schema, and release
@@ -40,6 +40,7 @@ LEADTRACE_ENCRYPTION_FINGERPRINT=SHA256:...
 LEADTRACE_DATABASE_URL=postgresql+psycopg://...
 LEADTRACE_ASSET_ROOT=/var/lib/leadtrace/assets
 LEADTRACE_ASSET_ALLOWED_PARENT=/var/lib/leadtrace
+LEADTRACE_SOURCE_ROOTS='{"baseline":"/srv/leadtrace-source"}'
 LEADTRACE_APPLICATION_VERSION=0.1.0
 LEADTRACE_SCHEMA_VERSION=0015_crop_job_subscriptions
 LEADTRACE_RELEASE_VERSION=release-17
@@ -65,13 +66,17 @@ the previous finalized backups untouched. Investigate a failed job before
 retrying; do not manually delete a staging directory outside the exact
 destination shown in the error.
 
-A full asset backup starts a new chain. Each successful asset backup atomically
-updates `.leadtrace-latest-assets`; the daily incremental job verifies that
-pointer and its complete parent chain automatically. An operator may set
+A full asset backup starts a new chain. The snapshot places managed bytes under
+`managed/` and each configured source root under `sources/<root-key>/`; one
+manifest hashes the complete layout before it is archived and encrypted. Each
+successful asset backup atomically updates `.leadtrace-latest-assets`; the
+daily incremental job verifies that pointer and its complete parent chain
+automatically. An operator may set
 `LEADTRACE_ASSET_PARENT_METADATA` to a specific finalized metadata file for a
 controlled rehearsal, but the scheduled job does not require daily config
-edits. Manifest and tar are generated from the same protected staging snapshot,
-and source/destination ancestor overlap is rejected before staging begins.
+edits. Manifest and tar are generated from the same protected staging snapshot;
+symbolic links, overlapping roots, and source/destination ancestor overlap are
+rejected before the snapshot is accepted.
 
 ## Scheduling
 

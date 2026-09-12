@@ -89,8 +89,47 @@ def _complete_restore_report(
         "schema_version": 1,
         "ok": True,
         "assets": {"ok": True, "file_count": 1, "errors": []},
-        "baseline": {"ok": True, "counts": {}, "integrity": {}},
-        "http": {"ok": True, "checks": {}},
+        "baseline": {
+            "ok": True,
+            "counts": {
+                key: 0
+                for key in (
+                    "corpus_papers",
+                    "lineage_papers",
+                    "lineages",
+                    "compound_entities",
+                    "lineage_edges",
+                    "activity_rows",
+                    "complete_structures",
+                    "structure_confirmed",
+                    "missing_or_non_unique",
+                    "pair_ready_edges",
+                    "papers_with_pair_ready",
+                )
+            },
+            "integrity": {
+                key: 0
+                for key in (
+                    "self_loops",
+                    "duplicate_directed_edges",
+                    "unresolved_pair_ready_edges",
+                    "dangling_entity_references",
+                    "dangling_evidence_references",
+                    "invalid_pair_endpoints",
+                    "published_missing_or_corrupt_assets",
+                )
+            },
+        },
+        "http": {
+            "ok": True,
+            "checks": {
+                "papers": True,
+                "paper_detail": True,
+                "authorized_pdf": True,
+                "release": True,
+                "audit": True,
+            },
+        },
         "started_at": (now - timedelta(minutes=5)).isoformat(),
         "completed_at": now.isoformat(),
         "duration_seconds": 300,
@@ -205,10 +244,13 @@ def test_preflight_fails_closed_when_restore_drill_is_stale(tmp_path: Path) -> N
     ("section", "replacement"),
     [
         ("assets", None),
+        ("assets", {"ok": True}),
         ("assets", {"ok": False, "errors": ["asset_hash_mismatch"]}),
         ("baseline", None),
+        ("baseline", {"ok": True}),
         ("baseline", {"ok": False, "error": "database_baseline_mismatch"}),
         ("http", None),
+        ("http", {"ok": True}),
         ("http", {"ok": False, "error": "http_smoke_failed"}),
     ],
 )

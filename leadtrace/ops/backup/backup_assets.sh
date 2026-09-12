@@ -18,10 +18,6 @@ command -v tar >/dev/null 2>&1 || fail "tar is required"
 command -v cp >/dev/null 2>&1 || fail "cp is required"
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
 
-if [[ -n "$(find "${ASSET_ROOT}" -type l -print -quit)" ]]; then
-  fail "asset root must not contain symbolic links"
-fi
-
 new_staging_directory assets
 trap cleanup_staging_directory EXIT
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -46,8 +42,59 @@ if [[ "${MODE}" == "incremental" ]]; then
   cp -- "${PARENT_SNAPSHOT}" "${SNAPSHOT}"
 fi
 
-mkdir --mode=0700 -- "${CAPTURE_ROOT}"
-cp -a --reflink=auto -- "${ASSET_ROOT}/." "${CAPTURE_ROOT}/"
+python - "${ASSET_ROOT}" "${CAPTURE_ROOT}" "${BACKUP_DESTINATION}" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import sys
+from pathlib import Path
+
+
+def overlaps(first: Path, second: Path) -> bool:
+    return first == second or first in second.parents or second in first.parents
+
+
+managed_root = Path(sys.argv[1]).resolve(strict=True)
+capture_root = Path(sys.argv[2]).resolve(strict=False)
+backup_destination = Path(sys.argv[3]).resolve(strict=True)
+try:
+    raw_source_roots = json.loads(os.environ.get("LEADTRACE_SOURCE_ROOTS", "{}"))
+except json.JSONDecodeError as error:
+    raise SystemExit("LEADTRACE_SOURCE_ROOTS must be a JSON object") from error
+if not isinstance(raw_source_roots, dict):
+    raise SystemExit("LEADTRACE_SOURCE_ROOTS must be a JSON object")
+
+roots: list[tuple[str, Path, Path]] = [
+    ("managed asset root", managed_root, capture_root / "managed")
+]
+for key, value in sorted(raw_source_roots.items()):
+    if (
+        not isinstance(key, str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", key) is None
+        or not isinstance(value, str)
+        or not Path(value).is_absolute()
+    ):
+        raise SystemExit("source root mapping contains an invalid key or path")
+    source_root = Path(value).resolve(strict=True)
+    roots.append((f"source root {key}", source_root, capture_root / "sources" / key))
+
+for index, (label, source_root, _) in enumerate(roots):
+    if source_root == Path("/") or not source_root.is_dir():
+        raise SystemExit(f"{label} must be an existing dedicated directory")
+    if overlaps(source_root, backup_destination):
+        raise SystemExit(f"{label} and backup destination paths must not overlap")
+    if any(path.is_symlink() for path in source_root.rglob("*")):
+        raise SystemExit(f"{label} must not contain symbolic links")
+    if any(overlaps(source_root, other[1]) for other in roots[index + 1 :]):
+        raise SystemExit("managed and source asset roots must not overlap")
+
+capture_root.mkdir(mode=0o700)
+for _, source_root, target in roots:
+    shutil.copytree(source_root, target, copy_function=shutil.copy2)
+PY
 
 python - "${CAPTURE_ROOT}" "${MANIFEST}" <<'PY'
 from __future__ import annotations
@@ -76,6 +123,14 @@ for path in sorted(root.rglob("*")):
 payload = {
     "schema_version": 1,
     "asset_root_name": root.name,
+    "layout": {
+        "managed_root": "managed",
+        "source_roots": {
+            path.name: path.relative_to(root).as_posix()
+            for path in sorted((root / "sources").iterdir())
+            if path.is_dir()
+        } if (root / "sources").is_dir() else {},
+    },
     "file_count": len(rows),
     "total_bytes": sum(row["size_bytes"] for row in rows),
     "files": rows,

@@ -51,6 +51,14 @@ writes `restore-report.json`. The configured Python interpreter must contain
 the LeadTrace backend dependencies; the versioned systemd unit binds it to the
 project virtual environment explicitly.
 
+The encrypted asset chain restores a self-contained bundle: managed bytes are
+under `${LEADTRACE_RESTORE_ROOT}/assets/managed`, and source roots are under
+`${LEADTRACE_RESTORE_ROOT}/assets/sources/<root-key>`. The manifest binds this
+layout and every file hash. The verifier derives its source-root mapping only
+from that restored manifest. Configure the temporary LeadTrace application
+with the same restored managed/source paths before running the HTTP checks; do
+not point it at any live production source tree.
+
 The restore root is created under `umask 077`. Dump, tar, and chain-list
 plaintext are removed on every exit; restored assets are also removed on a
 failed drill. Keep the sanitized report and command exit status with the monthly

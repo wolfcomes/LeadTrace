@@ -19,6 +19,7 @@ from app.releases.models import Release, ReleaseItem
 from app.releases.validation import ReleaseValidationResult, validate_release
 from app.revisions.models import ObjectKind, ObjectRevision, StructureState
 from app.structures.models import Structure
+from app.visual_objects.models import VisualObject, VisualRegion
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +51,8 @@ _MODEL_BY_KIND = {
     ObjectKind.ACTIVITY: Activity,
     ObjectKind.LINEAGE: Lineage,
     ObjectKind.LINEAGE_EDGE: LineageEdge,
+    ObjectKind.VISUAL_REGION: VisualRegion,
+    ObjectKind.VISUAL_OBJECT: VisualObject,
 }
 
 
@@ -80,16 +83,15 @@ def _candidate_values(value: object | None) -> tuple[object, ...]:
 def _reference_ids(
     value: object | None,
     *,
-    keys: Mapping[str, UUID],
-) -> tuple[UUID, ...]:
-    found: list[UUID] = []
+    keys: Mapping[tuple[UUID, str], UUID],
+    paper_id: UUID,
+) -> tuple[UUID | None, ...]:
+    found: list[UUID | None] = []
     for candidate in _candidate_values(value):
         try:
             identifier = UUID(str(candidate))
         except (TypeError, ValueError, AttributeError):
-            identifier = keys.get(str(candidate))  # type: ignore[assignment]
-            if identifier is None:
-                continue
+            identifier = keys.get((paper_id, str(candidate)))
         found.append(identifier)
     return tuple(found)
 
@@ -195,10 +197,22 @@ def recompute_release_aggregate(
         for entry in by_kind[ObjectKind.LINEAGE_EDGE]
         if isinstance(entry.record, LineageEdge)
     }
-    compound_keys = {record.local_identity: object_id for object_id, record in compounds.items()}
-    evidence_keys = {record.evidence_key: object_id for object_id, record in evidence.items()}
-    lineage_keys = {record.lineage_key: object_id for object_id, record in lineages.items()}
-    edge_keys = {record.edge_key: object_id for object_id, record in edges.items()}
+    compound_keys = {
+        (record.paper_id, record.local_identity): object_id
+        for object_id, record in compounds.items()
+    }
+    evidence_keys = {
+        (record.paper_id, record.evidence_key): object_id
+        for object_id, record in evidence.items()
+    }
+    lineage_keys = {
+        (record.paper_id, record.lineage_key): object_id
+        for object_id, record in lineages.items()
+    }
+    edge_keys = {
+        (record.paper_id, record.edge_key): object_id
+        for object_id, record in edges.items()
+    }
 
     artifact_model = get_release_artifact_manifest(session, release.id)
     artifact: Mapping[str, object] = (
@@ -254,7 +268,9 @@ def recompute_release_aggregate(
         if frozen and frozen_compound_id != activity.compound_id:
             dangling_entities += 1
         for evidence_id in _reference_ids(
-            _snapshot_value(entry.revision, "evidence_ids"), keys=evidence_keys
+            _snapshot_value(entry.revision, "evidence_ids"),
+            keys=evidence_keys,
+            paper_id=activity.paper_id,
         ):
             target = evidence.get(evidence_id)
             if target is None or target.paper_id != activity.paper_id:
@@ -265,16 +281,22 @@ def recompute_release_aggregate(
         if not isinstance(record, Evidence):
             continue
         for compound_id in _reference_ids(
-            _snapshot_value(entry.revision, "compound_ids"), keys=compound_keys
+            _snapshot_value(entry.revision, "compound_ids"),
+            keys=compound_keys,
+            paper_id=record.paper_id,
         ):
             target = compounds.get(compound_id)
             if target is None or target.paper_id != record.paper_id:
                 dangling_entities += 1
         source_edge_ids = _reference_ids(
-            _snapshot_value(entry.revision, "lineage_edge_id"), keys=edge_keys
+            _snapshot_value(entry.revision, "lineage_edge_id"),
+            keys=edge_keys,
+            paper_id=record.paper_id,
         )
         source_lineage_ids = _reference_ids(
-            _snapshot_value(entry.revision, "lineage_id"), keys=lineage_keys
+            _snapshot_value(entry.revision, "lineage_id"),
+            keys=lineage_keys,
+            paper_id=record.paper_id,
         )
         if source_edge_ids and any(
             edge_id not in edges or edges[edge_id].paper_id != record.paper_id
@@ -314,7 +336,9 @@ def recompute_release_aggregate(
         if derived is None or derived.paper_id != edge.paper_id:
             dangling_entities += 1
         for evidence_id in _reference_ids(
-            _snapshot_value(entry.revision, "evidence_ids"), keys=evidence_keys
+            _snapshot_value(entry.revision, "evidence_ids"),
+            keys=evidence_keys,
+            paper_id=edge.paper_id,
         ):
             target = evidence.get(evidence_id)
             if target is None or target.paper_id != edge.paper_id:

@@ -27,6 +27,35 @@ from leadtrace.ops.backup.verify_backup import verify_backup  # noqa: E402
 
 
 Status = Literal["PASS", "FAIL"]
+RESTORE_COUNT_KEYS = frozenset(
+    {
+        "corpus_papers",
+        "lineage_papers",
+        "lineages",
+        "compound_entities",
+        "lineage_edges",
+        "activity_rows",
+        "complete_structures",
+        "structure_confirmed",
+        "missing_or_non_unique",
+        "pair_ready_edges",
+        "papers_with_pair_ready",
+    }
+)
+RESTORE_INTEGRITY_KEYS = frozenset(
+    {
+        "self_loops",
+        "duplicate_directed_edges",
+        "unresolved_pair_ready_edges",
+        "dangling_entity_references",
+        "dangling_evidence_references",
+        "invalid_pair_endpoints",
+        "published_missing_or_corrupt_assets",
+    }
+)
+RESTORE_HTTP_CHECKS = frozenset(
+    {"papers", "paper_detail", "authorized_pdf", "release", "audit"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +206,43 @@ def _validate_restore_report(payload: Mapping[str, object]) -> datetime:
         section = payload.get(section_name)
         if not isinstance(section, dict) or section.get("ok") is not True:
             raise ValueError(f"restore report {section_name} check did not pass")
+
+    assets = payload["assets"]
+    baseline = payload["baseline"]
+    http = payload["http"]
+    assert isinstance(assets, dict)
+    assert isinstance(baseline, dict)
+    assert isinstance(http, dict)
+    file_count = assets.get("file_count")
+    if (
+        isinstance(file_count, bool)
+        or not isinstance(file_count, int)
+        or file_count < 0
+        or assets.get("errors") != []
+    ):
+        raise ValueError("restore report asset evidence is incomplete")
+    counts = baseline.get("counts")
+    integrity = baseline.get("integrity")
+    for values, required_keys, label in (
+        (counts, RESTORE_COUNT_KEYS, "counts"),
+        (integrity, RESTORE_INTEGRITY_KEYS, "integrity"),
+    ):
+        if (
+            not isinstance(values, dict)
+            or set(values) != required_keys
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+                for value in values.values()
+            )
+        ):
+            raise ValueError(f"restore report baseline {label} is incomplete")
+    http_checks = http.get("checks")
+    if not isinstance(http_checks, dict) or any(
+        http_checks.get(name) is not True for name in RESTORE_HTTP_CHECKS
+    ):
+        raise ValueError("restore report HTTP evidence is incomplete")
 
     started_at = _timestamp(payload.get("started_at"), label="restore drill start")
     completed_at = _timestamp(
