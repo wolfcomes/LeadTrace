@@ -26,12 +26,12 @@ production cutover.
 | Gate | State | Evidence |
 |---|---|---|
 | Protected source regression suite | PASS | 323 passed; bytecode and pytest cache writes disabled; approved source manifest separately reports 0 changed, 0 missing, 0 unexpected |
-| Legacy Dashboard regression suite | PASS | 69 passed in a fresh invocation |
-| LeadTrace backend suite | PASS | 661 passed, 2 skipped because the optional real Redis/Celery integration URL was not configured; isolated PostgreSQL test URL used |
+| Legacy Dashboard regression suite | PASS | 71 passed in a fresh invocation |
+| LeadTrace backend suite | PASS | 694 passed, 2 skipped because the optional real Redis/Celery integration URL was not configured; isolated PostgreSQL test URL used |
 | Frontend typecheck, unit tests, and build | PASS | Typecheck passed; 68 unit tests passed; Vite production build passed |
 | Browser E2E suite | PASS | 6 Chromium tests passed, including accessibility, Visitor, concurrent editor, and approval-gated Reviewer flows |
-| Cutover preflight code tests | PASS | 48 ops tests passed, including backup-chain retention, isolated restore, preflight, worker, CLI, and fallback contracts |
-| Static Python and repository checks | PASS | Ruff, compileall, Shell syntax, and `git diff --check` passed after the implementation |
+| Cutover preflight code tests | PASS | 80 ops tests passed, including self-contained source bundles, concurrent incremental-chain restore, protected aggregate/RTO binding, complete Release validation, preflight, worker, CLI, and fallback contracts |
+| Static Python and repository checks | PASS | Ruff and compileall passed for every Python file changed by Task 24-26 and its review fixes; Shell syntax and `git diff --check` passed |
 
 ## Representative Paper selection
 

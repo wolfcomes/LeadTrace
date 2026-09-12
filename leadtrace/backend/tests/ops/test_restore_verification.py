@@ -30,6 +30,7 @@ from app.releases.models import Release, ReleaseItem
 from app.revisions.models import (
     ActivityState,
     EvidenceState,
+    ObjectRevision,
     StructureState,
 )
 from app.revisions.service import RevisionService
@@ -349,6 +350,7 @@ def _seed_current_release(
         session.flush()
         return {
             "release_id": release.id,
+            "invalid_revision_id": revisions[0].id,
             "removed_compound_id": compounds[1].id,
             "edge_id": edge.id,
         }
@@ -421,6 +423,43 @@ def test_database_restore_counts_are_recomputed_from_the_current_release(
 
     assert aggregate["counts"] == EXPECTED_RELEASE_AGGREGATE["counts"]
     assert aggregate["integrity"] == EXPECTED_RELEASE_AGGREGATE["integrity"]
+    assert aggregate["release_validation"] == {"valid": True, "issues": []}
+
+
+def test_database_restore_reports_non_asset_release_validation_failures(
+    auth_session_factory: sessionmaker[Session],
+    empty_postgresql_database_url: str,
+) -> None:
+    seeded = _seed_current_release(auth_session_factory)
+    with auth_session_factory.begin() as session:
+        session.execute(
+            text(
+                "ALTER TABLE object_revisions "
+                "DISABLE TRIGGER trg_object_revisions_immutable"
+            )
+        )
+        try:
+            revision = session.get(ObjectRevision, seeded["invalid_revision_id"])
+            assert revision is not None
+            revision.workflow_state = WorkflowState.DRAFT
+            revision.is_current_published = False
+            session.flush()
+        finally:
+            session.execute(
+                text(
+                    "ALTER TABLE object_revisions "
+                    "ENABLE TRIGGER trg_object_revisions_immutable"
+                )
+            )
+
+    aggregate = _safe_database_counts(empty_postgresql_database_url)
+
+    assert aggregate["counts"] == EXPECTED_RELEASE_AGGREGATE["counts"]
+    validation = aggregate["release_validation"]
+    assert validation["valid"] is False  # type: ignore[index]
+    assert {issue["code"] for issue in validation["issues"]} == {  # type: ignore[index]
+        "invalid_revision"
+    }
 
 
 def test_database_restore_counts_detect_a_missing_release_item(
@@ -546,7 +585,12 @@ def test_restore_report_completion_includes_database_and_http_verification(
         nonlocal current_time
         assert kwargs["source_roots"] == {"baseline": tmp_path}
         current_time += timedelta(seconds=7)
-        return {"counts": {}, "integrity": {}, "physical_counts": {}}
+        return {
+            "counts": {},
+            "integrity": {},
+            "physical_counts": {},
+            "release_validation": {"valid": True, "issues": []},
+        }
 
     def verify_http(*_args, **_kwargs):
         nonlocal current_time
@@ -662,6 +706,7 @@ def test_restore_report_requires_complete_scientific_baseline_and_evidence(
             "counts": expected["counts"],
             "integrity": expected["integrity_expectations"],
             "physical_counts": {"papers": 672, "releases": 1, "audit_events": 10},
+            "release_validation": {"valid": True, "issues": []},
         },
     )
     monkeypatch.setattr(
@@ -704,6 +749,7 @@ def test_restore_report_requires_complete_scientific_baseline_and_evidence(
         "counts": expected["counts"],
         "integrity": expected["integrity_expectations"],
         "physical_counts": {"papers": 672, "releases": 1, "audit_events": 10},
+        "release_validation": {"valid": True, "issues": []},
     }
     assert report["backup_evidence"] == backup_evidence
     assert report["started_at"] == "2026-09-12T11:56:00Z"
@@ -742,6 +788,7 @@ def test_restore_report_fails_when_any_integrity_expectation_differs(
             "counts": expected["counts"],
             "integrity": {"self_loops": 1},
             "physical_counts": {"papers": 672, "releases": 1, "audit_events": 1},
+            "release_validation": {"valid": True, "issues": []},
         },
     )
     monkeypatch.setattr(
@@ -765,6 +812,67 @@ def test_restore_report_fails_when_any_integrity_expectation_differs(
 
     assert report["ok"] is False
     assert "database_baseline_mismatch" in report["errors"]
+
+
+def test_restore_report_fails_when_current_release_validation_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    asset_root = tmp_path / "assets"
+    asset_root.mkdir()
+    manifest = tmp_path / "assets.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "asset_root_name": "assets",
+                "file_count": 0,
+                "total_bytes": 0,
+                "files": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    expected = {
+        "schema_version": 1,
+        "counts": {"corpus_papers": 1},
+        "integrity_expectations": {"self_loops": 0},
+    }
+    monkeypatch.setattr(
+        restore_verification,
+        "_safe_database_counts",
+        lambda *_args, **_kwargs: {
+            "counts": expected["counts"],
+            "integrity": expected["integrity_expectations"],
+            "physical_counts": {"papers": 1, "releases": 1, "audit_events": 1},
+            "release_validation": {
+                "valid": False,
+                "issues": [{"code": "invalid_revision", "object_id": None}],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        restore_verification,
+        "_verify_http_workflow",
+        lambda *_args, **_kwargs: {"ok": True, "checks": {}},
+    )
+
+    report = verify_restored_system(
+        asset_manifest=manifest,
+        restored_asset_root=asset_root,
+        database_url="postgresql://restore.invalid/drill",
+        expected_aggregate=expected,
+        base_url="https://restore-drill.lan",
+        drill_username="drill",
+        drill_password="protected",
+        backup_evidence={"database": {}, "assets": {}},
+        started_at=datetime(2026, 9, 12, 12, 0, tzinfo=UTC),
+        completed_at=datetime(2026, 9, 12, 12, 1, tzinfo=UTC),
+        rto_target_seconds=300,
+    )
+
+    assert report["ok"] is False
+    assert "release_validation_failed" in report["errors"]
 
 
 def test_restore_report_can_verify_the_backup_metadata_before_extracting(

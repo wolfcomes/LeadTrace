@@ -197,7 +197,51 @@ def _backup_check(
         return CheckResult.failed(name, "Backup evidence is missing, invalid, or stale")
 
 
-def _validate_restore_report(payload: Mapping[str, object]) -> datetime:
+def _expected_restore_baseline(
+    config: Mapping[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    expected_path = Path(
+        str(_required_config(config, "expected_aggregate", str))
+    ).resolve(strict=True)
+    expected = json.loads(expected_path.read_text(encoding="utf-8"))
+    if not isinstance(expected, dict) or expected.get("schema_version") != 1:
+        raise ValueError("approved expected aggregate is invalid")
+    counts = expected.get("counts")
+    integrity = expected.get("integrity_expectations")
+    for values, required_keys, label in (
+        (counts, RESTORE_COUNT_KEYS, "counts"),
+        (integrity, RESTORE_INTEGRITY_KEYS, "integrity"),
+    ):
+        if (
+            not isinstance(values, dict)
+            or set(values) != required_keys
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+                for value in values.values()
+            )
+        ):
+            raise ValueError(f"approved expected aggregate {label} is invalid")
+    assert isinstance(counts, dict)
+    assert isinstance(integrity, dict)
+    return counts, integrity
+
+
+def _restore_rto_seconds(config: Mapping[str, object]) -> int:
+    value = config.get("restore_rto_seconds")
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError("preflight configuration field is required: restore_rto_seconds")
+    return value
+
+
+def _validate_restore_report(
+    payload: Mapping[str, object],
+    *,
+    expected_counts: Mapping[str, object],
+    expected_integrity: Mapping[str, object],
+    expected_rto_seconds: int,
+) -> datetime:
     if payload.get("schema_version") != 1:
         raise ValueError("restore report schema is unsupported")
     if payload.get("ok") is not True or payload.get("errors") != []:
@@ -238,6 +282,15 @@ def _validate_restore_report(payload: Mapping[str, object]) -> datetime:
             )
         ):
             raise ValueError(f"restore report baseline {label} is incomplete")
+    if counts != expected_counts or integrity != expected_integrity:
+        raise ValueError("restore report baseline differs from the approved aggregate")
+    release_validation = baseline.get("release_validation")
+    if (
+        not isinstance(release_validation, dict)
+        or release_validation.get("valid") is not True
+        or release_validation.get("issues") != []
+    ):
+        raise ValueError("restore report release validation did not pass")
     http_checks = http.get("checks")
     if not isinstance(http_checks, dict) or any(
         http_checks.get(name) is not True for name in RESTORE_HTTP_CHECKS
@@ -264,6 +317,8 @@ def _validate_restore_report(payload: Mapping[str, object]) -> datetime:
     met = rto.get("met")
     if isinstance(target, bool) or not isinstance(target, int) or target <= 0:
         raise ValueError("restore drill RTO target is invalid")
+    if target != expected_rto_seconds:
+        raise ValueError("restore drill RTO target differs from the cutover target")
     if not isinstance(met, bool) or met != (duration <= target):
         raise ValueError("restore drill RTO result is inconsistent")
     if not met:
@@ -283,7 +338,13 @@ def _restore_check(
         payload = json.loads(report_path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("restore report must contain an object")
-        completed_at = _validate_restore_report(payload)
+        expected_counts, expected_integrity = _expected_restore_baseline(config)
+        completed_at = _validate_restore_report(
+            payload,
+            expected_counts=expected_counts,
+            expected_integrity=expected_integrity,
+            expected_rto_seconds=_restore_rto_seconds(config),
+        )
         maximum_age = timedelta(
             days=float(_required_config(config, "max_restore_age_days", (int, float)))
         )

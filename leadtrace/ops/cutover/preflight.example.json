@@ -8,10 +8,11 @@
   "restore_report": "/srv/leadtrace-drills/TO_BE_REPLACED_RESTORE_DRILL/restore-report.json",
   "max_backup_age_hours": 4,
   "max_restore_age_days": 31,
+  "restore_rto_seconds": 3600,
   "expected_aggregate": "/srv/leadtrace/config/expected_aggregate.json",
   "asset_root": "/var/lib/leadtrace/assets",
   "source_roots": {
-    "jmc": "/absolute/path/inside-manifest-workspace/source_pdfs/approved-corpus"
+    "baseline": "/absolute/path/inside-manifest-workspace/source_pdfs/approved-corpus"
   },
   "base_url": "https://127.0.0.1:8877",
   "old_dashboard_url": "http://127.0.0.1:8765",

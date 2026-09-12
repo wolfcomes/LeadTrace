@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from locust import HttpUser, between, events, task
 from locust.clients import HttpSession
 
+from leadtrace.tests.load.scenario_data import (
+    COLD_PREVIEW_MIN_SAMPLES,
+    cold_preview_payload,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ScenarioConfig:
@@ -161,22 +166,26 @@ class ReviewerUser(AuthenticatedUser):
         )
 
     @task(1)
-    def single_structure_preview(self) -> None:
+    def cold_structure_preview(self) -> None:
         paper_id = _config().paper_id
         if not paper_id:
             return
-        self.client.post(
+        with self.client.post(
             f"/api/v1/papers/{paper_id}/structures/drawings",
             headers={"X-CSRF-Token": self.csrf_token},
-            json={
-                "smiles": "C[C@H](O)c1ccc(F)cc1",
-                "width": 600,
-                "height": 420,
-                "atom_indices": False,
-                "transparent_background": False,
-            },
-            name="single structure preview",
-        )
+            json=cold_preview_payload(),
+            name="cold structure preview",
+            catch_response=True,
+        ) as response:
+            if response.status_code != 200:
+                return
+            try:
+                reused = response.json().get("reused")
+            except ValueError:
+                response.failure("cold_structure_preview_invalid_response")
+                return
+            if reused is not False:
+                response.failure("drawing_was_reused")
 
     @task(1)
     def validate_release(self) -> None:
@@ -215,8 +224,11 @@ P95_TARGETS_MS = {
     ("GET", "cached PDF page"): 500,
     ("GET", "PDF first visible content"): 2000,
     ("POST", "crop job enqueue"): 2000,
-    ("POST", "single structure preview"): 2000,
+    ("POST", "cold structure preview"): 2000,
     ("GET", "release validation"): 1000,
+}
+MIN_REQUEST_SAMPLES = {
+    ("POST", "cold structure preview"): COLD_PREVIEW_MIN_SAMPLES,
 }
 
 
@@ -225,8 +237,11 @@ def enforce_p95_targets(environment, **_: object) -> None:
     failures: list[str] = []
     for (method, name), target_ms in P95_TARGETS_MS.items():
         entry = environment.stats.get(name, method)
-        if entry.num_requests == 0:
-            failures.append(f"{name}: no samples")
+        minimum_samples = MIN_REQUEST_SAMPLES.get((method, name), 1)
+        if entry.num_requests < minimum_samples:
+            failures.append(
+                f"{name}: {entry.num_requests} samples is below {minimum_samples}"
+            )
             continue
         p95 = entry.get_response_time_percentile(0.95)
         if p95 > target_ms:

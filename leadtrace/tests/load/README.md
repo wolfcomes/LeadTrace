@@ -32,12 +32,13 @@ The process exits non-zero when a named p95 target is missed, a required
 scenario has no samples, or the aggregate failure rate exceeds one percent.
 The profile records both uncached and cached PDF Range requests, crop-job queue
 submission, synchronous RDKit drawing, and Admin release validation. The
-crop jobs are queued for worker execution; RDKit drawing runs synchronously
-through `POST /api/v1/papers/{paper_id}/structures/drawings`. The named
-`single structure preview` request is an automated hard gate with p95 below
-2000 ms. Run a separate cold-browser trace for actual PDF painting because
-browser rendering time is not represented accurately by an HTTP-only Locust
-client.
+crop jobs are queued for worker execution. Each `cold structure preview` request
+uses a unique, valid atom-map/drawing-key combination and fails if the API says
+the drawing was reused, so the named statistic measures synchronous validation
+and RDKit rendering rather than cache reads. It is an automated hard gate with
+p95 below 2000 ms and at least 25 non-reused samples. Run a separate
+cold-browser trace for actual PDF painting because browser rendering time is
+not represented accurately by an HTTP-only Locust client.
 
 During a second five-minute acceptance run, restart Redis once and then one
 worker process. PostgreSQL-backed jobs must reconcile without duplicate assets

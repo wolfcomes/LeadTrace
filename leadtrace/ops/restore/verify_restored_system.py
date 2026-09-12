@@ -202,6 +202,7 @@ def _safe_database_counts(
     from app.database import create_database_engine
     from app.releases.aggregate import recompute_release_aggregate
     from app.releases.models import Release
+    from app.releases.validation import validate_release
 
     engine = create_database_engine(database_url)
     try:
@@ -216,11 +217,22 @@ def _safe_database_counts(
                 if asset_root is not None
                 else None
             )
-            return recompute_release_aggregate(
+            validation = validate_release(
+                session,
+                release.id,
+                asset_store=store,
+            )
+            aggregate = recompute_release_aggregate(
                 session,
                 release,
                 asset_store=store,
+                validation=validation,
             ).as_dict()
+            aggregate["release_validation"] = {
+                "valid": validation.valid,
+                "issues": [issue.as_dict() for issue in validation.issues],
+            }
+            return aggregate
     finally:
         engine.dispose()
 
@@ -270,13 +282,22 @@ def verify_restored_system(
                 asset_root=managed_root,
                 source_roots=active_source_roots,
             )
-            baseline_ok = (
+            baseline_matches = (
                 baseline.get("counts") == expected_counts
                 and baseline.get("integrity") == expected_integrity
             )
+            release_validation = baseline.get("release_validation")
+            release_valid = (
+                isinstance(release_validation, dict)
+                and release_validation.get("valid") is True
+                and release_validation.get("issues") == []
+            )
+            baseline_ok = baseline_matches and release_valid
             checks["baseline"] = {"ok": baseline_ok, **baseline}
-            if not baseline_ok:
+            if not baseline_matches:
                 errors.append("database_baseline_mismatch")
+            if not release_valid:
+                errors.append("release_validation_failed")
         except Exception:
             checks["baseline"] = {"ok": False, "error": "database_unavailable"}
             errors.append("database_unavailable")

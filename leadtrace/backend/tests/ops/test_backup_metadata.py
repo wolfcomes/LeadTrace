@@ -396,6 +396,7 @@ def test_asset_backup_finalizes_manifest_and_encrypted_archive(tmp_path: Path) -
         "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
         "LEADTRACE_ASSET_ROOT": str(asset_root),
         "LEADTRACE_SOURCE_ROOTS": json.dumps({"baseline": str(source_root)}),
+        "LEADTRACE_SOURCE_ALLOWED_PARENTS": json.dumps({"baseline": str(tmp_path)}),
         "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
         "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
         "LEADTRACE_DESTINATION_ID": "test-destination",
@@ -442,6 +443,134 @@ def test_asset_backup_finalizes_manifest_and_encrypted_archive(tmp_path: Path) -
         "managed/objects/one.txt",
         "sources/baseline/paper.pdf",
     }
+
+
+def test_asset_backup_requires_explicit_source_root_configuration(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "backups"
+    destination.mkdir()
+    asset_root = tmp_path / "assets"
+    asset_root.mkdir()
+    script_path = Path(__file__).parents[3] / "ops" / "backup" / "backup_assets.sh"
+    environment = {
+        **os.environ,
+        "LEADTRACE_BACKUP_ALLOWED_PARENT": str(tmp_path),
+        "LEADTRACE_BACKUP_DESTINATION": str(destination),
+        "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
+        "LEADTRACE_ASSET_ROOT": str(asset_root),
+        "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
+        "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
+        "LEADTRACE_DESTINATION_ID": "test-destination",
+        "LEADTRACE_APPLICATION_VERSION": "0.1.0",
+        "LEADTRACE_SCHEMA_VERSION": "0015",
+        "LEADTRACE_RELEASE_VERSION": "release-test",
+        "LEADTRACE_BACKUP_ID": "missing-source-config",
+    }
+    environment.pop("LEADTRACE_SOURCE_ROOTS", None)
+    environment.pop("LEADTRACE_SOURCE_ALLOWED_PARENTS", None)
+
+    result = subprocess.run(
+        ["bash", str(script_path)],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "LEADTRACE_SOURCE_ROOTS is required" in result.stderr
+    assert not (destination / "missing-source-config").exists()
+
+
+def test_asset_backup_requires_the_baseline_source_namespace(tmp_path: Path) -> None:
+    destination = tmp_path / "backups"
+    destination.mkdir()
+    asset_root = tmp_path / "assets"
+    asset_root.mkdir()
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "age").write_text("#!/usr/bin/env bash\nexit 99\n", encoding="utf-8")
+    (fake_bin / "age").chmod(0o755)
+    script_path = Path(__file__).parents[3] / "ops" / "backup" / "backup_assets.sh"
+    environment = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "LEADTRACE_BACKUP_ALLOWED_PARENT": str(tmp_path),
+        "LEADTRACE_BACKUP_DESTINATION": str(destination),
+        "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
+        "LEADTRACE_ASSET_ROOT": str(asset_root),
+        "LEADTRACE_SOURCE_ROOTS": "{}",
+        "LEADTRACE_SOURCE_ALLOWED_PARENTS": "{}",
+        "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
+        "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
+        "LEADTRACE_DESTINATION_ID": "test-destination",
+        "LEADTRACE_APPLICATION_VERSION": "0.1.0",
+        "LEADTRACE_SCHEMA_VERSION": "0015",
+        "LEADTRACE_RELEASE_VERSION": "release-test",
+        "LEADTRACE_BACKUP_ID": "missing-baseline-source",
+    }
+
+    result = subprocess.run(
+        ["bash", str(script_path)],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "baseline" in (result.stderr + result.stdout).casefold()
+    assert not (destination / "missing-baseline-source").exists()
+
+
+def test_asset_backup_rejects_source_root_outside_its_allowed_parent(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "backups"
+    destination.mkdir()
+    asset_root = tmp_path / "assets"
+    asset_root.mkdir()
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    approved_parent = tmp_path / "approved"
+    approved_parent.mkdir()
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "age").write_text("#!/usr/bin/env bash\nexit 99\n", encoding="utf-8")
+    (fake_bin / "age").chmod(0o755)
+    script_path = Path(__file__).parents[3] / "ops" / "backup" / "backup_assets.sh"
+    environment = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "LEADTRACE_BACKUP_ALLOWED_PARENT": str(tmp_path),
+        "LEADTRACE_BACKUP_DESTINATION": str(destination),
+        "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
+        "LEADTRACE_ASSET_ROOT": str(asset_root),
+        "LEADTRACE_SOURCE_ROOTS": json.dumps({"baseline": str(source_root)}),
+        "LEADTRACE_SOURCE_ALLOWED_PARENTS": json.dumps(
+            {"baseline": str(approved_parent)}
+        ),
+        "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
+        "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
+        "LEADTRACE_DESTINATION_ID": "test-destination",
+        "LEADTRACE_APPLICATION_VERSION": "0.1.0",
+        "LEADTRACE_SCHEMA_VERSION": "0015",
+        "LEADTRACE_RELEASE_VERSION": "release-test",
+        "LEADTRACE_BACKUP_ID": "source-outside-parent",
+    }
+
+    result = subprocess.run(
+        ["bash", str(script_path)],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "allowed parent" in (result.stderr + result.stdout).casefold()
+    assert not (destination / "source-outside-parent").exists()
 
 
 def test_asset_backup_rejects_source_and_destination_overlap(tmp_path: Path) -> None:
@@ -507,6 +636,7 @@ def test_full_and_incremental_asset_chain_restores_with_real_tar(
         "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
         "LEADTRACE_ASSET_ROOT": str(asset_root),
         "LEADTRACE_SOURCE_ROOTS": json.dumps({"baseline": str(source_root)}),
+        "LEADTRACE_SOURCE_ALLOWED_PARENTS": json.dumps({"baseline": str(tmp_path)}),
         "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
         "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
         "LEADTRACE_DESTINATION_ID": "test-destination",
@@ -560,6 +690,10 @@ def test_full_and_incremental_asset_chain_restores_with_real_tar(
         "assets-full",
         "assets-incremental",
     ]
+    for metadata_path in metadata_paths:
+        directory_skeleton = metadata_path.parent / "asset-snapshot"
+        assert directory_skeleton.is_dir()
+        assert not any(path.is_file() for path in directory_skeleton.rglob("*"))
 
     restored = tmp_path / "restored"
     restored.mkdir()

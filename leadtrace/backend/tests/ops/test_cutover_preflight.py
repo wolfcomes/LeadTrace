@@ -21,6 +21,51 @@ from leadtrace.ops.cutover.smoke_test import run_smoke_test
 from leadtrace.ops.restore.verify_restored_system import build_backup_evidence
 
 
+RESTORE_COUNTS = {
+    key: 0
+    for key in (
+        "corpus_papers",
+        "lineage_papers",
+        "lineages",
+        "compound_entities",
+        "lineage_edges",
+        "activity_rows",
+        "complete_structures",
+        "structure_confirmed",
+        "missing_or_non_unique",
+        "pair_ready_edges",
+        "papers_with_pair_ready",
+    )
+}
+RESTORE_INTEGRITY = {
+    key: 0
+    for key in (
+        "self_loops",
+        "duplicate_directed_edges",
+        "unresolved_pair_ready_edges",
+        "dangling_entity_references",
+        "dangling_evidence_references",
+        "invalid_pair_endpoints",
+        "published_missing_or_corrupt_assets",
+    )
+}
+
+
+def _write_expected_aggregate(root: Path) -> Path:
+    path = root / "expected-aggregate.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "counts": RESTORE_COUNTS,
+                "integrity_expectations": RESTORE_INTEGRITY,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def _write_backup(
     root: Path,
     *,
@@ -91,34 +136,9 @@ def _complete_restore_report(
         "assets": {"ok": True, "file_count": 1, "errors": []},
         "baseline": {
             "ok": True,
-            "counts": {
-                key: 0
-                for key in (
-                    "corpus_papers",
-                    "lineage_papers",
-                    "lineages",
-                    "compound_entities",
-                    "lineage_edges",
-                    "activity_rows",
-                    "complete_structures",
-                    "structure_confirmed",
-                    "missing_or_non_unique",
-                    "pair_ready_edges",
-                    "papers_with_pair_ready",
-                )
-            },
-            "integrity": {
-                key: 0
-                for key in (
-                    "self_loops",
-                    "duplicate_directed_edges",
-                    "unresolved_pair_ready_edges",
-                    "dangling_entity_references",
-                    "dangling_evidence_references",
-                    "invalid_pair_endpoints",
-                    "published_missing_or_corrupt_assets",
-                )
-            },
+            "counts": RESTORE_COUNTS.copy(),
+            "integrity": RESTORE_INTEGRITY.copy(),
+            "release_validation": {"valid": True, "issues": []},
         },
         "http": {
             "ok": True,
@@ -170,6 +190,8 @@ def test_preflight_aggregates_required_evidence_into_machine_readable_report(
         "restore_report": str(restore_report),
         "max_backup_age_hours": 4,
         "max_restore_age_days": 31,
+        "expected_aggregate": str(_write_expected_aggregate(tmp_path)),
+        "restore_rto_seconds": 3600,
     }
     probes = PreflightProbes(
         database=lambda _: CheckResult.passed("database", "database evidence matches"),
@@ -193,6 +215,98 @@ def test_preflight_aggregates_required_evidence_into_machine_readable_report(
         "services",
         "source_manifest",
     }
+
+
+def test_preflight_rejects_restore_baseline_that_differs_from_protected_aggregate(
+    tmp_path: Path,
+) -> None:
+    now = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
+    database_backup = _write_backup(
+        tmp_path / "database", backup_id="db-1", scope="database", now=now
+    )
+    asset_backup = _write_backup(
+        tmp_path / "assets", backup_id="assets-1", scope="assets", now=now
+    )
+    payload = _complete_restore_report(
+        now=now,
+        database_metadata=database_backup,
+        asset_metadata=asset_backup,
+    )
+    payload["baseline"]["counts"]["corpus_papers"] = 1  # type: ignore[index]
+    restore_report = tmp_path / "restore-report.json"
+    restore_report.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = run_preflight(
+        {
+            "schema_version": 1,
+            "application_version": "0.1.0",
+            "schema_revision": "0015",
+            "release_key": "r1",
+            "database_backup_metadata": str(database_backup),
+            "asset_backup_metadata": str(asset_backup),
+            "restore_report": str(restore_report),
+            "max_backup_age_hours": 4,
+            "max_restore_age_days": 31,
+            "expected_aggregate": str(_write_expected_aggregate(tmp_path)),
+            "restore_rto_seconds": 3600,
+        },
+        probes=PreflightProbes(
+            database=lambda _: CheckResult.passed("database", "ok"),
+            services=lambda _: CheckResult.passed("services", "ok"),
+            permissions=lambda _: CheckResult.passed("permissions", "ok"),
+            source_manifest=lambda _: CheckResult.passed("source_manifest", "ok"),
+        ),
+        now=now,
+    )
+
+    restore = next(check for check in report.checks if check.name == "restore_drill")
+    assert restore.status == "FAIL"
+
+
+def test_preflight_rejects_restore_report_with_a_different_rto_target(
+    tmp_path: Path,
+) -> None:
+    now = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
+    database_backup = _write_backup(
+        tmp_path / "database", backup_id="db-1", scope="database", now=now
+    )
+    asset_backup = _write_backup(
+        tmp_path / "assets", backup_id="assets-1", scope="assets", now=now
+    )
+    payload = _complete_restore_report(
+        now=now,
+        database_metadata=database_backup,
+        asset_metadata=asset_backup,
+    )
+    payload["rto"] = {"target_seconds": 7200, "met": True}
+    restore_report = tmp_path / "restore-report.json"
+    restore_report.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = run_preflight(
+        {
+            "schema_version": 1,
+            "application_version": "0.1.0",
+            "schema_revision": "0015",
+            "release_key": "r1",
+            "database_backup_metadata": str(database_backup),
+            "asset_backup_metadata": str(asset_backup),
+            "restore_report": str(restore_report),
+            "max_backup_age_hours": 4,
+            "max_restore_age_days": 31,
+            "expected_aggregate": str(_write_expected_aggregate(tmp_path)),
+            "restore_rto_seconds": 3600,
+        },
+        probes=PreflightProbes(
+            database=lambda _: CheckResult.passed("database", "ok"),
+            services=lambda _: CheckResult.passed("services", "ok"),
+            permissions=lambda _: CheckResult.passed("permissions", "ok"),
+            source_manifest=lambda _: CheckResult.passed("source_manifest", "ok"),
+        ),
+        now=now,
+    )
+
+    restore = next(check for check in report.checks if check.name == "restore_drill")
+    assert restore.status == "FAIL"
 
 
 def test_preflight_fails_closed_when_restore_drill_is_stale(tmp_path: Path) -> None:
@@ -220,6 +334,8 @@ def test_preflight_fails_closed_when_restore_drill_is_stale(tmp_path: Path) -> N
         "restore_report": str(restore_report),
         "max_backup_age_hours": 4,
         "max_restore_age_days": 31,
+        "expected_aggregate": str(_write_expected_aggregate(tmp_path)),
+        "restore_rto_seconds": 3600,
     }
 
     def passed(name: str) -> CheckResult:
@@ -289,6 +405,8 @@ def test_preflight_rejects_incomplete_or_failed_restore_child_checks(
             "restore_report": str(restore_report),
             "max_backup_age_hours": 4,
             "max_restore_age_days": 31,
+            "expected_aggregate": str(_write_expected_aggregate(tmp_path)),
+            "restore_rto_seconds": 3600,
         },
         probes=PreflightProbes(
             database=lambda _: CheckResult.passed("database", "ok"),
@@ -343,6 +461,8 @@ def test_preflight_rejects_internally_inconsistent_restore_timing(
             "restore_report": str(restore_report),
             "max_backup_age_hours": 4,
             "max_restore_age_days": 31,
+            "expected_aggregate": str(_write_expected_aggregate(tmp_path)),
+            "restore_rto_seconds": 3600,
         },
         probes=PreflightProbes(
             database=lambda _: CheckResult.passed("database", "ok"),
@@ -405,6 +525,8 @@ def test_preflight_rejects_restore_evidence_for_different_backups(
         "restore_report": str(restore_report),
         "max_backup_age_hours": 4,
         "max_restore_age_days": 31,
+        "expected_aggregate": str(_write_expected_aggregate(tmp_path)),
+        "restore_rto_seconds": 3600,
     }
 
     def passed(name: str) -> CheckResult:
@@ -472,6 +594,8 @@ def test_preflight_rejects_restore_evidence_for_a_different_asset_chain(
         "restore_report": str(restore_report),
         "max_backup_age_hours": 4,
         "max_restore_age_days": 31,
+        "expected_aggregate": str(_write_expected_aggregate(tmp_path)),
+        "restore_rto_seconds": 3600,
     }
 
     def passed(name: str) -> CheckResult:

@@ -33,6 +33,10 @@ delete revisions or bypass approval.
   unrelated path cannot satisfy the approved manifest.
 - Copy `leadtrace/ops/cutover/preflight.example.json` to a protected operations
   directory and replace every `TO_BE_REPLACED` value with observed evidence.
+- Keep `expected_aggregate` bound to the approved read-only aggregate file and
+  set `restore_rto_seconds` to the agreed production RTO before the drill. The
+  restore report must contain the same exact counts, integrity expectations,
+  and RTO target.
 
 The protected process environment must define `LEADTRACE_DATABASE_URL`,
 `LEADTRACE_REDIS_URL`, and the `LEADTRACE_PREFLIGHT_*` and
@@ -176,10 +180,12 @@ LEADTRACE_PYTHON_BIN=/opt/leadtrace/.venv/bin/python \
 
 Stop unless `restore-report.json` is `PASS`, meets the agreed RTO, and its
 database ID, terminal asset ID, full asset chain, metadata hashes, and versions
-match the selected candidate backup IDs exactly. Update the protected preflight
-configuration with these candidate metadata paths, the new restore report, and
-the actual current release key. The earlier monthly report and rollback backup
-IDs are not valid substitutes.
+match the selected candidate backup IDs exactly. Its current Release validation
+must also be valid with an empty issue list. Update the protected preflight
+configuration with these candidate metadata paths, the new restore report, the
+approved expected aggregate, the agreed RTO in seconds, and the actual current
+release key. The earlier monthly report and rollback backup IDs are not valid
+substitutes.
 
 ## Preflight the staged candidate
 

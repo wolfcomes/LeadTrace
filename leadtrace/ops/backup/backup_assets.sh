@@ -13,9 +13,12 @@ require_value LEADTRACE_ASSET_ALLOWED_PARENT
 ASSET_ROOT="$(resolve_directory_below \
   'asset root' "${LEADTRACE_ASSET_ROOT}" "${LEADTRACE_ASSET_ALLOWED_PARENT}")"
 reject_path_overlap "${ASSET_ROOT}" "${BACKUP_DESTINATION}"
+require_value LEADTRACE_SOURCE_ROOTS
+require_value LEADTRACE_SOURCE_ALLOWED_PARENTS
 command -v age >/dev/null 2>&1 || fail "age is required"
 command -v tar >/dev/null 2>&1 || fail "tar is required"
 command -v cp >/dev/null 2>&1 || fail "cp is required"
+command -v find >/dev/null 2>&1 || fail "find is required"
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
 
 new_staging_directory assets
@@ -62,10 +65,17 @@ capture_root = Path(sys.argv[2]).resolve(strict=False)
 backup_destination = Path(sys.argv[3]).resolve(strict=True)
 try:
     raw_source_roots = json.loads(os.environ.get("LEADTRACE_SOURCE_ROOTS", "{}"))
+    raw_allowed_parents = json.loads(
+        os.environ.get("LEADTRACE_SOURCE_ALLOWED_PARENTS", "{}")
+    )
 except json.JSONDecodeError as error:
-    raise SystemExit("LEADTRACE_SOURCE_ROOTS must be a JSON object") from error
-if not isinstance(raw_source_roots, dict):
-    raise SystemExit("LEADTRACE_SOURCE_ROOTS must be a JSON object")
+    raise SystemExit("source root configuration must contain JSON objects") from error
+if not isinstance(raw_source_roots, dict) or not isinstance(raw_allowed_parents, dict):
+    raise SystemExit("source root configuration must contain JSON objects")
+if "baseline" not in raw_source_roots:
+    raise SystemExit("source root mapping must include the baseline namespace")
+if set(raw_source_roots) != set(raw_allowed_parents):
+    raise SystemExit("every source root must have one configured allowed parent")
 
 roots: list[tuple[str, Path, Path]] = [
     ("managed asset root", managed_root, capture_root / "managed")
@@ -79,6 +89,22 @@ for key, value in sorted(raw_source_roots.items()):
     ):
         raise SystemExit("source root mapping contains an invalid key or path")
     source_root = Path(value).resolve(strict=True)
+    allowed_value = raw_allowed_parents[key]
+    if not isinstance(allowed_value, str) or not Path(allowed_value).is_absolute():
+        raise SystemExit("source allowed parent mapping contains an invalid path")
+    allowed_parent = Path(allowed_value).resolve(strict=True)
+    if allowed_parent == Path("/") or not allowed_parent.is_dir():
+        raise SystemExit("source allowed parent must be an existing dedicated directory")
+    try:
+        relative_source = source_root.relative_to(allowed_parent)
+    except ValueError as error:
+        raise SystemExit(
+            f"source root {key} must be below its configured allowed parent"
+        ) from error
+    if relative_source == Path("."):
+        raise SystemExit(
+            f"source root {key} must be below its configured allowed parent"
+        )
     roots.append((f"source root {key}", source_root, capture_root / "sources" / key))
 
 for index, (label, source_root, _) in enumerate(roots):
@@ -140,7 +166,7 @@ PY
 
 tar --listed-incremental="${SNAPSHOT}" --create --file="${PLAIN_ARCHIVE}" \
   --directory="${CAPTURE_ROOT}" .
-rm -rf -- "${CAPTURE_ROOT}"
+find "${CAPTURE_ROOT}" -type f -delete
 age --encrypt -r "${LEADTRACE_ENCRYPTION_RECIPIENT}" \
   -o "${ENCRYPTED_ARCHIVE}" "${PLAIN_ARCHIVE}"
 rm -f -- "${PLAIN_ARCHIVE}"

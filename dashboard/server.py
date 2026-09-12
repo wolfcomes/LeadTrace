@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from collections.abc import Mapping
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -1750,7 +1751,6 @@ def load_overview() -> dict[str, object]:
     explicit_rows = read_csv_rows(PATH_FILES["explicit"])
     unresolved_rows = read_csv_rows(PATH_FILES["unresolved"])
     enriched_rows = read_csv_rows(COUNT_FILES["candidate_records"])
-    manifest_rows = read_csv_rows(COUNT_FILES["structure_crops"])
     summary = read_json(SUMMARY_PATH) if SUMMARY_PATH.is_file() else {}
     quality = _proposal_quality()
     structure_ocr = _structure_ocr_progress()

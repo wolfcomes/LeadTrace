@@ -59,6 +59,13 @@ from that restored manifest. Configure the temporary LeadTrace application
 with the same restored managed/source paths before running the HTTP checks; do
 not point it at any live production source tree.
 
+Database verification recomputes the current Release aggregate and runs the
+complete Release validator against the restored bundle. The report passes only
+when counts and integrity equal the protected expected aggregate and Release
+validation has no issues. Cutover preflight independently loads that same
+expected aggregate and the protected `restore_rto_seconds` target; values
+self-declared only by the restore report are not accepted as cutover evidence.
+
 The restore root is created under `umask 077`. Dump, tar, and chain-list
 plaintext are removed on every exit; restored assets are also removed on a
 failed drill. Keep the sanitized report and command exit status with the monthly

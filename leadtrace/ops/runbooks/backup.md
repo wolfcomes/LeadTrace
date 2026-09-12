@@ -40,7 +40,8 @@ LEADTRACE_ENCRYPTION_FINGERPRINT=SHA256:...
 LEADTRACE_DATABASE_URL=postgresql+psycopg://...
 LEADTRACE_ASSET_ROOT=/var/lib/leadtrace/assets
 LEADTRACE_ASSET_ALLOWED_PARENT=/var/lib/leadtrace
-LEADTRACE_SOURCE_ROOTS='{"baseline":"/srv/leadtrace-source"}'
+LEADTRACE_SOURCE_ROOTS='{"baseline":"/srv/leadtrace-sources/baseline"}'
+LEADTRACE_SOURCE_ALLOWED_PARENTS='{"baseline":"/srv/leadtrace-sources"}'
 LEADTRACE_APPLICATION_VERSION=0.1.0
 LEADTRACE_SCHEMA_VERSION=0015_crop_job_subscriptions
 LEADTRACE_RELEASE_VERSION=release-17
@@ -77,6 +78,16 @@ controlled rehearsal, but the scheduled job does not require daily config
 edits. Manifest and tar are generated from the same protected staging snapshot;
 symbolic links, overlapping roots, and source/destination ancestor overlap are
 rejected before the snapshot is accepted.
+
+`LEADTRACE_SOURCE_ROOTS` and `LEADTRACE_SOURCE_ALLOWED_PARENTS` are required
+JSON objects with exactly the same namespace keys. The `baseline` namespace is
+mandatory because imported source assets use `source/baseline/...` storage
+keys. Every source root must be a strict descendant of its corresponding
+allowed parent; do not use `/`, the application worktree, or a broad shared
+data directory as an allowed parent. Each finalized asset backup retains only
+the empty captured directory skeleton after encryption. Keeping those directory
+inodes allocated prevents GNU incremental tar from mistaking a newly allocated
+directory for a rename; no plaintext asset files remain in the skeleton.
 
 ## Scheduling
 

@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import uuid4
 
 from alembic import command
 from alembic.config import Config
+from rdkit import Chem
 from sqlalchemy import text
-from pathlib import Path
 
 from app.database import create_database_engine
 from app.papers.repository import PaperListFilters, published_paper_statement
+from leadtrace.tests.load.scenario_data import (
+    COLD_PREVIEW_MIN_SAMPLES,
+    cold_preview_payload,
+)
 
 
 def _alembic_config(database_url: str) -> Config:
@@ -78,10 +83,26 @@ def test_load_profile_covers_queues_release_validation_and_pdf_latency() -> None
         "crop job enqueue",
         "release validation",
         "/structures/drawings",
-        "single structure preview",
-        '("POST", "single structure preview"): 2000',
+        "cold structure preview",
+        '("POST", "cold structure preview"): 2000',
+        "MIN_REQUEST_SAMPLES",
+        "drawing_was_reused",
     ):
         assert required in profile
     assert "synchronous" in readme
     assert "automated hard gate" in readme
     assert "crop jobs are queued" in readme
+    assert "unique" in readme
+    assert "non-reused" in readme
+
+
+def test_load_profile_generates_distinct_parseable_cold_preview_requests() -> None:
+    payloads = [cold_preview_payload(token) for token in range(1, 101)]
+    drawing_keys = {
+        (payload["smiles"], payload["width"], payload["height"])
+        for payload in payloads
+    }
+
+    assert len(drawing_keys) == len(payloads)
+    assert all(Chem.MolFromSmiles(payload["smiles"]) is not None for payload in payloads)
+    assert COLD_PREVIEW_MIN_SAMPLES >= 25
