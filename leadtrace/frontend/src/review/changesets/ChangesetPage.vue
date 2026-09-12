@@ -31,6 +31,7 @@ import {
 } from "../recovery";
 import ChangesetDiff from "./ChangesetDiff.vue";
 import SubmissionPage from "./SubmissionPage.vue";
+import ScientificEditors from "./ScientificEditors.vue";
 
 type ViewState = "loading" | "ready" | "not-found" | "error";
 type WorkspaceTab = "edit" | "diff" | "submit";
@@ -81,6 +82,14 @@ const mutable = computed(() => (
 
 const paperItem = computed(() => items.value.find((item) => item.object_kind === "paper"));
 const evidenceItems = computed(() => items.value.filter((item) => item.object_kind === "evidence"));
+const scientificItems = computed(() => items.value.filter((item) => {
+  if (!["compound", "evidence", "activity", "lineage", "lineage_edge"].includes(item.object_kind)) return false;
+  const snapshot = item.proposed_snapshot;
+  if (item.object_kind === "compound") return typeof snapshot.local_identity === "string";
+  if (item.object_kind === "evidence") return typeof snapshot.evidence_key === "string";
+  if (item.object_kind === "activity") return typeof snapshot.activity_key === "string";
+  return typeof snapshot.edge_key === "string" || typeof snapshot.lineage_key === "string";
+}));
 
 const hasInvalidEditor = computed(() => (
   !title.value.trim()
@@ -222,6 +231,15 @@ function updateNormalizedValue(item: ChangesetItem, field: string, event: Event)
     [item.id]: JSON.stringify(snapshot, null, 2),
   };
   validateItem(item.id);
+  scheduleSave();
+}
+
+function updateScientificSnapshot(itemId: string, snapshot: Record<string, unknown>): void {
+  itemJson.value = {
+    ...itemJson.value,
+    [itemId]: JSON.stringify(snapshot, null, 2),
+  };
+  validateItem(itemId);
   scheduleSave();
 }
 
@@ -767,6 +785,14 @@ onBeforeUnmount(() => {
           </details>
           <div v-if="items.length === 0" class="empty-items">该修改集尚未添加任何核查内容。</div>
         </section>
+
+        <ScientificEditors
+          v-if="scientificItems.length"
+          :items="scientificItems"
+          :editable="mutable"
+          :reason="reason"
+          @update="updateScientificSnapshot"
+        />
       </section>
 
       <ChangesetDiff v-else-if="activeTab === 'diff'" :diffs="diffs" />

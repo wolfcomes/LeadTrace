@@ -20,6 +20,10 @@ from app.releases.router import create_releases_router
 from app.reviews.router import create_reviews_router
 from app.users.router import create_users_router
 from app.structures.router import create_structures_router
+from app.compounds.router import create_compounds_router
+from app.evidence.router import create_evidence_router
+from app.activities.router import create_activities_router
+from app.lineages.router import create_lineages_router
 from app.visual_objects.router import create_visual_regions_router
 from app.visual_objects.objects_router import create_visual_objects_router
 
@@ -84,6 +88,18 @@ def create_app(
             runtime_settings.session_secret.get_secret_value(),
             runtime_settings.asset_root,
         )
+    )
+    application.include_router(
+        create_compounds_router(runtime_settings.session_secret.get_secret_value())
+    )
+    application.include_router(
+        create_evidence_router(runtime_settings.session_secret.get_secret_value())
+    )
+    application.include_router(
+        create_activities_router(runtime_settings.session_secret.get_secret_value())
+    )
+    application.include_router(
+        create_lineages_router(runtime_settings.session_secret.get_secret_value())
     )
     return application
 
