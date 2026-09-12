@@ -73,6 +73,7 @@ class ChangesetResponse(BaseModel):
     version: int
     validation_results: dict[str, object]
     submitted_snapshot: dict[str, object] | None
+    submitted_content_hash: str | None
     submitted_at: datetime | None
     created_at: datetime
     updated_at: datetime

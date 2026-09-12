@@ -84,6 +84,42 @@ class RelationRequest(BaseModel):
     note: str | None = None
 
 
+class RegionBindingUpdateRequest(BaseModel):
+    changeset_id: UUID
+    expected_version: int = Field(ge=1)
+    role: str = Field(default="source", max_length=64)
+    note: str | None = None
+
+
+class AssetBindingUpdateRequest(BaseModel):
+    changeset_id: UUID
+    expected_version: int = Field(ge=1)
+    role: str = Field(default="image", max_length=64)
+    is_primary: bool = False
+
+
+class CompoundBindingUpdateRequest(BaseModel):
+    changeset_id: UUID
+    expected_version: int = Field(ge=1)
+    label: str = Field(min_length=1, max_length=255)
+    label_bbox: dict[str, object] | None = None
+    role: str = Field(default="label", max_length=64)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    note: str | None = None
+    is_primary: bool = False
+
+
+class RelationUpdateRequest(BaseModel):
+    changeset_id: UUID
+    expected_version: int = Field(ge=1)
+    note: str | None = None
+
+
+class BindingDeleteRequest(BaseModel):
+    changeset_id: UUID
+    expected_version: int = Field(ge=1)
+
+
 def _authorize_paper(session: Session, principal: Principal, paper_id: UUID) -> None:
     if principal.must_change_password or principal.role is UserRole.VISITOR:
         raise HTTPException(status_code=403, detail="Permission denied")
@@ -265,6 +301,7 @@ def create_visual_objects_router(session_secret: str) -> APIRouter:
                     object_id=object_id,
                     region_id=payload.region_id,
                     changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
                     expected_version=payload.expected_version,
                     role=payload.role,
                     note=payload.note,
@@ -295,6 +332,7 @@ def create_visual_objects_router(session_secret: str) -> APIRouter:
                     object_id=object_id,
                     asset_id=payload.asset_id,
                     changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
                     expected_version=payload.expected_version,
                     role=payload.role,
                     is_primary=payload.is_primary,
@@ -326,6 +364,7 @@ def create_visual_objects_router(session_secret: str) -> APIRouter:
                     compound_id=payload.compound_id,
                     label=payload.label,
                     changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
                     expected_version=payload.expected_version,
                     label_bbox=payload.label_bbox,
                     role=payload.role,
@@ -361,9 +400,269 @@ def create_visual_objects_router(session_secret: str) -> APIRouter:
                     relation_type=payload.relation_type,
                     note=payload.note,
                     changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
                     expected_version=payload.expected_version,
                 )
                 return {"id": str(relation.id), "relation_type": relation.relation_type}
+        except Exception as error:
+            raise _error(error) from error
+
+    @router.patch("/{object_id}/regions/{binding_id}")
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def update_region_binding(
+        paper_id: UUID,
+        object_id: UUID,
+        binding_id: UUID,
+        payload: RegionBindingUpdateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        _permission: Principal = Depends(require_edit),
+    ) -> dict[str, object]:
+        _authorize_paper(session, principal, paper_id)
+        require_request_csrf(principal, csrf_token, session_secret)
+        try:
+            _require_object_paper(session, object_id, paper_id)
+            session.rollback()
+            with session.begin():
+                binding = binding_service.update_region(
+                    session,
+                    binding_id=binding_id,
+                    changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
+                    expected_version=payload.expected_version,
+                    role=payload.role,
+                    note=payload.note,
+                )
+                if binding.visual_object_id != object_id:
+                    raise BindingConflict("Binding does not belong to this object")
+                return {"id": str(binding.id), "operation": binding.operation}
+        except Exception as error:
+            raise _error(error) from error
+
+    @router.delete("/{object_id}/regions/{binding_id}")
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def remove_region_binding(
+        paper_id: UUID,
+        object_id: UUID,
+        binding_id: UUID,
+        payload: BindingDeleteRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        _permission: Principal = Depends(require_edit),
+    ) -> dict[str, object]:
+        _authorize_paper(session, principal, paper_id)
+        require_request_csrf(principal, csrf_token, session_secret)
+        try:
+            _require_object_paper(session, object_id, paper_id)
+            session.rollback()
+            with session.begin():
+                binding = binding_service.remove_region(
+                    session,
+                    binding_id=binding_id,
+                    changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
+                    expected_version=payload.expected_version,
+                )
+                if binding.visual_object_id != object_id:
+                    raise BindingConflict("Binding does not belong to this object")
+                return {"id": str(binding.id), "operation": binding.operation}
+        except Exception as error:
+            raise _error(error) from error
+
+    @router.patch("/{object_id}/assets/{binding_id}")
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def update_asset_binding(
+        paper_id: UUID,
+        object_id: UUID,
+        binding_id: UUID,
+        payload: AssetBindingUpdateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        _permission: Principal = Depends(require_edit),
+    ) -> dict[str, object]:
+        _authorize_paper(session, principal, paper_id)
+        require_request_csrf(principal, csrf_token, session_secret)
+        try:
+            _require_object_paper(session, object_id, paper_id)
+            session.rollback()
+            with session.begin():
+                binding = binding_service.update_asset(
+                    session,
+                    binding_id=binding_id,
+                    changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
+                    expected_version=payload.expected_version,
+                    role=payload.role,
+                    is_primary=payload.is_primary,
+                )
+                if binding.visual_object_id != object_id:
+                    raise BindingConflict("Binding does not belong to this object")
+                return {"id": str(binding.id), "operation": binding.operation}
+        except Exception as error:
+            raise _error(error) from error
+
+    @router.delete("/{object_id}/assets/{binding_id}")
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def remove_asset_binding(
+        paper_id: UUID,
+        object_id: UUID,
+        binding_id: UUID,
+        payload: BindingDeleteRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        _permission: Principal = Depends(require_edit),
+    ) -> dict[str, object]:
+        _authorize_paper(session, principal, paper_id)
+        require_request_csrf(principal, csrf_token, session_secret)
+        try:
+            _require_object_paper(session, object_id, paper_id)
+            session.rollback()
+            with session.begin():
+                binding = binding_service.remove_asset(
+                    session,
+                    binding_id=binding_id,
+                    changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
+                    expected_version=payload.expected_version,
+                )
+                if binding.visual_object_id != object_id:
+                    raise BindingConflict("Binding does not belong to this object")
+                return {"id": str(binding.id), "operation": binding.operation}
+        except Exception as error:
+            raise _error(error) from error
+
+    @router.patch("/{object_id}/compounds/{binding_id}")
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def update_compound_binding(
+        paper_id: UUID,
+        object_id: UUID,
+        binding_id: UUID,
+        payload: CompoundBindingUpdateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        _permission: Principal = Depends(require_edit),
+    ) -> dict[str, object]:
+        _authorize_paper(session, principal, paper_id)
+        require_request_csrf(principal, csrf_token, session_secret)
+        try:
+            _require_object_paper(session, object_id, paper_id)
+            session.rollback()
+            with session.begin():
+                binding = binding_service.update_compound(
+                    session,
+                    binding_id=binding_id,
+                    changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
+                    expected_version=payload.expected_version,
+                    label=payload.label,
+                    label_bbox=payload.label_bbox,
+                    role=payload.role,
+                    confidence=payload.confidence,
+                    note=payload.note,
+                    is_primary=payload.is_primary,
+                )
+                if binding.visual_object_id != object_id:
+                    raise BindingConflict("Binding does not belong to this object")
+                return {"id": str(binding.id), "operation": binding.operation}
+        except Exception as error:
+            raise _error(error) from error
+
+    @router.delete("/{object_id}/compounds/{binding_id}")
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def remove_compound_binding(
+        paper_id: UUID,
+        object_id: UUID,
+        binding_id: UUID,
+        payload: BindingDeleteRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        _permission: Principal = Depends(require_edit),
+    ) -> dict[str, object]:
+        _authorize_paper(session, principal, paper_id)
+        require_request_csrf(principal, csrf_token, session_secret)
+        try:
+            _require_object_paper(session, object_id, paper_id)
+            session.rollback()
+            with session.begin():
+                binding = binding_service.remove_compound(
+                    session,
+                    binding_id=binding_id,
+                    changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
+                    expected_version=payload.expected_version,
+                )
+                if binding.visual_object_id != object_id:
+                    raise BindingConflict("Binding does not belong to this object")
+                return {"id": str(binding.id), "operation": binding.operation}
+        except Exception as error:
+            raise _error(error) from error
+
+    @router.patch("/{object_id}/relations/{relation_id}")
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def update_visual_relation(
+        paper_id: UUID,
+        object_id: UUID,
+        relation_id: UUID,
+        payload: RelationUpdateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        _permission: Principal = Depends(require_edit),
+    ) -> dict[str, object]:
+        _authorize_paper(session, principal, paper_id)
+        require_request_csrf(principal, csrf_token, session_secret)
+        try:
+            _require_object_paper(session, object_id, paper_id)
+            session.rollback()
+            with session.begin():
+                relation = relationship_service.update_relation(
+                    session,
+                    relation_id=relation_id,
+                    changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
+                    expected_version=payload.expected_version,
+                    note=payload.note,
+                )
+                if relation.source_object_id != object_id:
+                    raise BindingConflict("Relation does not belong to this object")
+                return {"id": str(relation.id), "operation": relation.operation}
+        except Exception as error:
+            raise _error(error) from error
+
+    @router.delete("/{object_id}/relations/{relation_id}")
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def remove_visual_relation(
+        paper_id: UUID,
+        object_id: UUID,
+        relation_id: UUID,
+        payload: BindingDeleteRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        _permission: Principal = Depends(require_edit),
+    ) -> dict[str, object]:
+        _authorize_paper(session, principal, paper_id)
+        require_request_csrf(principal, csrf_token, session_secret)
+        try:
+            _require_object_paper(session, object_id, paper_id)
+            session.rollback()
+            with session.begin():
+                relation = relationship_service.remove_relation(
+                    session,
+                    relation_id=relation_id,
+                    changeset_id=payload.changeset_id,
+                    actor_id=principal.user_id,
+                    expected_version=payload.expected_version,
+                )
+                if relation.source_object_id != object_id:
+                    raise BindingConflict("Relation does not belong to this object")
+                return {"id": str(relation.id), "operation": relation.operation}
         except Exception as error:
             raise _error(error) from error
 

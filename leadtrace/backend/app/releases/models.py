@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -118,3 +119,87 @@ class ReleaseItem(UUIDPrimaryKeyMixin, Base):
         nullable=False,
     )
     manifest_order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ReleaseArtifactManifest(Base):
+    """Immutable release-scoped copy of mutable bindings and asset metadata."""
+
+    __tablename__ = "release_artifact_manifests"
+    __table_args__ = (
+        CheckConstraint(
+            "schema_version > 0",
+            name="ck_release_artifact_manifests_schema_version",
+        ),
+        CheckConstraint(
+            "char_length(content_hash) = 64",
+            name="ck_release_artifact_manifests_content_hash",
+        ),
+    )
+
+    release_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("releases.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    snapshot: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class ReleaseOperation(UUIDPrimaryKeyMixin, Base):
+    """Immutable aggregate audit unit for publish and corpus-wide rollback."""
+
+    __tablename__ = "release_operations"
+    __table_args__ = (
+        UniqueConstraint(
+            "actor_id",
+            "operation_type",
+            "idempotency_key",
+            name="uq_release_operations_actor_key",
+        ),
+        CheckConstraint(
+            "operation_type IN ('publish', 'rollback')",
+            name="ck_release_operations_type",
+        ),
+        CheckConstraint(
+            "char_length(request_hash) = 64",
+            name="ck_release_operations_request_hash",
+        ),
+        Index("ix_release_operations_result", "result_release_id"),
+    )
+
+    operation_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_release_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("releases.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    replaced_release_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("releases.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    result_release_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("releases.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    delta: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )

@@ -108,12 +108,13 @@ class VisualObjectRegionBinding(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "visual_object_region_bindings"
     __table_args__ = (
         UniqueConstraint(
-            "visual_object_id",
-            "region_id",
+            "changeset_id",
+            "logical_key",
             name="uq_visual_object_region_binding",
         ),
         Index("ix_visual_object_region_object", "visual_object_id"),
         Index("ix_visual_object_region_region", "region_id"),
+        Index("ix_visual_object_region_changeset", "changeset_id"),
     )
 
     visual_object_id: Mapped[UUID] = mapped_column(
@@ -122,6 +123,14 @@ class VisualObjectRegionBinding(UUIDPrimaryKeyMixin, Base):
     region_id: Mapped[UUID] = mapped_column(
         ForeignKey("visual_regions.id", ondelete="RESTRICT"), nullable=False
     )
+    changeset_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("changesets.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    operation: Mapped[str] = mapped_column(String(16), nullable=False, default="add")
+    logical_key: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    base_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     role: Mapped[str] = mapped_column(String(64), nullable=False, default="source")
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -130,12 +139,13 @@ class VisualObjectAssetBinding(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "visual_object_asset_bindings"
     __table_args__ = (
         UniqueConstraint(
-            "visual_object_id",
-            "asset_id",
+            "changeset_id",
+            "logical_key",
             name="uq_visual_object_asset_binding",
         ),
         Index("ix_visual_object_asset_object", "visual_object_id"),
         Index("ix_visual_object_asset_asset", "asset_id"),
+        Index("ix_visual_object_asset_changeset", "changeset_id"),
     )
 
     visual_object_id: Mapped[UUID] = mapped_column(
@@ -144,6 +154,14 @@ class VisualObjectAssetBinding(UUIDPrimaryKeyMixin, Base):
     asset_id: Mapped[UUID] = mapped_column(
         ForeignKey("assets.id", ondelete="RESTRICT"), nullable=False
     )
+    changeset_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("changesets.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    operation: Mapped[str] = mapped_column(String(16), nullable=False, default="add")
+    logical_key: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    base_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     role: Mapped[str] = mapped_column(String(64), nullable=False, default="image")
     is_primary: Mapped[bool] = mapped_column(nullable=False, default=False)
 
@@ -152,9 +170,8 @@ class VisualObjectCompoundBinding(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "visual_object_compound_bindings"
     __table_args__ = (
         UniqueConstraint(
-            "visual_object_id",
-            "compound_id",
-            "label",
+            "changeset_id",
+            "logical_key",
             name="uq_visual_object_compound_label",
         ),
         CheckConstraint(
@@ -163,6 +180,7 @@ class VisualObjectCompoundBinding(UUIDPrimaryKeyMixin, Base):
         ),
         Index("ix_visual_object_compound_object", "visual_object_id"),
         Index("ix_visual_object_compound_compound", "compound_id"),
+        Index("ix_visual_object_compound_changeset", "changeset_id"),
     )
 
     visual_object_id: Mapped[UUID] = mapped_column(
@@ -171,6 +189,14 @@ class VisualObjectCompoundBinding(UUIDPrimaryKeyMixin, Base):
     compound_id: Mapped[UUID] = mapped_column(
         ForeignKey("compounds.id", ondelete="RESTRICT"), nullable=False
     )
+    changeset_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("changesets.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    operation: Mapped[str] = mapped_column(String(16), nullable=False, default="add")
+    logical_key: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    base_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     label_bbox: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     role: Mapped[str] = mapped_column(String(64), nullable=False, default="label")
@@ -183,9 +209,8 @@ class VisualObjectRelation(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "visual_object_relations"
     __table_args__ = (
         UniqueConstraint(
-            "source_object_id",
-            "target_object_id",
-            "relation_type",
+            "changeset_id",
+            "logical_key",
             name="uq_visual_object_relation",
         ),
         CheckConstraint(
@@ -194,6 +219,7 @@ class VisualObjectRelation(UUIDPrimaryKeyMixin, Base):
         ),
         Index("ix_visual_object_relations_source", "source_object_id"),
         Index("ix_visual_object_relations_target", "target_object_id"),
+        Index("ix_visual_object_relations_changeset", "changeset_id"),
     )
 
     source_object_id: Mapped[UUID] = mapped_column(
@@ -202,5 +228,13 @@ class VisualObjectRelation(UUIDPrimaryKeyMixin, Base):
     target_object_id: Mapped[UUID] = mapped_column(
         ForeignKey("visual_objects.id", ondelete="CASCADE"), nullable=False
     )
+    changeset_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("changesets.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    operation: Mapped[str] = mapped_column(String(16), nullable=False, default="add")
+    logical_key: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    base_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     relation_type: Mapped[str] = mapped_column(String(64), nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)

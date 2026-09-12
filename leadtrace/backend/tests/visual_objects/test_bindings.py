@@ -114,6 +114,7 @@ def test_many_to_many_bindings_allow_reuse_but_reject_exact_duplicates(
             object_id=first.id,
             region_id=region.id,
             changeset_id=changeset.id,
+            actor_id=reviewer.id,
             expected_version=1,
         )
         with pytest.raises(BindingConflict, match="already bound"):
@@ -122,6 +123,7 @@ def test_many_to_many_bindings_allow_reuse_but_reject_exact_duplicates(
                 object_id=first.id,
                 region_id=region.id,
                 changeset_id=changeset.id,
+                actor_id=reviewer.id,
                 expected_version=2,
             )
         service.bind_region(
@@ -129,6 +131,7 @@ def test_many_to_many_bindings_allow_reuse_but_reject_exact_duplicates(
             object_id=second.id,
             region_id=region.id,
             changeset_id=changeset.id,
+            actor_id=reviewer.id,
             expected_version=2,
         )
         service.bind_asset(
@@ -136,6 +139,7 @@ def test_many_to_many_bindings_allow_reuse_but_reject_exact_duplicates(
             object_id=first.id,
             asset_id=asset.id,
             changeset_id=changeset.id,
+            actor_id=reviewer.id,
             expected_version=3,
             is_primary=True,
         )
@@ -144,6 +148,7 @@ def test_many_to_many_bindings_allow_reuse_but_reject_exact_duplicates(
             object_id=second.id,
             asset_id=asset.id,
             changeset_id=changeset.id,
+            actor_id=reviewer.id,
             expected_version=4,
         )
         service.bind_compound(
@@ -152,6 +157,7 @@ def test_many_to_many_bindings_allow_reuse_but_reject_exact_duplicates(
             compound_id=compound.id,
             label="26a",
             changeset_id=changeset.id,
+            actor_id=reviewer.id,
             expected_version=5,
             is_primary=True,
         )
@@ -161,6 +167,7 @@ def test_many_to_many_bindings_allow_reuse_but_reject_exact_duplicates(
             compound_id=compound.id,
             label="26a",
             changeset_id=changeset.id,
+            actor_id=reviewer.id,
             expected_version=6,
         )
         relation = RelationshipService().create_relation(

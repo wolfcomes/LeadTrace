@@ -175,6 +175,7 @@ export const changesetSchema = z.object({
   version: z.number().int().positive(),
   validation_results: z.record(z.string(), z.unknown()),
   submitted_snapshot: z.record(z.string(), z.unknown()).nullable(),
+  submitted_content_hash: z.string().length(64).nullable(),
   submitted_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),

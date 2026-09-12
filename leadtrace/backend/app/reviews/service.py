@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.papers.models import Paper
+from app.releases.manifest import validate_changeset_binding_delta
 from app.releases.models import Release, ReleaseItem
 from app.revisions.models import ObjectKind, ObjectRevision, RevisionedObject
 from app.reviews.models import (
@@ -764,6 +765,10 @@ class ReviewService:
         )
         if not items:
             raise InvalidReview("A changeset must contain at least one item")
+        try:
+            validate_changeset_binding_delta(session, changeset)
+        except ValueError as error:
+            raise InvalidReview(f"Binding delta is invalid: {error}") from error
         for item in items:
             self._validate_base_item(
                 session,

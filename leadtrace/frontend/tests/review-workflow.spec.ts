@@ -65,6 +65,7 @@ const draft = {
   version: 3,
   validation_results: {},
   submitted_snapshot: null,
+  submitted_content_hash: null,
   submitted_at: null,
   created_at: "2026-09-12T01:30:00Z",
   updated_at: "2026-09-12T02:00:00Z",

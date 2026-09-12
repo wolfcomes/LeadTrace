@@ -35,4 +35,35 @@ describe("PDF region review canvas", () => {
     expect(wrapper.get("[data-region-id='r1']").attributes("role")).toBe("button");
     expect(wrapper.get("[data-region-id='r1']").attributes("aria-label")).toContain("r1");
   });
+
+  it("does not create regions in read-only mode", async () => {
+    const wrapper = mount(PdfReviewCanvas, {
+      props: {
+        pdfUrl: "/source.pdf",
+        pageCount: 1,
+        regions: [],
+        readOnly: true,
+      },
+    });
+
+    const canvas = wrapper.get("[data-pdf-page]");
+    await canvas.trigger("pointerdown", { clientX: 100, clientY: 50 });
+    await canvas.trigger("pointermove", { clientX: 300, clientY: 250 });
+    await canvas.trigger("pointerup", { clientX: 300, clientY: 250 });
+
+    expect(wrapper.emitted("create-region")).toBeUndefined();
+  });
+
+  it("renders a real PDF canvas with a protected document fallback", () => {
+    const wrapper = mount(PdfReviewCanvas, {
+      props: {
+        pdfUrl: "/api/v1/papers/paper-1/source-pdf?kind=article",
+        pageCount: 2,
+        regions: [],
+      },
+    });
+
+    expect(wrapper.get("[data-pdf-canvas]").element.tagName).toBe("CANVAS");
+    expect(wrapper.get(".pdf-fallback").attributes("src")).toContain("source-pdf");
+  });
 });

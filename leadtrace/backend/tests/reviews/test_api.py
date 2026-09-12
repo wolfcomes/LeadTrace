@@ -321,6 +321,7 @@ def test_review_api_enforces_roles_scope_csrf_and_version_conflicts(
             submitted.json()["submitted_snapshot"]["title"] == "Correct direct parent"
         )
         assert submitted.json()["submitted_snapshot"]["reason"] == long_reason
+        assert len(submitted.json()["submitted_content_hash"]) == 64
         blocked_edit = client.patch(
             f"/api/v1/review/changesets/{changeset_id}",
             headers={"X-CSRF-Token": reviewer_csrf},
@@ -366,6 +367,13 @@ def test_review_api_enforces_roles_scope_csrf_and_version_conflicts(
         )
         assert approved.status_code == 200
         assert approved.json()["workflow_state"] == "approved"
+        duplicate_approval = client.post(
+            f"/api/v1/review/changesets/{changeset_id}/approve",
+            headers={"X-CSRF-Token": admin_csrf},
+            json={"expected_version": 7, "reason": "Retry after response loss"},
+        )
+        assert duplicate_approval.status_code == 200
+        assert duplicate_approval.json()["workflow_state"] == "approved"
 
     with auth_session_factory() as session:
         changeset = session.get(Changeset, UUID(changeset_id))

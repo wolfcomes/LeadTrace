@@ -99,3 +99,73 @@ def test_asset_metadata_is_admin_only_and_never_exposes_storage_paths(
     assert "storage_key" not in allowed.json()
     assert "/private/" not in allowed.text
     assert str(tmp_path) not in allowed.text
+
+
+def test_asset_content_is_protected_and_streams_registered_bytes(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    content = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\x0dIDAT\x08\xd7c\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff"
+        b"\x89\x99=\x1d\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    from app.assets.storage import LocalAssetStore
+
+    store = LocalAssetStore(tmp_path / "managed")
+    stored = store.put_bytes(content, suffix=".png")
+    with auth_session_factory.begin() as session:
+        admin = UserService().create_user(
+            session,
+            username="asset.content.admin",
+            display_name="Asset Content Admin",
+            role=UserRole.ADMIN,
+            initial_password=PASSWORD,
+        )
+        admin.must_change_password = False
+        asset = Asset(
+            storage_key=stored.storage_key,
+            original_filename="content.png",
+            sha256=stored.sha256,
+            byte_size=stored.byte_size,
+            mime_type="image/png",
+            category=AssetCategory.RDKIT_STRUCTURE,
+            access_level=AssetAccessLevel.ADMIN,
+            integrity_state=AssetIntegrityState.VERIFIED,
+            derivation_metadata={},
+            source_metadata={},
+        )
+        session.add(asset)
+        session.flush()
+        asset_id = asset.id
+
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        database_url=empty_postgresql_database_url,
+        redis_url="redis://127.0.0.1:6379/0",
+        session_secret="asset-content-session-secret-more-than-thirty-two-characters",
+        allowed_hosts=["testserver"],
+        asset_root=tmp_path / "managed",
+    )
+    resources = DatabaseResources(
+        engine=auth_session_factory.kw["bind"],
+        session_factory=auth_session_factory,
+    )
+    application = create_app(
+        settings=settings,
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+    with TestClient(application) as client:
+        client.post(
+            "/api/v1/auth/login",
+            json={"username": "asset.content.admin", "password": PASSWORD},
+        )
+        response = client.get(f"/api/v1/assets/{asset_id}/content")
+
+    assert response.status_code == 200
+    assert response.content == content
+    assert response.headers["content-type"].startswith("image/png")

@@ -8,6 +8,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.assets.router import create_assets_router
+from app.approvals.router import create_approvals_router
 from app.audit.router import create_audit_router
 from app.api.errors import install_api_error_handling
 from app.config import Settings, get_settings
@@ -23,6 +24,7 @@ from app.structures.router import create_structures_router
 from app.compounds.router import create_compounds_router
 from app.evidence.router import create_evidence_router
 from app.activities.router import create_activities_router
+from app.admin.router import create_admin_router
 from app.lineages.router import create_lineages_router
 from app.visual_objects.router import create_visual_regions_router
 from app.visual_objects.objects_router import create_visual_objects_router
@@ -69,7 +71,13 @@ def create_app(
     )
     application.include_router(create_auth_router(runtime_settings))
     application.include_router(create_users_router(runtime_settings))
+    application.include_router(
+        create_admin_router(runtime_settings, database_probe=database_probe),
+    )
     application.include_router(create_assets_router())
+    application.include_router(
+        create_approvals_router(runtime_settings.session_secret.get_secret_value())
+    )
     application.include_router(create_audit_router())
     application.include_router(create_releases_router())
     application.include_router(create_papers_router())

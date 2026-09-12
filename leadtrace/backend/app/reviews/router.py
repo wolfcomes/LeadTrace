@@ -14,6 +14,7 @@ from app.audit.service import (
     persisted_json_value,
     redact_secrets,
 )
+from app.approvals.service import ApprovalConflict, ApprovalForbidden, ApprovalService
 from app.api.errors import APIError, request_id_for
 from app.auth.router import resolve_remote_address
 from app.database import get_db_session
@@ -158,6 +159,10 @@ def create_reviews_router(session_secret: str) -> APIRouter:
             return HTTPException(status_code=404, detail="Resource not found")
         if isinstance(error, ReviewForbidden):
             return HTTPException(status_code=403, detail="Permission denied")
+        if isinstance(error, ApprovalForbidden):
+            return HTTPException(status_code=403, detail="Permission denied")
+        if isinstance(error, ApprovalConflict):
+            return APIError(409, "APPROVAL_CONFLICT", str(error))
         if isinstance(error, RevisionConflict):
             return APIError(
                 409,
@@ -274,8 +279,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         except (CommentNotFound, CommentForbidden) as error:
             raise as_error(error) from error
         return [
-            CommentResponse.from_model(comment, state)
-            for comment, state in comments
+            CommentResponse.from_model(comment, state) for comment, state in comments
         ]
 
     @router.post(
@@ -373,9 +377,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
             raise as_error(error) from error
         return CommentResponse.from_model(comment, state)
 
-    @router.post(
-        "/comments/{comment_id}/resolve", response_model=CommentResponse
-    )
+    @router.post("/comments/{comment_id}/resolve", response_model=CommentResponse)
     @declare_route_access(RouteAccess.AUTHENTICATED)
     def resolve_comment(
         comment_id: UUID,
@@ -395,9 +397,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
             action=CommentAction.RESOLVED,
         )
 
-    @router.post(
-        "/comments/{comment_id}/reopen", response_model=CommentResponse
-    )
+    @router.post("/comments/{comment_id}/reopen", response_model=CommentResponse)
     @declare_route_access(RouteAccess.AUTHENTICATED)
     def reopen_comment(
         comment_id: UUID,
@@ -630,9 +630,7 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                             paper_id=changeset.paper_id,
                             changeset_id=changeset.id,
                             release_id=changeset.base_release_id,
-                            reason=(
-                                "Copied release-pinned revision into review draft"
-                            ),
+                            reason=("Copied release-pinned revision into review draft"),
                             before=None,
                             after=item_after,
                         )
@@ -1224,8 +1222,6 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         "request-changes": WorkflowState.CHANGES_REQUESTED,
         "reject": WorkflowState.REJECTED,
         "approve": WorkflowState.APPROVED,
-        "publish": WorkflowState.PUBLISHED,
-        "supersede": WorkflowState.SUPERSEDED,
     }
     for path, target_state in transition_routes.items():
 
@@ -1255,33 +1251,60 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                             if existing_changeset is not None
                             else None
                         )
-                        changeset = service.transition_changeset(
-                            session,
-                            changeset_id=changeset_id,
-                            actor_id=principal.user_id,
-                            expected_version=payload.expected_version,
-                            next_state=target_state,
-                        )
+                        decision_is_idempotent = False
+                        if target_state in {
+                            WorkflowState.APPROVED,
+                            WorkflowState.CHANGES_REQUESTED,
+                            WorkflowState.REJECTED,
+                        }:
+                            action = {
+                                WorkflowState.APPROVED: "approve",
+                                WorkflowState.CHANGES_REQUESTED: "request_changes",
+                                WorkflowState.REJECTED: "reject",
+                            }[target_state]
+                            decision_result = ApprovalService().decide(
+                                session,
+                                changeset_id=changeset_id,
+                                actor_id=principal.user_id,
+                                action=action,
+                                reason=payload.reason,
+                                expected_version=payload.expected_version,
+                            )
+                            decision_is_idempotent = decision_result.idempotent
+                            changeset = service.get_changeset(
+                                session, changeset_id, for_update=True
+                            )
+                        else:
+                            changeset = service.transition_changeset(
+                                session,
+                                changeset_id=changeset_id,
+                                actor_id=principal.user_id,
+                                expected_version=payload.expected_version,
+                                next_state=target_state,
+                            )
                         after = ChangesetResponse.from_model(changeset).model_dump(
                             mode="json"
                         )
-                        append_review_audit(
-                            session,
-                            request=request,
-                            actor_id=principal.user_id,
-                            action=f"review.changeset.{target_state.value}",
-                            target_type="changeset",
-                            target_id=changeset.id,
-                            paper_id=changeset.paper_id,
-                            changeset_id=changeset.id,
-                            release_id=changeset.base_release_id,
-                            reason=payload.reason,
-                            before=before,
-                            after=after,
-                        )
+                        if not decision_is_idempotent:
+                            append_review_audit(
+                                session,
+                                request=request,
+                                actor_id=principal.user_id,
+                                action=f"review.changeset.{target_state.value}",
+                                target_type="changeset",
+                                target_id=changeset.id,
+                                paper_id=changeset.paper_id,
+                                changeset_id=changeset.id,
+                                release_id=changeset.base_release_id,
+                                reason=payload.reason,
+                                before=before,
+                                after=after,
+                            )
                 except (
                     ReviewNotFound,
                     ReviewForbidden,
+                    ApprovalForbidden,
+                    ApprovalConflict,
                     InvalidReview,
                     RevisionConflict,
                 ) as error:

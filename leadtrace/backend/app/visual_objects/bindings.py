@@ -9,8 +9,15 @@ from sqlalchemy.orm import Session
 
 from app.assets.models import Asset
 from app.compounds.models import Compound
+from app.releases.manifest import (
+    binding_base_hash,
+    binding_logical_key,
+    frozen_base_binding,
+    frozen_base_binding_by_key,
+)
 from app.reviews.models import Changeset
 from app.security.policies import WorkflowState
+from app.users.models import User, UserRole
 from app.visual_objects.models import (
     VisualObject,
     VisualObjectAssetBinding,
@@ -23,6 +30,40 @@ from app.visual_objects.models import VisualRegion
 
 class BindingConflict(ValueError):
     """Raised when a binding is invalid or already exists."""
+
+
+def _logical_key(*parts: object) -> str:
+    return ":".join(str(part) for part in parts)
+
+
+def _frozen_binding_source(
+    session: Session,
+    changeset: Changeset,
+    collection: str,
+    binding_id: UUID,
+) -> tuple[dict[str, object], str, str]:
+    try:
+        frozen = frozen_base_binding(session, changeset, collection, binding_id)
+    except ValueError as error:
+        raise BindingConflict(
+            "Binding source is not present in the changeset frozen base release"
+        ) from error
+    return (
+        frozen,
+        binding_logical_key(collection, frozen),
+        binding_base_hash(frozen),
+    )
+
+
+def _uuid_value(row: Mapping[str, object], field: str) -> UUID:
+    try:
+        return UUID(str(row[field]))
+    except (KeyError, TypeError, ValueError) as error:
+        raise BindingConflict(f"Frozen binding has an invalid {field}") from error
+
+
+def _optional_text(value: object) -> str | None:
+    return str(value) if value is not None else None
 
 
 class ObjectRelationType(StrEnum):
@@ -71,6 +112,7 @@ class BindingService:
         session: Session,
         *,
         changeset_id: UUID,
+        actor_id: UUID,
         expected_version: int,
         paper_id: UUID,
     ) -> Changeset:
@@ -79,6 +121,13 @@ class BindingService:
         )
         if changeset is None or changeset.paper_id != paper_id:
             raise BindingConflict("Binding requires the current editable draft changeset")
+        actor = session.get(User, actor_id)
+        if (
+            actor is None
+            or not actor.is_enabled
+            or (actor.role is not UserRole.ADMIN and changeset.owner_id != actor_id)
+        ):
+            raise BindingConflict("Changeset not found")
         check_expected_version(changeset.version, expected_version=expected_version)
         if changeset.workflow_state not in {WorkflowState.DRAFT, WorkflowState.REVISED_DRAFT}:
             raise BindingConflict("Binding requires the current editable draft changeset")
@@ -98,6 +147,7 @@ class BindingService:
         object_id: UUID,
         region_id: UUID,
         changeset_id: UUID,
+        actor_id: UUID,
         expected_version: int,
         role: str = "source",
         note: str | None = None,
@@ -109,6 +159,7 @@ class BindingService:
         changeset = self._editable_changeset(
             session,
             changeset_id=changeset_id,
+            actor_id=actor_id,
             expected_version=expected_version,
             paper_id=object_identity.paper_id,
         )
@@ -116,13 +167,25 @@ class BindingService:
             select(VisualObjectRegionBinding).where(
                 VisualObjectRegionBinding.visual_object_id == object_id,
                 VisualObjectRegionBinding.region_id == region_id,
+                VisualObjectRegionBinding.changeset_id == changeset.id,
             )
         )
         if existing is not None:
             raise BindingConflict("Region is already bound to this object")
+        logical_key = _logical_key("region", object_id, region_id)
+        if frozen_base_binding_by_key(
+            session,
+            changeset,
+            "visual_object_regions",
+            logical_key,
+        ) is not None:
+            raise BindingConflict("Region binding already exists in the frozen base release")
         binding = VisualObjectRegionBinding(
             visual_object_id=object_id,
             region_id=region_id,
+            changeset_id=changeset.id,
+            operation="add",
+            logical_key=logical_key,
             role=role.strip() or "source",
             note=note,
         )
@@ -138,6 +201,7 @@ class BindingService:
         object_id: UUID,
         asset_id: UUID,
         changeset_id: UUID,
+        actor_id: UUID,
         expected_version: int,
         role: str = "image",
         is_primary: bool = False,
@@ -148,6 +212,7 @@ class BindingService:
         changeset = self._editable_changeset(
             session,
             changeset_id=changeset_id,
+            actor_id=actor_id,
             expected_version=expected_version,
             paper_id=object_identity.paper_id,
         )
@@ -155,17 +220,30 @@ class BindingService:
             select(VisualObjectAssetBinding).where(
                 VisualObjectAssetBinding.visual_object_id == object_id,
                 VisualObjectAssetBinding.asset_id == asset_id,
+                VisualObjectAssetBinding.changeset_id == changeset.id,
             )
         )
         if existing is not None:
             raise BindingConflict("Asset is already bound to this object")
+        logical_key = _logical_key("asset", object_id, asset_id)
+        if frozen_base_binding_by_key(
+            session,
+            changeset,
+            "visual_object_assets",
+            logical_key,
+        ) is not None:
+            raise BindingConflict("Asset binding already exists in the frozen base release")
         if is_primary:
             session.query(VisualObjectAssetBinding).filter(
-                VisualObjectAssetBinding.visual_object_id == object_id
+                VisualObjectAssetBinding.visual_object_id == object_id,
+                VisualObjectAssetBinding.changeset_id == changeset.id,
             ).update({VisualObjectAssetBinding.is_primary: False})
         binding = VisualObjectAssetBinding(
             visual_object_id=object_id,
             asset_id=asset_id,
+            changeset_id=changeset.id,
+            operation="add",
+            logical_key=logical_key,
             role=role.strip() or "image",
             is_primary=is_primary,
         )
@@ -182,6 +260,7 @@ class BindingService:
         compound_id: UUID,
         label: str,
         changeset_id: UUID,
+        actor_id: UUID,
         expected_version: int,
         label_bbox: Mapping[str, object] | None = None,
         role: str = "label",
@@ -199,6 +278,7 @@ class BindingService:
         changeset = self._editable_changeset(
             session,
             changeset_id=changeset_id,
+            actor_id=actor_id,
             expected_version=expected_version,
             paper_id=object_identity.paper_id,
         )
@@ -207,17 +287,30 @@ class BindingService:
                 VisualObjectCompoundBinding.visual_object_id == object_id,
                 VisualObjectCompoundBinding.compound_id == compound_id,
                 VisualObjectCompoundBinding.label == clean_label,
+                VisualObjectCompoundBinding.changeset_id == changeset.id,
             )
         )
         if existing is not None:
             raise BindingConflict("Compound label is already bound to this object")
+        logical_key = _logical_key("compound", object_id, compound_id, clean_label)
+        if frozen_base_binding_by_key(
+            session,
+            changeset,
+            "visual_object_compounds",
+            logical_key,
+        ) is not None:
+            raise BindingConflict("Compound binding already exists in the frozen base release")
         if is_primary:
             session.query(VisualObjectCompoundBinding).filter(
-                VisualObjectCompoundBinding.visual_object_id == object_id
+                VisualObjectCompoundBinding.visual_object_id == object_id,
+                VisualObjectCompoundBinding.changeset_id == changeset.id,
             ).update({VisualObjectCompoundBinding.is_primary: False})
         binding = VisualObjectCompoundBinding(
             visual_object_id=object_id,
             compound_id=compound_id,
+            changeset_id=changeset.id,
+            operation="add",
+            logical_key=logical_key,
             label=clean_label,
             label_bbox=_validate_bbox(label_bbox),
             role=role.strip() or "label",
@@ -229,3 +322,351 @@ class BindingService:
         changeset.version += 1
         session.flush()
         return binding
+
+    def update_region(
+        self,
+        session: Session,
+        *,
+        binding_id: UUID,
+        changeset_id: UUID,
+        actor_id: UUID,
+        expected_version: int,
+        role: str,
+        note: str | None,
+    ) -> VisualObjectRegionBinding:
+        source = session.get(VisualObjectRegionBinding, binding_id)
+        if source is None:
+            raise BindingConflict("Region binding not found")
+        object_identity = self._object(session, source.visual_object_id)
+        changeset = self._editable_changeset(
+            session,
+            changeset_id=changeset_id,
+            actor_id=actor_id,
+            expected_version=expected_version,
+            paper_id=object_identity.paper_id,
+        )
+        if source.changeset_id == changeset.id:
+            if source.operation == "remove":
+                raise BindingConflict("Region binding is already removed")
+            source.role = role.strip() or "source"
+            source.note = note
+            changeset.version += 1
+            session.flush()
+            return source
+        frozen, logical_key, base_hash = _frozen_binding_source(
+            session,
+            changeset,
+            "visual_object_regions",
+            source.id,
+        )
+        proposal = VisualObjectRegionBinding(
+            visual_object_id=_uuid_value(frozen, "visual_object_id"),
+            region_id=_uuid_value(frozen, "region_id"),
+            changeset_id=changeset.id,
+            operation="update",
+            logical_key=logical_key,
+            base_hash=base_hash,
+            role=role.strip() or "source",
+            note=note,
+        )
+        session.add(proposal)
+        changeset.version += 1
+        session.flush()
+        return proposal
+
+    def remove_region(
+        self,
+        session: Session,
+        *,
+        binding_id: UUID,
+        changeset_id: UUID,
+        actor_id: UUID,
+        expected_version: int,
+    ) -> VisualObjectRegionBinding:
+        source = session.get(VisualObjectRegionBinding, binding_id)
+        if source is None:
+            raise BindingConflict("Region binding not found")
+        object_identity = self._object(session, source.visual_object_id)
+        changeset = self._editable_changeset(
+            session,
+            changeset_id=changeset_id,
+            actor_id=actor_id,
+            expected_version=expected_version,
+            paper_id=object_identity.paper_id,
+        )
+        if source.changeset_id == changeset.id:
+            if source.operation == "add":
+                source.operation = "cancelled"
+                session.delete(source)
+            elif source.operation == "update":
+                source.operation = "remove"
+            else:
+                raise BindingConflict("Region binding is already removed")
+            changeset.version += 1
+            session.flush()
+            return source
+        frozen, logical_key, base_hash = _frozen_binding_source(
+            session,
+            changeset,
+            "visual_object_regions",
+            source.id,
+        )
+        proposal = VisualObjectRegionBinding(
+            visual_object_id=_uuid_value(frozen, "visual_object_id"),
+            region_id=_uuid_value(frozen, "region_id"),
+            changeset_id=changeset.id,
+            operation="remove",
+            logical_key=logical_key,
+            base_hash=base_hash,
+            role=str(frozen.get("role") or "source"),
+            note=_optional_text(frozen.get("note")),
+        )
+        session.add(proposal)
+        changeset.version += 1
+        session.flush()
+        return proposal
+
+    def update_asset(
+        self,
+        session: Session,
+        *,
+        binding_id: UUID,
+        changeset_id: UUID,
+        actor_id: UUID,
+        expected_version: int,
+        role: str,
+        is_primary: bool,
+    ) -> VisualObjectAssetBinding:
+        source = session.get(VisualObjectAssetBinding, binding_id)
+        if source is None:
+            raise BindingConflict("Asset binding not found")
+        object_identity = self._object(session, source.visual_object_id)
+        changeset = self._editable_changeset(
+            session,
+            changeset_id=changeset_id,
+            actor_id=actor_id,
+            expected_version=expected_version,
+            paper_id=object_identity.paper_id,
+        )
+        if source.changeset_id == changeset.id:
+            proposal = source
+            if proposal.operation == "remove":
+                raise BindingConflict("Asset binding is already removed")
+            proposal.role = role.strip() or "image"
+            proposal.is_primary = is_primary
+        else:
+            frozen, logical_key, base_hash = _frozen_binding_source(
+                session,
+                changeset,
+                "visual_object_assets",
+                source.id,
+            )
+            proposal = VisualObjectAssetBinding(
+                visual_object_id=_uuid_value(frozen, "visual_object_id"),
+                asset_id=_uuid_value(frozen, "asset_id"),
+                changeset_id=changeset.id,
+                operation="update",
+                logical_key=logical_key,
+                base_hash=base_hash,
+                role=role.strip() or "image",
+                is_primary=is_primary,
+            )
+            session.add(proposal)
+        if is_primary:
+            session.query(VisualObjectAssetBinding).filter(
+                VisualObjectAssetBinding.visual_object_id == source.visual_object_id,
+                VisualObjectAssetBinding.changeset_id == changeset.id,
+                VisualObjectAssetBinding.id != proposal.id,
+            ).update({VisualObjectAssetBinding.is_primary: False})
+        changeset.version += 1
+        session.flush()
+        return proposal
+
+    def remove_asset(
+        self,
+        session: Session,
+        *,
+        binding_id: UUID,
+        changeset_id: UUID,
+        actor_id: UUID,
+        expected_version: int,
+    ) -> VisualObjectAssetBinding:
+        source = session.get(VisualObjectAssetBinding, binding_id)
+        if source is None:
+            raise BindingConflict("Asset binding not found")
+        object_identity = self._object(session, source.visual_object_id)
+        changeset = self._editable_changeset(
+            session,
+            changeset_id=changeset_id,
+            actor_id=actor_id,
+            expected_version=expected_version,
+            paper_id=object_identity.paper_id,
+        )
+        if source.changeset_id == changeset.id:
+            proposal = source
+            if proposal.operation == "add":
+                proposal.operation = "cancelled"
+                session.delete(proposal)
+            elif proposal.operation == "update":
+                proposal.operation = "remove"
+            else:
+                raise BindingConflict("Asset binding is already removed")
+        else:
+            frozen, logical_key, base_hash = _frozen_binding_source(
+                session,
+                changeset,
+                "visual_object_assets",
+                source.id,
+            )
+            proposal = VisualObjectAssetBinding(
+                visual_object_id=_uuid_value(frozen, "visual_object_id"),
+                asset_id=_uuid_value(frozen, "asset_id"),
+                changeset_id=changeset.id,
+                operation="remove",
+                logical_key=logical_key,
+                base_hash=base_hash,
+                role=str(frozen.get("role") or "image"),
+                is_primary=bool(frozen.get("is_primary")),
+            )
+            session.add(proposal)
+        changeset.version += 1
+        session.flush()
+        return proposal
+
+    def update_compound(
+        self,
+        session: Session,
+        *,
+        binding_id: UUID,
+        changeset_id: UUID,
+        actor_id: UUID,
+        expected_version: int,
+        label: str,
+        role: str,
+        confidence: float | None,
+        note: str | None,
+        is_primary: bool,
+        label_bbox: Mapping[str, object] | None,
+    ) -> VisualObjectCompoundBinding:
+        source = session.get(VisualObjectCompoundBinding, binding_id)
+        if source is None:
+            raise BindingConflict("Compound binding not found")
+        clean_label = _clean_label(label)
+        if confidence is not None and not 0 <= confidence <= 1:
+            raise BindingConflict("confidence must be between 0 and 1")
+        object_identity = self._object(session, source.visual_object_id)
+        changeset = self._editable_changeset(
+            session,
+            changeset_id=changeset_id,
+            actor_id=actor_id,
+            expected_version=expected_version,
+            paper_id=object_identity.paper_id,
+        )
+        if source.changeset_id == changeset.id:
+            proposal = source
+            if proposal.operation == "remove":
+                raise BindingConflict("Compound binding is already removed")
+            proposal.label = clean_label
+            if proposal.operation == "add":
+                proposal.logical_key = _logical_key(
+                    "compound",
+                    proposal.visual_object_id,
+                    proposal.compound_id,
+                    clean_label,
+                )
+            proposal.role = role.strip() or "label"
+            proposal.confidence = confidence
+            proposal.note = note
+            proposal.label_bbox = _validate_bbox(label_bbox)
+            proposal.is_primary = is_primary
+        else:
+            frozen, logical_key, base_hash = _frozen_binding_source(
+                session,
+                changeset,
+                "visual_object_compounds",
+                source.id,
+            )
+            if clean_label != str(frozen.get("label") or ""):
+                raise BindingConflict(
+                    "Compound binding label is part of its identity; "
+                    "remove and add the binding to change it"
+                )
+            proposal = VisualObjectCompoundBinding(
+                visual_object_id=_uuid_value(frozen, "visual_object_id"),
+                compound_id=_uuid_value(frozen, "compound_id"),
+                changeset_id=changeset.id,
+                operation="update",
+                logical_key=logical_key,
+                base_hash=base_hash,
+                label=clean_label,
+                label_bbox=_validate_bbox(label_bbox),
+                role=role.strip() or "label",
+                confidence=confidence,
+                note=note,
+                is_primary=is_primary,
+            )
+            session.add(proposal)
+        if is_primary:
+            session.query(VisualObjectCompoundBinding).filter(
+                VisualObjectCompoundBinding.visual_object_id == source.visual_object_id,
+                VisualObjectCompoundBinding.changeset_id == changeset.id,
+                VisualObjectCompoundBinding.id != proposal.id,
+            ).update({VisualObjectCompoundBinding.is_primary: False})
+        changeset.version += 1
+        session.flush()
+        return proposal
+
+    def remove_compound(
+        self,
+        session: Session,
+        *,
+        binding_id: UUID,
+        changeset_id: UUID,
+        actor_id: UUID,
+        expected_version: int,
+    ) -> VisualObjectCompoundBinding:
+        source = session.get(VisualObjectCompoundBinding, binding_id)
+        if source is None:
+            raise BindingConflict("Compound binding not found")
+        object_identity = self._object(session, source.visual_object_id)
+        changeset = self._editable_changeset(
+            session,
+            changeset_id=changeset_id,
+            actor_id=actor_id,
+            expected_version=expected_version,
+            paper_id=object_identity.paper_id,
+        )
+        if source.changeset_id == changeset.id:
+            proposal = source
+            if proposal.operation == "add":
+                proposal.operation = "cancelled"
+                session.delete(proposal)
+            elif proposal.operation == "update":
+                proposal.operation = "remove"
+            else:
+                raise BindingConflict("Compound binding is already removed")
+        else:
+            frozen, logical_key, base_hash = _frozen_binding_source(
+                session,
+                changeset,
+                "visual_object_compounds",
+                source.id,
+            )
+            proposal = VisualObjectCompoundBinding(
+                visual_object_id=_uuid_value(frozen, "visual_object_id"),
+                compound_id=_uuid_value(frozen, "compound_id"),
+                changeset_id=changeset.id,
+                operation="remove",
+                logical_key=logical_key,
+                base_hash=base_hash,
+                label=str(frozen.get("label") or ""),
+                label_bbox=frozen.get("label_bbox"),
+                role=str(frozen.get("role") or "label"),
+                confidence=frozen.get("confidence"),
+                note=_optional_text(frozen.get("note")),
+                is_primary=bool(frozen.get("is_primary")),
+            )
+            session.add(proposal)
+        changeset.version += 1
+        session.flush()
+        return proposal

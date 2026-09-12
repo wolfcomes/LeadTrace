@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 
 import RegionOverlay, { type PdfRegion } from "./RegionOverlay.vue";
 
@@ -7,6 +7,7 @@ const props = withDefaults(defineProps<{
   pdfUrl: string;
   pageCount: number;
   regions: PdfRegion[];
+  readOnly?: boolean;
 }>(), { pageCount: 1 });
 
 const emit = defineEmits<{
@@ -25,6 +26,10 @@ const search = ref("");
 const selectedId = ref<string | null>(null);
 const drawing = ref<{ x: number; y: number } | null>(null);
 const draft = ref<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+const canvas = ref<HTMLCanvasElement | null>(null);
+const renderedPage = ref(false);
+const renderError = ref<string | null>(null);
+let pdfDocument: { getPage: (page: number) => Promise<any> } | null = null;
 
 const pageRegions = computed(() => props.regions.filter((region) => (
   region.pageNumber === currentPage.value
@@ -42,6 +47,7 @@ function point(event: PointerEvent): { x: number; y: number } {
 }
 
 function beginDraw(event: PointerEvent): void {
+  if (props.readOnly) return;
   (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
   drawing.value = point(event);
   draft.value = { x0: drawing.value.x, y0: drawing.value.y, x1: drawing.value.x, y1: drawing.value.y };
@@ -59,6 +65,7 @@ function updateDraw(event: PointerEvent): void {
 }
 
 function finishDraw(event: PointerEvent): void {
+  if (props.readOnly) return;
   if (!drawing.value || !draft.value) return;
   updateDraw(event);
   const finished = draft.value;
@@ -82,6 +89,40 @@ function setRotation(value: number): void {
   rotation.value = ((value % 360) + 360) % 360;
   emit("rotation-change", rotation.value);
 }
+
+async function renderPdfPage(): Promise<void> {
+  renderedPage.value = false;
+  renderError.value = null;
+  if (typeof window === "undefined" || !canvas.value) return;
+  try {
+    const pdfjs = await import("pdfjs-dist");
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+      "pdfjs-dist/build/pdf.worker.min.mjs",
+      import.meta.url,
+    ).toString();
+    if (!pdfDocument) {
+      pdfDocument = await pdfjs.getDocument({ url: props.pdfUrl }).promise;
+    }
+    const page = await pdfDocument.getPage(currentPage.value);
+    const viewport = page.getViewport({ scale: zoom.value });
+    const context = canvas.value.getContext("2d");
+    if (!context) throw new Error("Canvas is unavailable");
+    canvas.value.width = Math.ceil(viewport.width);
+    canvas.value.height = Math.ceil(viewport.height);
+    await page.render({ canvasContext: context, viewport }).promise;
+    renderedPage.value = true;
+  } catch {
+    // Keep the protected PDF URL visible as a fallback when PDF.js cannot load.
+    renderError.value = "PDF 页面暂时无法渲染";
+  }
+}
+
+watch(() => props.pdfUrl, () => {
+  pdfDocument = null;
+  void renderPdfPage();
+});
+watch([currentPage, zoom], () => { void renderPdfPage(); });
+onMounted(() => { void renderPdfPage(); });
 </script>
 
 <template>
@@ -100,17 +141,25 @@ function setRotation(value: number): void {
     <nav class="page-thumbnails" aria-label="页面缩略图">
       <button v-for="page in pageCount" :key="page" type="button" :class="{ active: page === currentPage }" :aria-label="`第 ${page} 页`" @click="changePage(page)">{{ page }}</button>
     </nav>
-    <div class="page-shell" :style="{ transform: `scale(${zoom})` }">
+    <div class="page-shell" :class="{ 'is-rendered': renderedPage }">
       <div
         class="pdf-page"
         data-pdf-page
         :data-page-number="currentPage"
-        :style="{ backgroundImage: `url(${pdfUrl})`, transform: `rotate(${rotation}deg)` }"
+        :style="{ transform: `rotate(${rotation}deg)` }"
         @pointerdown="beginDraw"
         @pointermove="updateDraw"
         @pointerup="finishDraw"
         @pointercancel="finishDraw"
       >
+        <canvas ref="canvas" data-pdf-canvas aria-label="PDF 页面"></canvas>
+        <iframe
+          v-if="!renderedPage"
+          class="pdf-fallback"
+          :src="`${pdfUrl}#page=${currentPage}`"
+          title="PDF 页面"
+        ></iframe>
+        <p v-if="renderError" class="render-error">{{ renderError }}</p>
         <RegionOverlay
           v-for="region in pageRegions"
           :key="region.id"
@@ -134,6 +183,9 @@ function setRotation(value: number): void {
 .page-thumbnails { display: flex; gap: 6px; overflow-x: auto; }
 .page-thumbnails button.active { background: #0b7285; border-color: #0b7285; color: #fff; }
 .page-shell { width: 800px; max-width: 100%; transform-origin: top left; }
-.pdf-page { position: relative; width: 800px; max-width: 100%; height: 400px; border: 1px solid #b9c2ca; background-color: #fbfcfd; background-size: cover; background-position: center; touch-action: none; }
+.pdf-page { position: relative; width: 800px; max-width: 100%; min-height: 400px; border: 1px solid #b9c2ca; background-color: #fbfcfd; touch-action: none; overflow: hidden; }
+.pdf-page canvas { display: block; width: 100%; height: auto; min-height: 400px; object-fit: contain; }
+.pdf-fallback { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fbfcfd; }
+.render-error { position: absolute; inset: 12px auto auto 12px; margin: 0; padding: 5px 8px; color: #6b3c00; background: rgb(255 247 230 / 92%); font-size: 12px; }
 .draft-region { position: absolute; border: 2px dashed #d9480f; background: rgb(217 72 15 / 12%); pointer-events: none; }
 </style>
