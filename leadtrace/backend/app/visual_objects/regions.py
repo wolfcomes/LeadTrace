@@ -163,7 +163,6 @@ class RegionService:
         if changeset.workflow_state not in {
             WorkflowState.DRAFT,
             WorkflowState.REVISED_DRAFT,
-            WorkflowState.CHANGES_REQUESTED,
         }:
             raise RegionValidationError("Only editable draft changesets can contain regions")
         return changeset
