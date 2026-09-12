@@ -352,6 +352,10 @@ def create_crop_jobs_router(settings: Settings) -> APIRouter:
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
     ) -> dict[str, object]:
+        if principal.must_change_password:
+            raise HTTPException(status_code=403, detail="Password change required")
+        if principal.role not in {UserRole.ADMIN, UserRole.REVIEWER}:
+            raise HTTPException(status_code=403, detail="Permission denied")
         with session.begin():
             job = session.get(CropJob, job_id)
             subscribed = principal.role is UserRole.ADMIN or session.scalar(

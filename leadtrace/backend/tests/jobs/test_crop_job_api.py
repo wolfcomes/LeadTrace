@@ -217,10 +217,14 @@ def crop_api_fixture(
         )
 
 
-def _login(client: TestClient, username: str) -> str:
+def _login(
+    client: TestClient,
+    username: str,
+    password: str = PASSWORD,
+) -> str:
     response = client.post(
         "/api/v1/auth/login",
-        json={"username": username, "password": PASSWORD},
+        json={"username": username, "password": password},
     )
     assert response.status_code == 200
     return str(response.json()["csrf_token"])
@@ -399,6 +403,49 @@ def test_reviewer_cannot_track_a_job_after_their_assignment_is_completed(
 
     status = fixture.client.get(f"/api/v1/crop-jobs/{job_id}")
     assert status.status_code == 404
+
+
+def test_demoted_reviewer_cannot_use_an_existing_crop_job_subscription(
+    crop_api_fixture: CropApiFixture,
+) -> None:
+    fixture = crop_api_fixture
+    job_id, _ = _enqueue_crop(fixture)
+    with fixture.session_factory.begin() as session:
+        UserService().set_role(session, fixture.reviewer_id, UserRole.VISITOR)
+    fixture.client.cookies.clear()
+    _login(fixture.client, fixture.reviewer_username)
+
+    status = fixture.client.get(f"/api/v1/crop-jobs/{job_id}")
+
+    assert status.status_code == 403
+    assert str(job_id) not in status.text
+    assert "asset_id" not in status.text
+
+
+def test_reviewer_awaiting_password_change_cannot_track_crop_jobs(
+    crop_api_fixture: CropApiFixture,
+) -> None:
+    fixture = crop_api_fixture
+    job_id, _ = _enqueue_crop(fixture)
+    one_time_password = "Replacement crop API password 2026!"
+    with fixture.session_factory.begin() as session:
+        UserService().reset_password(
+            session,
+            fixture.reviewer_id,
+            one_time_password,
+        )
+    fixture.client.cookies.clear()
+    _login(
+        fixture.client,
+        fixture.reviewer_username,
+        one_time_password,
+    )
+
+    status = fixture.client.get(f"/api/v1/crop-jobs/{job_id}")
+
+    assert status.status_code == 403
+    assert str(job_id) not in status.text
+    assert "asset_id" not in status.text
 
 
 def test_reviewer_job_status_hides_a_missing_source_absolute_path(
