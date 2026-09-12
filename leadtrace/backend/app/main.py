@@ -19,6 +19,7 @@ from app.papers.router import create_papers_router
 from app.releases.router import create_releases_router
 from app.reviews.router import create_reviews_router
 from app.users.router import create_users_router
+from app.structures.router import create_structures_router
 from app.visual_objects.router import create_visual_regions_router
 from app.visual_objects.objects_router import create_visual_objects_router
 
@@ -77,6 +78,12 @@ def create_app(
     )
     application.include_router(
         create_visual_objects_router(runtime_settings.session_secret.get_secret_value())
+    )
+    application.include_router(
+        create_structures_router(
+            runtime_settings.session_secret.get_secret_value(),
+            runtime_settings.asset_root,
+        )
     )
     return application
 
