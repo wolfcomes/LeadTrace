@@ -160,12 +160,27 @@ def _verify_http_workflow(
             )
             if login.status_code != 200:
                 return {"ok": False, "error": "login_failed"}
-            csrf_token = login.json().get("csrf_token", "")
-            headers = {"X-CSRF-Token": csrf_token}
+            papers = client.get("/api/v1/papers?page=1&page_size=1")
+            paper_id = None
+            if papers.status_code == 200:
+                items = papers.json().get("items", [])
+                if isinstance(items, list) and items and isinstance(items[0], dict):
+                    paper_id = items[0].get("id")
             checks = {
-                "papers": client.get("/api/v1/papers").status_code == 200,
+                "papers": papers.status_code == 200 and isinstance(paper_id, str),
+                "paper_detail": (
+                    isinstance(paper_id, str)
+                    and client.get(f"/api/v1/papers/{paper_id}").status_code == 200
+                ),
+                "authorized_pdf": (
+                    isinstance(paper_id, str)
+                    and client.get(
+                        f"/api/v1/papers/{paper_id}/source-pdf",
+                        headers={"Range": "bytes=0-1023"},
+                    ).status_code in {200, 206}
+                ),
                 "release": client.get("/api/v1/published/overview").status_code == 200,
-                "audit": client.get("/api/v1/audit/events").status_code in {200, 403},
+                "audit": client.get("/api/v1/audit/events?limit=1").status_code == 200,
             }
             return {"ok": all(checks.values()), "checks": checks}
     except Exception:

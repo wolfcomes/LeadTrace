@@ -7,7 +7,10 @@ from pathlib import Path
 import subprocess
 
 from leadtrace.ops.backup.verify_backup import verify_backup
-from leadtrace.ops.restore.verify_restored_system import verify_asset_restore
+from leadtrace.ops.restore.verify_restored_system import (
+    _verify_http_workflow,
+    verify_asset_restore,
+)
 
 
 def test_restored_asset_tree_matches_manifest_without_reporting_storage_paths(
@@ -136,3 +139,55 @@ def test_restore_drill_refuses_to_use_an_existing_restore_root(tmp_path: Path) -
     assert result.returncode != 0
     assert "restore root" in (result.stderr + result.stdout).casefold()
     assert (restore_root / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
+def test_restore_http_workflow_reads_paper_pdf_release_and_audit(monkeypatch) -> None:
+    requested: list[tuple[str, str]] = []
+
+    class Response:
+        def __init__(self, status_code: int, payload: dict[str, object]) -> None:
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self) -> dict[str, object]:
+            return self._payload
+
+    class Client:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
+        def post(self, path: str, **_: object) -> Response:
+            requested.append(("POST", path))
+            return Response(200, {"csrf_token": "drill-csrf"})
+
+        def get(self, path: str, **_: object) -> Response:
+            requested.append(("GET", path))
+            if path == "/api/v1/papers?page=1&page_size=1":
+                return Response(200, {"items": [{"id": "paper-1"}]})
+            return Response(206 if path.endswith("/source-pdf") else 200, {})
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "Client", Client)
+
+    report = _verify_http_workflow(
+        "https://restore-drill.lan",
+        username="drill",
+        password="protected-password",
+    )
+
+    assert report["ok"] is True
+    assert requested == [
+        ("POST", "/api/v1/auth/login"),
+        ("GET", "/api/v1/papers?page=1&page_size=1"),
+        ("GET", "/api/v1/papers/paper-1"),
+        ("GET", "/api/v1/papers/paper-1/source-pdf"),
+        ("GET", "/api/v1/published/overview"),
+        ("GET", "/api/v1/audit/events?limit=1"),
+    ]

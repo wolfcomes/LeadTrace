@@ -91,12 +91,19 @@ if [[ "${LEADTRACE_RUN_MIGRATIONS:-0}" == "1" ]]; then
   )
 fi
 
-python "${SCRIPT_DIRECTORY}/verify_restored_system.py" \
-  --asset-manifest "${ASSET_MANIFEST}" \
-  --restored-asset-root "${RESTORE_ROOT}/assets" \
-  --database-url "${LEADTRACE_RESTORE_DATABASE_URL}" \
-  --base-url "${LEADTRACE_DRILL_BASE_URL}" \
+VERIFY_ARGUMENTS=(
+  --asset-manifest "${ASSET_MANIFEST}"
+  --restored-asset-root "${RESTORE_ROOT}/assets"
+  --database-url "${LEADTRACE_RESTORE_DATABASE_URL}"
+  --base-url "${LEADTRACE_DRILL_BASE_URL}"
   --report "${RESTORE_ROOT}/restore-report.json"
+)
+if [[ -n "${LEADTRACE_EXPECTED_COUNTS:-}" ]]; then
+  [[ -f "${LEADTRACE_EXPECTED_COUNTS}" && ! -L "${LEADTRACE_EXPECTED_COUNTS}" ]] \
+    || fail "expected counts must be a regular file"
+  VERIFY_ARGUMENTS+=(--expected-counts "${LEADTRACE_EXPECTED_COUNTS}")
+fi
+python "${SCRIPT_DIRECTORY}/verify_restored_system.py" "${VERIFY_ARGUMENTS[@]}"
 
 rm -f -- "${RESTORE_ROOT}/database.dump" "${RESTORE_ROOT}/assets.tar"
 printf 'restore_root=%s report=restore-report.json\n' "$(basename -- "${RESTORE_ROOT}")"
