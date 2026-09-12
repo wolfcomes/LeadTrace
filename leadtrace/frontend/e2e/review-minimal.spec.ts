@@ -30,6 +30,7 @@ const draft = {
   version: 3,
   validation_results: {},
   submitted_snapshot: null,
+  submitted_content_hash: null,
   submitted_at: null,
   created_at: "2026-09-12T01:00:00Z",
   updated_at: "2026-09-12T01:30:00Z",
@@ -188,6 +189,7 @@ test("isolates Reviewer drafts, exposes conflicts, and keeps publication approva
         workflow_state: "submitted",
         version: 4,
         submitted_snapshot: { item_ids: [itemId, evidenceItemId] },
+        submitted_content_hash: "c".repeat(64),
         submitted_at: "2026-09-12T02:00:00Z",
       });
     });
@@ -211,7 +213,9 @@ test("isolates Reviewer drafts, exposes conflicts, and keeps publication approva
     await expect(reviewerBPage.getByRole("heading", { name: "未找到修改集" })).toBeVisible();
 
     await reviewerAPage.goto(`/review/changesets/${changesetId}`);
-    await reviewerAPage.locator("#paper-title-field").fill("Reviewer A local correction");
+    const paperTitleField = reviewerAPage.locator("#paper-title-field");
+    await expect(paperTitleField).toHaveValue("Published optimization study 24");
+    await paperTitleField.fill("Reviewer A local correction");
     const conflictDialog = reviewerAPage.getByRole("dialog", { name: "草稿已被其他会话更新" });
     await expect(conflictDialog).toBeVisible();
     await expect(conflictDialog).toContainText("本地基于版本3");

@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Sequence
 
@@ -139,6 +140,7 @@ def verify_restored_system(
         errors.append("http_not_configured")
     checks["errors"] = list(dict.fromkeys(errors))
     checks["ok"] = not errors
+    checks["completed_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     return checks
 
 

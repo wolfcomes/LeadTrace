@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "application_version": "0.1.0",
+  "schema_revision": "0015_crop_job_subscriptions",
+  "release_key": "TO_BE_REPLACED_WITH_CURRENT_RELEASE_KEY",
+  "database_backup_metadata": "/srv/leadtrace-backups/TO_BE_REPLACED_DB_BACKUP/backup-metadata.json",
+  "asset_backup_metadata": "/srv/leadtrace-backups/TO_BE_REPLACED_ASSET_BACKUP/backup-metadata.json",
+  "restore_report": "/srv/leadtrace-drills/TO_BE_REPLACED_RESTORE_DRILL/restore-report.json",
+  "max_backup_age_hours": 4,
+  "max_restore_age_days": 31,
+  "expected_aggregate": "/srv/leadtrace/config/expected_aggregate.json",
+  "asset_root": "/var/lib/leadtrace/assets",
+  "source_roots": {
+    "jmc": "/absolute/path/inside-manifest-workspace/source_pdfs/approved-corpus"
+  },
+  "base_url": "https://leadtrace.lan:8876",
+  "old_dashboard_url": "https://leadtrace.lan:8876/legacy-dashboard",
+  "representative_paper_id": "TO_BE_REPLACED_WITH_PUBLISHED_PAPER_UUID",
+  "source_manifest": "/srv/leadtrace/config/2026-09-10-source-manifest.json"
+}
