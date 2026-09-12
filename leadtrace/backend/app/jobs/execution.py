@@ -14,7 +14,12 @@ from app.assets.storage import LocalAssetStore
 from app.config import Settings
 from app.jobs.models import CropJob
 from app.jobs.reconciler import JobReconciler
-from app.jobs.service import CropRequest, CropService, CropValidationError
+from app.jobs.service import (
+    PDF_RENDERER_VERSION,
+    CropRequest,
+    CropService,
+    CropValidationError,
+)
 from app.maintenance.service import MaintenanceModeActive
 
 
@@ -47,6 +52,8 @@ def _request_from_job(job: CropJob) -> CropRequest:
     )
     if request.input_hash() != job.input_hash:
         raise CropValidationError("Crop job parameters do not match its input hash")
+    if request.renderer_version != PDF_RENDERER_VERSION:
+        raise CropValidationError("Unsupported crop renderer version")
     return request
 
 
@@ -172,6 +179,13 @@ def execute_crop_delivery(
                 asset_id=result.asset_id,
             )
     except MaintenanceModeActive:
+        with factory.begin() as session:
+            reconciler.defer_delivery(
+                session,
+                job_id=job_id,
+                delivery_token=delivery_token,
+                reason="Deferred while maintenance mode is active",
+            )
         return CropExecutionReport(
             job_id,
             CropExecutionStatus.PAUSED,

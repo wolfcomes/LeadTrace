@@ -3,24 +3,35 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field, model_validator
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.assets.storage import LocalAssetStore
 from app.config import Settings
 from app.database import get_db_session
+from app.documents.service import DocumentKind, DocumentNotFound, DocumentService
 from app.jobs.models import CropJob, CropJobRetryOperation, CropJobStatus
 from app.jobs.reconciler import JobReconciler
+from app.jobs.service import (
+    PDF_RENDERER_VERSION,
+    CropRequest,
+    CropService,
+    CropValidationError,
+)
 from app.maintenance.service import MaintenanceConflict, MaintenanceService
 from app.security.permissions import (
     RouteAccess,
     declare_route_access,
+    get_authenticated_principal,
     require_permission,
     require_request_csrf,
 )
 from app.security.policies import Action, Principal
+from app.users.models import UserRole
+from app.visual_objects.regions import RegionService, RegionValidationError
 
 
 class MaintenanceUpdate(BaseModel):
@@ -33,6 +44,14 @@ class MaintenanceUpdate(BaseModel):
         if self.active and self.expected_end is None:
             raise ValueError("expected_end is required when enabling maintenance")
         return self
+
+
+class CropJobCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_kind: DocumentKind = DocumentKind.ARTICLE
+    padding: int = Field(default=0, ge=0, le=1000)
+    dpi: int = Field(default=300, ge=72, le=1200)
 
 
 def _timestamp(value: datetime | None) -> str | None:
@@ -206,4 +225,120 @@ def create_jobs_router(settings: Settings) -> APIRouter:
     return router
 
 
-__all__ = ["create_jobs_router"]
+def create_crop_jobs_router(settings: Settings) -> APIRouter:
+    router = APIRouter(prefix="/api/v1", tags=["crop jobs"])
+    region_service = RegionService()
+    document_service = DocumentService()
+
+    def require_crop_edit(
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> Principal:
+        if principal.must_change_password or principal.role is UserRole.VISITOR:
+            raise HTTPException(status_code=403, detail="Permission denied")
+        return principal
+
+    setattr(require_crop_edit, "__leadtrace_action__", Action.EDIT_DRAFT)
+
+    @router.post(
+        "/papers/{paper_id}/regions/{region_id}/crop-jobs",
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def enqueue_crop_job(
+        paper_id: UUID,
+        region_id: UUID,
+        payload: CropJobCreate,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        _permission: Principal = Depends(require_crop_edit),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    ) -> dict[str, object]:
+        del _permission
+        require_request_csrf(
+            principal,
+            csrf_token,
+            settings.session_secret.get_secret_value(),
+        )
+        try:
+            with session.begin():
+                region = region_service.ensure_region_belongs_to_paper(
+                    session,
+                    region_id=region_id,
+                    paper_id=paper_id,
+                )
+                revision = region_service._latest_revision(session, region.id)
+                if revision is None or revision.is_tombstone:
+                    raise RegionValidationError("Region has no active revision")
+                bounds = (
+                    revision.region_x0,
+                    revision.region_y0,
+                    revision.region_x1,
+                    revision.region_y1,
+                )
+                if any(value is None for value in bounds):
+                    raise RegionValidationError("Region revision has no crop bounds")
+                page_number = revision.snapshot.get("page_number")
+                if not isinstance(page_number, int):
+                    raise RegionValidationError("Region revision has no page number")
+                document = document_service.resolve(
+                    session,
+                    paper_id=paper_id,
+                    kind=payload.source_kind,
+                    principal=principal,
+                    store=LocalAssetStore(
+                        settings.asset_root,
+                        source_roots=settings.source_roots,
+                    ),
+                    range_header=None,
+                )
+                request = CropRequest(
+                    source_pdf_sha256=document.asset.sha256,
+                    page_number=page_number,
+                    x0=float(bounds[0]),
+                    y0=float(bounds[1]),
+                    x1=float(bounds[2]),
+                    y1=float(bounds[3]),
+                    rotation=int(revision.region_rotation or 0),
+                    padding=payload.padding,
+                    dpi=payload.dpi,
+                    renderer_version=PDF_RENDERER_VERSION,
+                )
+                job = CropService(
+                    settings.asset_root,
+                    source_roots=settings.source_roots,
+                ).enqueue(
+                    session,
+                    request,
+                    source_asset_id=document.asset.id,
+                    created_by_id=principal.user_id,
+                )
+                response = _job_payload(job)
+            return response
+        except DocumentNotFound as error:
+            raise HTTPException(status_code=404, detail="Resource not found") from error
+        except RegionValidationError as error:
+            code = 404 if "not found" in str(error).casefold() else 422
+            raise HTTPException(status_code=code, detail=str(error)) from error
+        except CropValidationError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @router.get("/crop-jobs/{job_id}")
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def crop_job_status(
+        job_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> dict[str, object]:
+        with session.begin():
+            job = session.get(CropJob, job_id)
+            if job is None or (
+                principal.role is not UserRole.ADMIN
+                and job.created_by_id != principal.user_id
+            ):
+                raise HTTPException(status_code=404, detail="Resource not found")
+            return _job_payload(job)
+
+    return router
+
+
+__all__ = ["create_crop_jobs_router", "create_jobs_router"]

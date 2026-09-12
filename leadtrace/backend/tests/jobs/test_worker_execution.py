@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import subprocess
 import sys
 import time
 from urllib.parse import urlparse
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from celery import Celery
 from PIL import Image
 import pymupdf
 import pytest
 from redis import Redis
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.assets.models import (
@@ -34,7 +36,10 @@ from app.jobs.celery_tasks import (
 from app.jobs.execution import CropExecutionStatus, execute_crop_delivery
 from app.jobs.models import CropJob, CropJobAttempt, CropJobAttemptStatus, CropJobStatus
 from app.jobs.reconciler import JobReconciler
-from app.jobs.service import CropRequest
+from app.jobs.service import CropRequest, CropService, CropValidationError
+from app.maintenance.service import MaintenanceService
+from app.users.models import UserRole
+from app.users.service import UserService
 from app.worker import celery_app
 
 
@@ -46,6 +51,7 @@ def _create_source_and_job(
     *,
     asset_root: Path,
     source_root: Path,
+    renderer_version: str | None = None,
 ) -> tuple[UUID, CropRequest]:
     source_root.mkdir(parents=True, exist_ok=True)
     source_path = source_root / "paper.pdf"
@@ -69,7 +75,9 @@ def _create_source_and_job(
         rotation=0,
         padding=0,
         dpi=72,
-        renderer_version=f"pymupdf-{pymupdf.VersionBind}",
+        renderer_version=(
+            renderer_version or f"pymupdf-{pymupdf.VersionBind}"
+        ),
     )
     with factory.begin() as session:
         source_asset, _ = AssetService().register_inspected(
@@ -191,6 +199,157 @@ def test_crop_worker_rebuilds_request_from_postgresql_and_renders_source_pdf(
         assert image.format == "PNG"
         assert image.size == (100, 60)
     assert request.input_hash() == job.input_hash
+
+
+def test_crop_worker_rejects_a_job_for_an_unsupported_renderer(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    asset_root = tmp_path / "assets"
+    source_root = tmp_path / "sources"
+    job_id, _ = _create_source_and_job(
+        auth_session_factory,
+        asset_root=asset_root,
+        source_root=source_root,
+        renderer_version="pdfium-legacy-1",
+    )
+    deliveries: list[tuple[UUID, UUID]] = []
+    JobReconciler().reconcile(
+        auth_session_factory,
+        lambda queued_job_id, token: deliveries.append((queued_job_id, token)),
+    )
+
+    with pytest.raises(
+        CropValidationError,
+        match="Unsupported crop renderer version",
+    ):
+        execute_crop_delivery(
+            auth_session_factory,
+            _settings(
+                empty_postgresql_database_url,
+                asset_root=asset_root,
+                source_root=source_root,
+            ),
+            job_id=job_id,
+            delivery_token=deliveries[0][1],
+        )
+
+    with auth_session_factory.begin() as session:
+        job = session.get(CropJob, job_id)
+        attempt = session.scalar(
+            select(CropJobAttempt).where(CropJobAttempt.job_id == job_id)
+        )
+        assert job is not None
+        assert job.status is CropJobStatus.PENDING
+        assert job.asset_id is None
+        assert job.error_message == "Unsupported crop renderer version"
+        assert attempt is not None
+        assert attempt.status is CropJobAttemptStatus.FAILED
+        assert attempt.error_message == "Unsupported crop renderer version"
+        assert session.scalar(
+            select(func.count())
+            .select_from(Asset)
+            .where(Asset.category == AssetCategory.EVIDENCE_CROP)
+        ) == 0
+
+
+def test_crop_worker_defers_claimed_delivery_when_maintenance_starts(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asset_root = tmp_path / "assets"
+    source_root = tmp_path / "sources"
+    job_id, _ = _create_source_and_job(
+        auth_session_factory,
+        asset_root=asset_root,
+        source_root=source_root,
+    )
+    with auth_session_factory.begin() as session:
+        admin = UserService().create_user(
+            session,
+            username="crop.worker.maintenance-admin",
+            display_name="Crop Worker Maintenance Admin",
+            role=UserRole.ADMIN,
+            initial_password="Crop worker maintenance password 2026!",
+        )
+        admin.must_change_password = False
+        session.flush()
+        admin_id = admin.id
+
+    deliveries: list[tuple[UUID, UUID]] = []
+    JobReconciler().reconcile(
+        auth_session_factory,
+        lambda queued_job_id, token: deliveries.append((queued_job_id, token)),
+    )
+    delivery_token = deliveries[0][1]
+    original_materialize = CropService.materialize_persisted
+    render_calls = 0
+
+    def activate_then_materialize(
+        service: CropService,
+        session: Session,
+        request: CropRequest,
+        **kwargs: object,
+    ):
+        with auth_session_factory.begin() as maintenance_session:
+            MaintenanceService().activate(
+                maintenance_session,
+                actor_id=admin_id,
+                reason="Deterministic worker race test",
+                expected_end_at=datetime.now(UTC) + timedelta(hours=1),
+            )
+        return original_materialize(service, session, request, **kwargs)
+
+    def unexpected_render(*_: object, **__: object) -> bytes:
+        nonlocal render_calls
+        render_calls += 1
+        return b"not expected"
+
+    monkeypatch.setattr(CropService, "materialize_persisted", activate_then_materialize)
+    monkeypatch.setattr("app.jobs.execution.render_pdf_crop", unexpected_render)
+
+    report = execute_crop_delivery(
+        auth_session_factory,
+        _settings(
+            empty_postgresql_database_url,
+            asset_root=asset_root,
+            source_root=source_root,
+        ),
+        job_id=job_id,
+        delivery_token=delivery_token,
+    )
+
+    assert report.status is CropExecutionStatus.PAUSED
+    assert render_calls == 0
+    with auth_session_factory.begin() as session:
+        job = session.get(CropJob, job_id)
+        attempt = session.scalar(
+            select(CropJobAttempt).where(CropJobAttempt.job_id == job_id)
+        )
+        assert job is not None
+        assert job.status is CropJobStatus.PENDING
+        assert job.dispatch_token is None
+        assert job.dispatched_at is None
+        assert job.started_at is None
+        assert job.heartbeat_at is None
+        assert job.max_attempts - job.attempt_count == 3
+        assert attempt is not None
+        assert attempt.status is CropJobAttemptStatus.STALE
+        assert attempt.error_message == "Deferred while maintenance mode is active"
+        assert JobReconciler().heartbeat_delivery(
+            session,
+            job_id=job_id,
+            delivery_token=delivery_token,
+        ) is False
+        assert JobReconciler().complete_delivery(
+            session,
+            job_id=job_id,
+            delivery_token=delivery_token,
+            asset_id=uuid4(),
+        ) is False
 
 
 @pytest.mark.skipif(

@@ -16,7 +16,7 @@ from app.database import DatabaseResources, bootstrap_database
 from app.documents.router import create_documents_router
 from app.auth.router import create_auth_router
 from app.health.router import DatabaseProbe, create_health_router, probe_database
-from app.jobs.router import create_jobs_router
+from app.jobs.router import create_crop_jobs_router, create_jobs_router
 from app.maintenance.service import enforce_maintenance_mode
 from app.papers.router import create_papers_router
 from app.releases.router import create_releases_router
@@ -78,6 +78,7 @@ def create_app(
         create_admin_router(runtime_settings, database_probe=database_probe),
     )
     application.include_router(create_jobs_router(runtime_settings))
+    application.include_router(create_crop_jobs_router(runtime_settings))
     application.include_router(create_assets_router())
     application.include_router(
         create_approvals_router(runtime_settings.session_secret.get_secret_value())

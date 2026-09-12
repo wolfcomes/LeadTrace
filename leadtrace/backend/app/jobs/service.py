@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Callable
 from uuid import UUID
 
+import pymupdf
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.assets.models import Asset, AssetAccessLevel, AssetCategory, AssetIntegrityState
@@ -21,6 +23,9 @@ from app.maintenance.service import MaintenanceService
 
 class CropValidationError(ValueError):
     pass
+
+
+PDF_RENDERER_VERSION = f"pymupdf-{pymupdf.VersionBind}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +134,55 @@ class CropService:
         )
         self._memory[input_hash] = result
         return result
+
+    def enqueue(
+        self,
+        session: Session,
+        request: CropRequest,
+        *,
+        source_asset_id: UUID,
+        created_by_id: UUID,
+    ) -> CropJob:
+        """Create or reuse one PostgreSQL-authoritative crop job."""
+
+        MaintenanceService().require_writes_enabled(session)
+        input_hash = request.input_hash()
+        created_id = session.scalar(
+            insert(CropJob)
+            .values(
+                input_hash=input_hash,
+                source_pdf_sha256=request.source_pdf_sha256.lower(),
+                source_asset_id=source_asset_id,
+                page_number=request.page_number,
+                x0=request.x0,
+                y0=request.y0,
+                x1=request.x1,
+                y1=request.y1,
+                rotation=request.rotation,
+                padding=request.padding,
+                dpi=request.dpi,
+                renderer_version=request.renderer_version.strip(),
+                status=CropJobStatus.PENDING,
+                created_by_id=created_by_id,
+            )
+            .on_conflict_do_nothing(index_elements=[CropJob.input_hash])
+            .returning(CropJob.id)
+        )
+        if created_id is not None:
+            job = session.get(CropJob, created_id)
+            assert job is not None
+            return job
+
+        job = session.scalar(
+            select(CropJob)
+            .where(CropJob.input_hash == input_hash)
+            .with_for_update()
+        )
+        if job is None:
+            raise CropValidationError("Crop job could not be created")
+        if job.status is CropJobStatus.SUPERSEDED:
+            raise CropValidationError("Crop job was superseded by newer work")
+        return job
 
     def run_persisted(
         self,

@@ -307,6 +307,42 @@ class JobReconciler:
         session.flush()
         return True
 
+    def defer_delivery(
+        self,
+        session: Session,
+        *,
+        job_id: UUID,
+        delivery_token: UUID,
+        reason: str,
+        now: datetime | None = None,
+    ) -> bool:
+        """Release a claimed delivery without consuming its retry budget."""
+
+        checked_at = self._now(now)
+        MaintenanceService().acquire_write_guard(session)
+        job = session.scalar(
+            select(CropJob).where(CropJob.id == job_id).with_for_update()
+        )
+        if not self._is_current_delivery(job, delivery_token):
+            return False
+        attempt = self._current_attempt(session, job)
+        if attempt is None or attempt.status is not CropJobAttemptStatus.RUNNING:
+            return False
+        message = reason.strip()[:2000] or "Background job delivery deferred"
+        attempt.status = CropJobAttemptStatus.STALE
+        attempt.completed_at = checked_at
+        attempt.error_message = message
+        job.status = CropJobStatus.PENDING
+        job.max_attempts += 1
+        job.dispatch_token = None
+        job.dispatched_at = None
+        job.started_at = None
+        job.heartbeat_at = None
+        job.completed_at = None
+        job.error_message = message
+        session.flush()
+        return True
+
     def supersede(
         self,
         session: Session,
