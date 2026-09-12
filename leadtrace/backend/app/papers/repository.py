@@ -117,15 +117,11 @@ def _release_revision_field_exists(
     )
 
 
-def list_published_papers(
-    session: Session,
-    release: Release,
+def _filtered_published_paper_statement(
+    release_id: UUID,
     filters: PaperListFilters,
-    *,
-    page: int,
-    page_size: int,
-) -> tuple[list[PublishedPaperRow], int]:
-    query = _published_paper_query(release.id)
+) -> Select:
+    query = _published_paper_query(release_id)
     title = _snapshot_text("title_guess")
     target = _snapshot_text("target")
     review_status = _snapshot_text("review_status")
@@ -145,7 +141,7 @@ def list_published_papers(
         query = query.where(target == filters.target)
     if filters.has_lineage is not None:
         has_lineage = _release_kind_exists(
-            release.id,
+            release_id,
             Paper.id,
             ObjectKind.LINEAGE,
         )
@@ -155,7 +151,7 @@ def list_published_papers(
     if filters.relation_status:
         query = query.where(
             _release_revision_field_exists(
-                release.id,
+                release_id,
                 Paper.id,
                 ObjectKind.LINEAGE_EDGE,
                 lambda revision: revision.relation_status,
@@ -165,7 +161,7 @@ def list_published_papers(
     if filters.structure_state:
         query = query.where(
             _release_revision_field_exists(
-                release.id,
+                release_id,
                 Paper.id,
                 ObjectKind.STRUCTURE,
                 lambda revision: revision.structure_state,
@@ -182,7 +178,32 @@ def list_published_papers(
         "title": (title.asc(), Paper.paper_key.asc()),
         "-title": (title.desc(), Paper.paper_key.asc()),
     }
-    query = query.order_by(*sort_expressions[filters.sort])
+    return query.order_by(*sort_expressions[filters.sort])
+
+
+def published_paper_statement(
+    release_id: UUID,
+    filters: PaperListFilters,
+    *,
+    page: int,
+    page_size: int,
+) -> Select:
+    if page < 1 or not 1 <= page_size <= 100:
+        raise ValueError("paper list pagination is outside the supported range")
+    return _filtered_published_paper_statement(release_id, filters).offset(
+        (page - 1) * page_size
+    ).limit(page_size)
+
+
+def list_published_papers(
+    session: Session,
+    release: Release,
+    filters: PaperListFilters,
+    *,
+    page: int,
+    page_size: int,
+) -> tuple[list[PublishedPaperRow], int]:
+    query = _filtered_published_paper_statement(release.id, filters)
     total = int(
         session.scalar(
             select(func.count()).select_from(query.order_by(None).subquery())
@@ -190,7 +211,12 @@ def list_published_papers(
         or 0
     )
     rows = session.execute(
-        query.offset((page - 1) * page_size).limit(page_size)
+        published_paper_statement(
+            release.id,
+            filters,
+            page=page,
+            page_size=page_size,
+        )
     ).all()
     return [
         PublishedPaperRow(

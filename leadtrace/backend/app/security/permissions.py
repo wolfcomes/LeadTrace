@@ -77,6 +77,8 @@ def get_authenticated_principal(
             authentication_failed = True
     if authentication_failed or authenticated is None:
         raise HTTPException(status_code=401, detail="Authentication required")
+    request.state.actor_id = authenticated.user.id
+    request.state.actor_role = authenticated.user.role.value
     return Principal(
         user_id=authenticated.user.id,
         role=authenticated.user.role,

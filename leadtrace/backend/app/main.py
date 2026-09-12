@@ -18,6 +18,8 @@ from app.auth.router import create_auth_router
 from app.health.router import DatabaseProbe, create_health_router, probe_database
 from app.jobs.router import create_crop_jobs_router, create_jobs_router
 from app.maintenance.service import enforce_maintenance_mode
+from app.observability.logging import install_request_observability
+from app.observability.metrics import MetricsRegistry, create_metrics_router
 from app.papers.router import create_papers_router
 from app.releases.router import create_releases_router
 from app.reviews.router import create_reviews_router
@@ -65,12 +67,18 @@ def create_app(
     )
     application.state.settings = runtime_settings
     install_api_error_handling(application)
+    metrics_registry = MetricsRegistry()
+    application.state.metrics_registry = metrics_registry
+    install_request_observability(application, metrics_registry)
     application.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=runtime_settings.allowed_hosts,
     )
     application.include_router(
         create_health_router(runtime_settings, database_probe),
+    )
+    application.include_router(
+        create_metrics_router(metrics_registry, runtime_settings.metrics_bearer_token)
     )
     application.include_router(create_auth_router(runtime_settings))
     application.include_router(create_users_router(runtime_settings))

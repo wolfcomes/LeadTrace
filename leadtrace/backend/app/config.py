@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     database_connect_timeout_seconds: int = Field(default=3, ge=1, le=30)
     redis_url: str = "redis://redis:6379/0"
     session_secret: SecretStr = SecretStr("development-only-not-for-production")
+    metrics_bearer_token: SecretStr | None = None
     admin_reauthentication_minutes: int = Field(default=10, ge=1, le=60)
     https_enabled: bool = False
     nginx_internal_transfer: bool = False
@@ -55,6 +56,14 @@ class Settings(BaseSettings):
             marker in secret.casefold() for marker in unsafe_secret_markers
         ):
             raise ValueError("production session_secret must be a strong random value")
+
+        metrics_token = (
+            self.metrics_bearer_token.get_secret_value()
+            if self.metrics_bearer_token is not None
+            else ""
+        )
+        if len(metrics_token) < 32:
+            raise ValueError("production metrics_bearer_token must be a strong random value")
 
         unsafe_hosts = {"", "*", "localhost", "127.0.0.1", "testserver"}
         if not self.allowed_hosts or any(

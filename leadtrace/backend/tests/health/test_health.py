@@ -17,6 +17,7 @@ def _settings(asset_root: Path, **updates: object) -> Settings:
         "environment": "test",
         "database_url": "postgresql+psycopg://leadtrace:test@database/leadtrace",
         "session_secret": "test-only-session-secret-at-least-32-characters",
+        "metrics_bearer_token": "test-only-metrics-token-at-least-32-characters",
         "allowed_hosts": ["testserver"],
         "asset_root": asset_root,
         "redis_url": "redis://redis:6379/0",
@@ -151,6 +152,7 @@ def test_production_configuration_requires_explicit_asset_root() -> None:
             session_secret="Q7!vZ3#kL9@rT2$xN8%pC4&mW6*eS1^hB",
             allowed_hosts=["leadtrace.lan"],
             redis_url="redis://redis:6379/0",
+            metrics_bearer_token="test-only-metrics-token-at-least-32-characters",
         )
 
 
@@ -161,4 +163,17 @@ def test_production_configuration_rejects_example_secret(tmp_path: Path) -> None
             environment="production",
             allowed_hosts=["leadtrace.lan"],
             session_secret="replace-with-at-least-32-random-characters",
+        )
+
+
+def test_production_configuration_requires_a_strong_metrics_token(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValidationError, match="metrics_bearer_token"):
+        _settings(
+            tmp_path,
+            environment="production",
+            allowed_hosts=["leadtrace.lan"],
+            session_secret="Q7!vZ3#kL9@rT2$xN8%pC4&mW6*eS1^hB",
+            metrics_bearer_token=None,
         )

@@ -77,6 +77,7 @@ def _error_response(
     details: dict[str, object] | None = None,
 ) -> JSONResponse:
     request_id = request_id_for(request)
+    request.state.error_code = code
     return JSONResponse(
         status_code=status_code,
         content={
