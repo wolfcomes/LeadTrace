@@ -31,6 +31,9 @@ def test_compose_runs_one_shot_migration_before_web_and_worker() -> None:
     assert services["worker"]["depends_on"]["migrate"]["condition"] == (
         "service_completed_successfully"
     )
+    assert services["scheduler"]["depends_on"]["migrate"]["condition"] == (
+        "service_completed_successfully"
+    )
 
 
 def test_nginx_replaces_untrusted_forwarded_for_header() -> None:

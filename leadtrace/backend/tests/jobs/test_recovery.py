@@ -3,18 +3,24 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from threading import Event
+from threading import Barrier, Event
 from uuid import UUID
 
+from fastapi import Depends
 from fastapi.testclient import TestClient
 import pytest
 import yaml
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth.models import AuthSession
 from app.config import Settings
-from app.database import DatabaseResources
+from app.database import (
+    DatabaseResources,
+    create_database_engine,
+    create_session_factory,
+    get_db_session,
+)
 from app.jobs.models import (
     CropJob,
     CropJobAttempt,
@@ -28,6 +34,9 @@ from app.maintenance.models import MaintenanceWindow
 from app.maintenance.service import MaintenanceModeActive
 from app.maintenance.service import MaintenanceService
 from app.releases.models import Release
+from app.security.permissions import get_authenticated_principal
+from app.security.policies import Principal
+from app.security.sessions import SESSION_COOKIE_NAME
 from app.users.models import UserRole
 from app.users.service import UserService
 from app.worker import celery_app
@@ -806,8 +815,6 @@ def test_maintenance_api_keeps_published_reads_and_blocks_reviewer_writes(
         assert blocked.json()["code"] == "MAINTENANCE_MODE"
         assert blocked.json()["message"] == "LeadTrace is temporarily read-only"
         assert blocked.json()["details"] == {
-            "reason": "Apply a verified schema migration",
-            "started_at": enabled.json()["started_at"],
             "expected_end": expected_end.isoformat().replace("+00:00", "Z"),
         }
         with auth_session_factory.begin() as session:
@@ -840,6 +847,87 @@ def test_maintenance_api_keeps_published_reads_and_blocks_reviewer_writes(
         assert windows[0].ended_reason == "Migration and integrity checks completed"
 
 
+def test_five_concurrent_reviewer_writes_share_the_request_database_session(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    with auth_session_factory.begin() as session:
+        reviewer = UserService().create_user(
+            session,
+            username="maintenance.concurrent-reviewer",
+            display_name="Concurrent Reviewer",
+            role=UserRole.REVIEWER,
+            initial_password=PASSWORD,
+        )
+        reviewer.must_change_password = False
+
+    engine = create_database_engine(
+        empty_postgresql_database_url,
+        pool_size=5,
+        max_overflow=0,
+        pool_timeout_seconds=0.5,
+    )
+    factory = create_session_factory(engine)
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        database_url=empty_postgresql_database_url,
+        database_pool_size=5,
+        database_max_overflow=0,
+        database_pool_timeout_seconds=0.5,
+        redis_url="redis://127.0.0.1:6379/0",
+        session_secret="maintenance-test-secret-more-than-thirty-two-characters",
+        allowed_hosts=["testserver"],
+        asset_root=tmp_path / "assets",
+    )
+    resources = DatabaseResources(engine=engine, session_factory=factory)
+    application = create_app(
+        settings=settings,
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+    transaction_barrier = Barrier(5)
+
+    @application.post("/api/v1/test/concurrent-write")
+    def concurrent_write(
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> dict[str, str]:
+        del principal
+        with session.begin():
+            session.execute(text("SELECT 1"))
+            transaction_barrier.wait(timeout=3)
+        return {"status": "ok"}
+
+    with TestClient(application, raise_server_exceptions=False) as client:
+        tokens: list[str] = []
+        for _ in range(5):
+            response = client.post(
+                "/api/v1/auth/login",
+                json={
+                    "username": "maintenance.concurrent-reviewer",
+                    "password": PASSWORD,
+                },
+            )
+            assert response.status_code == 200
+            token = response.cookies.get(SESSION_COOKIE_NAME)
+            assert token is not None
+            tokens.append(token)
+            client.cookies.clear()
+
+        def write(token: str) -> int:
+            return client.post(
+                "/api/v1/test/concurrent-write",
+                headers={"Cookie": f"{SESSION_COOKIE_NAME}={token}"},
+            ).status_code
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            statuses = list(executor.map(write, tokens))
+
+    assert statuses == [200] * 5
+
+
 def test_celery_worker_uses_recoverable_delivery_settings() -> None:
     assert celery_app.conf.task_acks_late is True
     assert celery_app.conf.task_reject_on_worker_lost is True
@@ -852,11 +940,27 @@ def test_compose_persists_redis_delivery_and_stops_worker_gracefully() -> None:
     compose_path = Path(__file__).parents[3] / "deploy" / "compose.yaml"
     compose = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
     worker = compose["services"]["worker"]
+    scheduler = compose["services"]["scheduler"]
     redis = compose["services"]["redis"]
 
     assert worker["init"] is True
     assert worker["stop_grace_period"] == "30s"
     assert "--prefetch-multiplier=1" in worker["command"]
+    assert scheduler["command"] == [
+        "celery",
+        "-A",
+        "app.worker:celery_app",
+        "beat",
+        "--loglevel=INFO",
+        "--schedule=/tmp/celerybeat-schedule",
+    ]
+    assert scheduler["depends_on"]["migrate"]["condition"] == (
+        "service_completed_successfully"
+    )
+    assert scheduler["depends_on"]["redis"]["condition"] == "service_healthy"
+    assert worker["environment"]["LEADTRACE_SOURCE_ROOTS"] == (
+        "${LEADTRACE_SOURCE_ROOTS:-{}}"
+    )
     assert redis["command"] == [
         "redis-server",
         "--appendonly",

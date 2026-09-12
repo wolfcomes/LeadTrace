@@ -217,6 +217,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute(
+        sa.text(
+            """
+            UPDATE crop_jobs
+            SET status = 'failed',
+                error_message = CASE
+                    WHEN error_message IS NULL OR btrim(error_message) = ''
+                        THEN 'Superseded work mapped to failed during Task 23 rollback'
+                    ELSE error_message || '; mapped to failed during Task 23 rollback'
+                END
+            WHERE status = 'superseded'
+            """
+        )
+    )
     op.drop_table("maintenance_windows")
     op.drop_index(
         "ix_crop_job_retry_operations_job",

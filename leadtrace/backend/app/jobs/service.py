@@ -84,6 +84,21 @@ class CropResult:
 Renderer = Callable[[CropRequest], bytes]
 
 
+def _request_metadata(request: CropRequest) -> dict[str, object]:
+    return {
+        "source_pdf_sha256": request.source_pdf_sha256.lower(),
+        "page_number": request.page_number,
+        "x0": request.x0,
+        "y0": request.y0,
+        "x1": request.x1,
+        "y1": request.y1,
+        "rotation": request.rotation,
+        "padding": request.padding,
+        "dpi": request.dpi,
+        "renderer_version": request.renderer_version,
+    }
+
+
 class CropService:
     """Deterministic crop registry with atomic managed-file writes."""
 
@@ -154,27 +169,51 @@ class CropService:
             job.error_message = None
             job.started_at = now
         try:
-            result = self.run(request, renderer=renderer)
-            inspected = self.store.inspect(result.asset_key)
-            asset, _ = AssetService().register_inspected(
+            result = self.materialize_persisted(
                 session,
-                storage_key=result.asset_key,
-                inspected=inspected,
-                category=AssetCategory.EVIDENCE_CROP,
-                access_level=AssetAccessLevel.REVIEWER,
-                integrity_state=AssetIntegrityState.VERIFIED,
+                request,
+                renderer=renderer,
                 source_asset_id=source_asset_id,
                 created_by_id=created_by_id,
-                derivation_metadata={"crop_input_hash": input_hash, "request": request.__dict__ if hasattr(request, "__dict__") else {"page_number": request.page_number, "x0": request.x0, "y0": request.y0, "x1": request.x1, "y1": request.y1, "rotation": request.rotation, "padding": request.padding, "dpi": request.dpi, "renderer_version": request.renderer_version}},
             )
             job.status = CropJobStatus.COMPLETED
-            job.asset_id = asset.id
+            job.asset_id = result.asset_id
             job.completed_at = datetime.now(UTC)
             session.flush()
-            return replace(result, asset_id=asset.id)
+            return result
         except Exception as error:
             job.status = CropJobStatus.FAILED
             job.error_message = str(error)[:2000]
             job.completed_at = datetime.now(UTC)
             session.flush()
             raise
+
+    def materialize_persisted(
+        self,
+        session: Session,
+        request: CropRequest,
+        *,
+        renderer: Renderer,
+        source_asset_id: UUID | None = None,
+        created_by_id: UUID | None = None,
+    ) -> CropResult:
+        """Render and register a crop without owning the job state machine."""
+
+        MaintenanceService().require_writes_enabled(session)
+        result = self.run(request, renderer=renderer)
+        inspected = self.store.inspect(result.asset_key)
+        asset, _ = AssetService().register_inspected(
+            session,
+            storage_key=result.asset_key,
+            inspected=inspected,
+            category=AssetCategory.EVIDENCE_CROP,
+            access_level=AssetAccessLevel.REVIEWER,
+            integrity_state=AssetIntegrityState.VERIFIED,
+            source_asset_id=source_asset_id,
+            created_by_id=created_by_id,
+            derivation_metadata={
+                "crop_input_hash": request.input_hash(),
+                "request": _request_metadata(request),
+            },
+        )
+        return replace(result, asset_id=asset.id)

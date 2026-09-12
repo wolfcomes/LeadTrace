@@ -5,12 +5,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import Request
-from sqlalchemy import select, text
+from fastapi import Depends, Request
+from sqlalchemy import event, select, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
 from app.api.errors import APIError
 from app.auth.models import AuthSession
+from app.database import get_request_db_session
 from app.maintenance.models import MaintenanceWindow
 from app.security.sessions import SESSION_COOKIE_NAME, keyed_token_hash
 from app.users.models import User, UserRole
@@ -153,6 +155,7 @@ _SAFE_WRITE_PATHS = frozenset({"/api/v1/admin/maintenance"})
 
 def enforce_maintenance_mode(
     request: Request,
+    session: Session | None = Depends(get_request_db_session),
 ) -> Generator[None, None, None]:
     if request.method.upper() in _SAFE_METHODS:
         yield
@@ -163,8 +166,7 @@ def enforce_maintenance_mode(
     if request.url.path in _SAFE_WRITE_PATHS:
         yield
         return
-    factory = getattr(request.app.state, "session_factory", None)
-    if factory is None:
+    if session is None:
         yield
         return
     token = request.cookies.get(SESSION_COOKIE_NAME)
@@ -172,7 +174,7 @@ def enforce_maintenance_mode(
         yield
         return
     guarded_user = False
-    with factory() as session:
+    with session.begin():
         checked_at = datetime.now(UTC)
         token_hash = keyed_token_hash(
             token,
@@ -196,28 +198,42 @@ def enforce_maintenance_mode(
     if not guarded_user:
         yield
         return
-    with factory.begin() as session:
-        service = MaintenanceService()
-        service.acquire_write_guard(session)
-        status = MaintenanceService().status(session)
-        if status.active:
-            assert status.started_at is not None
-            assert status.expected_end_at is not None
+
+    def guard_transaction(
+        guarded_session: Session,
+        transaction: object,
+        connection: Connection,
+    ) -> None:
+        del guarded_session
+        if getattr(transaction, "parent", None) is not None:
+            return
+        connection.execute(
+            text("SELECT pg_advisory_xact_lock_shared(:lock_id)"),
+            {"lock_id": _MAINTENANCE_WRITE_FENCE},
+        )
+        expected_end_at = connection.scalar(
+            select(MaintenanceWindow.expected_end_at).where(
+                MaintenanceWindow.active_slot == 1,
+                MaintenanceWindow.ended_at.is_(None),
+            )
+        )
+        if expected_end_at is not None:
             raise APIError(
                 503,
                 "MAINTENANCE_MODE",
                 "LeadTrace is temporarily read-only",
                 details={
-                    "reason": status.reason,
-                    "started_at": status.started_at.isoformat().replace(
-                        "+00:00", "Z"
-                    ),
-                    "expected_end": status.expected_end_at.isoformat().replace(
+                    "expected_end": expected_end_at.isoformat().replace(
                         "+00:00", "Z"
                     ),
                 },
             )
+
+    event.listen(session, "after_begin", guard_transaction)
+    try:
         yield
+    finally:
+        event.remove(session, "after_begin", guard_transaction)
 
 
 __all__ = [

@@ -20,6 +20,7 @@ from app.config import Settings
 
 DEFAULT_ALEMBIC_CONFIG_PATH = Path(__file__).resolve().parents[1] / "alembic.ini"
 SessionFactory = sessionmaker[Session]
+_REQUEST_SESSION_STATE_KEY = "_leadtrace_database_session"
 
 
 class SchemaVersionError(RuntimeError):
@@ -99,6 +100,11 @@ def transactional_session(
 def get_db_session(request: Request) -> Generator[Session, None, None]:
     """Yield one non-committing session for a FastAPI request."""
 
+    request_state = getattr(request, "state", None)
+    shared_session = getattr(request_state, _REQUEST_SESSION_STATE_KEY, None)
+    if isinstance(shared_session, Session):
+        yield shared_session
+        return
     session_factory: SessionFactory = request.app.state.session_factory
     with session_factory() as session:
         try:
@@ -106,6 +112,29 @@ def get_db_session(request: Request) -> Generator[Session, None, None]:
         finally:
             if session.in_transaction():
                 session.rollback()
+
+
+def get_request_db_session(
+    request: Request,
+) -> Generator[Session | None, None, None]:
+    """Own the shared request session used by global request dependencies."""
+
+    session_factory: SessionFactory | None = getattr(
+        request.app.state,
+        "session_factory",
+        None,
+    )
+    if not callable(session_factory):
+        yield None
+        return
+    with session_factory() as session:
+        setattr(request.state, _REQUEST_SESSION_STATE_KEY, session)
+        try:
+            yield session
+        finally:
+            if session.in_transaction():
+                session.rollback()
+            delattr(request.state, _REQUEST_SESSION_STATE_KEY)
 
 
 def check_database_connection(engine: Engine) -> bool:

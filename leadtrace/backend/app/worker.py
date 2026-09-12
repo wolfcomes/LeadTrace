@@ -1,3 +1,5 @@
+import importlib
+
 from celery import Celery
 
 from app.config import get_settings
@@ -21,4 +23,12 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     broker_connection_retry_on_startup=True,
     broker_transport_options={"visibility_timeout": 600},
+    beat_schedule={
+        "reconcile-crop-jobs": {
+            "task": "leadtrace.jobs.reconcile_crops",
+            "schedule": 30.0,
+        },
+    },
 )
+
+importlib.import_module("app.jobs.celery_tasks")
