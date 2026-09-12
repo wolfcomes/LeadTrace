@@ -7,6 +7,7 @@ SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 source "${SCRIPT_DIRECTORY}/common.sh"
 
 validate_backup_environment
+acquire_backup_lock
 require_value LEADTRACE_DATABASE_URL
 
 command -v pg_dump >/dev/null 2>&1 || fail "pg_dump is required"

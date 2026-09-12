@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
+import os
 import shutil
+import stat
 import sys
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Sequence
@@ -38,6 +42,23 @@ def _validated_destination(destination: Path, allowed_parent: Path) -> Path:
     if relative == Path("."):
         raise ValueError("backup destination must be below its allowed parent")
     return root
+
+
+@contextmanager
+def _destination_lock(destination: Path):
+    lock_path = destination / ".leadtrace.lock"
+    descriptor = os.open(
+        lock_path,
+        os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError("backup lock must be a regular file")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(descriptor)
 
 
 def expired_backup_directories(
@@ -97,18 +118,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("retention-days must be positive")
     now = _timestamp(args.now) if args.now else datetime.now(UTC)
     root = _validated_destination(args.destination, args.allowed_parent)
-    candidates = expired_backup_directories(
-        root,
-        allowed_parent=args.allowed_parent,
-        cutoff=now - timedelta(days=args.retention_days),
-    )
-    for candidate in candidates:
-        if candidate.parent != root or candidate.is_symlink():
-            raise SystemExit("refusing non-child retention candidate")
-        action = "delete" if args.apply else "preview"
-        print(f"backup_id={candidate.name} action={action}")
-        if args.apply:
-            shutil.rmtree(candidate)
+    with _destination_lock(root):
+        candidates = expired_backup_directories(
+            root,
+            allowed_parent=args.allowed_parent,
+            cutoff=now - timedelta(days=args.retention_days),
+        )
+        for candidate in candidates:
+            if candidate.parent != root or candidate.is_symlink():
+                raise SystemExit("refusing non-child retention candidate")
+            action = "delete" if args.apply else "preview"
+            print(f"backup_id={candidate.name} action={action}")
+            if args.apply:
+                shutil.rmtree(candidate)
     return 0
 
 

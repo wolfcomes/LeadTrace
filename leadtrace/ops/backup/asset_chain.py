@@ -93,6 +93,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     nodes = resolve_asset_chain(args.metadata)
     if args.next:
+        if len(nodes) >= MAX_CHAIN_LENGTH:
+            raise SystemExit(
+                "asset backup chain reached its maximum length; create a new full backup"
+            )
         terminal = nodes[-1]
         print(f"{terminal.backup_id}|{terminal.position + 1}|{terminal.snapshot_path}")
     else:

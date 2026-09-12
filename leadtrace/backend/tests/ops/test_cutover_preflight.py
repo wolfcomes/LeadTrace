@@ -79,6 +79,27 @@ def _restore_evidence(database_metadata: Path, asset_metadata: Path) -> dict[str
     return build_backup_evidence(database_metadata, asset_metadata)
 
 
+def _complete_restore_report(
+    *,
+    now: datetime,
+    database_metadata: Path,
+    asset_metadata: Path,
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "ok": True,
+        "assets": {"ok": True, "file_count": 1, "errors": []},
+        "baseline": {"ok": True, "counts": {}, "integrity": {}},
+        "http": {"ok": True, "checks": {}},
+        "started_at": (now - timedelta(minutes=5)).isoformat(),
+        "completed_at": now.isoformat(),
+        "duration_seconds": 300,
+        "rto": {"target_seconds": 3600, "met": True},
+        "errors": [],
+        "backup_evidence": _restore_evidence(database_metadata, asset_metadata),
+    }
+
+
 def test_preflight_aggregates_required_evidence_into_machine_readable_report(
     tmp_path: Path,
 ) -> None:
@@ -92,18 +113,11 @@ def test_preflight_aggregates_required_evidence_into_machine_readable_report(
     restore_report = tmp_path / "restore-report.json"
     restore_report.write_text(
         json.dumps(
-            {
-                "schema_version": 1,
-                "ok": True,
-                "started_at": (now - timedelta(minutes=5)).isoformat(),
-                "completed_at": now.isoformat(),
-                "duration_seconds": 300,
-                "rto": {"target_seconds": 3600, "met": True},
-                "errors": [],
-                "backup_evidence": _restore_evidence(
-                    database_backup, asset_backup
-                ),
-            }
+            _complete_restore_report(
+                now=now,
+                database_metadata=database_backup,
+                asset_metadata=asset_backup,
+            )
         ),
         encoding="utf-8",
     )
@@ -151,16 +165,12 @@ def test_preflight_fails_closed_when_restore_drill_is_stale(tmp_path: Path) -> N
         tmp_path / "assets", backup_id="assets-1", scope="assets", now=now
     )
     restore_report = tmp_path / "restore-report.json"
-    restore_report.write_text(
-        json.dumps(
-            {
-                "ok": True,
-                "completed_at": (now - timedelta(days=32)).isoformat(),
-                "errors": [],
-            }
-        ),
-        encoding="utf-8",
+    payload = _complete_restore_report(
+        now=now - timedelta(days=32),
+        database_metadata=database_backup,
+        asset_metadata=asset_backup,
     )
+    restore_report.write_text(json.dumps(payload), encoding="utf-8")
     config = {
         "schema_version": 1,
         "application_version": "0.1.0",
@@ -191,6 +201,120 @@ def test_preflight_fails_closed_when_restore_drill_is_stale(tmp_path: Path) -> N
     assert "stale" in stale.summary.casefold()
 
 
+@pytest.mark.parametrize(
+    ("section", "replacement"),
+    [
+        ("assets", None),
+        ("assets", {"ok": False, "errors": ["asset_hash_mismatch"]}),
+        ("baseline", None),
+        ("baseline", {"ok": False, "error": "database_baseline_mismatch"}),
+        ("http", None),
+        ("http", {"ok": False, "error": "http_smoke_failed"}),
+    ],
+)
+def test_preflight_rejects_incomplete_or_failed_restore_child_checks(
+    tmp_path: Path,
+    section: str,
+    replacement: dict[str, object] | None,
+) -> None:
+    now = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
+    database_backup = _write_backup(
+        tmp_path / "database", backup_id="db-1", scope="database", now=now
+    )
+    asset_backup = _write_backup(
+        tmp_path / "assets", backup_id="assets-1", scope="assets", now=now
+    )
+    payload = _complete_restore_report(
+        now=now,
+        database_metadata=database_backup,
+        asset_metadata=asset_backup,
+    )
+    if replacement is None:
+        payload.pop(section)
+    else:
+        payload[section] = replacement
+    restore_report = tmp_path / "restore-report.json"
+    restore_report.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = run_preflight(
+        {
+            "schema_version": 1,
+            "application_version": "0.1.0",
+            "schema_revision": "0015",
+            "release_key": "r1",
+            "database_backup_metadata": str(database_backup),
+            "asset_backup_metadata": str(asset_backup),
+            "restore_report": str(restore_report),
+            "max_backup_age_hours": 4,
+            "max_restore_age_days": 31,
+        },
+        probes=PreflightProbes(
+            database=lambda _: CheckResult.passed("database", "ok"),
+            services=lambda _: CheckResult.passed("services", "ok"),
+            permissions=lambda _: CheckResult.passed("permissions", "ok"),
+            source_manifest=lambda _: CheckResult.passed("source_manifest", "ok"),
+        ),
+        now=now,
+    )
+
+    restore = next(check for check in report.checks if check.name == "restore_drill")
+    assert restore.status == "FAIL"
+
+
+@pytest.mark.parametrize(
+    ("updates", "label"),
+    [
+        ({"duration_seconds": 299}, "duration"),
+        ({"started_at": "2026-09-12T12:01:00Z"}, "timestamp order"),
+        ({"rto": {"target_seconds": 299, "met": True}}, "RTO result"),
+    ],
+)
+def test_preflight_rejects_internally_inconsistent_restore_timing(
+    tmp_path: Path,
+    updates: dict[str, object],
+    label: str,
+) -> None:
+    now = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
+    database_backup = _write_backup(
+        tmp_path / "database", backup_id="db-1", scope="database", now=now
+    )
+    asset_backup = _write_backup(
+        tmp_path / "assets", backup_id="assets-1", scope="assets", now=now
+    )
+    payload = _complete_restore_report(
+        now=now,
+        database_metadata=database_backup,
+        asset_metadata=asset_backup,
+    )
+    payload.update(updates)
+    restore_report = tmp_path / "restore-report.json"
+    restore_report.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = run_preflight(
+        {
+            "schema_version": 1,
+            "application_version": "0.1.0",
+            "schema_revision": "0015",
+            "release_key": "r1",
+            "database_backup_metadata": str(database_backup),
+            "asset_backup_metadata": str(asset_backup),
+            "restore_report": str(restore_report),
+            "max_backup_age_hours": 4,
+            "max_restore_age_days": 31,
+        },
+        probes=PreflightProbes(
+            database=lambda _: CheckResult.passed("database", "ok"),
+            services=lambda _: CheckResult.passed("services", "ok"),
+            permissions=lambda _: CheckResult.passed("permissions", "ok"),
+            source_manifest=lambda _: CheckResult.passed("source_manifest", "ok"),
+        ),
+        now=now,
+    )
+
+    restore = next(check for check in report.checks if check.name == "restore_drill")
+    assert restore.status == "FAIL", label
+
+
 def test_preflight_rejects_restore_evidence_for_different_backups(
     tmp_path: Path,
 ) -> None:
@@ -201,42 +325,34 @@ def test_preflight_rejects_restore_evidence_for_different_backups(
     asset_backup = _write_backup(
         tmp_path / "assets", backup_id="assets-current", scope="assets", now=now
     )
-    restore_report = tmp_path / "restore-report.json"
-    restore_report.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "ok": True,
-                "started_at": (now - timedelta(minutes=5)).isoformat(),
-                "completed_at": now.isoformat(),
-                "duration_seconds": 300,
-                "rto": {"target_seconds": 3600, "met": True},
-                "errors": [],
-                "backup_evidence": {
-                    "database": {
-                        "backup_id": "db-older",
-                        "metadata_sha256": "a" * 64,
-                        "versions": {
-                            "application": "0.1.0",
-                            "schema": "0015",
-                            "release": "r1",
-                        },
-                    },
-                    "assets": {
-                        "backup_id": "assets-older",
-                        "metadata_sha256": "b" * 64,
-                        "chain_backup_ids": ["assets-older"],
-                        "versions": {
-                            "application": "0.1.0",
-                            "schema": "0015",
-                            "release": "r1",
-                        },
-                    },
-                },
-            }
-        ),
-        encoding="utf-8",
+    payload = _complete_restore_report(
+        now=now,
+        database_metadata=database_backup,
+        asset_metadata=asset_backup,
     )
+    payload["backup_evidence"] = {
+        "database": {
+            "backup_id": "db-older",
+            "metadata_sha256": "a" * 64,
+            "versions": {
+                "application": "0.1.0",
+                "schema": "0015",
+                "release": "r1",
+            },
+        },
+        "assets": {
+            "backup_id": "assets-older",
+            "metadata_sha256": "b" * 64,
+            "chain_backup_ids": ["assets-older"],
+            "versions": {
+                "application": "0.1.0",
+                "schema": "0015",
+                "release": "r1",
+            },
+        },
+    }
+    restore_report = tmp_path / "restore-report.json"
+    restore_report.write_text(json.dumps(payload), encoding="utf-8")
     config = {
         "schema_version": 1,
         "application_version": "0.1.0",
@@ -296,22 +412,14 @@ def test_preflight_rejects_restore_evidence_for_a_different_asset_chain(
     asset_evidence = evidence["assets"]
     assert isinstance(asset_evidence, dict)
     asset_evidence["chain_backup_ids"] = ["forged-parent", "assets-current"]
-    restore_report = tmp_path / "restore-report.json"
-    restore_report.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "ok": True,
-                "started_at": (now - timedelta(minutes=5)).isoformat(),
-                "completed_at": now.isoformat(),
-                "duration_seconds": 300,
-                "rto": {"target_seconds": 3600, "met": True},
-                "errors": [],
-                "backup_evidence": evidence,
-            }
-        ),
-        encoding="utf-8",
+    payload = _complete_restore_report(
+        now=now,
+        database_metadata=database_backup,
+        asset_metadata=asset_backup,
     )
+    payload["backup_evidence"] = evidence
+    restore_report = tmp_path / "restore-report.json"
+    restore_report.write_text(json.dumps(payload), encoding="utf-8")
     config = {
         "schema_version": 1,
         "application_version": "0.1.0",
@@ -578,16 +686,27 @@ def test_cutover_artifacts_require_explicit_evidence_and_native_fallback() -> No
         "smoke_test.py",
         "nginx -t",
         "read-only",
+        "--read-only",
         "rollback-cutover.md",
         "nginx.native-preflight.conf",
     ):
         assert required in cutover
+    build = cutover.index("## Build and stage")
+    loopback_listener = cutover.index("## Install the loopback TLS preflight listener")
     rollback_backup = cutover.index("## Enter maintenance and take rollback backups")
     final_import = cutover.index("## Apply the final import and validate")
     candidate_restore = cutover.index("## Back up and restore the cutover candidate")
     preflight = cutover.index("## Preflight the staged candidate")
     route_switch = cutover.index("## Switch the primary route")
-    assert rollback_backup < final_import < candidate_restore < preflight < route_switch
+    assert (
+        build
+        < loopback_listener
+        < rollback_backup
+        < final_import
+        < candidate_restore
+        < preflight
+        < route_switch
+    )
     assert "restore_drill.sh" in cutover[candidate_restore:preflight]
     assert "selected candidate backup IDs" in cutover[candidate_restore:preflight]
     for required in ("preserve", "new revisions", "read-only", "smoke_test.py"):

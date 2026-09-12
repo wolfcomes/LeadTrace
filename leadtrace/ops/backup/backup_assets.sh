@@ -7,6 +7,7 @@ SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 source "${SCRIPT_DIRECTORY}/common.sh"
 
 validate_backup_environment
+acquire_backup_lock
 require_value LEADTRACE_ASSET_ROOT
 require_value LEADTRACE_ASSET_ALLOWED_PARENT
 ASSET_ROOT="$(resolve_directory_below \

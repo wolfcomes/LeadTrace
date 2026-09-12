@@ -6,6 +6,7 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 import subprocess
+import time
 
 import pytest
 
@@ -295,6 +296,78 @@ def test_postgres_backup_finalizes_an_encrypted_verified_set(tmp_path: Path) -> 
     report = verify_backup(final_directory / "backup-metadata.json")
     assert report.verified_artifacts == ("database_dump",)
     assert not list(destination.glob("*.staging.*"))
+
+
+def test_same_id_postgres_backups_are_serialized_without_nested_finalize(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "backups"
+    destination.mkdir()
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    barrier = tmp_path / "barrier"
+    barrier.mkdir()
+    (fake_bin / "pg_dump").write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "out=''\n"
+        "for arg in \"$@\"; do case \"$arg\" in --file=*) out=\"${arg#--file=}\";; esac; done\n"
+        "touch \"$LEADTRACE_TEST_BARRIER/entered.$$\"\n"
+        "while [[ ! -e \"$LEADTRACE_TEST_BARRIER/release\" ]]; do sleep 0.01; done\n"
+        "printf 'database bytes' > \"$out\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "age").write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\nout=''\ninput=''\n"
+        "while (($#)); do case \"$1\" in -o) out=$2; shift 2;; -r) shift 2;; *) input=$1; shift;; esac; done\n"
+        "cp -- \"$input\" \"$out\"\n",
+        encoding="utf-8",
+    )
+    for command in ("pg_dump", "age"):
+        (fake_bin / command).chmod(0o755)
+    environment = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "LEADTRACE_BACKUP_ALLOWED_PARENT": str(tmp_path),
+        "LEADTRACE_BACKUP_DESTINATION": str(destination),
+        "LEADTRACE_DATABASE_URL": "postgresql://example.invalid/leadtrace",
+        "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
+        "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
+        "LEADTRACE_DESTINATION_ID": "test-destination",
+        "LEADTRACE_APPLICATION_VERSION": "0.1.0",
+        "LEADTRACE_SCHEMA_VERSION": "0015",
+        "LEADTRACE_RELEASE_VERSION": "release-test",
+        "LEADTRACE_BACKUP_ID": "same-id",
+        "LEADTRACE_TEST_BARRIER": str(barrier),
+    }
+    script_path = Path(__file__).parents[3] / "ops" / "backup" / "backup_postgres.sh"
+    processes = [
+        subprocess.Popen(
+            ["bash", str(script_path)],
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(2)
+    ]
+    try:
+        deadline = time.monotonic() + 3
+        while not list(barrier.glob("entered.*")) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(list(barrier.glob("entered.*"))) == 1
+        time.sleep(0.15)
+        assert len(list(barrier.glob("entered.*"))) == 1
+    finally:
+        (barrier / "release").touch()
+        results = [process.communicate(timeout=5) for process in processes]
+
+    assert sorted(process.returncode for process in processes) == [0, 2]
+    final_directory = destination / "same-id"
+    assert (final_directory / "backup-metadata.json").is_file()
+    assert not list(final_directory.glob(".leadtrace-*.staging.*"))
+    assert not list(destination.glob(".leadtrace-*.staging.*"))
+    assert any("already exists" in stderr for _, stderr in results)
 
 
 def test_asset_backup_finalizes_manifest_and_encrypted_archive(tmp_path: Path) -> None:
@@ -653,6 +726,179 @@ def test_retention_preserves_expired_parents_of_retained_asset_backups(
     )
 
     assert full not in candidates
+
+
+def test_retention_cli_waits_for_the_shared_destination_lock(tmp_path: Path) -> None:
+    destination = tmp_path / "backups"
+    destination.mkdir()
+    root = destination / "database-expired"
+    root.mkdir()
+    artifact = root / "database.dump.age"
+    artifact.write_bytes(b"expired")
+    metadata = {
+        "schema_version": 1,
+        "backup_id": root.name,
+        "backup_scope": "database",
+        "started_at": "2026-07-01T00:00:00Z",
+        "completed_at": "2026-07-01T00:00:00Z",
+        "outcome": "success",
+        "versions": {"application": "0.1.0", "schema": "0015", "release": "r1"},
+        "encryption": {
+            "algorithm": "age-x25519",
+            "recipient_fingerprint": "SHA256:key",
+            "payloads_encrypted": True,
+        },
+        "destination": {"kind": "separate_disk", "identity": "disk-a"},
+        "artifacts": {
+            "database_dump": {
+                "path": artifact.name,
+                "sha256": _sha256(artifact.read_bytes()),
+                "size_bytes": artifact.stat().st_size,
+            }
+        },
+    }
+    (root / "backup-metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    common = Path(__file__).parents[3] / "ops" / "backup" / "common.sh"
+    holder = subprocess.Popen(
+        [
+            "bash",
+            "-c",
+            'source "$1"; BACKUP_DESTINATION="$2"; acquire_backup_lock; echo locked; read -r',
+            "leadtrace-lock-holder",
+            str(common),
+            str(destination),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert holder.stdout is not None
+    assert holder.stdout.readline().strip() == "locked"
+    tool = Path(__file__).parents[3] / "ops" / "backup" / "prune_backups.py"
+    prune = subprocess.Popen(
+        [
+            "python",
+            str(tool),
+            "--destination",
+            str(destination),
+            "--allowed-parent",
+            str(tmp_path),
+            "--retention-days",
+            "30",
+            "--now",
+            "2026-09-12T00:00:00Z",
+            "--apply",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        time.sleep(0.15)
+        assert prune.poll() is None
+        assert root.exists()
+    finally:
+        assert holder.stdin is not None
+        holder.stdin.write("release\n")
+        holder.stdin.flush()
+        holder.communicate(timeout=5)
+        prune_stdout, prune_stderr = prune.communicate(timeout=5)
+
+    assert holder.returncode == 0
+    assert prune.returncode == 0, prune_stderr
+    assert "database-expired" in prune_stdout
+    assert not root.exists()
+
+
+def _write_asset_chain(destination: Path, *, length: int) -> Path:
+    parent_backup_id: str | None = None
+    terminal = destination
+    for position in range(length):
+        backup_id = f"assets-{position:03d}"
+        root = destination / backup_id
+        root.mkdir()
+        artifacts: dict[str, dict[str, object]] = {}
+        for artifact_name, filename in {
+            "asset_manifest": "assets.manifest.json",
+            "asset_archive": "assets.tar.age",
+            "asset_snapshot": "tar.snapshot",
+        }.items():
+            artifact = root / filename
+            artifact.write_bytes(f"{backup_id}:{artifact_name}".encode())
+            artifacts[artifact_name] = {
+                "path": filename,
+                "sha256": _sha256(artifact.read_bytes()),
+                "size_bytes": artifact.stat().st_size,
+            }
+        (root / "backup-metadata.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "backup_id": backup_id,
+                    "backup_scope": "assets",
+                    "started_at": "2026-09-12T00:00:00Z",
+                    "completed_at": "2026-09-12T00:01:00Z",
+                    "outcome": "success",
+                    "versions": {
+                        "application": "0.1.0",
+                        "schema": "0015",
+                        "release": "r1",
+                    },
+                    "encryption": {
+                        "algorithm": "age-x25519",
+                        "recipient_fingerprint": "SHA256:key",
+                        "payloads_encrypted": True,
+                    },
+                    "destination": {
+                        "kind": "separate_disk",
+                        "identity": "disk-a",
+                    },
+                    "asset_chain": {
+                        "mode": "full" if position == 0 else "incremental",
+                        "parent_backup_id": parent_backup_id,
+                        "position": position,
+                    },
+                    "artifacts": artifacts,
+                }
+            ),
+            encoding="utf-8",
+        )
+        parent_backup_id = backup_id
+        terminal = root / "backup-metadata.json"
+    return terminal
+
+
+def test_asset_chain_next_allows_the_128th_node(tmp_path: Path) -> None:
+    terminal = _write_asset_chain(tmp_path, length=127)
+    tool = Path(__file__).parents[3] / "ops" / "backup" / "asset_chain.py"
+
+    result = subprocess.run(
+        ["python", str(tool), "--metadata", str(terminal), "--next"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split("|")[1] == "127"
+
+
+def test_asset_chain_next_requires_a_new_full_backup_after_128_nodes(
+    tmp_path: Path,
+) -> None:
+    terminal = _write_asset_chain(tmp_path, length=128)
+    tool = Path(__file__).parents[3] / "ops" / "backup" / "asset_chain.py"
+
+    result = subprocess.run(
+        ["python", str(tool), "--metadata", str(terminal), "--next"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "full backup" in result.stderr.casefold()
 
 
 def test_systemd_units_define_backup_retention_and_restore_schedules() -> None:

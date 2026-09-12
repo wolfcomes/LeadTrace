@@ -2037,6 +2037,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
     def _send_error_json(self, message: str, status: HTTPStatus) -> None:
         self._send_json({"error": message}, status)
 
+    def _reject_read_only_mutation(self) -> bool:
+        if not getattr(self.server, "read_only", False):
+            return False
+        self._send_error_json("dashboard is read-only", HTTPStatus.METHOD_NOT_ALLOWED)
+        return True
+
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
@@ -2116,6 +2122,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._send_error_json(str(error), HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def do_POST(self) -> None:  # noqa: N802
+        if self._reject_read_only_mutation():
+            return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         if path.startswith("/api/papers/") and path.endswith("/review-items"):
@@ -2197,6 +2205,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._send_error_json(str(error), HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def do_DELETE(self) -> None:  # noqa: N802
+        if self._reject_read_only_mutation():
+            return
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         if not path.startswith("/api/papers/") or "/review-items/" not in path:
@@ -2223,8 +2233,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         print(f"dashboard: {format % args}", file=sys.stderr)
 
 
-def serve(host: str = "127.0.0.1", port: int = 8765) -> None:
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    *,
+    read_only: bool = False,
+) -> None:
     server = ThreadingHTTPServer((host, port), DashboardHandler)
+    server.read_only = read_only  # type: ignore[attr-defined]
     print(f"Dashboard available at http://{host}:{server.server_port}/")
     try:
         server.serve_forever()
@@ -2238,8 +2254,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument(
+        "--read-only",
+        action="store_true",
+        help="reject all review mutations while preserving read access",
+    )
     args = parser.parse_args()
-    serve(args.host, args.port)
+    serve(args.host, args.port, read_only=args.read_only)
     return 0
 
 

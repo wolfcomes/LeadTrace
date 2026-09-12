@@ -161,6 +161,24 @@ class ReviewerUser(AuthenticatedUser):
         )
 
     @task(1)
+    def single_structure_preview(self) -> None:
+        paper_id = _config().paper_id
+        if not paper_id:
+            return
+        self.client.post(
+            f"/api/v1/papers/{paper_id}/structures/drawings",
+            headers={"X-CSRF-Token": self.csrf_token},
+            json={
+                "smiles": "C[C@H](O)c1ccc(F)cc1",
+                "width": 600,
+                "height": 420,
+                "atom_indices": False,
+                "transparent_background": False,
+            },
+            name="single structure preview",
+        )
+
+    @task(1)
     def validate_release(self) -> None:
         config = _config()
         if not config.release_id or not config.admin_username or not config.admin_password:
@@ -197,6 +215,7 @@ P95_TARGETS_MS = {
     ("GET", "cached PDF page"): 500,
     ("GET", "PDF first visible content"): 2000,
     ("POST", "crop job enqueue"): 2000,
+    ("POST", "single structure preview"): 2000,
     ("GET", "release validation"): 1000,
 }
 

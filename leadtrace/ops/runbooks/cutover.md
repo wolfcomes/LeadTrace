@@ -58,13 +58,39 @@ replacement. Do not overwrite or delete the previous versioned directory.
 
 Start the version-matched FastAPI process on `127.0.0.1:8000`, the Celery
 worker and scheduler against the internal Redis service, and the old Dashboard
-on `127.0.0.1:8765`. Run migrations from `leadtrace/backend` before starting
-the new web and worker processes:
+on `127.0.0.1:8765` in process-level read-only mode. From the repository root,
+start the fallback with:
+
+```bash
+python dashboard/server.py --host 127.0.0.1 --port 8765 --read-only
+```
+
+Run migrations from `leadtrace/backend` before starting the new web and worker
+processes:
 
 ```bash
 python -m alembic -c alembic.ini upgrade head
 python -m alembic -c alembic.ini current
 ```
+
+## Install the loopback TLS preflight listener
+
+The maintenance API below is intentionally called through the staged loopback
+TLS listener on port `8877`. Install that listener before entering maintenance;
+it does not change the LAN primary route. Install the committed preflight
+server alongside the current route, validate the complete Nginx configuration,
+and reload:
+
+```bash
+sudo install -m 0644 leadtrace/deploy/nginx/nginx.native-preflight.conf \
+  /etc/nginx/conf.d/leadtrace-preflight.conf
+sudo nginx -t
+sudo nginx -s reload
+```
+
+The certificate must include `127.0.0.1` in its SAN for the example config, or
+the protected config must use a loopback-resolving hostname present in the SAN.
+Verify `https://127.0.0.1:8877/health/ready` before using the maintenance API.
 
 ## Enter maintenance and take rollback backups
 
@@ -157,21 +183,8 @@ IDs are not valid substitutes.
 
 ## Preflight the staged candidate
 
-Before running the machine-readable gate, stage the new site on a loopback-only
-TLS listener. This does not change the LAN primary route. Install the committed
-preflight server alongside the current route, validate the complete Nginx
-configuration, and reload:
-
-```bash
-sudo install -m 0644 leadtrace/deploy/nginx/nginx.native-preflight.conf \
-  /etc/nginx/conf.d/leadtrace-preflight.conf
-sudo nginx -t
-sudo nginx -s reload
-```
-
-The certificate must include `127.0.0.1` in its SAN for the example config, or
-the protected config must use a loopback-resolving hostname present in the SAN.
-Set preflight `base_url` to this listener and `old_dashboard_url` directly to
+Use the loopback-only TLS listener installed before maintenance. Set preflight
+`base_url` to this listener and `old_dashboard_url` directly to
 `http://127.0.0.1:8765`. Then run the machine-readable gate from the repository
 root:
 

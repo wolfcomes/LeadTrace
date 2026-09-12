@@ -168,6 +168,43 @@ def _backup_check(
         return CheckResult.failed(name, "Backup evidence is missing, invalid, or stale")
 
 
+def _validate_restore_report(payload: Mapping[str, object]) -> datetime:
+    if payload.get("schema_version") != 1:
+        raise ValueError("restore report schema is unsupported")
+    if payload.get("ok") is not True or payload.get("errors") != []:
+        raise ValueError("restore drill did not pass")
+    for section_name in ("assets", "baseline", "http"):
+        section = payload.get(section_name)
+        if not isinstance(section, dict) or section.get("ok") is not True:
+            raise ValueError(f"restore report {section_name} check did not pass")
+
+    started_at = _timestamp(payload.get("started_at"), label="restore drill start")
+    completed_at = _timestamp(
+        payload.get("completed_at"), label="restore drill completion"
+    )
+    if completed_at < started_at:
+        raise ValueError("restore drill completion precedes its start")
+    duration = payload.get("duration_seconds")
+    measured_duration = int((completed_at - started_at).total_seconds())
+    if isinstance(duration, bool) or not isinstance(duration, int) or duration < 0:
+        raise ValueError("restore drill duration is invalid")
+    if duration != measured_duration:
+        raise ValueError("restore drill duration does not match its timestamps")
+
+    rto = payload.get("rto")
+    if not isinstance(rto, dict):
+        raise ValueError("restore drill RTO evidence is missing")
+    target = rto.get("target_seconds")
+    met = rto.get("met")
+    if isinstance(target, bool) or not isinstance(target, int) or target <= 0:
+        raise ValueError("restore drill RTO target is invalid")
+    if not isinstance(met, bool) or met != (duration <= target):
+        raise ValueError("restore drill RTO result is inconsistent")
+    if not met:
+        raise ValueError("restore drill exceeded its RTO")
+    return completed_at
+
+
 def _restore_check(
     config: Mapping[str, object],
     *,
@@ -178,12 +215,12 @@ def _restore_check(
             str(_required_config(config, "restore_report", str))
         ).resolve(strict=True)
         payload = json.loads(report_path.read_text(encoding="utf-8"))
-        completed_at = _timestamp(payload.get("completed_at"), label="restore drill")
+        if not isinstance(payload, dict):
+            raise ValueError("restore report must contain an object")
+        completed_at = _validate_restore_report(payload)
         maximum_age = timedelta(
             days=float(_required_config(config, "max_restore_age_days", (int, float)))
         )
-        if payload.get("ok") is not True or payload.get("errors") not in ([], None):
-            raise ValueError("restore drill did not pass")
         if (
             completed_at > now + timedelta(minutes=5)
             or now - completed_at > maximum_age
@@ -191,11 +228,6 @@ def _restore_check(
             return CheckResult.failed(
                 "restore_drill", "Restore drill evidence is stale"
             )
-        if payload.get("schema_version") != 1:
-            raise ValueError("restore report schema is unsupported")
-        rto = payload.get("rto")
-        if not isinstance(rto, dict) or rto.get("met") is not True:
-            raise ValueError("restore drill exceeded its RTO")
         evidence = payload.get("backup_evidence")
         if not isinstance(evidence, dict):
             raise ValueError("restore backup evidence is missing")
@@ -305,7 +337,7 @@ def _database_probe(config: Mapping[str, object]) -> CheckResult:
         from app.assets.storage import LocalAssetStore
         from app.audit.service import AuditService
         from app.database import create_database_engine, validate_schema_version
-        from app.imports.models import ImportBatch
+        from app.releases.aggregate import recompute_release_aggregate
         from app.releases.models import Release
         from app.releases.validation import validate_release
 
@@ -338,22 +370,10 @@ def _database_probe(config: Mapping[str, object]) -> CheckResult:
                 release = session.scalar(
                     select(Release).where(Release.is_current).limit(1)
                 )
-                latest_import = session.scalar(
-                    select(ImportBatch)
-                    .where(ImportBatch.completed_at.is_not(None))
-                    .order_by(ImportBatch.completed_at.desc())
-                    .limit(1)
-                )
                 if release is None or not release.manifest_finalized:
                     raise ValueError("current finalized release is missing")
                 if release.release_key != config["release_key"]:
                     raise ValueError("current release does not match cutover target")
-                if latest_import is None:
-                    raise ValueError("completed baseline import is missing")
-                if latest_import.counts != expected.get("counts"):
-                    raise ValueError("baseline counts do not match")
-                if latest_import.integrity != expected.get("integrity_expectations"):
-                    raise ValueError("scientific integrity defects are present")
                 validation = validate_release(
                     session,
                     release.id,
@@ -362,10 +382,23 @@ def _database_probe(config: Mapping[str, object]) -> CheckResult:
                         source_roots=source_roots,
                     ),
                 )
+                aggregate = recompute_release_aggregate(
+                    session,
+                    release,
+                    asset_store=LocalAssetStore(
+                        managed_root,
+                        source_roots=source_roots,
+                    ),
+                    validation=validation,
+                )
+                if aggregate.counts != expected.get("counts"):
+                    raise ValueError("current release counts do not match the baseline")
+                if aggregate.integrity != expected.get("integrity_expectations"):
+                    raise ValueError("current release integrity defects are present")
                 audit = AuditService().verify_chain(session)
                 if not validation.valid or not audit.valid:
                     raise ValueError("release assets or audit chain are invalid")
-                paper_count = int(latest_import.counts.get("corpus_papers", -1))
+                paper_count = aggregate.counts["corpus_papers"]
         finally:
             engine.dispose()
         if actual_schema != config["schema_revision"]:

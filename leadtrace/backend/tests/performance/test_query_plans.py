@@ -64,6 +64,9 @@ def test_load_profile_covers_queues_release_validation_and_pdf_latency() -> None
     profile = (
         Path(__file__).parents[3] / "tests" / "load" / "locustfile.py"
     ).read_text(encoding="utf-8")
+    readme = (
+        Path(__file__).parents[3] / "tests" / "load" / "README.md"
+    ).read_text(encoding="utf-8")
 
     for required in (
         "LEADTRACE_LOAD_REGION_ID",
@@ -74,5 +77,11 @@ def test_load_profile_covers_queues_release_validation_and_pdf_latency() -> None
         "cached PDF page",
         "crop job enqueue",
         "release validation",
+        "/structures/drawings",
+        "single structure preview",
+        '("POST", "single structure preview"): 2000',
     ):
         assert required in profile
+    assert "synchronous" in readme
+    assert "automated hard gate" in readme
+    assert "crop jobs are queued" in readme

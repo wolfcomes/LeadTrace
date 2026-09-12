@@ -2,6 +2,7 @@ import json
 import csv
 from pathlib import Path
 import threading
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
@@ -895,6 +896,65 @@ def dashboard_url() -> str:
         httpd.shutdown()
         thread.join(timeout=2)
         httpd.server_close()
+
+
+@pytest.fixture
+def read_only_dashboard_url() -> str:
+    httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.DashboardHandler)
+    httpd.read_only = True  # type: ignore[attr-defined]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{httpd.server_port}"
+    finally:
+        httpd.shutdown()
+        thread.join(timeout=2)
+        httpd.server_close()
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        (
+            "POST",
+            "/api/papers/04effc6577c7/review",
+            b'{"review_status":"in_review"}',
+        ),
+        (
+            "DELETE",
+            "/api/papers/04effc6577c7/review-items/not-present",
+            None,
+        ),
+    ],
+)
+def test_read_only_server_rejects_mutations_without_touching_review_files(
+    read_only_dashboard_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    method: str,
+    path: str,
+    body: bytes | None,
+) -> None:
+    overrides = tmp_path / "paper_review_overrides.json"
+    reviewed = tmp_path / "reviewed_entries.csv"
+    overrides.write_bytes(b'{"04effc6577c7":{"review_status":"unreviewed"}}\n')
+    reviewed.write_bytes(b"paper_id,review_item_id,review_status\n")
+    monkeypatch.setattr(server, "PAPER_REVIEW_OVERRIDES_PATH", overrides)
+    monkeypatch.setattr(server, "PAPER_REVIEWED_ENTRIES_PATH", reviewed)
+    before = (overrides.read_bytes(), reviewed.read_bytes())
+    request = Request(
+        f"{read_only_dashboard_url}{path}",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method=method,
+    )
+
+    with pytest.raises(HTTPError) as error:
+        urlopen(request)
+
+    assert error.value.code == 405
+    assert json.loads(error.value.read())["error"] == "dashboard is read-only"
+    assert (overrides.read_bytes(), reviewed.read_bytes()) == before
 
 
 def get_json(url: str) -> dict[str, object]:

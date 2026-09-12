@@ -65,6 +65,17 @@ validate_backup_environment() {
   export BACKUP_DESTINATION
 }
 
+acquire_backup_lock() {
+  command -v flock >/dev/null 2>&1 || fail "flock is required"
+  local lock_path="${BACKUP_DESTINATION}/.leadtrace.lock"
+  [[ ! -L "${lock_path}" ]] || fail "backup lock must not be a symbolic link"
+  [[ ! -e "${lock_path}" || -f "${lock_path}" ]] \
+    || fail "backup lock must be a regular file"
+  exec {BACKUP_LOCK_FD}>>"${lock_path}"
+  flock --exclusive "${BACKUP_LOCK_FD}"
+  export BACKUP_LOCK_FD
+}
+
 validate_backup_id() {
   local backup_scope="$1"
   [[ "${backup_scope}" =~ ^[a-z][a-z0-9-]{0,31}$ ]] \
@@ -87,7 +98,11 @@ new_staging_directory() {
 finalize_staging_directory() {
   local metadata_path="${STAGING_DIRECTORY}/backup-metadata.json"
   [[ -f "${metadata_path}" ]] || fail "backup metadata was not created"
-  mv -- "${STAGING_DIRECTORY}" "${FINAL_DIRECTORY}"
+  [[ ! -e "${FINAL_DIRECTORY}" ]] \
+    || fail "backup destination already exists: ${BACKUP_ID}"
+  mv -T -- "${STAGING_DIRECTORY}" "${FINAL_DIRECTORY}"
+  [[ -d "${FINAL_DIRECTORY}" && -f "${FINAL_DIRECTORY}/backup-metadata.json" ]] \
+    || fail "backup finalization did not create the expected directory"
   trap - EXIT
   printf 'backup_id=%s destination=%s\n' "${BACKUP_ID}" "${FINAL_DIRECTORY}"
 }

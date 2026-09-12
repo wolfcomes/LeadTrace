@@ -146,33 +146,35 @@ def verify_asset_restore(
     return AssetRestoreReport(not unique_errors, len(files), unique_errors)
 
 
-def _safe_database_counts(database_url: str) -> dict[str, object]:
-    import psycopg
+def _safe_database_counts(
+    database_url: str,
+    *,
+    asset_root: Path | None = None,
+) -> dict[str, object]:
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
 
-    connection_url = database_url.replace("postgresql+psycopg://", "postgresql://", 1)
-    with psycopg.connect(connection_url, connect_timeout=3) as connection:
-        with connection.cursor() as cursor:
-            physical_counts: dict[str, int] = {}
-            for table in ("papers", "releases", "audit_events"):
-                cursor.execute(f'SELECT count(*) FROM "{table}"')
-                physical_counts[table] = int(cursor.fetchone()[0])
-            cursor.execute(
-                """
-                SELECT counts, integrity
-                FROM import_batches
-                WHERE completed_at IS NOT NULL
-                ORDER BY completed_at DESC
-                LIMIT 1
-                """
+    from app.assets.storage import LocalAssetStore
+    from app.database import create_database_engine
+    from app.releases.aggregate import recompute_release_aggregate
+    from app.releases.models import Release
+
+    engine = create_database_engine(database_url)
+    try:
+        with Session(engine) as session:
+            release = session.scalar(
+                select(Release).where(Release.is_current).limit(1)
             )
-            aggregate = cursor.fetchone()
-            if aggregate is None:
-                raise ValueError("completed import baseline is missing")
-            return {
-                "counts": aggregate[0],
-                "integrity": aggregate[1],
-                "physical_counts": physical_counts,
-            }
+            if release is None or not release.manifest_finalized:
+                raise ValueError("current finalized release is missing")
+            store = LocalAssetStore(asset_root) if asset_root is not None else None
+            return recompute_release_aggregate(
+                session,
+                release,
+                asset_store=store,
+            ).as_dict()
+    finally:
+        engine.dispose()
 
 
 def verify_restored_system(
@@ -216,7 +218,10 @@ def verify_restored_system(
         raise ValueError("approved expected aggregate is invalid")
     if database_url:
         try:
-            baseline = _safe_database_counts(database_url)
+            baseline = _safe_database_counts(
+                database_url,
+                asset_root=restored_asset_root,
+            )
             baseline_ok = (
                 baseline.get("counts") == expected_counts
                 and baseline.get("integrity") == expected_integrity

@@ -7,13 +7,263 @@ import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import subprocess
+from uuid import UUID
 
+from sqlalchemy import delete, text
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.activities.models import Activity
+from app.compounds.models import Compound
+from app.evidence.models import Evidence
+from app.imports.models import ImportBatch
+from app.lineages.models import Lineage, LineageEdge
+from app.papers.models import Paper
+from app.releases.manifest import capture_release_artifact_manifest
+from app.releases.models import Release, ReleaseItem
+from app.revisions.models import (
+    ActivityState,
+    EvidenceState,
+    StructureState,
+)
+from app.revisions.service import RevisionService
+from app.security.policies import WorkflowState
+from app.structures.models import Structure
+from app.users.models import UserRole
+from app.users.service import UserService
 from leadtrace.ops.backup.verify_backup import verify_backup
 from leadtrace.ops.restore.verify_restored_system import (
+    _safe_database_counts,
     _verify_http_workflow,
     verify_asset_restore,
     verify_restored_system,
 )
+
+
+EXPECTED_RELEASE_AGGREGATE = {
+    "counts": {
+        "corpus_papers": 1,
+        "lineage_papers": 1,
+        "lineages": 1,
+        "compound_entities": 2,
+        "lineage_edges": 1,
+        "activity_rows": 1,
+        "complete_structures": 2,
+        "structure_confirmed": 2,
+        "missing_or_non_unique": 0,
+        "pair_ready_edges": 1,
+        "papers_with_pair_ready": 1,
+    },
+    "integrity": {
+        "self_loops": 0,
+        "duplicate_directed_edges": 0,
+        "unresolved_pair_ready_edges": 0,
+        "dangling_entity_references": 0,
+        "dangling_evidence_references": 0,
+        "invalid_pair_endpoints": 0,
+        "published_missing_or_corrupt_assets": 0,
+    },
+}
+
+
+def _published_revision(
+    session: Session,
+    *,
+    domain_object: object,
+    actor_id: UUID,
+    snapshot: dict[str, object],
+    structure_state: StructureState | None = None,
+    evidence_state: EvidenceState | None = None,
+    activity_state: ActivityState | None = None,
+    canonical_smiles: str | None = None,
+    relation_status: str | None = None,
+):
+    return RevisionService().create_revision(
+        session,
+        object_identity=domain_object,  # type: ignore[arg-type]
+        actor_id=actor_id,
+        reason="Restore aggregate fixture",
+        snapshot=snapshot,
+        workflow_state=WorkflowState.PUBLISHED,
+        is_current_published=True,
+        structure_state=structure_state,
+        evidence_state=evidence_state,
+        activity_state=activity_state,
+        canonical_smiles=canonical_smiles,
+        relation_status=relation_status,
+    )
+
+
+def _seed_current_release(
+    session_factory: sessionmaker[Session],
+) -> dict[str, UUID]:
+    with session_factory.begin() as session:
+        actor = UserService().create_user(
+            session,
+            username="restore.aggregate.admin",
+            display_name="Restore aggregate admin",
+            role=UserRole.ADMIN,
+            initial_password="Fixture-password-123!",
+        )
+        session.add(
+            ImportBatch(
+                source_fingerprint="f" * 64,
+                status="completed",
+                counts={key: 999 for key in EXPECTED_RELEASE_AGGREGATE["counts"]},
+                integrity={
+                    key: 0 for key in EXPECTED_RELEASE_AGGREGATE["integrity"]
+                },
+                asset_linkage={},
+                completed_at=datetime.now(UTC),
+            )
+        )
+        paper = Paper(paper_key="aggregate-paper", doi="10.1000/aggregate")
+        session.add(paper)
+        session.flush()
+        compounds = [
+            Compound(
+                paper_id=paper.id,
+                local_identity=f"CMP-{index}",
+                display_label=f"Compound {index}",
+                normalized_label=f"compound {index}",
+            )
+            for index in (1, 2)
+        ]
+        lineage = Lineage(paper_id=paper.id, lineage_key="LINEAGE-1")
+        evidence = Evidence(paper_id=paper.id, evidence_key="EVID-1")
+        session.add_all([*compounds, lineage, evidence])
+        session.flush()
+        structures = [
+            Structure(
+                paper_id=paper.id,
+                compound_id=compound.id,
+                structure_key=f"STRUCTURE-{index}",
+            )
+            for index, compound in enumerate(compounds, start=1)
+        ]
+        activity = Activity(
+            paper_id=paper.id,
+            compound_id=compounds[1].id,
+            activity_key="ACT-1",
+        )
+        edge = LineageEdge(
+            paper_id=paper.id,
+            lineage_id=lineage.id,
+            edge_key="EDGE-1",
+            parent_compound_id=compounds[0].id,
+            derived_compound_id=compounds[1].id,
+        )
+        session.add_all([*structures, activity, edge])
+        session.flush()
+
+        revisions = [
+            _published_revision(
+                session,
+                domain_object=paper,
+                actor_id=actor.id,
+                snapshot={"paper_key": paper.paper_key},
+            ),
+            *[
+                _published_revision(
+                    session,
+                    domain_object=compound,
+                    actor_id=actor.id,
+                    snapshot={
+                        "paper_id": str(paper.id),
+                        "local_identity": compound.local_identity,
+                    },
+                )
+                for compound in compounds
+            ],
+            *[
+                _published_revision(
+                    session,
+                    domain_object=structure,
+                    actor_id=actor.id,
+                    snapshot={
+                        "compound_id": str(structure.compound_id),
+                        "canonical_smiles": "CCO",
+                        "structure_state": "structure_confirmed",
+                    },
+                    structure_state=StructureState.STRUCTURE_CONFIRMED,
+                    canonical_smiles="CCO",
+                )
+                for structure in structures
+            ],
+            _published_revision(
+                session,
+                domain_object=lineage,
+                actor_id=actor.id,
+                snapshot={"paper_id": str(paper.id), "lineage_key": "LINEAGE-1"},
+            ),
+            _published_revision(
+                session,
+                domain_object=evidence,
+                actor_id=actor.id,
+                snapshot={
+                    "compound_ids": [str(compounds[0].id), str(compounds[1].id)],
+                    "evidence_key": "EVID-1",
+                },
+                evidence_state=EvidenceState.CONFIRMED,
+            ),
+            _published_revision(
+                session,
+                domain_object=activity,
+                actor_id=actor.id,
+                snapshot={
+                    "compound_id": str(compounds[1].id),
+                    "evidence_ids": [str(evidence.id)],
+                },
+                activity_state=ActivityState.CONFIRMED,
+            ),
+            _published_revision(
+                session,
+                domain_object=edge,
+                actor_id=actor.id,
+                snapshot={
+                    "lineage_id": str(lineage.id),
+                    "parent_compound_id": str(compounds[0].id),
+                    "derived_compound_id": str(compounds[1].id),
+                    "evidence_ids": [str(evidence.id)],
+                    "pair_ready": True,
+                    "relation_status": "confirmed",
+                },
+                relation_status="confirmed",
+            ),
+        ]
+        session.flush()
+        release = Release(
+            release_key="aggregate-r1",
+            title="Aggregate release",
+            notes="",
+            metrics={},
+            published_by_id=actor.id,
+            published_at=datetime.now(UTC),
+            is_current=True,
+            manifest_finalized=False,
+        )
+        session.add(release)
+        session.flush()
+        objects = [paper, *compounds, *structures, lineage, evidence, activity, edge]
+        for order, (domain_object, revision) in enumerate(zip(objects, revisions, strict=True)):
+            session.add(
+                ReleaseItem(
+                    release_id=release.id,
+                    object_id=domain_object.id,
+                    revision_id=revision.id,
+                    paper_id=paper.id,
+                    object_kind=domain_object.object_kind,
+                    manifest_order=order,
+                )
+            )
+        session.flush()
+        capture_release_artifact_manifest(session, release.id)
+        release.manifest_finalized = True
+        session.flush()
+        return {
+            "release_id": release.id,
+            "removed_compound_id": compounds[1].id,
+            "edge_id": edge.id,
+        }
 
 
 def test_restored_asset_tree_matches_manifest_without_reporting_storage_paths(
@@ -73,6 +323,56 @@ def test_restored_asset_tree_reports_hash_mismatch_without_leaking_paths(
     assert str(asset_root) not in json.dumps(report.as_dict())
 
 
+def test_database_restore_counts_are_recomputed_from_the_current_release(
+    auth_session_factory: sessionmaker[Session],
+    empty_postgresql_database_url: str,
+) -> None:
+    _seed_current_release(auth_session_factory)
+
+    aggregate = _safe_database_counts(empty_postgresql_database_url)
+
+    assert aggregate["counts"] == EXPECTED_RELEASE_AGGREGATE["counts"]
+    assert aggregate["integrity"] == EXPECTED_RELEASE_AGGREGATE["integrity"]
+
+
+def test_database_restore_counts_detect_a_missing_release_item(
+    auth_session_factory: sessionmaker[Session],
+    empty_postgresql_database_url: str,
+) -> None:
+    seeded = _seed_current_release(auth_session_factory)
+    with auth_session_factory.begin() as session:
+        session.execute(text("ALTER TABLE release_items DISABLE TRIGGER protect_release_item"))
+        try:
+            session.execute(
+                delete(ReleaseItem).where(
+                    ReleaseItem.release_id == seeded["release_id"],
+                    ReleaseItem.object_id == seeded["removed_compound_id"],
+                )
+            )
+        finally:
+            session.execute(text("ALTER TABLE release_items ENABLE TRIGGER protect_release_item"))
+
+    aggregate = _safe_database_counts(empty_postgresql_database_url)
+
+    assert aggregate["counts"]["compound_entities"] == 1  # type: ignore[index]
+    assert aggregate["integrity"]["dangling_entity_references"] > 0  # type: ignore[index]
+
+
+def test_database_restore_integrity_detects_changed_release_relationships(
+    auth_session_factory: sessionmaker[Session],
+    empty_postgresql_database_url: str,
+) -> None:
+    seeded = _seed_current_release(auth_session_factory)
+    with auth_session_factory.begin() as session:
+        edge = session.get(LineageEdge, seeded["edge_id"])
+        assert edge is not None
+        edge.parent_compound_id = None
+
+    aggregate = _safe_database_counts(empty_postgresql_database_url)
+
+    assert aggregate["integrity"]["invalid_pair_endpoints"] > 0  # type: ignore[index]
+
+
 def test_restore_report_requires_complete_scientific_baseline_and_evidence(
     monkeypatch,
     tmp_path: Path,
@@ -107,7 +407,7 @@ def test_restore_report_requires_complete_scientific_baseline_and_evidence(
     }
     monkeypatch.setattr(
         "leadtrace.ops.restore.verify_restored_system._safe_database_counts",
-        lambda _: {
+        lambda _, **__: {
             "counts": expected["counts"],
             "integrity": expected["integrity_expectations"],
             "physical_counts": {"papers": 672, "releases": 1, "audit_events": 10},
@@ -187,7 +487,7 @@ def test_restore_report_fails_when_any_integrity_expectation_differs(
     }
     monkeypatch.setattr(
         "leadtrace.ops.restore.verify_restored_system._safe_database_counts",
-        lambda _: {
+        lambda _, **__: {
             "counts": expected["counts"],
             "integrity": {"self_loops": 1},
             "physical_counts": {"papers": 672, "releases": 1, "audit_events": 1},
