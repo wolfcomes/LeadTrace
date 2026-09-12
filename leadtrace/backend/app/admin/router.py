@@ -19,7 +19,7 @@ from app.evidence.models import Evidence
 from app.health.service import HealthService
 from app.imports.models import ImportAssetLink, ImportBatch
 from app.imports.service import BaselineImporter, ImportValidationError
-from app.jobs.models import CropJob, CropJobStatus
+from app.jobs.models import CropJob
 from app.lineages.models import Lineage, LineageEdge
 from app.papers.models import Paper
 from app.revisions.models import ObjectRevision
@@ -244,56 +244,6 @@ def create_admin_router(settings: Settings, *, database_probe: Any | None = None
                 for event in filtered[offset : offset + limit]
             ]
 
-    @router.get("/jobs", response_model=list[dict[str, object]])
-    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
-    def list_jobs(
-        status: CropJobStatus | None = None,
-        session: Session = Depends(get_db_session),
-        principal: Principal = Depends(require_admin),
-    ) -> list[dict[str, object]]:
-        with session.begin():
-            statement = select(CropJob).order_by(CropJob.created_at.desc())
-            if status is not None:
-                statement = statement.where(CropJob.status == status)
-            return [_job_payload(job) for job in session.scalars(statement)]
-
-    @router.post("/jobs/{job_id}/retry")
-    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
-    def retry_job(
-        job_id: UUID,
-        request: Request,
-        session: Session = Depends(get_db_session),
-        principal: Principal = Depends(require_admin),
-        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
-        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    ) -> dict[str, object]:
-        require_request_csrf(principal, csrf_token, settings.session_secret.get_secret_value())
-        if not idempotency_key:
-            raise HTTPException(status_code=422, detail="Idempotency-Key is required")
-        cache: dict[str, str] = getattr(request.app.state, "admin_retry_idempotency", {})
-        request.app.state.admin_retry_idempotency = cache
-        cache_key = f"{principal.user_id}:{job_id}:{idempotency_key}"
-        if cache_key in cache:
-            with session.begin():
-                job = session.get(CropJob, job_id)
-                if job is None:
-                    raise HTTPException(status_code=404, detail="Job not found")
-                return _job_payload(job)
-        with session.begin():
-            job = session.get(CropJob, job_id)
-            if job is None:
-                raise HTTPException(status_code=404, detail="Job not found")
-            if job.status is not CropJobStatus.FAILED:
-                raise HTTPException(status_code=409, detail="Only failed jobs can be retried")
-            job.status = CropJobStatus.PENDING
-            job.error_message = None
-            job.started_at = None
-            job.completed_at = None
-            session.flush()
-            payload = _job_payload(job)
-        cache[cache_key] = str(job_id)
-        return payload
-
     @router.get("/system")
     @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
     def system(
@@ -313,21 +263,6 @@ def _database_probe(database_url: str) -> bool:
     from app.health.router import probe_database
 
     return probe_database(database_url)
-
-
-def _job_payload(job: CropJob) -> dict[str, object]:
-    return {
-        "id": str(job.id),
-        "status": job.status.value,
-        "input_hash": job.input_hash,
-        "source_pdf_sha256": job.source_pdf_sha256,
-        "page_number": job.page_number,
-        "error_message": job.error_message,
-        "created_at": job.created_at.isoformat(),
-        "started_at": job.started_at.isoformat() if job.started_at else None,
-        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-        "asset_id": str(job.asset_id) if job.asset_id else None,
-    }
 
 
 __all__ = ["create_admin_router"]

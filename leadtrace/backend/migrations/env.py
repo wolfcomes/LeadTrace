@@ -18,6 +18,7 @@ from app.evidence import models as evidence_models  # noqa: F401
 from app.imports import models as import_models  # noqa: F401
 from app.jobs import models as job_models  # noqa: F401
 from app.lineages import models as lineage_models  # noqa: F401
+from app.maintenance import models as maintenance_models  # noqa: F401
 from app.papers import models as paper_models  # noqa: F401
 from app.revisions import models as revision_models  # noqa: F401
 from app.releases import models as release_models  # noqa: F401

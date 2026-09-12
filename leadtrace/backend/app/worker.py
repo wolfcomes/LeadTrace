@@ -15,4 +15,10 @@ celery_app.conf.update(
     accept_content=["json"],
     timezone="UTC",
     enable_utc=True,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    worker_cancel_long_running_tasks_on_connection_loss=True,
+    worker_prefetch_multiplier=1,
+    broker_connection_retry_on_startup=True,
+    broker_transport_options={"visibility_timeout": 600},
 )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 
@@ -16,6 +16,8 @@ from app.database import DatabaseResources, bootstrap_database
 from app.documents.router import create_documents_router
 from app.auth.router import create_auth_router
 from app.health.router import DatabaseProbe, create_health_router, probe_database
+from app.jobs.router import create_jobs_router
+from app.maintenance.service import enforce_maintenance_mode
 from app.papers.router import create_papers_router
 from app.releases.router import create_releases_router
 from app.reviews.router import create_reviews_router
@@ -59,6 +61,7 @@ def create_app(
         docs_url="/api/docs" if runtime_settings.environment != "production" else None,
         redoc_url=None,
         lifespan=lifespan,
+        dependencies=[Depends(enforce_maintenance_mode)],
     )
     application.state.settings = runtime_settings
     install_api_error_handling(application)
@@ -74,6 +77,7 @@ def create_app(
     application.include_router(
         create_admin_router(runtime_settings, database_probe=database_probe),
     )
+    application.include_router(create_jobs_router(runtime_settings))
     application.include_router(create_assets_router())
     application.include_router(
         create_approvals_router(runtime_settings.session_secret.get_secret_value())

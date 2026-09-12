@@ -4,6 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.assets.models import Asset, AssetAccessLevel, AssetCategory, AssetIntegrityState
@@ -11,7 +12,7 @@ from app.config import Settings
 from app.database import DatabaseResources
 from app.jobs.models import CropJob, CropJobStatus
 from app.main import create_app
-from app.users.models import UserRole
+from app.users.models import User, UserRole
 from app.users.service import UserService
 
 
@@ -24,14 +25,18 @@ def _client(
     factory: sessionmaker[Session],
 ) -> TestClient:
     with factory.begin() as session:
-        admin = UserService().create_user(
-            session,
-            username="admin.console",
-            display_name="Admin Console",
-            role=UserRole.ADMIN,
-            initial_password=PASSWORD,
+        admin = session.scalar(
+            select(User).where(User.normalized_username == "admin.console")
         )
-        admin.must_change_password = False
+        if admin is None:
+            admin = UserService().create_user(
+                session,
+                username="admin.console",
+                display_name="Admin Console",
+                role=UserRole.ADMIN,
+                initial_password=PASSWORD,
+            )
+            admin.must_change_password = False
     settings = Settings(
         _env_file=None,
         environment="test",
@@ -136,6 +141,8 @@ def test_admin_failed_job_retry_reuses_idempotency_key(
             renderer_version="test",
             status=CropJobStatus.FAILED,
             error_message="render failed",
+            attempt_count=3,
+            max_attempts=3,
         )
         session.add(job)
         session.flush()
@@ -147,9 +154,23 @@ def test_admin_failed_job_retry_reuses_idempotency_key(
         first = client.post(f"/api/v1/admin/jobs/{job_id}/retry", headers=headers)
         second = client.post(f"/api/v1/admin/jobs/{job_id}/retry", headers=headers)
 
-    assert first.status_code == second.status_code == 200
-    assert first.json()["id"] == second.json()["id"] == str(job_id)
+    with _client(
+        tmp_path, empty_postgresql_database_url, auth_session_factory
+    ) as restarted_client:
+        csrf = _login(restarted_client)
+        after_restart = restarted_client.post(
+            f"/api/v1/admin/jobs/{job_id}/retry",
+            headers={"X-CSRF-Token": csrf, "Idempotency-Key": "retry-001"},
+        )
+
+    assert first.status_code == second.status_code == after_restart.status_code == 200
+    assert first.json()["id"] == second.json()["id"] == after_restart.json()["id"] == str(job_id)
     assert first.json()["status"] == "pending"
+    assert first.json()["attempt_count"] == 3
+    assert first.json()["max_attempts"] == 6
+    assert first.json()["dispatched_at"] is None
+    assert first.json()["heartbeat_at"] is None
+    assert after_restart.json()["max_attempts"] == 6
 
 
 def test_admin_audit_endpoint_supports_action_and_actor_filters(

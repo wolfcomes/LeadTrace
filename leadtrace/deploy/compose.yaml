@@ -81,7 +81,9 @@ services:
     build:
       context: ../backend
     restart: unless-stopped
-    command: ["celery", "-A", "app.worker:celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    init: true
+    stop_grace_period: 30s
+    command: ["celery", "-A", "app.worker:celery_app", "worker", "--loglevel=INFO", "--concurrency=2", "--prefetch-multiplier=1"]
     environment:
       LEADTRACE_ENVIRONMENT: development
       LEADTRACE_DATABASE_URL: postgresql+psycopg://leadtrace:${POSTGRES_PASSWORD:-leadtrace-development-only}@postgres/leadtrace
@@ -96,6 +98,12 @@ services:
         condition: service_healthy
     volumes:
       - leadtrace_assets:/var/lib/leadtrace/assets
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout=5 | grep -q pong"]
+      interval: 15s
+      timeout: 8s
+      retries: 4
+      start_period: 20s
     networks:
       - backend
 
@@ -119,7 +127,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
       - redis_data:/data
     healthcheck:

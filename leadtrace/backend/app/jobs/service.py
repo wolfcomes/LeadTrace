@@ -16,6 +16,7 @@ from app.assets.models import Asset, AssetAccessLevel, AssetCategory, AssetInteg
 from app.assets.service import AssetService
 from app.assets.storage import LocalAssetStore, StoredFile
 from app.jobs.models import CropJob, CropJobStatus
+from app.maintenance.service import MaintenanceService
 
 
 class CropValidationError(ValueError):
@@ -124,7 +125,10 @@ class CropService:
         created_by_id: UUID | None = None,
     ) -> CropResult:
         input_hash = request.input_hash()
+        MaintenanceService().require_writes_enabled(session)
         job = session.scalar(select(CropJob).where(CropJob.input_hash == input_hash).with_for_update())
+        if job is not None and job.status is CropJobStatus.SUPERSEDED:
+            raise CropValidationError("Crop job was superseded by newer work")
         if job is not None and job.status is CropJobStatus.COMPLETED and job.asset_id is not None:
             asset = session.get(Asset, job.asset_id)
             if asset is not None and self.store.path_for(asset.storage_key).is_file():
