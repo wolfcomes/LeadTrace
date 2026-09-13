@@ -13,6 +13,7 @@ from app.activities.models import Activity
 from app.admin.papers import (
     AdminPaperCatalog,
     AdminPaperNotFound,
+    AdminPaperSourceIntegrityError,
     AdminPaperSourceNotFound,
     AdminPaperWorkflowState,
     PublicationStatus,
@@ -242,6 +243,11 @@ def create_admin_router(settings: Settings, *, database_probe: Any | None = None
                 )
         except AdminPaperSourceNotFound as error:
             raise HTTPException(status_code=404, detail="Import candidate not found") from error
+        except AdminPaperSourceIntegrityError as error:
+            raise HTTPException(
+                status_code=409,
+                detail="Import candidate Paper manifest is inconsistent",
+            ) from error
         return {"request_id": request_id_for(request), **payload}
 
     @router.get("/papers/{paper_id}", response_model=dict[str, object])
@@ -262,6 +268,11 @@ def create_admin_router(settings: Settings, *, database_probe: Any | None = None
                 )
         except (AdminPaperNotFound, AdminPaperSourceNotFound) as error:
             raise HTTPException(status_code=404, detail="Paper not found") from error
+        except AdminPaperSourceIntegrityError as error:
+            raise HTTPException(
+                status_code=409,
+                detail="Import candidate Paper manifest is inconsistent",
+            ) from error
         return {"request_id": request_id_for(request), **payload}
 
     @router.get("/files", response_model=list[dict[str, object]])

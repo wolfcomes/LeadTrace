@@ -584,6 +584,13 @@ def test_database_rejects_submitted_content_and_item_mutation(
         assert submitted_changeset is not None
         base_release = session.get(Release, submitted_changeset.base_release_id)
         assert base_release is not None
+        service.transition_changeset(
+            session,
+            changeset_id=changeset_id,
+            actor_id=base_release.published_by_id,
+            expected_version=submitted_changeset.version,
+            next_state=WorkflowState.APPROVED,
+        )
         other_reviewer = UserService().create_user(
             session,
             username=f"move-target-{uuid4().hex[:8]}",

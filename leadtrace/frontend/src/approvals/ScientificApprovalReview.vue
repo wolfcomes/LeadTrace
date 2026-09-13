@@ -108,6 +108,9 @@ function rows(name: string): Snapshot[] {
 }
 
 const pageCount = computed(() => Math.max(1, ...reviewRegions.value.map((region) => region.pageNumber)));
+const sourcePdfUrl = computed(() => (
+  `/api/v1/papers/${props.changeset.paper_id}/source-pdf?kind=article&release_id=${props.changeset.base_release_id}`
+));
 
 const compoundBindings = computed(() => rows("visual_object_compounds").map((row) => ({
   id: String(row.id),
@@ -186,7 +189,7 @@ const lineageComparisons = computed(() => props.diffs
     <section v-if="reviewRegions.length" class="review-section" aria-label="PDF Region overlay">
       <h3>PDF Region overlay</h3>
       <PdfReviewCanvas
-        :pdf-url="`/api/v1/papers/${changeset.paper_id}/source-pdf?kind=article`"
+        :pdf-url="sourcePdfUrl"
         :page-count="pageCount"
         :regions="reviewRegions"
         :read-only="true"

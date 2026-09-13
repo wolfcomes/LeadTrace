@@ -42,9 +42,8 @@ class ReviewTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_review_tasks_assignee_status", "assigned_reviewer_id", "status"),
         Index("ix_review_tasks_paper_status", "paper_id", "status"),
         Index(
-            "uq_review_tasks_active_assignment",
+            "uq_review_tasks_active_paper",
             "paper_id",
-            "assigned_reviewer_id",
             unique=True,
             postgresql_where=text("status <> 'completed'"),
         ),

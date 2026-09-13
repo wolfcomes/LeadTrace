@@ -10,6 +10,7 @@ import {
   type AdminPaperDetail,
   type AdminUser,
 } from "./api";
+import { adminPaperWorkflowLabel } from "./paperWorkflow";
 
 
 type ViewState = "loading" | "ready" | "error" | "not-found";
@@ -154,7 +155,7 @@ watch(
 
         <aside class="review-panel panel">
           <p class="eyebrow">TRACEABLE REVIEW</p><h2>人工核验与修改</h2>
-          <div class="current-state"><span>当前状态</span><strong>{{ detail.paper.workflow_state }}</strong></div>
+          <div class="current-state"><span>当前状态</span><strong>{{ adminPaperWorkflowLabel(detail.paper.workflow_state) }}</strong></div>
           <template v-if="reviewEntry">
             <p v-if="detail.paper.task">已分配给 {{ detail.paper.task.assignee_display_name }}。所有修改将记录在 changeset 中，可审批、追溯和回滚。</p>
             <RouterLink class="button-primary full" data-open-review :to="reviewEntry">进入修改工作区</RouterLink>

@@ -67,6 +67,8 @@ def create_documents_router() -> APIRouter:
         paper_id: UUID,
         request: Request,
         kind: DocumentKind = Query(default=DocumentKind.ARTICLE),
+        candidate_id: UUID | None = Query(default=None),
+        release_id: UUID | None = Query(default=None),
         range_header: str | None = Header(default=None, alias="Range"),
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
@@ -85,6 +87,8 @@ def create_documents_router() -> APIRouter:
                     principal=principal,
                     store=store,
                     range_header=range_header,
+                    candidate_id=candidate_id,
+                    release_id=None,
                 )
                 status_code = 206 if range_header is not None else 200
                 audit_service.append_event(
@@ -95,7 +99,7 @@ def create_documents_router() -> APIRouter:
                     target_id=document.asset.id,
                     paper_id=document.paper.id,
                     changeset_id=None,
-                    release_id=None,
+                    release_id=release_id,
                     ip_address=resolve_remote_address(request, settings),
                     request_id=request_id_for(request),
                     result="success",

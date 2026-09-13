@@ -54,6 +54,7 @@ class CropApiFixture:
     paper_id: UUID
     region_id: UUID
     reviewer_id: UUID
+    second_reviewer_id: UUID
     reviewer_username: str
     second_reviewer_username: str
     unassigned_reviewer_username: str
@@ -160,13 +161,6 @@ def crop_api_fixture(
                 created_by_id=admin.id,
             )
         )
-        session.add(
-            ReviewTask(
-                paper_id=paper.id,
-                assigned_reviewer_id=second_reviewer.id,
-                created_by_id=admin.id,
-            )
-        )
         region = RegionService().create_region(
             session,
             paper_id=paper.id,
@@ -210,6 +204,7 @@ def crop_api_fixture(
             paper_id=paper_id,
             region_id=region_id,
             reviewer_id=reviewer.id,
+            second_reviewer_id=second_reviewer.id,
             reviewer_username=reviewer.username,
             second_reviewer_username=second_reviewer.username,
             unassigned_reviewer_username=unassigned_reviewer.username,
@@ -352,7 +347,7 @@ def test_crop_enqueue_requires_csrf_and_an_active_paper_assignment(
         assert session.scalar(select(func.count()).select_from(CropJob)) == 0
 
 
-def test_each_authorized_reviewer_can_track_a_globally_reused_crop_job(
+def test_reassigned_reviewer_can_track_a_globally_reused_crop_job(
     crop_api_fixture: CropApiFixture,
 ) -> None:
     fixture = crop_api_fixture
@@ -368,6 +363,13 @@ def test_each_authorized_reviewer_can_track_a_globally_reused_crop_job(
         json=payload,
     )
     assert first.status_code == 202
+
+    with fixture.session_factory.begin() as session:
+        task = session.scalar(
+            select(ReviewTask).where(ReviewTask.paper_id == fixture.paper_id)
+        )
+        assert task is not None
+        task.assigned_reviewer_id = fixture.second_reviewer_id
 
     fixture.client.cookies.clear()
     second_csrf = _login(fixture.client, fixture.second_reviewer_username)

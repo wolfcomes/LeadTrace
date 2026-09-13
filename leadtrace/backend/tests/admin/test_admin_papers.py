@@ -5,7 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.approvals.service import ApprovalService
@@ -138,7 +138,9 @@ def _seed_five_states(session: Session) -> dict[str, Paper]:
         metrics={
             "dataset": {
                 "dataset_class": "ai_extracted_baseline",
-                "verification_status": "unverified",
+                # AI baselines must stay visibly unverified even if stale
+                # metadata contains a contradictory value.
+                "verification_status": "human_verified",
             }
         },
         published_by_id=admin.id,
@@ -249,15 +251,64 @@ def test_admin_catalog_lists_and_filters_all_five_workflow_states(
 ) -> None:
     with auth_session_factory.begin() as session:
         papers = _seed_five_states(session)
+        batch = ImportBatch(
+            source_fingerprint="9" * 64,
+            status="completed",
+            counts={"corpus_papers": 1},
+            integrity={},
+            asset_linkage={},
+            completed_at=datetime.now(UTC),
+        )
+        session.add(batch)
+        session.flush()
+        candidate = ImportReleaseCandidate(
+            import_batch_id=batch.id,
+            status="imported_baseline",
+            manifest={"counts": {"corpus_papers": 1}},
+            is_current=False,
+        )
+        session.add(candidate)
+        session.add(
+            ImportStagingRecord(
+                import_batch_id=batch.id,
+                record_type="paper",
+                original_id=papers["ai_baseline_in_review"].paper_key,
+                source_file="candidate/paper.json",
+                source_row_locator="1",
+                source_hash="8" * 64,
+                raw_values={},
+                normalized_values={
+                    "paper_id": papers["ai_baseline_in_review"].paper_key,
+                    "title_guess": "New unpublished candidate article",
+                },
+            )
+        )
+        session.flush()
+        candidate_id = candidate.id
 
+    release_projection_statements: list[str] = []
+
+    def capture_release_projection(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ) -> None:
+        if "release_items" in statement and "object_revisions" in statement:
+            release_projection_statements.append(statement)
+
+    engine = auth_session_factory.kw["bind"]
+    event.listen(engine, "before_cursor_execute", capture_release_projection)
     with _client(
         tmp_path, empty_postgresql_database_url, auth_session_factory
     ) as client:
         _login(client, "admin.catalog")
         response = client.get("/api/v1/admin/papers?page=1&page_size=20")
+        event.remove(engine, "before_cursor_execute", capture_release_projection)
         filtered = client.get(
             "/api/v1/admin/papers",
             params={"workflow_state": "human_review_pending_approval"},
+        )
+        candidate_response = client.get(
+            "/api/v1/admin/papers",
+            params={"candidate_id": str(candidate_id)},
         )
 
     assert response.status_code == 200
@@ -281,15 +332,26 @@ def test_admin_catalog_lists_and_filters_all_five_workflow_states(
     assert by_id[str(papers["admin_approved"].id)]["changeset"][
         "workflow_state"
     ] == "approved"
+    assert len(release_projection_statements) >= 2
+    assert all(
+        "release_items.object_kind" in statement
+        or "release_items.paper_id" in statement
+        for statement in release_projection_statements
+    )
 
     assert filtered.status_code == 200
     assert filtered.json()["pagination"]["total_items"] == 1
     assert filtered.json()["items"][0]["workflow_state"] == (
         "human_review_pending_approval"
     )
+    candidate_item = candidate_response.json()["items"][0]
+    assert candidate_response.json()["source"]["publication_status"] == "unpublished"
+    assert candidate_item["publication_status"] == "unpublished"
+    assert candidate_item["can_modify"] is False
+    assert candidate_item["modification_blocker"] == "baseline_must_be_published"
 
 
-def test_admin_catalog_reads_an_unpublished_candidate_and_initial_database_paper(
+def test_admin_catalog_isolates_an_unpublished_candidate_from_other_database_papers(
     tmp_path: Path,
     empty_postgresql_database_url: str,
     auth_session_factory: sessionmaker[Session],
@@ -317,8 +379,9 @@ def test_admin_catalog_reads_an_unpublished_candidate_and_initial_database_paper
             is_current=False,
         )
         session.add(candidate)
-        session.add(
-            ImportStagingRecord(
+        session.add_all(
+            [
+                ImportStagingRecord(
                 import_batch_id=batch.id,
                 record_type="paper",
                 original_id=imported.paper_key,
@@ -331,20 +394,74 @@ def test_admin_catalog_reads_an_unpublished_candidate_and_initial_database_paper
                     "title_guess": "Imported candidate article",
                     "filename_year": "2023",
                 },
-            )
+                ),
+                ImportStagingRecord(
+                    import_batch_id=batch.id,
+                    record_type="compound",
+                    original_id="compound-imported-1",
+                    source_file="/private/source/compound.csv",
+                    source_row_locator="2",
+                    source_hash=uuid4().hex + uuid4().hex,
+                    raw_values={},
+                    normalized_values={"paper_id": imported.paper_key},
+                ),
+            ]
         )
         session.flush()
         candidate_id = candidate.id
 
-    with _client(
-        tmp_path, empty_postgresql_database_url, auth_session_factory
-    ) as client:
-        _login(client, "admin.catalog")
-        response = client.get(
-            "/api/v1/admin/papers",
-            params={"candidate_id": str(candidate_id)},
-        )
-        detail = client.get(f"/api/v1/admin/papers/{imported.id}")
+    staging_statements: list[str] = []
+
+    def capture_staging_sql(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ) -> None:
+        if "import_staging_records" in statement:
+            staging_statements.append(statement)
+
+    engine = auth_session_factory.kw["bind"]
+    event.listen(engine, "before_cursor_execute", capture_staging_sql)
+    try:
+        with _client(
+            tmp_path, empty_postgresql_database_url, auth_session_factory
+        ) as client:
+            _login(client, "admin.catalog")
+            response = client.get(
+                "/api/v1/admin/papers",
+                params={"candidate_id": str(candidate_id)},
+            )
+            event.remove(engine, "before_cursor_execute", capture_staging_sql)
+            detail = client.get(f"/api/v1/admin/papers/{imported.id}")
+            excluded_detail = client.get(
+                f"/api/v1/admin/papers/{initial.id}",
+                params={"candidate_id": str(candidate_id)},
+            )
+            with auth_session_factory.begin() as session:
+                stored_candidate = session.get(ImportReleaseCandidate, candidate_id)
+                assert stored_candidate is not None
+                stored_candidate.manifest = {
+                    **stored_candidate.manifest,
+                    "counts": {"corpus_papers": 2},
+                }
+            inconsistent = client.get(
+                "/api/v1/admin/papers",
+                params={"candidate_id": str(candidate_id)},
+            )
+            with auth_session_factory.begin() as session:
+                stored_candidate = session.get(ImportReleaseCandidate, candidate_id)
+                stored_paper = session.get(Paper, imported.id)
+                assert stored_candidate is not None and stored_paper is not None
+                stored_candidate.manifest = {
+                    **stored_candidate.manifest,
+                    "counts": {"corpus_papers": 1},
+                }
+                session.delete(stored_paper)
+            missing_database_paper = client.get(
+                "/api/v1/admin/papers",
+                params={"candidate_id": str(candidate_id)},
+            )
+    finally:
+        if event.contains(engine, "before_cursor_execute", capture_staging_sql):
+            event.remove(engine, "before_cursor_execute", capture_staging_sql)
 
     assert response.status_code == 200
     payload = response.json()
@@ -352,8 +469,15 @@ def test_admin_catalog_reads_an_unpublished_candidate_and_initial_database_paper
     assert payload["source"]["candidate_id"] == str(candidate_id)
     assert payload["source"]["publication_status"] == "unpublished"
     assert payload["source"]["verification_status"] == "unverified"
+    assert payload["pagination"]["total_items"] == 1
     assert payload["status_counts"]["ai_baseline_unassigned"] == 1
-    assert payload["status_counts"]["initial"] == 1
+    assert payload["status_counts"]["initial"] == 0
+    assert payload["items"][0]["quality"]["compounds"] == 1
+    assert len(staging_statements) >= 2
+    assert all(
+        "record_type" in statement or "normalized_values" in statement
+        for statement in staging_statements
+    )
     assert "private/source" not in response.text
 
     assert detail.status_code == 200
@@ -362,7 +486,49 @@ def test_admin_catalog_reads_an_unpublished_candidate_and_initial_database_paper
     assert detail.json()["paper"]["modification_blocker"] == (
         "baseline_must_be_published"
     )
+    assert detail.json()["source_pdf_url"].endswith(
+        f"kind=article&candidate_id={candidate_id}"
+    )
     assert "private/source" not in detail.text
+    assert excluded_detail.status_code == 404
+    assert inconsistent.status_code == 409
+    assert missing_database_paper.status_code == 409
+
+
+def test_admin_catalog_pairs_a_new_active_task_only_with_its_own_changeset(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    with auth_session_factory.begin() as session:
+        papers = _seed_five_states(session)
+        admin = session.scalar(select(User).where(User.username == "admin.catalog"))
+        reviewer = session.scalar(
+            select(User).where(User.username == "reviewer.catalog")
+        )
+        assert admin is not None and reviewer is not None
+        new_task = ReviewService().create_task(
+            session,
+            paper_id=papers["admin_approved"].id,
+            assignee_id=reviewer.id,
+            created_by_id=admin.id,
+            priority=80,
+        )
+        new_task_id = new_task.id
+        paper_id = papers["admin_approved"].id
+
+    with _client(
+        tmp_path, empty_postgresql_database_url, auth_session_factory
+    ) as client:
+        _login(client, "admin.catalog")
+        detail = client.get(f"/api/v1/admin/papers/{paper_id}")
+
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["paper"]["workflow_state"] == "ai_baseline_in_review"
+    assert payload["paper"]["task"]["id"] == str(new_task_id)
+    assert payload["paper"]["changeset"] is None
+    assert payload["review_entry"] == f"/review/changesets?task={new_task_id}"
 
 
 def test_admin_catalog_is_forbidden_to_reviewer(

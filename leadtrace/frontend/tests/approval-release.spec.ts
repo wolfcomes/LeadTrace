@@ -313,6 +313,9 @@ describe("approval and release console", () => {
     expect(operations).toEqual(expect.arrayContaining(["新增", "修改", "删除"]));
     expect(operations).toHaveLength(4);
     expect(wrapper.findAll(".is-remove")).toHaveLength(2);
+    expect(wrapper.get(".pdf-fallback").attributes("src")).toContain(
+      `release_id=${scientificChangeset.base_release_id}`,
+    );
     expect(requestedPaths).toContain(`/api/v1/approvals/${changesetId}/scientific-evidence`);
     expect(requestedPaths).not.toContain(`/api/v1/papers/${scientificChangeset.paper_id}/regions`);
   });

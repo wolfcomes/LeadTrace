@@ -241,7 +241,10 @@ class ReviewService:
         created_by_id: UUID,
         priority: int = 0,
     ) -> ReviewTask:
-        if session.get(Paper, paper_id) is None:
+        paper = session.scalar(
+            select(Paper).where(Paper.id == paper_id).with_for_update()
+        )
+        if paper is None:
             raise ReviewNotFound("Paper not found")
         assignee = session.get(User, assignee_id)
         creator = session.get(User, created_by_id)
@@ -259,13 +262,12 @@ class ReviewService:
             select(ReviewTask.id)
             .where(
                 ReviewTask.paper_id == paper_id,
-                ReviewTask.assigned_reviewer_id == assignee_id,
                 ReviewTask.status != ReviewTaskStatus.COMPLETED,
             )
             .limit(1)
         )
         if existing_assignment is not None:
-            raise InvalidReview("Reviewer already has an active task for this Paper")
+            raise InvalidReview("Paper already has an active review task")
         task = ReviewTask(
             paper_id=paper_id,
             assigned_reviewer_id=assignee_id,

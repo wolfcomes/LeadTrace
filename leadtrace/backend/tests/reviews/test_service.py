@@ -120,6 +120,26 @@ def _add_paper_item(session, service, changeset, reviewer, paper, paper_revision
     )
 
 
+def test_paper_accepts_only_one_active_review_task(auth_session_factory) -> None:
+    with auth_session_factory.begin() as session:
+        reviewer, other, admin, paper, _, _ = _setup(session)
+        service = ReviewService()
+        service.create_task(
+            session,
+            paper_id=paper.id,
+            assignee_id=reviewer.id,
+            created_by_id=admin.id,
+        )
+
+        with pytest.raises(InvalidReview, match="already has an active review task"):
+            service.create_task(
+                session,
+                paper_id=paper.id,
+                assignee_id=other.id,
+                created_by_id=admin.id,
+            )
+
+
 def test_item_delete_preserves_paper_field_anchor_but_rejects_unbound_object_comment(
     auth_session_factory,
 ) -> None:

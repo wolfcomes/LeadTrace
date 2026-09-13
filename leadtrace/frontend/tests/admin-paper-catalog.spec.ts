@@ -142,7 +142,7 @@ describe("Admin Paper catalog", () => {
           request_id: "admin-paper-detail",
           source: { ...source, kind: "release", release_id: "90000000-0000-4000-8000-000000000001", publication_status: "published" },
           paper: detailPaper,
-          source_pdf_url: `/api/v1/papers/${paperId}/source-pdf?kind=article`,
+          source_pdf_url: `/api/v1/papers/${paperId}/source-pdf?kind=article&release_id=90000000-0000-4000-8000-000000000001`,
           review_entry: null,
         });
       }
@@ -179,9 +179,11 @@ describe("Admin Paper catalog", () => {
 
     expect(wrapper.text()).toContain("Lead optimization article 1");
     expect(wrapper.text()).toContain("10.1000/1");
+    expect(wrapper.text()).toContain("AI 提取基线（未分配）");
+    expect(wrapper.text()).not.toContain("ai_baseline_unassigned");
     expect(wrapper.get("[data-quality-compounds]").text()).toContain("12");
     expect(wrapper.get("[data-source-pdf]").attributes("href")).toBe(
-      `/api/v1/papers/${paperId}/source-pdf?kind=article`,
+      `/api/v1/papers/${paperId}/source-pdf?kind=article&release_id=90000000-0000-4000-8000-000000000001`,
     );
     await wrapper.get("#paper-reviewer").setValue(reviewerId);
     await wrapper.get("[data-assignment-form]").trigger("submit");

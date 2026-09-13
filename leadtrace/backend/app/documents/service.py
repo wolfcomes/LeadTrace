@@ -20,9 +20,15 @@ from app.assets.storage import (
     InspectedFile,
     LocalAssetStore,
 )
-from app.imports.models import ImportAssetLink
+from app.imports.models import (
+    ImportAssetLink,
+    ImportReleaseCandidate,
+    ImportStagingRecord,
+)
 from app.papers.models import Paper
+from app.releases.models import Release, ReleaseItem
 from app.reviews.models import ReviewTask, ReviewTaskStatus
+from app.revisions.models import ObjectKind
 from app.security.permissions import enforce_permission
 from app.security.policies import Action, Principal, ResourceScope
 from app.users.models import UserRole
@@ -122,7 +128,14 @@ class DocumentService:
         principal: Principal,
         store: LocalAssetStore,
         range_header: str | None,
+        candidate_id: UUID | None = None,
+        release_id: UUID | None = None,
     ) -> ProtectedDocument:
+        if candidate_id is not None and (
+            release_id is not None or principal.role is not UserRole.ADMIN
+        ):
+            raise DocumentNotFound
+
         paper = session.get(Paper, paper_id)
         if paper is None:
             raise DocumentNotFound
@@ -144,7 +157,58 @@ class DocumentService:
             ),
         )
 
-        asset = session.scalar(
+        import_batch_id: UUID | None = None
+        if candidate_id is not None:
+            candidate = session.get(ImportReleaseCandidate, candidate_id)
+            if candidate is None:
+                raise DocumentNotFound
+            belongs_to_candidate = session.scalar(
+                select(ImportStagingRecord.id)
+                .where(
+                    ImportStagingRecord.import_batch_id == candidate.import_batch_id,
+                    ImportStagingRecord.record_type == "paper",
+                    ImportStagingRecord.original_id == paper.paper_key,
+                )
+                .limit(1)
+            )
+            if belongs_to_candidate is None:
+                raise DocumentNotFound
+            import_batch_id = candidate.import_batch_id
+        elif release_id is not None:
+            release = session.get(Release, release_id)
+            if release is None or not release.manifest_finalized:
+                raise DocumentNotFound
+            belongs_to_release = session.scalar(
+                select(ReleaseItem.id)
+                .where(
+                    ReleaseItem.release_id == release.id,
+                    ReleaseItem.paper_id == paper.id,
+                    ReleaseItem.object_kind == ObjectKind.PAPER,
+                )
+                .limit(1)
+            )
+            if belongs_to_release is None:
+                raise DocumentNotFound
+            baseline = release.metrics.get("baseline")
+            batch_value = (
+                baseline.get("batch_id") if isinstance(baseline, dict) else None
+            )
+            if batch_value is not None:
+                try:
+                    import_batch_id = UUID(str(batch_value))
+                except ValueError:
+                    raise DocumentNotFound from None
+            elif release.source_candidate_id is not None:
+                source_candidate = session.get(
+                    ImportReleaseCandidate,
+                    release.source_candidate_id,
+                )
+                if source_candidate is not None:
+                    import_batch_id = source_candidate.import_batch_id
+            if import_batch_id is None:
+                raise DocumentNotFound
+
+        asset_statement = (
             select(Asset)
             .join(ImportAssetLink, ImportAssetLink.asset_id == Asset.id)
             .where(
@@ -157,6 +221,11 @@ class DocumentService:
             .order_by(Asset.created_at.desc(), ImportAssetLink.id.desc())
             .limit(1)
         )
+        if import_batch_id is not None:
+            asset_statement = asset_statement.where(
+                ImportAssetLink.import_batch_id == import_batch_id
+            )
+        asset = session.scalar(asset_statement)
         if asset is None:
             raise DocumentNotFound
         if (

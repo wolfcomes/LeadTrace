@@ -82,13 +82,13 @@ def test_empty_postgresql_database_upgrades_to_single_alembic_head(
         engine.dispose()
 
 
-def test_initial_baseline_release_migration_contract(
+def test_admin_review_workflow_migration_contract(
     empty_postgresql_database_url: str,
 ) -> None:
     config = _alembic_config(empty_postgresql_database_url)
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "0016_initial_baseline_release"
+    assert script.get_current_head() == "0017_unique_active_review_task"
     command.upgrade(config, "head")
 
     engine = create_database_engine(empty_postgresql_database_url)
@@ -144,6 +144,18 @@ def test_initial_baseline_release_migration_contract(
             for column in schema.get_columns("audit_events")
         }
         assert audit_columns["paper_id"]["nullable"] is True
+        review_indexes = {
+            item["name"]: item for item in schema.get_indexes("review_tasks")
+        }
+        active_task_index = review_indexes["uq_review_tasks_active_paper"]
+        assert active_task_index["unique"] is True
+        assert active_task_index["column_names"] == ["paper_id"]
+        predicate = str(
+            active_task_index.get("dialect_options", {}).get(
+                "postgresql_where", ""
+            )
+        )
+        assert "completed" in predicate
     finally:
         engine.dispose()
 

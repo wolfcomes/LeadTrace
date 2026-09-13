@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { ref, watch } from "vue";
 import { useRoute, useRouter, type LocationQueryRaw } from "vue-router";
 
 import { ApiError } from "../api/client";
 import {
   fetchAdminPapers,
   type AdminPaperList,
-  type AdminPaperWorkflow,
 } from "./api";
+import { adminPaperWorkflowLabel, adminPaperWorkflowStates } from "./paperWorkflow";
 
 
 type ViewState = "loading" | "ready" | "error";
@@ -22,18 +22,6 @@ const doi = ref("");
 const workflowState = ref("");
 const publicationStatus = ref("");
 let loadSequence = 0;
-
-const workflowStates: ReadonlyArray<{ value: AdminPaperWorkflow; label: string; short: string }> = [
-  { value: "initial", label: "初始状态", short: "初始" },
-  { value: "ai_baseline_unassigned", label: "AI 提取基线（未分配）", short: "未分配" },
-  { value: "ai_baseline_in_review", label: "AI 提取基线（已分配，人工核验进行中）", short: "核验中" },
-  { value: "human_review_pending_approval", label: "人工核验结束（待批）", short: "待审批" },
-  { value: "admin_approved", label: "Admin 已批准", short: "已批准" },
-];
-
-const statusLabel = computed(() => new Map(
-  workflowStates.map((entry) => [entry.value, entry.label]),
-));
 
 function queryValue(name: string): string {
   const value = route.query[name];
@@ -143,7 +131,7 @@ watch(() => route.fullPath, load, { immediate: true });
 
     <section v-if="payload" class="status-overview" aria-label="文章流程状态统计">
       <button
-        v-for="entry in workflowStates"
+        v-for="entry in adminPaperWorkflowStates"
         :key="entry.value"
         type="button"
         :class="{ active: workflowState === entry.value }"
@@ -161,7 +149,7 @@ watch(() => route.fullPath, load, { immediate: true });
       <label>DOI<input v-model="doi" type="text" placeholder="10.xxxx/…"></label>
       <label>流程状态<select id="admin-paper-workflow" v-model="workflowState">
         <option value="">全部状态</option>
-        <option v-for="entry in workflowStates" :key="entry.value" :value="entry.value">{{ entry.label }}</option>
+        <option v-for="entry in adminPaperWorkflowStates" :key="entry.value" :value="entry.value">{{ entry.label }}</option>
       </select></label>
       <label>发布状态<select v-model="publicationStatus">
         <option value="">全部</option>
@@ -199,7 +187,7 @@ watch(() => route.fullPath, load, { immediate: true });
                 <RouterLink :to="{ name: 'admin-paper-detail', params: { paperId: paper.id }, query: route.query.candidate_id ? { candidate_id: route.query.candidate_id } : {} }">{{ paper.title }}</RouterLink>
                 <small>{{ paper.doi || "无 DOI" }} · {{ paper.year || "年份未知" }}<template v-if="paper.target"> · {{ paper.target }}</template></small>
               </th>
-              <td><span class="workflow-badge" :data-state="paper.workflow_state">{{ statusLabel.get(paper.workflow_state) }}</span></td>
+              <td><span class="workflow-badge" :data-state="paper.workflow_state">{{ adminPaperWorkflowLabel(paper.workflow_state) }}</span></td>
               <td class="quality-cell">
                 <span>{{ paper.quality.compounds }} 分子</span>
                 <span>{{ paper.quality.confirmed_structures }}/{{ paper.quality.structures }} 结构确认</span>

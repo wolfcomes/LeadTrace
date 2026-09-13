@@ -791,13 +791,6 @@ def test_unapproved_visual_binding_deltas_do_not_leak_into_another_release(
 ) -> None:
     with auth_session_factory.begin() as session:
         fixture = _binding_release_fixture(session)
-        draft = _paper_changeset(
-            session,
-            fixture,
-            fixture["reviewer"],
-            title="Unapproved binding draft",
-        )
-        _add_all_binding_deltas(session, fixture, draft)
         approved = _paper_changeset(
             session,
             fixture,
@@ -805,6 +798,13 @@ def test_unapproved_visual_binding_deltas_do_not_leak_into_another_release(
             title="Independent approved change",
         )
         _submit_and_approve(session, fixture, fixture["other"], approved)
+        draft = _paper_changeset(
+            session,
+            fixture,
+            fixture["reviewer"],
+            title="Unapproved binding draft",
+        )
+        _add_all_binding_deltas(session, fixture, draft)
 
         published = publish_approved_changeset(
             session,
@@ -834,12 +834,6 @@ def test_same_binding_can_be_proposed_in_independent_changesets(
             fixture["reviewer"],
             title="First isolated binding draft",
         )
-        second = _paper_changeset(
-            session,
-            fixture,
-            fixture["other"],
-            title="Second isolated binding draft",
-        )
         service = BindingService()
         service.bind_region(
             session,
@@ -848,6 +842,13 @@ def test_same_binding_can_be_proposed_in_independent_changesets(
             changeset_id=first.id,
             actor_id=first.owner_id,
             expected_version=first.version,
+        )
+        _submit_and_approve(session, fixture, fixture["reviewer"], first)
+        second = _paper_changeset(
+            session,
+            fixture,
+            fixture["other"],
+            title="Second isolated binding draft",
         )
         service.bind_region(
             session,
@@ -868,11 +869,17 @@ def test_binding_routes_hide_another_reviewer_changeset_for_every_mutation(
 ) -> None:
     with auth_session_factory.begin() as session:
         fixture = _binding_release_fixture(session)
-        _paper_changeset(
+        attacker = _paper_changeset(
             session,
             fixture,
             fixture["reviewer"],
             title="Attacker paper access",
+        )
+        _submit_and_approve(
+            session,
+            fixture,
+            fixture["reviewer"],
+            attacker,
         )
         victim = _paper_changeset(
             session,
@@ -1474,12 +1481,6 @@ def test_binding_mutations_reject_sources_owned_by_another_draft(
             fixture["reviewer"],
             title="Binding source draft",
         )
-        target_changeset = _paper_changeset(
-            session,
-            fixture,
-            fixture["other"],
-            title="Unrelated binding target draft",
-        )
         binding_service = BindingService()
         region = binding_service.bind_region(
             session,
@@ -1514,6 +1515,18 @@ def test_binding_mutations_reject_sources_owned_by_another_draft(
             changeset_id=owner_changeset.id,
             actor_id=owner_changeset.owner_id,
             expected_version=owner_changeset.version,
+        )
+        _submit_and_approve(
+            session,
+            fixture,
+            fixture["reviewer"],
+            owner_changeset,
+        )
+        target_changeset = _paper_changeset(
+            session,
+            fixture,
+            fixture["other"],
+            title="Unrelated binding target draft",
         )
         update_calls = [
             lambda: binding_service.update_region(
@@ -3147,7 +3160,7 @@ def test_approval_migration_backfills_existing_release_artifact_manifest(
         engine.dispose()
 
 
-def test_approval_migration_downgrade_discards_parallel_draft_binding_deltas(
+def test_approval_migration_downgrade_discards_sequential_changeset_bindings(
     empty_postgresql_database_url,
 ) -> None:
     config = Config("alembic.ini")
@@ -3168,12 +3181,6 @@ def test_approval_migration_downgrade_discards_parallel_draft_binding_deltas(
                 fixture["reviewer"],
                 title="First parallel binding delta",
             )
-            second = _paper_changeset(
-                session,
-                fixture,
-                fixture["other"],
-                title="Second parallel binding delta",
-            )
             first_binding = BindingService().bind_region(
                 session,
                 object_id=fixture["source_object"].id,
@@ -3181,6 +3188,18 @@ def test_approval_migration_downgrade_discards_parallel_draft_binding_deltas(
                 changeset_id=first.id,
                 actor_id=first.owner_id,
                 expected_version=first.version,
+            )
+            _submit_and_approve(
+                session,
+                fixture,
+                fixture["reviewer"],
+                first,
+            )
+            second = _paper_changeset(
+                session,
+                fixture,
+                fixture["other"],
+                title="Second sequential binding delta",
             )
             second_binding = BindingService().bind_region(
                 session,

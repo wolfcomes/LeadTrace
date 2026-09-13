@@ -40,6 +40,10 @@ class AdminPaperSourceNotFound(LookupError):
     """The selected candidate does not exist."""
 
 
+class AdminPaperSourceIntegrityError(RuntimeError):
+    """The selected source does not match its immutable Paper manifest."""
+
+
 class AdminPaperNotFound(LookupError):
     """The selected Paper does not exist in the database catalog."""
 
@@ -140,14 +144,20 @@ class AdminPaperCatalog:
         session: Session,
         candidate_id: UUID | None,
     ) -> _SourceContext:
-        current_release = session.scalar(
-            select(Release).where(Release.is_current.is_(True)).limit(1)
-        )
         if candidate_id is not None:
             candidate = session.get(ImportReleaseCandidate, candidate_id)
             if candidate is None:
                 raise AdminPaperSourceNotFound("Import candidate not found")
-            return _SourceContext(candidate=candidate, release=current_release)
+            candidate_release = session.scalar(
+                select(Release)
+                .where(Release.source_candidate_id == candidate.id)
+                .order_by(Release.published_at.desc(), Release.id.desc())
+                .limit(1)
+            )
+            return _SourceContext(candidate=candidate, release=candidate_release)
+        current_release = session.scalar(
+            select(Release).where(Release.is_current.is_(True)).limit(1)
+        )
         if current_release is not None:
             return _SourceContext(candidate=None, release=current_release)
         candidate = session.scalar(
@@ -181,37 +191,76 @@ class AdminPaperCatalog:
         )
 
     @staticmethod
-    def _candidate_projection(
+    def _candidate_paper_projection(
         session: Session,
         candidate: ImportReleaseCandidate,
     ) -> tuple[
         set[str],
         dict[str, dict[str, object]],
-        dict[str, dict[str, int]],
-        dict[str, str],
-        dict[str, str],
     ]:
         rows = session.execute(
             select(
-                ImportStagingRecord.record_type,
                 ImportStagingRecord.original_id,
                 ImportStagingRecord.normalized_values,
             ).where(
-                ImportStagingRecord.import_batch_id == candidate.import_batch_id
+                ImportStagingRecord.import_batch_id == candidate.import_batch_id,
+                ImportStagingRecord.record_type == "paper",
             )
         )
         baseline_keys: set[str] = set()
         metadata: dict[str, dict[str, object]] = {}
+        for original_id, normalized in rows:
+            values = normalized if isinstance(normalized, dict) else {}
+            paper_key = _text(values.get("paper_id")) or str(original_id)
+            baseline_keys.add(paper_key)
+            metadata[paper_key] = values
+        manifest_counts = candidate.manifest.get("counts")
+        expected_count = (
+            manifest_counts.get("corpus_papers")
+            if isinstance(manifest_counts, dict)
+            else None
+        )
+        if (
+            not isinstance(expected_count, int)
+            or isinstance(expected_count, bool)
+            or expected_count < 0
+            or len(baseline_keys) != expected_count
+        ):
+            raise AdminPaperSourceIntegrityError(
+                "Candidate Paper count does not match its manifest"
+            )
+        return baseline_keys, metadata
+
+    @staticmethod
+    def _candidate_detail_projection(
+        session: Session,
+        candidate: ImportReleaseCandidate,
+        paper_keys: set[str],
+    ) -> tuple[
+        dict[str, dict[str, int]],
+        dict[str, str],
+        dict[str, str],
+    ]:
+        if not paper_keys:
+            return {}, {}, {}
+        rows = session.execute(
+            select(
+                ImportStagingRecord.record_type,
+                ImportStagingRecord.normalized_values,
+            ).where(
+                ImportStagingRecord.import_batch_id == candidate.import_batch_id,
+                ImportStagingRecord.record_type != "paper",
+                ImportStagingRecord.normalized_values["paper_id"]
+                .as_string()
+                .in_(paper_keys),
+            )
+        )
         quality: dict[str, dict[str, int]] = defaultdict(_empty_quality)
         targets: dict[str, str] = {}
         review_statuses: dict[str, str] = {}
-        for record_type, original_id, normalized in rows:
+        for record_type, normalized in rows:
             values = normalized if isinstance(normalized, dict) else {}
             paper_key = _text(values.get("paper_id"))
-            if record_type == "paper":
-                paper_key = paper_key or str(original_id)
-                baseline_keys.add(paper_key)
-                metadata[paper_key] = values
             if paper_key is None:
                 continue
             counts = quality[paper_key]
@@ -243,30 +292,48 @@ class AdminPaperCatalog:
                 status = _text(values.get("review_status"))
                 if status is not None:
                     review_statuses[paper_key] = status
-        return baseline_keys, metadata, quality, targets, review_statuses
+        return quality, targets, review_statuses
 
     @staticmethod
-    def _release_projection(
+    def _release_paper_projection(
         session: Session,
         release: Release,
-    ) -> tuple[
-        set[UUID],
-        dict[UUID, ObjectRevision],
-        dict[UUID, dict[str, int]],
-    ]:
+    ) -> tuple[set[UUID], dict[UUID, ObjectRevision]]:
         rows = session.execute(
             select(ReleaseItem, ObjectRevision)
             .join(ObjectRevision, ObjectRevision.id == ReleaseItem.revision_id)
-            .where(ReleaseItem.release_id == release.id)
+            .where(
+                ReleaseItem.release_id == release.id,
+                ReleaseItem.object_kind == ObjectKind.PAPER,
+            )
         )
         baseline_ids: set[UUID] = set()
         metadata: dict[UUID, ObjectRevision] = {}
+        for item, revision in rows:
+            baseline_ids.add(item.paper_id)
+            metadata[item.paper_id] = revision
+        return baseline_ids, metadata
+
+    @staticmethod
+    def _release_detail_projection(
+        session: Session,
+        release: Release,
+        paper_ids: set[UUID],
+    ) -> dict[UUID, dict[str, int]]:
+        if not paper_ids:
+            return {}
+        rows = session.execute(
+            select(ReleaseItem, ObjectRevision)
+            .join(ObjectRevision, ObjectRevision.id == ReleaseItem.revision_id)
+            .where(
+                ReleaseItem.release_id == release.id,
+                ReleaseItem.paper_id.in_(paper_ids),
+                ReleaseItem.object_kind != ObjectKind.PAPER,
+            )
+        )
         quality: dict[UUID, dict[str, int]] = defaultdict(_empty_quality)
         for item, revision in rows:
             counts = quality[item.paper_id]
-            if item.object_kind is ObjectKind.PAPER:
-                baseline_ids.add(item.paper_id)
-                metadata[item.paper_id] = revision
             counter_name = {
                 ObjectKind.COMPOUND: "compounds",
                 ObjectKind.STRUCTURE: "structures",
@@ -290,7 +357,7 @@ class AdminPaperCatalog:
                 "invalid",
             }:
                 counts["unresolved_relations"] += 1
-        return baseline_ids, metadata, quality
+        return quality
 
     @staticmethod
     def _review_projection(
@@ -325,10 +392,15 @@ class AdminPaperCatalog:
                 and task.status is not ReviewTaskStatus.COMPLETED
             ):
                 task_by_paper[task.paper_id] = task
-        changeset_by_paper: dict[UUID, Changeset] = {}
+        changeset_by_task: dict[UUID, Changeset] = {}
         for changeset in changesets:
-            changeset_by_paper.setdefault(changeset.paper_id, changeset)
-        user_ids = {task.assigned_reviewer_id for task in tasks}
+            changeset_by_task.setdefault(changeset.review_task_id, changeset)
+        changeset_by_paper = {
+            paper_id: changeset
+            for paper_id, task in task_by_paper.items()
+            if (changeset := changeset_by_task.get(task.id)) is not None
+        }
+        user_ids = {task.assigned_reviewer_id for task in task_by_paper.values()}
         users = {
             user.id: user
             for user in session.scalars(select(User).where(User.id.in_(user_ids)))
@@ -364,11 +436,11 @@ class AdminPaperCatalog:
                     if release.source_candidate_id is not None
                     else "human_verified_dataset"
                 )
-            if verification is None:
+            if dataset_class == "ai_extracted_baseline":
+                verification = "unverified"
+            elif verification is None:
                 verification = (
-                    "unverified"
-                    if dataset_class == "ai_extracted_baseline"
-                    else "human_verified"
+                    "human_verified"
                 )
             return {
                 "kind": "release",
@@ -399,9 +471,10 @@ class AdminPaperCatalog:
         self,
         session: Session,
         context: _SourceContext,
+        *,
+        paper_id: UUID | None = None,
+        hydrate_candidate_details: bool = True,
     ) -> tuple[list[dict[str, object]], dict[str, object]]:
-        papers = list(session.scalars(select(Paper).order_by(Paper.paper_key, Paper.id)))
-        paper_ids = [paper.id for paper in papers]
         published_ids = self._published_paper_ids(session, context.release)
 
         candidate_keys: set[str] = set()
@@ -416,13 +489,44 @@ class AdminPaperCatalog:
             (
                 candidate_keys,
                 candidate_metadata,
+            ) = self._candidate_paper_projection(session, context.candidate)
+            actual_candidate_keys = set(
+                session.scalars(
+                    select(Paper.paper_key).where(Paper.paper_key.in_(candidate_keys))
+                )
+            )
+            if actual_candidate_keys != candidate_keys:
+                raise AdminPaperSourceIntegrityError(
+                    "Candidate Papers do not match the database catalog"
+                )
+        elif context.release is not None:
+            release_ids, release_metadata = self._release_paper_projection(
+                session, context.release
+            )
+
+        paper_statement = select(Paper).order_by(Paper.paper_key, Paper.id)
+        if context.candidate is not None:
+            paper_statement = paper_statement.where(Paper.paper_key.in_(candidate_keys))
+        if paper_id is not None:
+            paper_statement = paper_statement.where(Paper.id == paper_id)
+        papers = list(session.scalars(paper_statement))
+        paper_ids = [paper.id for paper in papers]
+
+        if context.candidate is not None and hydrate_candidate_details:
+            (
                 candidate_quality,
                 candidate_targets,
                 candidate_review_statuses,
-            ) = self._candidate_projection(session, context.candidate)
-        elif context.release is not None:
-            release_ids, release_metadata, release_quality = self._release_projection(
-                session, context.release
+            ) = self._candidate_detail_projection(
+                session,
+                context.candidate,
+                {paper.paper_key for paper in papers},
+            )
+        elif context.release is not None and paper_id is not None:
+            release_quality = self._release_detail_projection(
+                session,
+                context.release,
+                set(paper_ids),
             )
 
         task_by_paper, changeset_by_paper, users = self._review_projection(
@@ -507,6 +611,38 @@ class AdminPaperCatalog:
             )
         return items, source
 
+    def _hydrate_candidate_items(
+        self,
+        session: Session,
+        candidate: ImportReleaseCandidate,
+        items: list[dict[str, object]],
+    ) -> None:
+        quality, targets, review_statuses = self._candidate_detail_projection(
+            session,
+            candidate,
+            {str(item["paper_key"]) for item in items},
+        )
+        for item in items:
+            paper_key = str(item["paper_key"])
+            item["quality"] = dict(quality.get(paper_key, _empty_quality()))
+            item["target"] = targets.get(paper_key) or item.get("target")
+            item["review_status"] = (
+                review_statuses.get(paper_key) or item.get("review_status")
+            )
+
+    def _hydrate_release_items(
+        self,
+        session: Session,
+        release: Release,
+        items: list[dict[str, object]],
+    ) -> None:
+        paper_ids = {UUID(str(item["id"])) for item in items}
+        quality = self._release_detail_projection(session, release, paper_ids)
+        for item in items:
+            item["quality"] = dict(
+                quality.get(UUID(str(item["id"])), _empty_quality())
+            )
+
     def list(
         self,
         session: Session,
@@ -521,7 +657,12 @@ class AdminPaperCatalog:
         assignee_id: UUID | None = None,
     ) -> dict[str, object]:
         context = self._source_context(session, candidate_id)
-        items, source = self._items(session, context)
+        hydrate_all_candidate_details = bool((search or "").strip())
+        items, source = self._items(
+            session,
+            context,
+            hydrate_candidate_details=hydrate_all_candidate_details,
+        )
         status_counts = Counter(str(item["workflow_state"]) for item in items)
         normalized_search = (search or "").strip().casefold()
         normalized_doi = (doi or "").strip().casefold()
@@ -550,6 +691,11 @@ class AdminPaperCatalog:
         total_items = len(filtered)
         total_pages = math.ceil(total_items / page_size) if total_items else 0
         start = (page - 1) * page_size
+        page_items = filtered[start : start + page_size]
+        if context.candidate is not None and not hydrate_all_candidate_details:
+            self._hydrate_candidate_items(session, context.candidate, page_items)
+        elif context.release is not None:
+            self._hydrate_release_items(session, context.release, page_items)
         return {
             "source": source,
             "status_counts": {
@@ -569,7 +715,7 @@ class AdminPaperCatalog:
                 "publication_status": publication_status,
                 "assignee_id": str(assignee_id) if assignee_id else None,
             },
-            "items": filtered[start : start + page_size],
+            "items": page_items,
         }
 
     def detail(
@@ -582,14 +728,19 @@ class AdminPaperCatalog:
         if session.get(Paper, paper_id) is None:
             raise AdminPaperNotFound("Paper not found")
         context = self._source_context(session, candidate_id)
-        items, source = self._items(session, context)
+        items, source = self._items(session, context, paper_id=paper_id)
         paper = next((item for item in items if item["id"] == str(paper_id)), None)
         if paper is None:
             raise AdminPaperNotFound("Paper not found")
+        source_query = "kind=article"
+        if context.candidate is not None:
+            source_query += f"&candidate_id={context.candidate.id}"
+        elif context.release is not None:
+            source_query += f"&release_id={context.release.id}"
         return {
             "source": source,
             "paper": paper,
-            "source_pdf_url": f"/api/v1/papers/{paper_id}/source-pdf?kind=article",
+            "source_pdf_url": f"/api/v1/papers/{paper_id}/source-pdf?{source_query}",
             "review_entry": (
                 f"/review/changesets/{paper['changeset']['id']}"
                 if isinstance(paper.get("changeset"), dict)
@@ -607,6 +758,7 @@ class AdminPaperCatalog:
 __all__ = [
     "AdminPaperCatalog",
     "AdminPaperNotFound",
+    "AdminPaperSourceIntegrityError",
     "AdminPaperSourceNotFound",
     "AdminPaperWorkflowState",
     "PublicationStatus",
