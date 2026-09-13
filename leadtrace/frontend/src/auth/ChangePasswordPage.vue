@@ -45,9 +45,9 @@ async function submit(): Promise<void> {
       <label for="current-password">{{ zhCN.auth.currentPassword }}</label>
       <input id="current-password" v-model="currentPassword" type="password" autocomplete="current-password" required>
       <label for="new-password">{{ zhCN.auth.newPassword }}</label>
-      <input id="new-password" v-model="newPassword" type="password" autocomplete="new-password" required>
+      <input id="new-password" v-model="newPassword" type="password" autocomplete="new-password" minlength="6" required>
       <label for="confirm-password">{{ zhCN.auth.confirmPassword }}</label>
-      <input id="confirm-password" v-model="confirmation" type="password" autocomplete="new-password" required>
+      <input id="confirm-password" v-model="confirmation" type="password" autocomplete="new-password" minlength="6" required>
       <button class="button-primary" type="submit" :disabled="busy">{{ zhCN.auth.changePassword }}</button>
     </form>
   </main>

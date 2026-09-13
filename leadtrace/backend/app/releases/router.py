@@ -19,6 +19,7 @@ from app.releases.service import (
     ReleaseConflict,
     get_current_release,
     preview_approved_changeset,
+    publish_approved_baseline,
     publish_approved_changeset,
     rollback_release,
 )
@@ -38,6 +39,12 @@ class PublishRequest(BaseModel):
     changeset_id: UUID
     title: str | None = Field(default=None, max_length=255)
     notes: str = ""
+
+
+class BaselinePublishRequest(BaseModel):
+    candidate_id: UUID
+    title: str | None = Field(default=None, max_length=255)
+    notes: str = Field(default="", max_length=4000)
 
 
 class RollbackRequest(BaseModel):
@@ -244,6 +251,84 @@ def create_releases_router() -> APIRouter:
             "validation": result.validation.as_dict(),
             "idempotent": result.idempotent,
             "operation_id": str(result.operation_id) if result.operation_id else None,
+            "request_id": request_id_for(request),
+        }
+
+    @admin_router.post("/publish-baseline")
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def publish_baseline(
+        payload: BaselinePublishRequest,
+        request: Request,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict[str, object]:
+        require_admin(principal)
+        require_request_csrf(
+            principal,
+            csrf_token,
+            request.app.state.settings.session_secret.get_secret_value(),
+        )
+        operation_key = require_idempotency_key(idempotency_key)
+        try:
+            with session.begin():
+                result = publish_approved_baseline(
+                    session,
+                    candidate_id=payload.candidate_id,
+                    actor_id=principal.user_id,
+                    title=payload.title,
+                    notes=payload.notes,
+                    idempotency_key=operation_key,
+                    asset_store=asset_store(request),
+                )
+                if not result.idempotent:
+                    after = {
+                        "release_id": str(result.release.id),
+                        "release_key": result.release.release_key,
+                        "candidate_id": str(payload.candidate_id),
+                    }
+                    AuditService().append_event(
+                        session,
+                        actor_id=principal.user_id,
+                        action="release.baseline_published",
+                        target_type="release",
+                        target_id=result.release.id,
+                        paper_id=None,
+                        changeset_id=None,
+                        release_id=result.release.id,
+                        ip_address=resolve_remote_address(
+                            request,
+                            request.app.state.settings,
+                        ),
+                        request_id=request_id_for(request),
+                        result="success",
+                        reason=payload.notes or "Published approved baseline",
+                        before_hash=canonical_content_hash(
+                            {
+                                "candidate_id": str(payload.candidate_id),
+                                "status": "approved",
+                            }
+                        ),
+                        after_hash=canonical_content_hash(after),
+                        details={"after": after},
+                    )
+        except ReleaseConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except ValueError as error:
+            raise APIError(
+                422,
+                "RELEASE_VALIDATION_FAILED",
+                "Release validation failed",
+            ) from error
+        return {
+            "release_id": str(result.release.id),
+            "release_key": result.release.release_key,
+            "validation": result.validation.as_dict(),
+            "idempotent": result.idempotent,
+            "operation_id": (
+                str(result.operation_id) if result.operation_id else None
+            ),
             "request_id": request_id_for(request),
         }
 

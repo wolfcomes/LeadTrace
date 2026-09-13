@@ -28,7 +28,7 @@ class AuditEventResponse(BaseModel):
     action: str
     target_type: str
     target_id: UUID
-    paper_id: UUID
+    paper_id: UUID | None
     changeset_id: UUID | None
     release_id: UUID | None
     occurred_at: datetime
@@ -64,8 +64,6 @@ def create_audit_router() -> APIRouter:
     service = AuditService()
 
     def require_audit_reader(principal: Principal) -> None:
-        if principal.must_change_password:
-            raise HTTPException(status_code=403, detail="Password change required")
         if principal.role is UserRole.VISITOR:
             raise HTTPException(status_code=403, detail="Permission denied")
 

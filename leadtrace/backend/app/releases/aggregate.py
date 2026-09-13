@@ -22,6 +22,67 @@ from app.structures.models import Structure
 from app.visual_objects.models import VisualObject, VisualRegion
 
 
+OVERVIEW_METRIC_KEYS = (
+    "corpus",
+    "lineage",
+    "relation",
+    "structure",
+    "pair",
+    "human_review",
+)
+
+
+def overview_metrics_from_counts(
+    counts: Mapping[str, object],
+) -> dict[str, dict[str, int | str]]:
+    """Convert fixed corpus counts to the Visitor overview contract."""
+
+    def required_count(name: str) -> int:
+        value = counts.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{name} must be a non-negative integer")
+        return value
+
+    corpus_papers = required_count("corpus_papers")
+    lineage_papers = required_count("lineage_papers")
+    lineage_edges = required_count("lineage_edges")
+    structure_confirmed = required_count("structure_confirmed")
+    compound_entities = required_count("compound_entities")
+    pair_ready_edges = required_count("pair_ready_edges")
+    return {
+        "corpus": {
+            "numerator": corpus_papers,
+            "denominator": corpus_papers,
+            "unit": "papers",
+        },
+        "lineage": {
+            "numerator": lineage_papers,
+            "denominator": corpus_papers,
+            "unit": "papers",
+        },
+        "relation": {
+            "numerator": lineage_edges,
+            "denominator": lineage_edges,
+            "unit": "edges",
+        },
+        "structure": {
+            "numerator": structure_confirmed,
+            "denominator": compound_entities,
+            "unit": "compounds",
+        },
+        "pair": {
+            "numerator": pair_ready_edges,
+            "denominator": lineage_edges,
+            "unit": "edges",
+        },
+        "human_review": {
+            "numerator": 0,
+            "denominator": corpus_papers,
+            "unit": "papers",
+        },
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class ReleaseAggregate:
     counts: dict[str, int]
@@ -431,4 +492,9 @@ def recompute_release_aggregate(
     )
 
 
-__all__ = ["ReleaseAggregate", "recompute_release_aggregate"]
+__all__ = [
+    "OVERVIEW_METRIC_KEYS",
+    "ReleaseAggregate",
+    "overview_metrics_from_counts",
+    "recompute_release_aggregate",
+]

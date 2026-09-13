@@ -56,7 +56,7 @@ export const releasePreviewSchema = z.object({
 export type AdminRelease = z.infer<typeof adminReleaseSchema>;
 export type ReleasePreview = z.infer<typeof releasePreviewSchema>;
 
-export function createReleaseOperationKey(scope: "publish" | "rollback"): string {
+export function createReleaseOperationKey(scope: "baseline" | "publish" | "rollback"): string {
   return `${scope}-${crypto.randomUUID()}`;
 }
 
@@ -74,6 +74,19 @@ export function publishChangeset(input: {
   notes: string;
 }, idempotencyKey: string): Promise<z.infer<typeof operationSchema>> {
   return apiRequest("/api/v1/releases/publish", operationSchema, {
+    method: "POST",
+    csrfToken: csrfToken(),
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: input,
+  });
+}
+
+export function publishBaseline(input: {
+  candidate_id: string;
+  title?: string;
+  notes: string;
+}, idempotencyKey: string): Promise<z.infer<typeof operationSchema>> {
+  return apiRequest("/api/v1/releases/publish-baseline", operationSchema, {
     method: "POST",
     csrfToken: csrfToken(),
     headers: { "Idempotency-Key": idempotencyKey },

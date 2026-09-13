@@ -282,7 +282,7 @@ class BaselineImporter:
             role=UserRole.ADMIN,
             is_enabled=False,
             password_hash=hash_password(discarded_password),
-            must_change_password=True,
+            must_change_password=False,
         )
         session.add(actor)
         session.flush()

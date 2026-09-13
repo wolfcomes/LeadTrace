@@ -88,6 +88,9 @@ async function signOut(): Promise<void> {
             <strong>{{ auth.user.display_name }}</strong>
             <small>{{ zhCN.roles[auth.user.role] }}</small>
           </span>
+          <RouterLink class="account-action" data-change-password to="/change-password">
+            {{ zhCN.auth.changePassword }}
+          </RouterLink>
           <button class="sign-out" type="button" @click="signOut">{{ zhCN.auth.signOut }}</button>
         </div>
       </header>
@@ -127,8 +130,8 @@ nav { flex: 1; overflow-y: auto; padding-right: 2px; }
 .account-copy strong, .account-copy small { display: block; }
 .account-copy strong { color: var(--ink-800); font-size: .78rem; }
 .account-copy small { margin-top: 2px; color: var(--ink-500); font-size: .68rem; }
-.sign-out { min-height: 34px; margin-left: 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-650); background: white; font-size: .72rem; cursor: pointer; }
-.sign-out:hover { border-color: var(--line-strong); color: var(--ink-950); }
+.account-action, .sign-out { min-height: 34px; margin-left: 10px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink-650); background: white; font-size: .72rem; text-decoration: none; cursor: pointer; }
+.account-action:hover, .sign-out:hover { border-color: var(--line-strong); color: var(--ink-950); }
 main { min-height: calc(100vh - 72px); }
 @media (max-width: 760px) { .sidebar { position: static; width: 100%; min-height: auto; } .application-shell { display: block; } nav { display: flex; flex-wrap: wrap; } .nav-section, .sidebar-footer { display: none; } .nav-link { flex: 1 0 130px; } .workspace { margin-left: 0; } .brand { padding-bottom: 14px; } }
 </style>

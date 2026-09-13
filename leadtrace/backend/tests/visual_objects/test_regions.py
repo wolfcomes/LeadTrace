@@ -72,7 +72,7 @@ def test_region_identity_must_belong_to_requested_paper(
 ) -> None:
     service = RegionService()
     with auth_session_factory.begin() as session:
-        actor = UserService().create_user(
+        UserService().create_user(
             session,
             username=f"region-security-{uuid4().hex[:8]}",
             display_name="Region security reviewer",

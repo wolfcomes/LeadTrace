@@ -5,11 +5,14 @@ from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     String,
+    Text,
     UniqueConstraint,
+    event,
     func,
     text,
 )
@@ -107,6 +110,57 @@ class ImportReleaseCandidate(UUIDPrimaryKeyMixin, Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class ImportCandidateDecision(UUIDPrimaryKeyMixin, Base):
+    """Append-only administrative decision for one imported baseline."""
+
+    __tablename__ = "import_candidate_decisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "candidate_id",
+            name="uq_import_candidate_decisions_candidate",
+        ),
+        CheckConstraint(
+            "decision IN ('approve', 'reject')",
+            name="ck_import_candidate_decisions_decision",
+        ),
+        CheckConstraint(
+            "char_length(manifest_hash) = 64",
+            name="ck_import_candidate_decisions_manifest_hash",
+        ),
+        Index(
+            "ix_import_candidate_decisions_candidate_time",
+            "candidate_id",
+            "created_at",
+        ),
+    )
+
+    candidate_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("import_release_candidates.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    manifest: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    manifest_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+@event.listens_for(ImportCandidateDecision, "before_update")
+@event.listens_for(ImportCandidateDecision, "before_delete")
+def _reject_candidate_decision_mutation(*_: object) -> None:
+    raise RuntimeError("Import candidate decisions are append-only")
 
 
 class ImportAssetLink(UUIDPrimaryKeyMixin, Base):

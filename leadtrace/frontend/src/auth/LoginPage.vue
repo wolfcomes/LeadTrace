@@ -15,10 +15,6 @@ async function submit(): Promise<void> {
   const accepted = await auth.login(username.value, password.value);
   password.value = "";
   if (!accepted) return;
-  if (auth.user?.must_change_password) {
-    await router.replace({ name: "change-password" });
-    return;
-  }
   const destination = typeof route.query.redirect === "string"
     ? route.query.redirect
     : "/";

@@ -254,7 +254,7 @@ def create_crop_jobs_router(settings: Settings) -> APIRouter:
     def require_crop_edit(
         principal: Principal = Depends(get_authenticated_principal),
     ) -> Principal:
-        if principal.must_change_password or principal.role is UserRole.VISITOR:
+        if principal.role is UserRole.VISITOR:
             raise HTTPException(status_code=403, detail="Permission denied")
         return principal
 
@@ -352,8 +352,6 @@ def create_crop_jobs_router(settings: Settings) -> APIRouter:
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
     ) -> dict[str, object]:
-        if principal.must_change_password:
-            raise HTTPException(status_code=403, detail="Password change required")
         if principal.role not in {UserRole.ADMIN, UserRole.REVIEWER}:
             raise HTTPException(status_code=403, detail="Permission denied")
         with session.begin():

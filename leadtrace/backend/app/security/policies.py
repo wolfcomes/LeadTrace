@@ -101,8 +101,6 @@ def evaluate_access(
 
     if principal is None:
         return AccessDecision(False, 401, "Authentication required")
-    if principal.must_change_password:
-        return AccessDecision(False, 403, "Password change required")
     if not resource.exists:
         return AccessDecision(False, 404, "Resource not found")
 

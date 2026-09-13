@@ -101,13 +101,9 @@ export function createAppRouter(
     }
     if (to.meta.public) {
       if (!auth.user) return true;
-      return auth.user.must_change_password ? { name: "change-password" } : "/";
+      return "/";
     }
     if (!auth.user) return { name: "login", query: { redirect: to.fullPath } };
-    if (auth.user.must_change_password && to.name !== "change-password") {
-      return { name: "change-password" };
-    }
-    if (!auth.user.must_change_password && to.name === "change-password") return "/";
     const roles = to.meta.roles as UserRole[] | undefined;
     if (roles && !roles.includes(auth.user.role)) return "/";
     return true;

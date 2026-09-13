@@ -84,7 +84,7 @@ class TombstoneRequest(BaseModel):
 
 
 def _authorize(session: Session, principal: Principal, paper_id: UUID) -> None:
-    if principal.must_change_password or principal.role is UserRole.VISITOR:
+    if principal.role is UserRole.VISITOR:
         raise HTTPException(status_code=403, detail="Permission denied")
     if principal.role is UserRole.ADMIN:
         return
@@ -105,7 +105,7 @@ def require_region_edit_permission(
     principal: Principal = Depends(get_authenticated_principal),
 ) -> Principal:
     """Dependency marker used by the route-policy matrix and API docs."""
-    if principal.must_change_password or principal.role is UserRole.VISITOR:
+    if principal.role is UserRole.VISITOR:
         raise HTTPException(status_code=403, detail="Permission denied")
     return principal
 

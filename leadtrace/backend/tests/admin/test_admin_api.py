@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -8,8 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.assets.models import Asset, AssetAccessLevel, AssetCategory, AssetIntegrityState
+from app.audit.models import AuditEvent
 from app.config import Settings
 from app.database import DatabaseResources
+from app.imports.models import ImportBatch, ImportReleaseCandidate
 from app.jobs.models import CropJob, CropJobStatus
 from app.main import create_app
 from app.users.models import User, UserRole
@@ -66,6 +69,43 @@ def _login(client: TestClient) -> str:
     )
     assert response.status_code == 200
     return response.json()["csrf_token"]
+
+
+def _seed_import_candidate(session) -> ImportReleaseCandidate:
+    fingerprint = uuid4().hex + uuid4().hex
+    counts = {"corpus_papers": 1}
+    integrity = {"missing": 0}
+    asset_linkage = {"resolved": 1}
+    batch = ImportBatch(
+        source_fingerprint=fingerprint,
+        status="completed",
+        counts=counts,
+        integrity=integrity,
+        asset_linkage=asset_linkage,
+        completed_at=datetime.now(UTC),
+    )
+    session.add(batch)
+    session.flush()
+    candidate = ImportReleaseCandidate(
+        import_batch_id=batch.id,
+        status="imported_baseline",
+        manifest={
+            "schema_version": 1,
+            "source_fingerprint": fingerprint,
+            "status": "imported_baseline",
+            "is_current": False,
+            "counts": counts,
+            "integrity": integrity,
+            "asset_linkage": asset_linkage,
+            "revision_count": 1,
+            "source_file": "/private/baseline/source.csv",
+            "raw_values": {"password": "must-not-appear"},
+        },
+        is_current=False,
+    )
+    session.add(candidate)
+    session.flush()
+    return candidate
 
 
 def test_admin_system_endpoint_returns_structured_checks_without_secrets(
@@ -187,3 +227,131 @@ def test_admin_audit_endpoint_supports_action_and_actor_filters(
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_admin_lists_safe_import_candidates_and_records_one_audited_decision(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    with auth_session_factory.begin() as session:
+        candidate = _seed_import_candidate(session)
+        candidate_id = candidate.id
+
+    with _client(
+        tmp_path,
+        empty_postgresql_database_url,
+        auth_session_factory,
+    ) as client:
+        csrf = _login(client)
+        listing = client.get("/api/v1/admin/import-candidates")
+        missing_csrf = client.post(
+            f"/api/v1/admin/import-candidates/{candidate_id}/decision",
+            json={"action": "approve", "reason": "Reviewed baseline"},
+        )
+        first = client.post(
+            f"/api/v1/admin/import-candidates/{candidate_id}/decision",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "action": "approve",
+                "reason": (
+                    "Reviewed baseline manifest and integrity report "
+                    "password=decision-secret"
+                ),
+            },
+        )
+        retry = client.post(
+            f"/api/v1/admin/import-candidates/{candidate_id}/decision",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "action": "approve",
+                "reason": (
+                    "Reviewed baseline manifest and integrity report "
+                    "password=decision-secret"
+                ),
+            },
+        )
+        conflict = client.post(
+            f"/api/v1/admin/import-candidates/{candidate_id}/decision",
+            headers={"X-CSRF-Token": csrf},
+            json={"action": "approve", "reason": "Changed retry reason"},
+        )
+        decided_listing = client.get("/api/v1/admin/import-candidates")
+
+    assert listing.status_code == 200
+    assert len(listing.json()) == 1
+    safe_candidate = listing.json()[0]
+    assert safe_candidate["id"] == str(candidate_id)
+    assert safe_candidate["status"] == "imported_baseline"
+    assert safe_candidate["decision"] is None
+    assert "source_file" not in safe_candidate["manifest"]
+    assert "raw_values" not in safe_candidate["manifest"]
+    assert "/private/" not in listing.text
+    assert "must-not-appear" not in listing.text
+    assert missing_csrf.status_code == 403
+    assert first.status_code == 200
+    assert first.json()["status"] == "approved"
+    assert first.json()["decision"]["decision"] == "approve"
+    assert "decision-secret" not in first.text
+    assert "[REDACTED]" in first.json()["decision"]["reason"]
+    assert first.json()["idempotent"] is False
+    assert retry.status_code == 200
+    assert retry.json()["decision"]["id"] == first.json()["decision"]["id"]
+    assert retry.json()["idempotent"] is True
+    assert conflict.status_code == 409
+    assert decided_listing.json()[0]["status"] == "approved"
+    assert "decision-secret" not in decided_listing.text
+    assert "[REDACTED]" in decided_listing.json()[0]["decision"]["reason"]
+
+    with auth_session_factory() as session:
+        events = list(
+            session.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.action == "import_candidate.approved"
+                )
+            )
+        )
+        assert len(events) == 1
+        assert events[0].paper_id is None
+        assert events[0].target_id == candidate_id
+        assert "decision-secret" not in events[0].reason
+        assert "source_file" not in str(events[0].details)
+
+
+def test_import_candidate_admin_endpoints_reject_reviewer(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    with auth_session_factory.begin() as session:
+        candidate = _seed_import_candidate(session)
+        candidate_id = candidate.id
+        reviewer = UserService().create_user(
+            session,
+            username="candidate.reviewer",
+            display_name="Candidate Reviewer",
+            role=UserRole.REVIEWER,
+            initial_password=PASSWORD,
+        )
+        reviewer.must_change_password = False
+
+    with _client(
+        tmp_path,
+        empty_postgresql_database_url,
+        auth_session_factory,
+    ) as client:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "candidate.reviewer", "password": PASSWORD},
+        )
+        assert login.status_code == 200
+        csrf = login.json()["csrf_token"]
+        listing = client.get("/api/v1/admin/import-candidates")
+        decision = client.post(
+            f"/api/v1/admin/import-candidates/{candidate_id}/decision",
+            headers={"X-CSRF-Token": csrf},
+            json={"action": "reject", "reason": "Must not be authorized"},
+        )
+
+    assert listing.status_code == 403
+    assert decision.status_code == 403

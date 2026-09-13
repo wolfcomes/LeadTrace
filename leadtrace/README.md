@@ -78,6 +78,7 @@ python -m venv .venv
 .venv/bin/python -m pip install -e 'leadtrace/backend[test]'
 export LEADTRACE_DATABASE_URL='postgresql+psycopg://leadtrace@127.0.0.1/leadtrace_dev'
 export LEADTRACE_SESSION_SECRET='replace-with-a-long-random-development-secret'
+export LEADTRACE_DEFAULT_ACCOUNT_PASSWORD='replace-with-a-protected-local-default'
 export LEADTRACE_ALLOWED_HOSTS='["127.0.0.1","localhost","leadtrace.lan"]'
 export LEADTRACE_ASSET_ROOT='/absolute/path/to/leadtrace-data/assets'
 export LEADTRACE_SOURCE_ROOTS='{"baseline":"/absolute/path/to/source-workspace"}'
@@ -85,15 +86,18 @@ export LEADTRACE_NGINX_INTERNAL_TRANSFER='false'
 cd leadtrace/backend
 ../../.venv/bin/python -m alembic -c alembic.ini upgrade head
 ../../.venv/bin/python -m app.cli.users create admin \
-  --display-name 'LeadTrace Admin' --role admin
+  --display-name 'LeadTrace Admin' --role admin --bootstrap
 ../../.venv/bin/python -m uvicorn app.main:app \
   --host 0.0.0.0 --port 8876 --no-proxy-headers
 ```
 
-The Admin CLI prompts twice for the one-time password. It also supports an
-owner-only (`0600`) `--password-file`; plaintext password arguments are not
-accepted. The first browser login must change the one-time password before any
-administrative action is allowed.
+Replace the default-password placeholder through a protected, non-versioned
+service environment before creating accounts. The CLI never accepts or prints
+the value. `--bootstrap` is limited to the first Admin in an empty user
+database; later CLI account creation and individual reset require an explicit
+enabled Admin `--actor-id` and append a credential-free audit event. Browser
+password changes are optional after login and are available from the signed-in
+account area.
 In native direct mode, proxy headers stay disabled so a LAN client cannot
 forge the source address used by login throttling.
 

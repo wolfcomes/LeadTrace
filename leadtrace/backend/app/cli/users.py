@@ -1,46 +1,19 @@
 from __future__ import annotations
 
 import argparse
-import getpass
-import os
-from pathlib import Path
-import stat
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.database import bootstrap_database, transactional_session
 from app.users.models import UserRole
 from app.users.service import UserService
 
 
-class SecretFileError(ValueError):
-    pass
-
-
-def read_password_file(path: Path) -> str:
-    file_status = path.lstat()
-    if stat.S_ISLNK(file_status.st_mode) or not stat.S_ISREG(file_status.st_mode):
-        raise SecretFileError("Password file must be a regular, non-symlink file")
-    if file_status.st_uid != os.getuid():
-        raise SecretFileError("Password file must be owned by the current user")
-    if stat.S_IMODE(file_status.st_mode) & 0o077:
-        raise SecretFileError("Password file permissions must be owner-only (0600)")
-    if file_status.st_size > 16_384:
-        raise SecretFileError("Password file is unexpectedly large")
-    password = path.read_text(encoding="utf-8").rstrip("\r\n")
-    if not password:
-        raise SecretFileError("Password file is empty")
-    return password
-
-
-def _read_password(password_file: Path | None) -> str:
-    if password_file is not None:
-        return read_password_file(password_file)
-    first = getpass.getpass("One-time password: ")
-    second = getpass.getpass("Confirm one-time password: ")
-    if first != second:
-        raise ValueError("Passwords do not match")
-    return first
+def _configured_default_password(settings: Settings) -> str:
+    configured = settings.default_account_password
+    if configured is None:
+        raise RuntimeError("LEADTRACE_DEFAULT_ACCOUNT_PASSWORD is required")
+    return configured.get_secret_value()
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -54,11 +27,20 @@ def _parser() -> argparse.ArgumentParser:
     create.add_argument("username")
     create.add_argument("--display-name", required=True)
     create.add_argument("--role", choices=[role.value for role in UserRole], required=True)
-    create.add_argument("--password-file", type=Path)
+    creation_authority = create.add_mutually_exclusive_group(required=True)
+    creation_authority.add_argument("--actor-id", type=UUID)
+    creation_authority.add_argument("--bootstrap", action="store_true")
 
-    reset = subcommands.add_parser("reset", help="Set a one-time password")
+    reset = subcommands.add_parser("reset", help="Reset to the configured default")
     reset.add_argument("user_id", type=UUID)
-    reset.add_argument("--password-file", type=Path)
+    reset.add_argument("--actor-id", type=UUID, required=True)
+
+    reset_non_admin = subcommands.add_parser(
+        "reset-non-admin-default",
+        help="Preview or reset all Reviewer and Visitor accounts",
+    )
+    reset_non_admin.add_argument("--actor-id", type=UUID, required=True)
+    reset_non_admin.add_argument("--apply", action="store_true")
 
     disable = subcommands.add_parser("disable", help="Disable an account")
     disable.add_argument("user_id", type=UUID)
@@ -81,26 +63,59 @@ def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     settings = get_settings()
-    resources = bootstrap_database(settings)
     service = UserService()
+    configured_default = None
+    if args.command in {"create", "reset", "reset-non-admin-default"}:
+        configured_default = _configured_default_password(settings)
+    resources = bootstrap_database(settings)
     try:
         with transactional_session(resources.session_factory) as session:
             if args.command == "create":
-                user = service.create_user(
-                    session,
-                    username=args.username,
-                    display_name=args.display_name,
-                    role=UserRole(args.role),
-                    initial_password=_read_password(args.password_file),
-                )
+                if args.bootstrap:
+                    if UserRole(args.role) is not UserRole.ADMIN:
+                        parser.error("--bootstrap can create only an Admin account")
+                    user = service.bootstrap_admin(
+                        session,
+                        username=args.username,
+                        display_name=args.display_name,
+                        default_password=configured_default,
+                        request_id=f"cli-account-bootstrap-{uuid4()}",
+                    )
+                else:
+                    user = service.create_managed_user(
+                        session,
+                        actor_id=args.actor_id,
+                        username=args.username,
+                        display_name=args.display_name,
+                        role=UserRole(args.role),
+                        default_password=configured_default,
+                        request_id=f"cli-account-create-{uuid4()}",
+                    )
                 print(f"created {user.id} {user.username} {user.role.value}")
             elif args.command == "reset":
-                user = service.reset_password(
+                result = service.reset_managed_password(
                     session,
-                    args.user_id,
-                    _read_password(args.password_file),
+                    actor_id=args.actor_id,
+                    user_id=args.user_id,
+                    default_password=configured_default,
+                    request_id=f"cli-account-reset-{uuid4()}",
                 )
-                print(f"reset {user.id} {user.username}; password change required")
+                user = result.user
+                print(f"reset {user.id} {user.username}")
+            elif args.command == "reset-non-admin-default":
+                result = service.reset_non_admin_passwords_to_default(
+                    session,
+                    actor_id=args.actor_id,
+                    default_password=configured_default,
+                    apply=args.apply,
+                    request_id=f"cli-account-reset-{uuid4()}",
+                )
+                mode = "apply" if result.applied else "dry-run"
+                print(
+                    f"mode={mode} "
+                    f"reviewer_count={result.role_counts[UserRole.REVIEWER]} "
+                    f"visitor_count={result.role_counts[UserRole.VISITOR]}"
+                )
             elif args.command == "disable":
                 user = service.set_enabled(session, args.user_id, False)
                 print(f"disabled {user.id} {user.username}")

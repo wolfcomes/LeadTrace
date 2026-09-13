@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,15 +10,17 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import select
 
 from app.auth.models import AuthSession
+from app.audit.models import AuditEvent
 from app.auth.router import resolve_remote_address
 from app.config import Settings
 from app.database import DatabaseResources
 from app.main import create_app
-from app.users.models import UserRole
+from app.users.models import User, UserRole
 from app.users.service import UserService
 
 
 PASSWORD = "Initial reviewer password 2026!"
+MANAGED_DEFAULT_PASSWORD = "managed-default-test-password"
 
 
 def _settings(tmp_path: Path, database_url: str, *, https_enabled: bool = False) -> Settings:
@@ -27,6 +30,7 @@ def _settings(tmp_path: Path, database_url: str, *, https_enabled: bool = False)
         database_url=database_url,
         redis_url="redis://127.0.0.1:6379/0",
         session_secret="api-session-test-secret-more-than-thirty-two-characters",
+        default_account_password=MANAGED_DEFAULT_PASSWORD,
         allowed_hosts=["testserver"],
         asset_root=tmp_path,
         https_enabled=https_enabled,
@@ -107,7 +111,7 @@ def api_client(
         yield client
 
 
-def test_login_sets_server_session_cookie_and_requires_password_change(
+def test_login_sets_server_session_cookie_without_requiring_password_change(
     api_client: TestClient,
 ) -> None:
     response = api_client.post(
@@ -120,7 +124,7 @@ def test_login_sets_server_session_cookie_and_requires_password_change(
         "username": "reviewer.one",
         "display_name": "Reviewer One",
         "role": "reviewer",
-        "must_change_password": True,
+        "must_change_password": False,
     }
     assert response.json()["csrf_token"]
     cookie = response.headers["set-cookie"].lower()
@@ -224,6 +228,34 @@ def test_password_change_rotates_session_and_clears_one_time_flag(
     assert api_client.cookies.get("leadtrace_session") != old_cookie
 
 
+def test_simple_six_character_password_can_be_set_and_used_for_login(
+    api_client: TestClient,
+) -> None:
+    login = api_client.post(
+        "/api/v1/auth/login",
+        json={"username": "reviewer.one", "password": PASSWORD},
+    )
+
+    changed = api_client.post(
+        "/api/v1/auth/password",
+        headers={"X-CSRF-Token": login.json()["csrf_token"]},
+        json={"current_password": PASSWORD, "new_password": "simple"},
+    )
+
+    assert changed.status_code == 200
+    logout = api_client.post(
+        "/api/v1/auth/logout",
+        headers={"X-CSRF-Token": changed.json()["csrf_token"]},
+    )
+    assert logout.status_code == 204
+
+    relogin = api_client.post(
+        "/api/v1/auth/login",
+        json={"username": "reviewer.one", "password": "simple"},
+    )
+    assert relogin.status_code == 200
+
+
 def test_self_registration_route_does_not_exist(api_client: TestClient) -> None:
     response = api_client.post(
         "/api/v1/auth/register",
@@ -265,19 +297,20 @@ def test_https_mode_marks_session_cookie_secure(
     assert "secure" in response.headers["set-cookie"].lower()
 
 
-def test_only_admin_can_create_accounts_without_exposing_password_material(
+def test_legacy_password_flag_does_not_block_admin_role_permissions(
     tmp_path: Path,
     empty_postgresql_database_url: str,
     auth_session_factory: sessionmaker[Session],
 ) -> None:
     with auth_session_factory.begin() as session:
-        UserService().create_user(
+        admin = UserService().create_user(
             session,
             username="admin.one",
             display_name="Admin One",
             role=UserRole.ADMIN,
             initial_password=PASSWORD,
         )
+        admin.must_change_password = True
         UserService().create_user(
             session,
             username="reviewer.one",
@@ -299,14 +332,14 @@ def test_only_admin_can_create_accounts_without_exposing_password_material(
             "/api/v1/auth/login",
             json={"username": "admin.one", "password": PASSWORD},
         )
-        blocked_before_password_change = client.post(
+        listed_with_legacy_flag = client.get("/api/v1/users")
+        created_with_legacy_flag = client.post(
             "/api/v1/users",
             headers={"X-CSRF-Token": admin_login.json()["csrf_token"]},
             json={
                 "username": "visitor.blocked",
                 "display_name": "Blocked Visitor",
                 "role": "visitor",
-                "initial_password": "Initial visitor password 2026!",
             },
         )
         admin_password_change = client.post(
@@ -324,10 +357,17 @@ def test_only_admin_can_create_accounts_without_exposing_password_material(
                 "username": "visitor.one",
                 "display_name": "Visitor One",
                 "role": "visitor",
-                "initial_password": "Initial visitor password 2026!",
             },
         )
 
+        client.cookies.clear()
+        managed_default_login = client.post(
+            "/api/v1/auth/login",
+            json={
+                "username": "visitor.one",
+                "password": MANAGED_DEFAULT_PASSWORD,
+            },
+        )
         client.cookies.clear()
         reviewer_login = client.post(
             "/api/v1/auth/login",
@@ -352,20 +392,194 @@ def test_only_admin_can_create_accounts_without_exposing_password_material(
             },
         )
 
-    assert blocked_before_password_change.status_code == 403
-    assert blocked_before_password_change.json() == {
-        "code": "PASSWORD_CHANGE_REQUIRED",
-        "message": "Password change required",
-        "details": {},
-        "request_id": blocked_before_password_change.headers["X-Request-ID"],
-    }
+    assert listed_with_legacy_flag.status_code == 200
+    assert created_with_legacy_flag.status_code == 201
     assert admin_password_change.status_code == 200
     assert created.status_code == 201
+    assert managed_default_login.status_code == 200
     assert created.json()["username"] == "visitor.one"
     assert "password_hash" not in created.text
     assert "initial_password" not in created.text
     assert PASSWORD not in created.text
     assert forbidden.status_code == 403
+    with auth_session_factory.begin() as session:
+        create_event = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.action == "account.created",
+                AuditEvent.target_id == UUID(created.json()["id"]),
+            )
+        )
+    assert create_event is not None
+    assert "password" not in str(create_event.details).casefold()
+
+
+def test_admin_reset_uses_server_default_and_revokes_existing_session(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    with auth_session_factory.begin() as session:
+        admin = UserService().create_user(
+            session,
+            username="admin.one",
+            display_name="Admin One",
+            role=UserRole.ADMIN,
+            initial_password=PASSWORD,
+        )
+        target = UserService().create_user(
+            session,
+            username="visitor.one",
+            display_name="Visitor One",
+            role=UserRole.VISITOR,
+            initial_password=PASSWORD,
+        )
+    settings = _settings(tmp_path, empty_postgresql_database_url)
+    engine = auth_session_factory.kw["bind"]
+    resources = DatabaseResources(engine=engine, session_factory=auth_session_factory)
+    app = create_app(
+        settings=settings,
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+
+    with TestClient(app) as client:
+        visitor_login = client.post(
+            "/api/v1/auth/login",
+            json={"username": target.username, "password": PASSWORD},
+        )
+        old_cookie = client.cookies.get("leadtrace_session")
+        assert visitor_login.status_code == 200
+        assert old_cookie is not None
+
+        client.cookies.clear()
+        admin_login = client.post(
+            "/api/v1/auth/login",
+            json={"username": admin.username, "password": PASSWORD},
+        )
+        reset = client.patch(
+            f"/api/v1/users/{target.id}/password",
+            headers={"X-CSRF-Token": admin_login.json()["csrf_token"]},
+        )
+        assert reset.status_code == 200
+
+        client.cookies.clear()
+        client.cookies.set("leadtrace_session", old_cookie)
+        assert client.get("/api/v1/auth/session").status_code == 401
+
+        client.cookies.clear()
+        default_login = client.post(
+            "/api/v1/auth/login",
+            json={
+                "username": target.username,
+                "password": MANAGED_DEFAULT_PASSWORD,
+            },
+        )
+
+    assert default_login.status_code == 200
+    with auth_session_factory.begin() as session:
+        reset_event = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.action == "account.password_reset",
+                AuditEvent.target_id == target.id,
+            )
+        )
+    assert reset_event is not None
+    assert "password" not in str(reset_event.details).casefold()
+
+
+def test_account_creation_fails_safely_when_server_default_is_missing(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    with auth_session_factory.begin() as session:
+        admin = UserService().create_user(
+            session,
+            username="admin.one",
+            display_name="Admin One",
+            role=UserRole.ADMIN,
+            initial_password=PASSWORD,
+        )
+        target = UserService().create_user(
+            session,
+            username="reviewer.existing",
+            display_name="Existing Reviewer",
+            role=UserRole.REVIEWER,
+            initial_password=PASSWORD,
+        )
+        target_hash = target.password_hash
+        target_changed_at = target.password_changed_at
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        database_url=empty_postgresql_database_url,
+        redis_url="redis://127.0.0.1:6379/0",
+        session_secret="api-session-test-secret-more-than-thirty-two-characters",
+        default_account_password=None,
+        allowed_hosts=["testserver"],
+        asset_root=tmp_path,
+    )
+    engine = auth_session_factory.kw["bind"]
+    resources = DatabaseResources(engine=engine, session_factory=auth_session_factory)
+    app = create_app(
+        settings=settings,
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+
+    with TestClient(app) as client:
+        target_login = client.post(
+            "/api/v1/auth/login",
+            json={"username": target.username, "password": PASSWORD},
+        )
+        assert target_login.status_code == 200
+        client.cookies.clear()
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": admin.username, "password": PASSWORD},
+        )
+        response = client.post(
+            "/api/v1/users",
+            headers={"X-CSRF-Token": login.json()["csrf_token"]},
+            json={
+                "username": "visitor.one",
+                "display_name": "Visitor One",
+                "role": "visitor",
+            },
+        )
+        reset = client.patch(
+            f"/api/v1/users/{target.id}/password",
+            headers={"X-CSRF-Token": login.json()["csrf_token"]},
+        )
+        client.cookies.clear()
+        old_password_login = client.post(
+            "/api/v1/auth/login",
+            json={"username": target.username, "password": PASSWORD},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["message"] == "Managed account provisioning is unavailable"
+    assert reset.status_code == 503
+    assert reset.json()["message"] == "Managed account provisioning is unavailable"
+    assert old_password_login.status_code == 200
+    with auth_session_factory.begin() as session:
+        persisted_target = session.get(User, target.id)
+        inserted = session.scalar(
+            select(User).where(User.username == "visitor.one")
+        )
+        active_target_sessions = list(
+            session.scalars(
+                select(AuthSession).where(
+                    AuthSession.user_id == target.id,
+                    AuthSession.revoked_at.is_(None),
+                )
+            )
+        )
+    assert persisted_target is not None
+    assert persisted_target.password_hash == target_hash
+    assert persisted_target.password_changed_at == target_changed_at
+    assert inserted is None
+    assert len(active_target_sessions) == 2
 
 
 def test_critical_admin_action_requires_recent_password_reauthentication(
@@ -417,7 +631,6 @@ def test_critical_admin_action_requires_recent_password_reauthentication(
                 "username": "visitor.blocked",
                 "display_name": "Blocked Visitor",
                 "role": "visitor",
-                "initial_password": "Initial visitor password 2026!",
             },
         )
         reauthenticated = client.post(
@@ -432,7 +645,6 @@ def test_critical_admin_action_requires_recent_password_reauthentication(
                 "username": "visitor.one",
                 "display_name": "Visitor One",
                 "role": "visitor",
-                "initial_password": "Initial visitor password 2026!",
             },
         )
 

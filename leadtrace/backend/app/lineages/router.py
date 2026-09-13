@@ -64,7 +64,7 @@ class DeleteRequest(BaseModel):
 
 
 def _authorize_paper(session: Session, principal: Principal, paper_id: UUID) -> None:
-    if principal.must_change_password or principal.role is UserRole.VISITOR:
+    if principal.role is UserRole.VISITOR:
         raise HTTPException(status_code=403, detail="Permission denied")
     if principal.role is not UserRole.ADMIN:
         assigned = session.scalar(select(ReviewTask.id).where(ReviewTask.paper_id == paper_id, ReviewTask.assigned_reviewer_id == principal.user_id))
@@ -74,7 +74,7 @@ def _authorize_paper(session: Session, principal: Principal, paper_id: UUID) -> 
 
 
 def _require_editor(principal: Principal = Depends(get_authenticated_principal)) -> Principal:
-    if principal.must_change_password or principal.role is UserRole.VISITOR:
+    if principal.role is UserRole.VISITOR:
         raise HTTPException(status_code=403, detail="Permission denied")
     return principal
 

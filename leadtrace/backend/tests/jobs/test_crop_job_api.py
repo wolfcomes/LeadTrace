@@ -422,30 +422,29 @@ def test_demoted_reviewer_cannot_use_an_existing_crop_job_subscription(
     assert "asset_id" not in status.text
 
 
-def test_reviewer_awaiting_password_change_cannot_track_crop_jobs(
+def test_reviewer_can_track_crop_jobs_after_password_reset(
     crop_api_fixture: CropApiFixture,
 ) -> None:
     fixture = crop_api_fixture
     job_id, _ = _enqueue_crop(fixture)
-    one_time_password = "Replacement crop API password 2026!"
+    replacement_password = "Replacement crop API password 2026!"
     with fixture.session_factory.begin() as session:
         UserService().reset_password(
             session,
             fixture.reviewer_id,
-            one_time_password,
+            replacement_password,
         )
     fixture.client.cookies.clear()
     _login(
         fixture.client,
         fixture.reviewer_username,
-        one_time_password,
+        replacement_password,
     )
 
     status = fixture.client.get(f"/api/v1/crop-jobs/{job_id}")
 
-    assert status.status_code == 403
-    assert str(job_id) not in status.text
-    assert "asset_id" not in status.text
+    assert status.status_code == 200
+    assert status.json()["id"] == str(job_id)
 
 
 def test_reviewer_job_status_hides_a_missing_source_absolute_path(

@@ -35,7 +35,12 @@ from app.users.service import UserService
 PASSWORD = "Review workflow test password 2026!"
 
 
-def _setup(session, *, finalize_release: bool = True):
+def _setup(
+    session,
+    *,
+    finalize_release: bool = True,
+    release_metrics: dict[str, object] | None = None,
+):
     users = UserService()
     reviewer = users.create_user(
         session,
@@ -68,7 +73,7 @@ def _setup(session, *, finalize_release: bool = True):
         release_key=f"review-release-{uuid4().hex[:8]}",
         title="Review release",
         notes="",
-        metrics={},
+        metrics=release_metrics or {},
         published_by_id=admin.id,
         published_at=datetime.now(UTC),
         is_current=True,

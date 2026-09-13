@@ -2,14 +2,34 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from collections.abc import Mapping
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.api.errors import APIError
+from app.activities.models import Activity
+from app.assets.models import Asset, AssetIntegrityState
 from app.assets.storage import LocalAssetStore
+from app.audit.service import canonical_content_hash, persisted_json_value
+from app.compounds.models import Compound
+from app.evidence.models import Evidence
+from app.imports.models import (
+    ImportAssetLink,
+    ImportBatch,
+    ImportCandidateDecision,
+    ImportReleaseCandidate,
+)
+from app.lineages.models import Lineage, LineageEdge
+from app.papers.models import Paper
+from app.releases.aggregate import (
+    OVERVIEW_METRIC_KEYS,
+    overview_metrics_from_counts,
+    recompute_release_aggregate,
+)
 from app.releases.manifest import (
+    build_release_artifact_snapshot,
     canonical_hash,
     capture_release_artifact_manifest,
     get_release_artifact_manifest,
@@ -17,6 +37,7 @@ from app.releases.manifest import (
 from app.releases.models import Release, ReleaseItem, ReleaseOperation
 from app.releases.validation import (
     ReleaseValidationResult,
+    ValidationIssue,
     assert_release_valid,
     validate_release,
 )
@@ -25,7 +46,9 @@ from app.revisions.service import RevisionService
 from app.reviews.models import Changeset, ChangesetItem
 from app.reviews.service import ReviewService
 from app.security.policies import WorkflowState
+from app.structures.models import Structure
 from app.users.models import User, UserRole
+from app.visual_objects.models import VisualObject, VisualRegion
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +90,10 @@ class ReleaseConflict(RuntimeError):
     """A release operation cannot be completed in the current state."""
 
 
+class BaselineValidationError(ValueError):
+    """An approved imported baseline does not satisfy publication gates."""
+
+
 @dataclass(frozen=True, slots=True)
 class ReleaseOperationResult:
     release: Release
@@ -91,9 +118,268 @@ def _require_admin(session: Session, actor_id: UUID) -> None:
 def _release_for_changeset(session: Session, changeset_id: UUID) -> Release | None:
     return session.scalar(
         select(Release)
-        .where(Release.metrics["changeset_id"].astext == str(changeset_id))
+        .where(
+            or_(
+                Release.metrics["changeset_id"].astext == str(changeset_id),
+                Release.metrics["operation"]["changeset_id"].astext
+                == str(changeset_id),
+            )
+        )
         .order_by(Release.created_at.desc())
     )
+
+
+def _metrics_with_operation(
+    source: Mapping[str, object],
+    operation: Mapping[str, object],
+) -> dict[str, object]:
+    metrics = {
+        key: source[key]
+        for key in OVERVIEW_METRIC_KEYS
+        if key in source
+    }
+    metrics["operation"] = dict(operation)
+    return metrics
+
+
+def _replay_baseline_validation(
+    operation: ReleaseOperation,
+) -> ReleaseValidationResult:
+    snapshot = operation.delta.get("validation")
+    if not isinstance(snapshot, Mapping):
+        raise ReleaseConflict("Idempotent baseline validation is unavailable")
+    issues_value = snapshot.get("issues")
+    asset_ids_value = snapshot.get("asset_ids")
+    if (
+        not isinstance(snapshot.get("valid"), bool)
+        or not isinstance(issues_value, list)
+        or not isinstance(asset_ids_value, list)
+    ):
+        raise ReleaseConflict("Idempotent baseline validation is invalid")
+    try:
+        release_id_value = snapshot.get("release_id")
+        release_id = UUID(str(release_id_value)) if release_id_value else None
+        changeset_id_value = snapshot.get("changeset_id")
+        changeset_id = UUID(str(changeset_id_value)) if changeset_id_value else None
+        asset_ids = tuple(UUID(str(asset_id)) for asset_id in asset_ids_value)
+        issues: list[ValidationIssue] = []
+        for issue_value in issues_value:
+            if not isinstance(issue_value, Mapping):
+                raise ValueError("validation issue is not an object")
+            code = issue_value.get("code")
+            message = issue_value.get("message")
+            if not isinstance(code, str) or not isinstance(message, str):
+                raise ValueError("validation issue text is invalid")
+            object_id_value = issue_value.get("object_id")
+            issues.append(
+                ValidationIssue(
+                    code=code,
+                    message=message,
+                    object_id=(
+                        UUID(str(object_id_value)) if object_id_value else None
+                    ),
+                )
+            )
+    except (TypeError, ValueError, AttributeError) as error:
+        raise ReleaseConflict("Idempotent baseline validation is invalid") from error
+    content_fingerprint = snapshot.get("content_fingerprint")
+    if content_fingerprint is not None and not isinstance(content_fingerprint, str):
+        raise ReleaseConflict("Idempotent baseline validation is invalid")
+    validation = ReleaseValidationResult(
+        valid=snapshot["valid"],
+        issues=tuple(issues),
+        release_id=release_id,
+        changeset_id=changeset_id,
+        content_fingerprint=content_fingerprint,
+        asset_ids=asset_ids,
+    )
+    if not validation.valid or validation.release_id != operation.result_release_id:
+        raise ReleaseConflict("Idempotent baseline validation is invalid")
+    return validation
+
+
+_BASELINE_KIND_SPECS = (
+    (ObjectKind.PAPER, Paper, "paper_key"),
+    (ObjectKind.COMPOUND, Compound, "local_identity"),
+    (ObjectKind.STRUCTURE, Structure, "structure_key"),
+    (ObjectKind.EVIDENCE, Evidence, "evidence_key"),
+    (ObjectKind.ACTIVITY, Activity, "activity_key"),
+    (ObjectKind.LINEAGE, Lineage, "lineage_key"),
+    (ObjectKind.LINEAGE_EDGE, LineageEdge, "edge_key"),
+    (ObjectKind.VISUAL_REGION, VisualRegion, "region_key"),
+    (ObjectKind.VISUAL_OBJECT, VisualObject, "object_key"),
+)
+_BASELINE_KIND_RANK = {
+    kind: rank for rank, (kind, _, _) in enumerate(_BASELINE_KIND_SPECS)
+}
+
+
+def _baseline_release_items(
+    session: Session,
+    *,
+    expected_revision_count: int,
+) -> list[tuple[UUID, UUID, UUID, ObjectKind, int]]:
+    objects: list[tuple[UUID, UUID, ObjectKind, str]] = []
+    for kind, model, key_name in _BASELINE_KIND_SPECS:
+        key_column = getattr(model, key_name)
+        for record in session.scalars(select(model).order_by(key_column, model.id)):
+            paper_id = record.id if kind is ObjectKind.PAPER else record.paper_id
+            objects.append((record.id, paper_id, kind, str(getattr(record, key_name))))
+
+    revisions = list(session.scalars(select(ObjectRevision)))
+    if len(objects) != expected_revision_count or len(revisions) != expected_revision_count:
+        raise BaselineValidationError(
+            "Imported baseline object and revision counts do not match the candidate"
+        )
+    revisions_by_object: dict[UUID, list[ObjectRevision]] = {}
+    for revision in revisions:
+        revisions_by_object.setdefault(revision.object_id, []).append(revision)
+
+    paper_keys = {
+        paper.id: paper.paper_key for paper in session.scalars(select(Paper))
+    }
+    ordered: list[tuple[str, int, str, str, UUID, UUID, UUID, ObjectKind]] = []
+    for object_id, paper_id, kind, stable_key in objects:
+        object_revisions = revisions_by_object.get(object_id, [])
+        if len(object_revisions) != 1:
+            raise BaselineValidationError(
+                "Each imported baseline object must have exactly one revision"
+            )
+        revision = object_revisions[0]
+        if (
+            revision.revision_number != 1
+            or revision.predecessor_id is not None
+            or revision.changeset_id is not None
+            or revision.workflow_state is not WorkflowState.APPROVED
+            or revision.is_current_published
+            or revision.is_tombstone
+        ):
+            raise BaselineValidationError(
+                "Imported baseline revision is not eligible for publication"
+            )
+        paper_key = paper_keys.get(paper_id)
+        if paper_key is None:
+            raise BaselineValidationError(
+                "Imported baseline object references a missing Paper"
+            )
+        ordered.append(
+            (
+                paper_key,
+                _BASELINE_KIND_RANK[kind],
+                stable_key,
+                str(object_id),
+                object_id,
+                revision.id,
+                paper_id,
+                kind,
+            )
+        )
+    ordered.sort(key=lambda value: value[:4])
+    return [
+        (object_id, revision_id, paper_id, kind, order)
+        for order, (
+            _,
+            _,
+            _,
+            _,
+            object_id,
+            revision_id,
+            paper_id,
+            kind,
+        ) in enumerate(ordered, start=1)
+    ]
+
+
+def _validate_baseline_assets(
+    session: Session,
+    *,
+    batch_id: UUID,
+    asset_store: LocalAssetStore | None,
+) -> list[Asset]:
+    asset_ids = set(
+        session.scalars(
+            select(ImportAssetLink.asset_id).where(
+                ImportAssetLink.import_batch_id == batch_id
+            )
+        )
+    )
+    assets = list(
+        session.scalars(
+            select(Asset).where(Asset.id.in_(asset_ids)).order_by(Asset.id)
+        )
+    ) if asset_ids else []
+    if len(assets) != len(asset_ids):
+        raise BaselineValidationError("Imported baseline asset record is missing")
+    for asset in assets:
+        if asset.integrity_state is not AssetIntegrityState.VERIFIED:
+            raise BaselineValidationError(
+                "Imported baseline asset is not in the verified state"
+            )
+        if asset_store is None:
+            continue
+        try:
+            inspected = asset_store.inspect(asset.storage_key)
+        except (OSError, ValueError) as error:
+            raise BaselineValidationError(
+                "Imported baseline asset bytes are unavailable or invalid"
+            ) from error
+        if (
+            inspected.sha256 != asset.sha256
+            or inspected.byte_size != asset.byte_size
+            or inspected.mime_type != asset.mime_type
+        ):
+            raise BaselineValidationError(
+                "Imported baseline asset bytes failed integrity verification"
+            )
+    return assets
+
+
+def _approved_baseline_context(
+    session: Session,
+    candidate: ImportReleaseCandidate,
+) -> tuple[ImportBatch, ImportCandidateDecision, dict[str, object], int]:
+    if candidate.status != "approved":
+        raise ReleaseConflict("Only an approved import candidate can be published")
+    batch = session.get(ImportBatch, candidate.import_batch_id)
+    if batch is None or batch.status != "completed" or batch.completed_at is None:
+        raise ReleaseConflict("Approved candidate import batch is incomplete")
+    decision = session.scalar(
+        select(ImportCandidateDecision).where(
+            ImportCandidateDecision.candidate_id == candidate.id,
+            ImportCandidateDecision.decision == "approve",
+        )
+    )
+    if decision is None:
+        raise ReleaseConflict("Approved candidate decision is missing")
+    manifest = persisted_json_value(session, candidate.manifest)
+    if not isinstance(manifest, dict):
+        raise ReleaseConflict("Approved candidate manifest is invalid")
+    if (
+        canonical_content_hash(manifest) != decision.manifest_hash
+        or manifest != decision.manifest
+    ):
+        raise ReleaseConflict("Approved candidate manifest changed after decision")
+    required_manifest = {
+        "schema_version": 1,
+        "source_fingerprint": batch.source_fingerprint,
+        "status": "imported_baseline",
+        "is_current": False,
+        "counts": batch.counts,
+        "integrity": batch.integrity,
+        "asset_linkage": batch.asset_linkage,
+    }
+    if any(manifest.get(key) != value for key, value in required_manifest.items()):
+        raise ReleaseConflict("Approved candidate no longer matches its import batch")
+    revision_count = manifest.get("revision_count")
+    if (
+        isinstance(revision_count, bool)
+        or not isinstance(revision_count, int)
+        or revision_count < 1
+    ):
+        raise BaselineValidationError(
+            "Approved candidate revision_count must be a positive integer"
+        )
+    return batch, decision, manifest, revision_count
 
 
 def _revision_columns(revision: ObjectRevision) -> dict[str, object]:
@@ -205,6 +491,213 @@ def preview_approved_changeset(
         "affected_asset_ids": [str(asset_id) for asset_id in validation.asset_ids],
         "validation": validation.as_dict(),
     }
+
+
+def publish_approved_baseline(
+    session: Session,
+    *,
+    candidate_id: UUID,
+    actor_id: UUID,
+    title: str | None = None,
+    notes: str = "",
+    idempotency_key: str | None = None,
+    fail_stage: str | None = None,
+    asset_store: LocalAssetStore | None = None,
+) -> ReleaseOperationResult:
+    """Publish one approved import candidate as the first complete release."""
+
+    operation_key = (idempotency_key or f"internal-{uuid4()}").strip()
+    if not operation_key or len(operation_key) > 200:
+        raise ValueError("idempotency_key must contain 1 to 200 characters")
+    clean_title = (title or "LeadTrace initial baseline").strip()
+    if not clean_title or len(clean_title) > 255:
+        raise ValueError("title must contain 1 to 255 characters")
+    clean_notes = notes.strip()
+    request_hash = canonical_hash(
+        {
+            "candidate_id": str(candidate_id),
+            "title": clean_title,
+            "notes": clean_notes,
+        }
+    )
+
+    _advisory_lock(session)
+    _require_admin(session, actor_id)
+    existing_operation = session.scalar(
+        select(ReleaseOperation)
+        .where(
+            ReleaseOperation.actor_id == actor_id,
+            ReleaseOperation.operation_type == "baseline_publish",
+            ReleaseOperation.idempotency_key == operation_key,
+        )
+        .with_for_update()
+    )
+    if existing_operation is not None:
+        if existing_operation.request_hash != request_hash:
+            raise ReleaseConflict(
+                "Idempotency key was already used for another baseline publication"
+            )
+        existing_release = session.get(
+            Release,
+            existing_operation.result_release_id,
+        )
+        if (
+            existing_release is None
+            or existing_release.source_candidate_id != candidate_id
+        ):
+            raise ReleaseConflict("Idempotent baseline publication is unavailable")
+        validation = _replay_baseline_validation(existing_operation)
+        return ReleaseOperationResult(
+            existing_release,
+            validation,
+            idempotent=True,
+            replaced_release_id=None,
+            operation_id=existing_operation.id,
+        )
+
+    candidate = session.scalar(
+        select(ImportReleaseCandidate)
+        .where(ImportReleaseCandidate.id == candidate_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if candidate is None:
+        raise ReleaseConflict("Import candidate not found")
+    batch, _, _, revision_count = _approved_baseline_context(session, candidate)
+    if session.scalar(select(func.count()).select_from(Release)):
+        raise ReleaseConflict("A release already exists; baseline bootstrap is closed")
+
+    release_items = _baseline_release_items(
+        session,
+        expected_revision_count=revision_count,
+    )
+    linked_assets = _validate_baseline_assets(
+        session,
+        batch_id=batch.id,
+        asset_store=asset_store,
+    )
+    if fail_stage == "final_transaction":
+        raise RuntimeError("Injected failure in final transaction")
+
+    metrics: dict[str, object] = overview_metrics_from_counts(batch.counts)
+    metrics["baseline"] = {
+        "candidate_id": str(candidate.id),
+        "batch_id": str(batch.id),
+        "source_fingerprint": batch.source_fingerprint,
+        "counts": batch.counts,
+        "integrity": batch.integrity,
+        "asset_linkage": batch.asset_linkage,
+        "item_count": len(release_items),
+    }
+    release = Release(
+        release_key=f"baseline-{candidate.id}",
+        title=clean_title,
+        notes=clean_notes,
+        metrics=metrics,
+        source_candidate_id=candidate.id,
+        published_by_id=actor_id,
+        published_at=datetime.now(UTC),
+        is_current=False,
+        manifest_finalized=False,
+    )
+    session.add(release)
+    session.flush()
+
+    revision_ids = {revision_id for _, revision_id, _, _, _ in release_items}
+    revisions = list(
+        session.scalars(
+            select(ObjectRevision)
+            .where(ObjectRevision.id.in_(revision_ids))
+            .with_for_update()
+        )
+    )
+    if len(revisions) != len(revision_ids):
+        raise BaselineValidationError("Imported baseline revision disappeared")
+    for revision in revisions:
+        revision.workflow_state = WorkflowState.PUBLISHED
+        revision.is_current_published = True
+        session.flush([revision])
+
+    session.add_all(
+        [
+            ReleaseItem(
+                release_id=release.id,
+                object_id=object_id,
+                revision_id=revision_id,
+                paper_id=paper_id,
+                object_kind=kind,
+                manifest_order=order,
+            )
+            for object_id, revision_id, paper_id, kind, order in release_items
+        ]
+    )
+    session.flush()
+    artifact_snapshot = build_release_artifact_snapshot(session, release.id)
+    artifact_snapshot["baseline_import"] = {
+        "candidate_id": str(candidate.id),
+        "batch_id": str(batch.id),
+        "asset_ids": [str(asset.id) for asset in linked_assets],
+    }
+    capture_release_artifact_manifest(
+        session,
+        release.id,
+        snapshot=artifact_snapshot,
+    )
+    release.manifest_finalized = True
+    session.flush([release])
+    validation = validate_release(
+        session,
+        release.id,
+        asset_store=asset_store,
+    )
+    assert_release_valid(validation)
+    aggregate = recompute_release_aggregate(
+        session,
+        release,
+        asset_store=asset_store,
+        validation=validation,
+    )
+    if aggregate.counts != batch.counts:
+        raise BaselineValidationError(
+            "Published baseline counts do not match the approved import"
+        )
+    if aggregate.integrity != batch.integrity:
+        raise BaselineValidationError(
+            "Published baseline integrity does not match the approved import"
+        )
+
+    operation = ReleaseOperation(
+        operation_type="baseline_publish",
+        actor_id=actor_id,
+        idempotency_key=operation_key,
+        request_hash=request_hash,
+        target_release_id=None,
+        replaced_release_id=None,
+        result_release_id=release.id,
+        reason=clean_notes or f"Publish approved baseline {candidate.id}",
+        delta={
+            "candidate_id": str(candidate.id),
+            "batch_id": str(batch.id),
+            "item_count": len(release_items),
+            "content_fingerprint": validation.content_fingerprint,
+            "validation": validation.as_dict(),
+        },
+    )
+    session.add(operation)
+    session.flush([operation])
+    if fail_stage == "before_pointer_switch":
+        raise RuntimeError("Injected failure before pointer switch")
+    release.is_current = True
+    session.flush([release])
+    candidate.status = "published"
+    candidate.is_current = True
+    session.flush([candidate])
+    return ReleaseOperationResult(
+        release,
+        validation,
+        replaced_release_id=None,
+        operation_id=operation.id,
+    )
 
 
 def publish_approved_changeset(
@@ -410,7 +903,14 @@ def publish_approved_changeset(
         release_key=f"release-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}",
         title=title or f"Release for {changeset.title}",
         notes=notes,
-        metrics={"changeset_id": str(changeset.id), "item_count": len(release_items)},
+        metrics=_metrics_with_operation(
+            current.metrics,
+            {
+                "type": "publish",
+                "changeset_id": str(changeset.id),
+                "item_count": len(release_items),
+            },
+        ),
         published_by_id=actor_id,
         published_at=datetime.now(UTC),
         is_current=False,
@@ -735,12 +1235,16 @@ def rollback_release(
         release_key=f"rollback-{target.release_key}-{uuid4().hex[:8]}",
         title=f"Rollback to {target.title}",
         notes=clean_reason,
-        metrics={
-            "rollback_of": str(target.id),
-            "replaced_release_id": str(current.id),
-            "item_count": len(cloned_items),
-            "tombstone_count": len(rollback_revisions) - len(cloned_items),
-        },
+        metrics=_metrics_with_operation(
+            target.metrics,
+            {
+                "type": "rollback",
+                "rollback_of": str(target.id),
+                "replaced_release_id": str(current.id),
+                "item_count": len(cloned_items),
+                "tombstone_count": len(rollback_revisions) - len(cloned_items),
+            },
+        ),
         published_by_id=actor_id,
         published_at=datetime.now(UTC),
         is_current=False,

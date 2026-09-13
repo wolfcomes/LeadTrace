@@ -93,12 +93,21 @@ def _sensitive_key(key: object) -> bool:
     )
 
 
+def _safe_aggregate(key: object, value: object) -> bool:
+    normalized = re.sub(r"[^a-z0-9]", "", str(key).casefold())
+    return normalized == "sessionsrevoked" and type(value) is int and value >= 0
+
+
 def redact_secrets(value: Any) -> Any:
     """Return a JSON-safe copy with credential-bearing values removed."""
 
     if isinstance(value, Mapping):
         return {
-            str(key): "[REDACTED]" if _sensitive_key(key) else redact_secrets(item)
+            str(key): (
+                "[REDACTED]"
+                if _sensitive_key(key) and not _safe_aggregate(key, item)
+                else redact_secrets(item)
+            )
             for key, item in value.items()
         }
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
@@ -134,7 +143,7 @@ def _event_payload(event: AuditEvent) -> dict[str, object]:
         "action": event.action,
         "target_type": event.target_type,
         "target_id": str(event.target_id),
-        "paper_id": str(event.paper_id),
+        "paper_id": str(event.paper_id) if event.paper_id else None,
         "changeset_id": str(event.changeset_id) if event.changeset_id else None,
         "release_id": str(event.release_id) if event.release_id else None,
         "occurred_at": event.occurred_at.astimezone(UTC).isoformat().replace("+00:00", "Z"),
@@ -164,7 +173,7 @@ class AuditService:
         action: str,
         target_type: str,
         target_id: UUID,
-        paper_id: UUID,
+        paper_id: UUID | None,
         changeset_id: UUID | None,
         release_id: UUID | None,
         ip_address: str,

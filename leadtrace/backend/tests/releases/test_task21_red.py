@@ -81,6 +81,16 @@ from tests.reviews.test_service import PASSWORD as REVIEW_PASSWORD
 from tests.reviews.test_service import _add_paper_item, _setup
 
 
+TEST_OVERVIEW_METRICS = {
+    "corpus": {"numerator": 1, "denominator": 1, "unit": "papers"},
+    "lineage": {"numerator": 0, "denominator": 1, "unit": "papers"},
+    "relation": {"numerator": 0, "denominator": 0, "unit": "edges"},
+    "structure": {"numerator": 0, "denominator": 0, "unit": "compounds"},
+    "pair": {"numerator": 0, "denominator": 0, "unit": "edges"},
+    "human_review": {"numerator": 0, "denominator": 1, "unit": "papers"},
+}
+
+
 def test_task21_release_helpers_are_available() -> None:
     assert callable(validate_release)
     assert callable(export_release)
@@ -119,7 +129,10 @@ def _resign_export(payload: dict[str, object]) -> dict[str, object]:
 
 
 def _approved_changeset(session):
-    reviewer, _, admin, paper, paper_revision, release = _setup(session)
+    reviewer, _, admin, paper, paper_revision, release = _setup(
+        session,
+        release_metrics=TEST_OVERVIEW_METRICS,
+    )
     capture_release_artifact_manifest(session, release.id)
     review = ReviewService()
     task = review.create_task(
@@ -2595,6 +2608,51 @@ def test_publish_export_and_rollback_create_immutable_new_releases(
             )
         ]
         assert rollback_snapshots == target_snapshots
+
+
+def test_changeset_publish_and_rollback_preserve_overview_metrics(
+    auth_session_factory,
+) -> None:
+    overview_keys = {
+        "corpus",
+        "lineage",
+        "relation",
+        "structure",
+        "pair",
+        "human_review",
+    }
+    with auth_session_factory.begin() as session:
+        _, admin, _, original, changeset, _ = _approved_changeset(session)
+        expected = {key: original.metrics[key] for key in overview_keys}
+        published = publish_approved_changeset(
+            session,
+            changeset_id=changeset.id,
+            actor_id=admin.id,
+        )
+
+        assert {
+            key: published.release.metrics[key] for key in overview_keys
+        } == expected
+        assert published.release.metrics["operation"]["changeset_id"] == str(
+            changeset.id
+        )
+        original_id = original.id
+        admin_id = admin.id
+
+    with auth_session_factory.begin() as session:
+        rolled_back = rollback_release(
+            session,
+            target_release_id=original_id,
+            actor_id=admin_id,
+            reason="Restore overview metric source release",
+        )
+
+        assert {
+            key: rolled_back.release.metrics[key] for key in overview_keys
+        } == expected
+        assert rolled_back.release.metrics["operation"]["rollback_of"] == str(
+            original_id
+        )
 
 
 def test_rollback_publishes_tombstones_for_objects_absent_from_target(

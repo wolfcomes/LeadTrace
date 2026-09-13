@@ -71,7 +71,7 @@ class DrawingRequest(BaseModel):
 
 
 def _authorize_paper(session: Session, principal: Principal, paper_id: UUID) -> None:
-    if principal.must_change_password or principal.role is UserRole.VISITOR:
+    if principal.role is UserRole.VISITOR:
         raise HTTPException(status_code=403, detail="Permission denied")
     if principal.role is not UserRole.ADMIN:
         assigned = session.scalar(
@@ -88,7 +88,7 @@ def _authorize_paper(session: Session, principal: Principal, paper_id: UUID) -> 
 def require_structure_edit_permission(
     principal: Principal = Depends(get_authenticated_principal),
 ) -> Principal:
-    if principal.must_change_password or principal.role is UserRole.VISITOR:
+    if principal.role is UserRole.VISITOR:
         raise HTTPException(status_code=403, detail="Permission denied")
     return principal
 

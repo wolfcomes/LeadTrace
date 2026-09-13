@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -11,13 +11,30 @@ from sqlalchemy.orm import Session
 
 from app.activities.models import Activity
 from app.assets.models import Asset
-from app.audit.service import AuditService
+from app.api.errors import request_id_for
+from app.audit.service import (
+    AuditService,
+    canonical_content_hash,
+    redact_sensitive_text,
+)
+from app.auth.router import resolve_remote_address
 from app.compounds.models import Compound
 from app.config import Settings
 from app.database import get_db_session
 from app.evidence.models import Evidence
 from app.health.service import HealthService
-from app.imports.models import ImportAssetLink, ImportBatch
+from app.imports.approval import (
+    CandidateDecisionConflict,
+    CandidateDecisionForbidden,
+    CandidateDecisionNotFound,
+    ImportCandidateApprovalService,
+)
+from app.imports.models import (
+    ImportAssetLink,
+    ImportBatch,
+    ImportCandidateDecision,
+    ImportReleaseCandidate,
+)
 from app.imports.service import BaselineImporter, ImportValidationError
 from app.jobs.models import CropJob
 from app.lineages.models import Lineage, LineageEdge
@@ -43,6 +60,61 @@ from app.visual_objects.models import (
 
 class ImportRequest(BaseModel):
     source_root: str = Field(min_length=1, max_length=120)
+
+
+class ImportCandidateDecisionRequest(BaseModel):
+    action: Literal["approve", "reject"]
+    reason: str = Field(min_length=1, max_length=4000)
+
+
+_SAFE_CANDIDATE_MANIFEST_FIELDS = (
+    "schema_version",
+    "source_fingerprint",
+    "status",
+    "is_current",
+    "counts",
+    "integrity",
+    "asset_linkage",
+    "revision_count",
+)
+
+
+def _safe_candidate_manifest(manifest: dict[str, object]) -> dict[str, object]:
+    return {
+        field: manifest[field]
+        for field in _SAFE_CANDIDATE_MANIFEST_FIELDS
+        if field in manifest
+    }
+
+
+def _safe_candidate_decision(
+    decision: ImportCandidateDecision | None,
+) -> dict[str, object] | None:
+    if decision is None:
+        return None
+    return {
+        "id": str(decision.id),
+        "decision": decision.decision,
+        "actor_id": str(decision.actor_id),
+        "reason": redact_sensitive_text(decision.reason),
+        "manifest_hash": decision.manifest_hash,
+        "created_at": decision.created_at.isoformat(),
+    }
+
+
+def _safe_import_candidate(
+    candidate: ImportReleaseCandidate,
+    decision: ImportCandidateDecision | None,
+) -> dict[str, object]:
+    return {
+        "id": str(candidate.id),
+        "import_batch_id": str(candidate.import_batch_id),
+        "status": candidate.status,
+        "is_current": candidate.is_current,
+        "manifest": _safe_candidate_manifest(candidate.manifest),
+        "decision": _safe_candidate_decision(decision),
+        "created_at": candidate.created_at.isoformat(),
+    }
 
 
 def _safe_asset(asset: Asset) -> dict[str, object]:
@@ -191,6 +263,105 @@ def create_admin_router(settings: Settings, *, database_probe: Any | None = None
                 for batch in session.scalars(select(ImportBatch).order_by(ImportBatch.started_at.desc()))
             ]
 
+    @router.get("/import-candidates", response_model=list[dict[str, object]])
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
+    def list_import_candidates(
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(require_admin),
+    ) -> list[dict[str, object]]:
+        del principal
+        with session.begin():
+            candidates = list(
+                session.scalars(
+                    select(ImportReleaseCandidate).order_by(
+                        ImportReleaseCandidate.created_at.desc(),
+                        ImportReleaseCandidate.id,
+                    )
+                )
+            )
+            candidate_ids = [candidate.id for candidate in candidates]
+            decisions = {
+                decision.candidate_id: decision
+                for decision in session.scalars(
+                    select(ImportCandidateDecision).where(
+                        ImportCandidateDecision.candidate_id.in_(candidate_ids)
+                    )
+                )
+            } if candidate_ids else {}
+            return [
+                _safe_import_candidate(candidate, decisions.get(candidate.id))
+                for candidate in candidates
+            ]
+
+    @router.post("/import-candidates/{candidate_id}/decision")
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
+    def decide_import_candidate(
+        candidate_id: UUID,
+        payload: ImportCandidateDecisionRequest,
+        request: Request,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(require_admin),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    ) -> dict[str, object]:
+        require_request_csrf(
+            principal,
+            csrf_token,
+            settings.session_secret.get_secret_value(),
+        )
+        try:
+            with session.begin():
+                result = ImportCandidateApprovalService().decide(
+                    session,
+                    candidate_id=candidate_id,
+                    actor_id=principal.user_id,
+                    action=payload.action,
+                    reason=payload.reason,
+                )
+                candidate = session.get(ImportReleaseCandidate, candidate_id)
+                if candidate is None:
+                    raise CandidateDecisionNotFound("Import candidate not found")
+                if not result.idempotent:
+                    after = {
+                        "candidate_id": str(candidate.id),
+                        "status": candidate.status,
+                        "decision_id": str(result.decision.id),
+                        "manifest_hash": result.decision.manifest_hash,
+                    }
+                    AuditService().append_event(
+                        session,
+                        actor_id=principal.user_id,
+                        action=f"import_candidate.{candidate.status}",
+                        target_type="import_release_candidate",
+                        target_id=candidate.id,
+                        paper_id=None,
+                        changeset_id=None,
+                        release_id=None,
+                        ip_address=resolve_remote_address(request, settings),
+                        request_id=request_id_for(request),
+                        result="success",
+                        reason=result.decision.reason,
+                        before_hash=canonical_content_hash(
+                            {
+                                "candidate_id": str(candidate.id),
+                                "status": "imported_baseline",
+                            }
+                        ),
+                        after_hash=canonical_content_hash(after),
+                        details={"after": after},
+                    )
+                response = _safe_import_candidate(candidate, result.decision)
+                response["idempotent"] = result.idempotent
+                response["request_id"] = request_id_for(request)
+                return response
+        except CandidateDecisionNotFound as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except CandidateDecisionForbidden as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except CandidateDecisionConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
     def _source_root(key: str) -> Path:
         root = settings.source_roots.get(key)
         if root is None:
@@ -240,7 +411,7 @@ def create_admin_router(settings: Settings, *, database_probe: Any | None = None
             events = AuditService().list_events(session, limit=500, offset=0)
             filtered = [event for event in events if (action is None or event.action == action) and (actor_id is None or event.actor_id == actor_id) and (target_type is None or event.target_type == target_type) and (result is None or event.result == result)]
             return [
-                {"id": str(event.id), "sequence_number": event.sequence_number, "actor_id": str(event.actor_id), "action": event.action, "target_type": event.target_type, "target_id": str(event.target_id), "paper_id": str(event.paper_id), "changeset_id": str(event.changeset_id) if event.changeset_id else None, "release_id": str(event.release_id) if event.release_id else None, "occurred_at": event.occurred_at.isoformat(), "request_id": event.request_id, "result": event.result, "reason": event.reason, "details": event.details}
+                {"id": str(event.id), "sequence_number": event.sequence_number, "actor_id": str(event.actor_id), "action": event.action, "target_type": event.target_type, "target_id": str(event.target_id), "paper_id": str(event.paper_id) if event.paper_id else None, "changeset_id": str(event.changeset_id) if event.changeset_id else None, "release_id": str(event.release_id) if event.release_id else None, "occurred_at": event.occurred_at.isoformat(), "request_id": event.request_id, "result": event.result, "reason": event.reason, "details": event.details}
                 for event in filtered[offset : offset + limit]
             ]
 

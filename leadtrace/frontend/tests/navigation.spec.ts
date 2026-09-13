@@ -91,8 +91,21 @@ describe("role-aware application navigation", () => {
 
     expect(wrapper.get("[data-account]").text()).toContain("管理员一");
     expect(wrapper.get("[data-account]").text()).toContain("管理员");
+    expect(wrapper.get("[data-change-password]").attributes("href")).toBe(
+      "/change-password",
+    );
     expect(wrapper.get(".skip-link").attributes("href")).toBe("#main-content");
     expect(wrapper.get("main").attributes("id")).toBe("main-content");
+  });
+
+  it("lets a signed-in user open the optional password change page", async () => {
+    const router = createAppRouter(createMemoryHistory());
+    useAuthStore().acceptSession({ user: users.visitor, csrf_token: "csrf" });
+
+    await router.push("/change-password");
+    await router.isReady();
+
+    expect(router.currentRoute.value.path).toBe("/change-password");
   });
 
   it("blocks direct navigation to role-restricted routes", async () => {

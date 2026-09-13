@@ -83,6 +83,23 @@ def test_audit_api_limits_reviewer_to_own_activity_and_admin_verifies_chain(
                 after_hash=canonical_content_hash({"index": index}),
                 details={"password": "must-not-appear", "safe": actor_name},
             )
+        AuditService().append_event(
+            session,
+            actor_id=identities["audit-admin"].id,
+            action="import_candidate.approved",
+            target_type="import_release_candidate",
+            target_id=uuid4(),
+            paper_id=None,
+            changeset_id=None,
+            release_id=None,
+            ip_address="192.0.2.20",
+            request_id="audit-api-corpus",
+            result="success",
+            reason="Corpus-level baseline decision",
+            before_hash=canonical_content_hash({"status": "imported_baseline"}),
+            after_hash=canonical_content_hash({"status": "approved"}),
+            details={"scope": "corpus"},
+        )
 
     settings = Settings(
         _env_file=None,
@@ -121,11 +138,17 @@ def test_audit_api_limits_reviewer_to_own_activity_and_admin_verifies_chain(
         _login(client, identities["audit-admin"].username)
         admin_events = client.get("/api/v1/audit/events")
         assert admin_events.status_code == 200
-        assert len(admin_events.json()) == 2
+        assert len(admin_events.json()) == 3
+        corpus_event = next(
+            event
+            for event in admin_events.json()
+            if event["action"] == "import_candidate.approved"
+        )
+        assert corpus_event["paper_id"] is None
         verification = client.get("/api/v1/audit/verify")
         assert verification.status_code == 200
         assert verification.json() == {
             "valid": True,
-            "event_count": 2,
+            "event_count": 3,
             "first_invalid_sequence": None,
         }

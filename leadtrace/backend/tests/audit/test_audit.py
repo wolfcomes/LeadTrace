@@ -120,6 +120,7 @@ def test_audit_details_recursively_redact_credentials_and_tokens() -> None:
         {
             "password": "plain text",
             "session_id": "opaque session",
+            "sessions_revoked": 2,
             "csrf": "bare csrf value",
             "csrfToken": "csrf value",
             "Authorization": "Bearer token",
@@ -134,6 +135,7 @@ def test_audit_details_recursively_redact_credentials_and_tokens() -> None:
                 "x_api_key": "vendor api credential",
                 "authorization_header": "Basic credential",
                 "cookie_header": "session cookie",
+                "sessions_revoked": "not a safe aggregate count",
                 "safe": "retained",
             },
             "items": [{"api-key": "api secret"}, "ordinary"],
@@ -143,6 +145,7 @@ def test_audit_details_recursively_redact_credentials_and_tokens() -> None:
     assert sanitized == {
         "password": "[REDACTED]",
         "session_id": "[REDACTED]",
+        "sessions_revoked": 2,
         "csrf": "[REDACTED]",
         "csrfToken": "[REDACTED]",
         "Authorization": "[REDACTED]",
@@ -157,6 +160,7 @@ def test_audit_details_recursively_redact_credentials_and_tokens() -> None:
             "x_api_key": "[REDACTED]",
             "authorization_header": "[REDACTED]",
             "cookie_header": "[REDACTED]",
+            "sessions_revoked": "[REDACTED]",
             "safe": "retained",
         },
         "items": [{"api-key": "[REDACTED]"}, "ordinary"],

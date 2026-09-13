@@ -76,10 +76,10 @@ class AuditEvent(UUIDPrimaryKeyMixin, Base):
     action: Mapped[str] = mapped_column(String(120), nullable=False)
     target_type: Mapped[str] = mapped_column(String(64), nullable=False)
     target_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
-    paper_id: Mapped[UUID] = mapped_column(
+    paper_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
         ForeignKey("papers.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     changeset_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True),

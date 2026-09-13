@@ -136,7 +136,7 @@ def test_other_reviewer_cannot_cross_assignment_or_ownership_boundaries(
     assert decision.allowed is False
 
 
-def test_first_login_principal_is_limited_until_password_change() -> None:
+def test_legacy_password_change_flag_does_not_override_role_permissions() -> None:
     principal = Principal(
         ADMIN_ID,
         UserRole.ADMIN,
@@ -145,9 +145,7 @@ def test_first_login_principal_is_limited_until_password_change() -> None:
 
     decision = evaluate_access(principal, Action.MANAGE_ACCOUNTS, ResourceScope())
 
-    assert decision.allowed is False
-    assert decision.status_code == 403
-    assert decision.reason == "Password change required"
+    assert decision.allowed is True
 
 
 @pytest.mark.parametrize(

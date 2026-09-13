@@ -20,16 +20,8 @@ _PASSWORD_HASHER = PasswordHasher(
 
 
 def validate_password(password: str) -> None:
-    if len(password) < 16:
-        raise PasswordPolicyError("Password must contain at least 16 characters")
-    character_classes = (
-        any(character.islower() for character in password),
-        any(character.isupper() for character in password),
-        any(character.isdigit() for character in password),
-        any(not character.isalnum() and not character.isspace() for character in password),
-    )
-    if sum(character_classes) < 3:
-        raise PasswordPolicyError("Password must contain at least three character classes")
+    if len(password) < 6:
+        raise PasswordPolicyError("Password must contain at least 6 characters")
 
 
 def hash_password(password: str) -> str:
@@ -42,4 +34,3 @@ def verify_password(encoded_password: str, candidate: str) -> bool:
         return _PASSWORD_HASHER.verify(encoded_password, candidate)
     except (InvalidHashError, VerificationError):
         return False
-

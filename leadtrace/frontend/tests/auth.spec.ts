@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory } from "vue-router";
 
 import LoginPage from "../src/auth/LoginPage.vue";
+import ChangePasswordPage from "../src/auth/ChangePasswordPage.vue";
 import { useAuthStore } from "../src/auth/store";
 import { createAppRouter } from "../src/app/router";
 
@@ -59,7 +60,7 @@ describe("authenticated login flow", () => {
     );
   });
 
-  it("routes first-login accounts to mandatory password change", async () => {
+  it("routes legacy flagged accounts into the normal application", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => jsonResponse(200, {
@@ -84,8 +85,19 @@ describe("authenticated login flow", () => {
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
-    expect(router.currentRoute.value.path).toBe("/change-password");
+    expect(router.currentRoute.value.path).toBe("/overview");
     expect(useAuthStore().user?.role).toBe("reviewer");
+    expect(wrapper.text()).not.toContain("修改密码");
+  });
+
+  it("allows the browser to submit simple passwords from six characters", async () => {
+    const router = createAppRouter(createMemoryHistory());
+    const wrapper = mount(ChangePasswordPage, {
+      global: { plugins: [router] },
+    });
+
+    expect(wrapper.get("#new-password").attributes("minlength")).toBe("6");
+    expect(wrapper.get("#confirm-password").attributes("minlength")).toBe("6");
   });
 
   it("returns an expired protected session to login with its destination", async () => {

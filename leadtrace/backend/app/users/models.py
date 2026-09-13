@@ -41,7 +41,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     must_change_password: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
-        default=True,
+        default=False,
     )
     password_changed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

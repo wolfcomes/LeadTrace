@@ -23,18 +23,21 @@ def test_password_is_stored_as_argon2id_and_never_as_plaintext() -> None:
 
 @pytest.mark.parametrize(
     "password",
-    [
-        "short",
-        "onlylowercaseletters",
-        "ONLYUPPERCASELETTERS",
-        "1234567890123456",
-    ],
+    ["simple", "123456", "ABCDEF"],
 )
-def test_password_policy_rejects_weak_initial_passwords(password: str) -> None:
+def test_password_policy_accepts_simple_six_character_passwords(
+    password: str,
+) -> None:
+    validate_password(password)
+
+
+@pytest.mark.parametrize("password", ["", "a", "12345"])
+def test_password_policy_rejects_passwords_shorter_than_six(
+    password: str,
+) -> None:
     with pytest.raises(PasswordPolicyError):
         validate_password(password)
 
 
 def test_password_policy_accepts_long_mixed_passphrase() -> None:
     validate_password("Reviewer passphrase 2026!")
-

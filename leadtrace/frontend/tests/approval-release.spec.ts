@@ -28,6 +28,38 @@ const submittedChangeset = {
 };
 const approvedChangeset = { ...submittedChangeset, workflow_state: "approved" };
 const releaseId = "30000000-0000-4000-8000-000000000099";
+const baselineCandidateId = "81000000-0000-4000-8000-000000000021";
+const approvedBaselineCandidate = {
+  id: baselineCandidateId,
+  import_batch_id: "82000000-0000-4000-8000-000000000021",
+  status: "approved",
+  is_current: false,
+  manifest: {
+    schema_version: 1,
+    source_fingerprint: "a".repeat(64),
+    status: "imported_baseline",
+    is_current: false,
+    counts: { corpus_papers: 672 },
+    integrity: { dangling_entity_references: 0 },
+    asset_linkage: {
+      resolved_references: 5033,
+      unique_resolved_assets: 4890,
+      missing_references: 14,
+      ambiguous_references: 3,
+      corrupt_references: 2,
+    },
+    revision_count: 10000,
+  },
+  decision: {
+    id: "83000000-0000-4000-8000-000000000021",
+    decision: "approve",
+    actor_id: "10000000-0000-4000-8000-000000000001",
+    reason: "已核对基线导入",
+    manifest_hash: "b".repeat(64),
+    created_at: "2026-09-13T01:00:00Z",
+  },
+  created_at: "2026-09-13T00:00:00Z",
+};
 
 function deferred<T>(): {
   promise: Promise<T>;
@@ -108,6 +140,7 @@ describe("approval and release console", () => {
       const path = new URL(String(input), "http://leadtrace.test").pathname;
       if (path === "/api/v1/approvals") return response([]);
       if (path === "/api/v1/releases") return response([]);
+      if (path === "/api/v1/admin/import-candidates") return response([]);
       return response({});
     }));
   });
@@ -570,6 +603,108 @@ describe("approval and release console", () => {
       notes: "",
     });
   });
+
+  it("publishes an approved baseline separately with one stable attempt key", async () => {
+    const calls: Array<{ path: string; init?: RequestInit }> = [];
+    let publishAttempts = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      calls.push({ path, init });
+      if (path === "/api/v1/releases") return response([]);
+      if (path === "/api/v1/review/changesets") return response([approvedChangeset]);
+      if (path === "/api/v1/admin/import-candidates") {
+        return response([approvedBaselineCandidate]);
+      }
+      if (path === `/api/v1/releases/preview/${changesetId}`) {
+        return response({
+          changeset_id: changesetId,
+          base_release_id: approvedChangeset.base_release_id,
+          counts: { create: 0, update: 1, tombstone: 0, total: 1 },
+          by_object_kind: {},
+          objects: [],
+          affected_asset_ids: [],
+          validation: { valid: true, issues: [] },
+        });
+      }
+      if (path === "/api/v1/releases/publish-baseline") {
+        publishAttempts += 1;
+        if (publishAttempts === 1) return apiFailure(409, "baseline-409");
+        return response({
+          release_id: releaseId,
+          release_key: `baseline-${baselineCandidateId}`,
+          validation: { valid: true },
+          idempotent: false,
+          operation_id: "90000000-0000-4000-8000-000000000031",
+          request_id: "baseline-success",
+        });
+      }
+      return response({});
+    }));
+    const router = createAppRouter(createMemoryHistory());
+    await router.push(`/admin/releases?candidate=${baselineCandidateId}`);
+    await router.isReady();
+    const wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.get("[data-baseline-publication]").text()).toContain("已批准，待发布");
+    expect(wrapper.get("[data-baseline-publication]").text()).toContain("5,033 解析引用");
+    expect(wrapper.get("[data-baseline-publication]").text()).toContain("4,890 唯一资产");
+    expect(wrapper.get("[data-baseline-publication]").text()).toContain("14 缺失");
+    expect(wrapper.get("[data-baseline-publication]").text()).toContain("3 歧义");
+    expect(wrapper.get("[data-baseline-publication]").text()).toContain("2 损坏");
+    expect(wrapper.find("[data-publish-release]").exists()).toBe(true);
+    await wrapper.get("[data-publish-baseline]").trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toContain("当前版本保持不变");
+    expect(wrapper.get('[role="alert"]').text()).toContain("baseline-409");
+    await wrapper.get("[data-publish-baseline]").trigger("click");
+    await flushPromises();
+
+    const requests = calls.filter(
+      (call) => call.path === "/api/v1/releases/publish-baseline",
+    );
+    expect(requests).toHaveLength(2);
+    const firstKey = new Headers(requests[0].init?.headers).get("Idempotency-Key");
+    expect(firstKey).toBeTruthy();
+    expect(new Headers(requests[1].init?.headers).get("Idempotency-Key")).toBe(firstKey);
+    expect(new Headers(requests[0].init?.headers).get("X-CSRF-Token")).toBe("csrf");
+    expect(JSON.parse(String(requests[0].init?.body))).toEqual({
+      candidate_id: baselineCandidateId,
+      notes: "",
+    });
+  });
+
+  it.each([
+    [409, "首次发布候选已经变化，当前版本保持不变。", "baseline-conflict"],
+    [422, "首次发布校验未通过，当前版本保持不变。", "baseline-validation"],
+  ] as const)(
+    "explains baseline publication HTTP %i without implying a pointer change",
+    async (status, message, requestId) => {
+      vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+        const path = new URL(String(input), "http://leadtrace.test").pathname;
+        if (path === "/api/v1/releases") return response([]);
+        if (path === "/api/v1/review/changesets") return response([]);
+        if (path === "/api/v1/admin/import-candidates") {
+          return response([approvedBaselineCandidate]);
+        }
+        if (path === "/api/v1/releases/publish-baseline") {
+          return apiFailure(status, requestId);
+        }
+        return response({});
+      }));
+      const router = createAppRouter(createMemoryHistory());
+      await router.push(`/admin/releases?candidate=${baselineCandidateId}`);
+      await router.isReady();
+      const wrapper = mount(App, { global: { plugins: [router] } });
+      await flushPromises();
+
+      await wrapper.get("[data-publish-baseline]").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get('[role="alert"]').text()).toContain(message);
+      expect(wrapper.get('[role="alert"]').text()).toContain(requestId);
+    },
+  );
 
   it("sends rollback with CSRF, idempotency key, and the selected reason", async () => {
     const requests: RequestInit[] = [];

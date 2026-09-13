@@ -121,7 +121,7 @@ class BindingDeleteRequest(BaseModel):
 
 
 def _authorize_paper(session: Session, principal: Principal, paper_id: UUID) -> None:
-    if principal.must_change_password or principal.role is UserRole.VISITOR:
+    if principal.role is UserRole.VISITOR:
         raise HTTPException(status_code=403, detail="Permission denied")
     if principal.role is UserRole.ADMIN:
         return
@@ -192,7 +192,7 @@ def create_visual_objects_router(session_secret: str) -> APIRouter:
     relationship_service = RelationshipService()
 
     def require_edit(principal: Principal = Depends(get_authenticated_principal)) -> Principal:
-        if principal.must_change_password or principal.role is UserRole.VISITOR:
+        if principal.role is UserRole.VISITOR:
             raise HTTPException(status_code=403, detail="Permission denied")
         return principal
 

@@ -17,6 +17,7 @@ def _settings(asset_root: Path, **updates: object) -> Settings:
         "environment": "test",
         "database_url": "postgresql+psycopg://leadtrace:test@database/leadtrace",
         "session_secret": "test-only-session-secret-at-least-32-characters",
+        "default_account_password": "simple",
         "metrics_bearer_token": "test-only-metrics-token-at-least-32-characters",
         "allowed_hosts": ["testserver"],
         "asset_root": asset_root,
@@ -141,6 +142,24 @@ def test_production_configuration_accepts_explicit_safe_values(tmp_path: Path) -
     )
 
     assert settings.environment == "production"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, "", "short", "replace-with-a-protected-local-default"],
+)
+def test_production_configuration_requires_a_valid_default_account_password(
+    tmp_path: Path,
+    value: str | None,
+) -> None:
+    with pytest.raises(ValidationError, match="default_account_password"):
+        _settings(
+            tmp_path,
+            environment="production",
+            allowed_hosts=["leadtrace.lan"],
+            session_secret="Q7!vZ3#kL9@rT2$xN8%pC4&mW6*eS1^hB",
+            default_account_password=value,
+        )
 
 
 def test_production_configuration_requires_explicit_asset_root() -> None:

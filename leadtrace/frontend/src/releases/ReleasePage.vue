@@ -1,25 +1,36 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 
 import type { Changeset } from "../api/schema";
 import { ApiError } from "../api/client";
+import {
+  fetchImportCandidates,
+  type ImportCandidate,
+} from "../admin/api";
 import { fetchChangesets } from "../review/api";
 import {
   exportRelease,
   createReleaseOperationKey,
   fetchReleases,
   previewRelease,
+  publishBaseline,
   publishChangeset,
   validateRelease,
   type AdminRelease,
   type ReleasePreview,
 } from "./api";
 
+const route = useRoute();
 const releases = ref<AdminRelease[]>([]);
 const changesets = ref<Changeset[]>([]);
+const candidates = ref<ImportCandidate[]>([]);
 const selectedChangeset = ref("");
+const selectedBaseline = ref("");
 const title = ref("");
 const notes = ref("");
+const baselineTitle = ref("");
+const baselineNotes = ref("");
 const loading = ref(true);
 const busy = ref(false);
 const error = ref<string | null>(null);
@@ -27,8 +38,17 @@ const result = ref<Record<string, unknown> | null>(null);
 const preview = ref<ReleasePreview | null>(null);
 const previewLoading = ref(false);
 const publishKey = ref(createReleaseOperationKey("publish"));
+const baselinePublishKey = ref(createReleaseOperationKey("baseline"));
 
 const approved = computed(() => changesets.value.filter((entry) => entry.workflow_state === "approved"));
+const approvedBaselines = computed(() => candidates.value.filter((entry) => entry.status === "approved"));
+const selectedBaselineCandidate = computed(() => (
+  approvedBaselines.value.find((entry) => entry.id === selectedBaseline.value) ?? null
+));
+
+function formatCount(value: number | undefined): string {
+  return value?.toLocaleString("zh-CN") ?? "-";
+}
 
 function requestReference(caught: ApiError): string {
   return caught.requestId ? ` 请求编号：${caught.requestId}` : "";
@@ -36,11 +56,32 @@ function requestReference(caught: ApiError): string {
 
 async function load(): Promise<void> {
   loading.value = true;
+  error.value = null;
   try {
-    [releases.value, changesets.value] = await Promise.all([fetchReleases(), fetchChangesets()]);
+    const [releaseData, candidateData] = await Promise.allSettled([
+      Promise.all([fetchReleases(), fetchChangesets()]),
+      fetchImportCandidates(),
+    ]);
+    if (releaseData.status === "rejected") {
+      error.value = "发布数据未能读取。";
+      return;
+    }
+    [releases.value, changesets.value] = releaseData.value;
+    if (candidateData.status === "fulfilled") {
+      candidates.value = candidateData.value;
+    } else {
+      candidates.value = [];
+      error.value = "首次发布候选未能读取，修改集发布仍可使用。";
+    }
     if (!selectedChangeset.value) selectedChangeset.value = approved.value[0]?.id ?? "";
-  } catch {
-    error.value = "发布数据未能读取。";
+    if (!approvedBaselines.value.some((entry) => entry.id === selectedBaseline.value)) {
+      const queryCandidate = typeof route.query.candidate === "string"
+        ? route.query.candidate
+        : "";
+      selectedBaseline.value = approvedBaselines.value.some(
+        (entry) => entry.id === queryCandidate,
+      ) ? queryCandidate : approvedBaselines.value[0]?.id ?? "";
+    }
   } finally {
     loading.value = false;
   }
@@ -64,6 +105,40 @@ watch(selectedChangeset, (changesetId) => {
   publishKey.value = createReleaseOperationKey("publish");
   void loadPreview(changesetId);
 });
+
+watch(selectedBaseline, () => {
+  baselinePublishKey.value = createReleaseOperationKey("baseline");
+});
+
+async function publishInitialBaseline(): Promise<void> {
+  if (!selectedBaseline.value) return;
+  busy.value = true;
+  error.value = null;
+  try {
+    result.value = await publishBaseline(
+      {
+        candidate_id: selectedBaseline.value,
+        title: baselineTitle.value.trim() || undefined,
+        notes: baselineNotes.value.trim(),
+      },
+      baselinePublishKey.value,
+    );
+    baselinePublishKey.value = createReleaseOperationKey("baseline");
+    await load();
+  } catch (caught) {
+    if (caught instanceof ApiError && caught.kind === "conflict") {
+      error.value = `首次发布候选已经变化，当前版本保持不变。${requestReference(caught)}`;
+    } else if (caught instanceof ApiError && caught.kind === "validation") {
+      error.value = `首次发布校验未通过，当前版本保持不变。${requestReference(caught)}`;
+    } else {
+      error.value = `首次发布未能完成，当前版本保持不变。${
+        caught instanceof ApiError ? requestReference(caught) : ""
+      }`;
+    }
+  } finally {
+    busy.value = false;
+  }
+}
 
 async function publish(): Promise<void> {
   if (!selectedChangeset.value) return;
@@ -120,6 +195,50 @@ onMounted(load);
     </header>
     <p v-if="error" class="message" role="alert">{{ error }}</p>
 
+    <section
+      v-if="approvedBaselines.length"
+      class="publish-band baseline-band"
+      data-baseline-publication
+    >
+      <div>
+        <p class="eyebrow">APPROVED BASELINE</p>
+        <h2>首次发布</h2>
+        <span class="baseline-state">已批准，待发布</span>
+      </div>
+      <label>
+        已批准导入候选
+        <select v-model="selectedBaseline" :disabled="busy">
+          <option v-for="candidate in approvedBaselines" :key="candidate.id" :value="candidate.id">
+            {{ candidate.id }}
+          </option>
+        </select>
+      </label>
+      <label>
+        版本标题
+        <input v-model="baselineTitle" maxlength="255" placeholder="LeadTrace initial baseline">
+      </label>
+      <div v-if="selectedBaselineCandidate" class="baseline-summary">
+        <span>文献 <strong>{{ formatCount(selectedBaselineCandidate.manifest.counts?.corpus_papers as number | undefined) }}</strong></span>
+        <span>修订 <strong>{{ formatCount(selectedBaselineCandidate.manifest.revision_count) }}</strong></span>
+        <span><strong>{{ formatCount(selectedBaselineCandidate.manifest.asset_linkage?.resolved_references) }}</strong> 解析引用</span>
+        <span><strong>{{ formatCount(selectedBaselineCandidate.manifest.asset_linkage?.unique_resolved_assets) }}</strong> 唯一资产</span>
+        <span><strong>{{ formatCount(selectedBaselineCandidate.manifest.asset_linkage?.missing_references) }}</strong> 缺失</span>
+        <span><strong>{{ formatCount(selectedBaselineCandidate.manifest.asset_linkage?.ambiguous_references) }}</strong> 歧义</span>
+        <span><strong>{{ formatCount(selectedBaselineCandidate.manifest.asset_linkage?.corrupt_references) }}</strong> 损坏</span>
+      </div>
+      <label class="notes">
+        发布说明
+        <textarea v-model="baselineNotes" rows="3" maxlength="4000" placeholder="记录首次发布核查结论" />
+      </label>
+      <button
+        data-publish-baseline
+        class="button-primary"
+        type="button"
+        :disabled="busy || !selectedBaseline"
+        @click="publishInitialBaseline"
+      >发布初始版本</button>
+    </section>
+
     <section class="publish-band">
       <div><p class="eyebrow">APPROVED CHANGESET</p><h2>创建发布版本</h2></div>
       <label>已批准修改集<select v-model="selectedChangeset" :disabled="busy"><option value="">请选择</option><option v-for="entry in approved" :key="entry.id" :value="entry.id">{{ entry.title }} · v{{ entry.version }}</option></select></label>
@@ -161,4 +280,9 @@ onMounted(load);
 
 <style scoped>
 .release-page{padding:clamp(24px,4vw,52px)}.page-heading>a{text-decoration:none}.message{padding:11px 14px;border-left:3px solid var(--danger);color:var(--danger);background:#fff;font-size:.76rem}.publish-band{display:grid;grid-template-columns:minmax(180px,.7fr) minmax(210px,1fr) minmax(190px,.8fr);gap:14px;align-items:end;margin-bottom:14px;padding:20px;border:1px solid var(--line);background:#fff}.publish-band h2,.section-heading h2{margin:0;font:600 1.15rem/1.3 Georgia,"Noto Serif SC Variable",serif}.publish-band label{display:grid;gap:7px;color:var(--ink-650);font-size:.68rem;font-weight:700}.publish-band input,.publish-band select,.publish-band textarea{width:100%;min-height:39px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit}.publish-band .notes{grid-column:2/4}.preview-band,.release-list,.result-panel{padding:20px;border:1px solid var(--line);background:#fff;overflow:auto}.preview-band{margin-bottom:22px}.preview-valid{color:var(--forest-800)!important}.preview-invalid{color:var(--danger)!important}.delta-grid{display:grid;grid-template-columns:repeat(4,minmax(100px,1fr));border:1px solid var(--line)}.delta-grid>div{display:grid;gap:5px;padding:12px;border-right:1px solid var(--line)}.delta-grid>div:last-child{border-right:0}.delta-grid span{color:var(--ink-500);font-size:.65rem}.delta-grid strong{font-size:1.1rem}.validation-list{margin:12px 0 0;padding-left:20px;color:var(--danger);font-size:.72rem}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}.section-heading span{color:var(--ink-500);font-size:.7rem}table{width:100%;border-collapse:collapse;font-size:.75rem}th,td{padding:12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{color:var(--ink-500);font-size:.65rem}.state{padding:4px 7px;border-radius:5px;color:var(--ink-600);background:var(--canvas);font-size:.64rem}.state.current{color:var(--forest-800);background:var(--forest-100)}.actions{display:flex;gap:7px}.actions button,.section-heading button{padding:6px 9px;border:1px solid var(--line);border-radius:6px;color:var(--ink-700);background:#fff;cursor:pointer}.empty{text-align:center;color:var(--ink-500)}.result-panel{margin-top:18px}.result-panel pre{max-height:360px;margin:0;padding:14px;overflow:auto;background:var(--canvas);font-size:.68rem}@media(max-width:900px){.publish-band,.delta-grid{grid-template-columns:1fr}.publish-band .notes{grid-column:auto}.delta-grid>div{border-right:0;border-bottom:1px solid var(--line)}.delta-grid>div:last-child{border-bottom:0}}
+.baseline-band{border-left:3px solid var(--forest-700)}
+.baseline-state{display:inline-block;margin-top:7px;padding:4px 7px;border-radius:5px;color:var(--forest-800);background:var(--forest-100);font-size:.64rem}
+.baseline-summary{display:flex;grid-column:1/2;gap:14px;align-items:center;color:var(--ink-500);font-size:.68rem}
+.baseline-summary span{white-space:nowrap}.baseline-summary strong{color:var(--ink-800)}
+@media(max-width:900px){.baseline-summary{grid-column:auto;flex-wrap:wrap}}
 </style>

@@ -82,6 +82,264 @@ def test_empty_postgresql_database_upgrades_to_single_alembic_head(
         engine.dispose()
 
 
+def test_initial_baseline_release_migration_contract(
+    empty_postgresql_database_url: str,
+) -> None:
+    config = _alembic_config(empty_postgresql_database_url)
+    script = ScriptDirectory.from_config(config)
+
+    assert script.get_current_head() == "0016_initial_baseline_release"
+    command.upgrade(config, "head")
+
+    engine = create_database_engine(empty_postgresql_database_url)
+    try:
+        schema = inspect(engine)
+        columns = {
+            column["name"]: column
+            for column in schema.get_columns("import_candidate_decisions")
+        }
+        assert set(columns) == {
+            "id",
+            "candidate_id",
+            "decision",
+            "actor_id",
+            "reason",
+            "manifest",
+            "manifest_hash",
+            "created_at",
+        }
+        foreign_keys = {
+            (tuple(item["constrained_columns"]), item["referred_table"])
+            for item in schema.get_foreign_keys("import_candidate_decisions")
+        }
+        assert foreign_keys >= {
+            (("candidate_id",), "import_release_candidates"),
+            (("actor_id",), "users"),
+        }
+        unique_constraints = {
+            tuple(item["column_names"])
+            for item in schema.get_unique_constraints("import_candidate_decisions")
+        }
+        assert ("candidate_id",) in unique_constraints
+        check_sql = " ".join(
+            str(item["sqltext"])
+            for item in schema.get_check_constraints("import_candidate_decisions")
+        )
+        assert "approve" in check_sql and "reject" in check_sql
+        assert "manifest_hash" in check_sql and "64" in check_sql
+
+        release_operation_columns = {
+            column["name"]: column
+            for column in schema.get_columns("release_operations")
+        }
+        assert release_operation_columns["replaced_release_id"]["nullable"] is True
+        release_operation_checks = " ".join(
+            str(item["sqltext"])
+            for item in schema.get_check_constraints("release_operations")
+        )
+        assert "baseline_publish" in release_operation_checks
+
+        audit_columns = {
+            column["name"]: column
+            for column in schema.get_columns("audit_events")
+        }
+        assert audit_columns["paper_id"]["nullable"] is True
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "used_feature",
+    ["candidate_decision", "baseline_publish", "corpus_audit"],
+)
+def test_initial_baseline_release_downgrade_rejects_used_features_before_ddl(
+    empty_postgresql_database_url: str,
+    used_feature: str,
+) -> None:
+    config = _alembic_config(empty_postgresql_database_url)
+    command.upgrade(config, "head")
+    engine = create_database_engine(empty_postgresql_database_url)
+    actor_id = uuid4()
+    created_at = datetime(2026, 9, 13, 8, 0, tzinfo=UTC)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO users (
+                        id, username, normalized_username, display_name, role,
+                        is_enabled, password_hash, must_change_password,
+                        password_changed_at, last_login_at, created_by_id,
+                        created_at, updated_at
+                    ) VALUES (
+                        :id, :username, :username, 'Migration Admin', 'admin',
+                        true, :password_hash, false, :created_at, NULL, NULL,
+                        :created_at, :created_at
+                    )
+                    """
+                ),
+                {
+                    "id": actor_id,
+                    "username": f"migration-admin-{used_feature}",
+                    "password_hash": hash_password("Migration test password 2026!"),
+                    "created_at": created_at,
+                },
+            )
+            if used_feature == "candidate_decision":
+                batch_id = uuid4()
+                candidate_id = uuid4()
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO import_batches (
+                            id, source_fingerprint, status, counts, integrity,
+                            asset_linkage, completed_at
+                        ) VALUES (
+                            :id, :fingerprint, 'completed', '{}'::jsonb,
+                            '{}'::jsonb, '{}'::jsonb, :created_at
+                        )
+                        """
+                    ),
+                    {
+                        "id": batch_id,
+                        "fingerprint": "a" * 64,
+                        "created_at": created_at,
+                    },
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO import_release_candidates (
+                            id, import_batch_id, status, manifest, is_current
+                        ) VALUES (
+                            :id, :batch_id, 'approved', '{}'::jsonb, false
+                        )
+                        """
+                    ),
+                    {"id": candidate_id, "batch_id": batch_id},
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO import_candidate_decisions (
+                            id, candidate_id, decision, actor_id, reason,
+                            manifest, manifest_hash
+                        ) VALUES (
+                            :id, :candidate_id, 'approve', :actor_id,
+                            'Migration downgrade guard', '{}'::jsonb, :manifest_hash
+                        )
+                        """
+                    ),
+                    {
+                        "id": uuid4(),
+                        "candidate_id": candidate_id,
+                        "actor_id": actor_id,
+                        "manifest_hash": "b" * 64,
+                    },
+                )
+            elif used_feature == "baseline_publish":
+                release_id = uuid4()
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO releases (
+                            id, release_key, title, notes, metrics,
+                            published_by_id, published_at, is_current,
+                            manifest_finalized
+                        ) VALUES (
+                            :id, :release_key, 'Migration Release', '',
+                            '{}'::jsonb, :actor_id, :created_at, true, true
+                        )
+                        """
+                    ),
+                    {
+                        "id": release_id,
+                        "release_key": f"migration-{release_id}",
+                        "actor_id": actor_id,
+                        "created_at": created_at,
+                    },
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO release_operations (
+                            id, operation_type, actor_id, idempotency_key,
+                            request_hash, target_release_id, replaced_release_id,
+                            result_release_id, reason, delta
+                        ) VALUES (
+                            :id, 'baseline_publish', :actor_id, :key,
+                            :request_hash, NULL, NULL, :release_id,
+                            'Migration downgrade guard', '{}'::jsonb
+                        )
+                        """
+                    ),
+                    {
+                        "id": uuid4(),
+                        "actor_id": actor_id,
+                        "key": f"migration-{uuid4()}",
+                        "request_hash": "c" * 64,
+                        "release_id": release_id,
+                    },
+                )
+            else:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO audit_events (
+                            id, sequence_number, actor_id, action, target_type,
+                            target_id, paper_id, changeset_id, release_id,
+                            occurred_at, ip_address, request_id, result, reason,
+                            before_hash, after_hash, details,
+                            previous_event_hash, event_hash
+                        ) VALUES (
+                            :id, 1, :actor_id, 'baseline.approved',
+                            'import_candidate', :target_id, NULL, NULL, NULL,
+                            :created_at, '127.0.0.1', 'migration-guard',
+                            'success', 'Migration downgrade guard',
+                            :before_hash, :after_hash, '{}'::jsonb,
+                            :previous_hash, :event_hash
+                        )
+                        """
+                    ),
+                    {
+                        "id": uuid4(),
+                        "actor_id": actor_id,
+                        "target_id": uuid4(),
+                        "created_at": created_at,
+                        "before_hash": "0" * 64,
+                        "after_hash": "d" * 64,
+                        "previous_hash": "0" * 64,
+                        "event_hash": "e" * 64,
+                    },
+                )
+
+        with pytest.raises(RuntimeError, match="cannot be downgraded after use"):
+            command.downgrade(config, "0015_crop_job_subscriptions")
+
+        assert _database_revision(empty_postgresql_database_url) == (
+            "0016_initial_baseline_release"
+        )
+        schema = inspect(engine)
+        assert schema.has_table("import_candidate_decisions")
+        release_operation_columns = {
+            column["name"]: column
+            for column in schema.get_columns("release_operations")
+        }
+        assert release_operation_columns["replaced_release_id"]["nullable"] is True
+        release_operation_checks = " ".join(
+            str(item["sqltext"])
+            for item in schema.get_check_constraints("release_operations")
+        )
+        assert "baseline_publish" in release_operation_checks
+        audit_columns = {
+            column["name"]: column
+            for column in schema.get_columns("audit_events")
+        }
+        assert audit_columns["paper_id"]["nullable"] is True
+    finally:
+        engine.dispose()
+
+
 def test_foundation_migration_safely_downgrades_to_base(
     empty_postgresql_database_url: str,
 ) -> None:

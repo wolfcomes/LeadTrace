@@ -138,8 +138,6 @@ def create_reviews_router(session_secret: str) -> APIRouter:
     audit_service = AuditService()
 
     def require_reviewer_or_admin(principal: Principal) -> None:
-        if principal.must_change_password:
-            raise HTTPException(status_code=403, detail="Password change required")
         if principal.role is UserRole.VISITOR:
             raise HTTPException(status_code=403, detail="Permission denied")
 

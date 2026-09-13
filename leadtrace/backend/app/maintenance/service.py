@@ -192,7 +192,6 @@ def enforce_maintenance_mode(
                 and checked_at <= auth_session.absolute_expires_at
                 and user is not None
                 and user.is_enabled
-                and not user.must_change_password
                 and user.role is not UserRole.VISITOR
             )
     if not guarded_user:

@@ -47,6 +47,7 @@ def role_matrix_client(
         database_url=empty_postgresql_database_url,
         redis_url="redis://127.0.0.1:6379/0",
         session_secret="route-http-matrix-secret-more-than-thirty-two-characters",
+        default_account_password=UPDATED_PASSWORD,
         allowed_hosts=["testserver"],
         asset_root=tmp_path,
     )
@@ -101,13 +102,12 @@ def _exercise_all_user_routes(
                 "username": f"created.{username_suffix}",
                 "display_name": "Created by Matrix",
                 "role": "visitor",
-                "initial_password": "Initial created password 2026!",
             },
         ),
         (
             "PATCH",
             f"/api/v1/users/{target_id}/password",
-            {"one_time_password": "Reset target password 2026!"},
+            None,
         ),
         (
             "PATCH",

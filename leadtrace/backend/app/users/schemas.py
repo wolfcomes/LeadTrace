@@ -31,11 +31,6 @@ class UserCreateRequest(BaseModel):
     username: str = Field(min_length=3, max_length=80)
     display_name: str = Field(min_length=1, max_length=120)
     role: UserRole
-    initial_password: str = Field(min_length=1, max_length=1024)
-
-
-class PasswordResetRequest(BaseModel):
-    one_time_password: str = Field(min_length=1, max_length=1024)
 
 
 class EnabledUpdateRequest(BaseModel):
@@ -44,4 +39,3 @@ class EnabledUpdateRequest(BaseModel):
 
 class RoleUpdateRequest(BaseModel):
     role: UserRole
-

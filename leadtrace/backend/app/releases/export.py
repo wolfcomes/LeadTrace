@@ -527,7 +527,7 @@ def restore_release_export(
         role=UserRole.ADMIN,
         is_enabled=False,
         password_hash="!disabled-release-import-identity!",
-        must_change_password=True,
+        must_change_password=False,
     )
     session.add(publisher)
     session.flush()

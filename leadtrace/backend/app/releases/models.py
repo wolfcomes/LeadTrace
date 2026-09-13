@@ -163,7 +163,7 @@ class ReleaseOperation(UUIDPrimaryKeyMixin, Base):
             name="uq_release_operations_actor_key",
         ),
         CheckConstraint(
-            "operation_type IN ('publish', 'rollback')",
+            "operation_type IN ('baseline_publish', 'publish', 'rollback')",
             name="ck_release_operations_type",
         ),
         CheckConstraint(
@@ -186,10 +186,10 @@ class ReleaseOperation(UUIDPrimaryKeyMixin, Base):
         ForeignKey("releases.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    replaced_release_id: Mapped[UUID] = mapped_column(
+    replaced_release_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
         ForeignKey("releases.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     result_release_id: Mapped[UUID] = mapped_column(
         PostgreSQLUUID(as_uuid=True),

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     database_connect_timeout_seconds: int = Field(default=3, ge=1, le=30)
     redis_url: str = "redis://redis:6379/0"
     session_secret: SecretStr = SecretStr("development-only-not-for-production")
+    default_account_password: SecretStr | None = None
     metrics_bearer_token: SecretStr | None = None
     admin_reauthentication_minutes: int = Field(default=10, ge=1, le=60)
     https_enabled: bool = False
@@ -56,6 +57,19 @@ class Settings(BaseSettings):
             marker in secret.casefold() for marker in unsafe_secret_markers
         ):
             raise ValueError("production session_secret must be a strong random value")
+
+        default_account_password = (
+            self.default_account_password.get_secret_value()
+            if self.default_account_password is not None
+            else ""
+        )
+        if len(default_account_password) < 6 or any(
+            marker in default_account_password.casefold()
+            for marker in unsafe_secret_markers
+        ):
+            raise ValueError(
+                "production default_account_password must contain at least 6 characters"
+            )
 
         metrics_token = (
             self.metrics_bearer_token.get_secret_value()
