@@ -51228,11 +51228,11 @@
       "sha256": "c8b3e0d352308d66e976a79f30f2108168e229fa53326acdbe85320bcd431956"
     },
     {
-      "byte_size": 4601,
+      "byte_size": 4652,
       "category": "source_code",
-      "mtime_ns": 1788590082947811846,
+      "mtime_ns": 1789259806457065094,
       "path": "source_pdfs/分子修改提取_2024_JMC/tests/test_prepare_molecule_ocr_variants.py",
-      "sha256": "0083022d8b834849c2f2de4efbab47ea15cd90c1e2cef45ddbe9ddb4f89789c3"
+      "sha256": "dc3f2efc83271fadce8f85f7b352fd71b886c29f77771d359a22ef7a813ee917"
     },
     {
       "byte_size": 2043,
@@ -51260,6 +51260,6 @@
   "source_roots": [
     "source_pdfs"
   ],
-  "total_bytes": 6671815738,
+  "total_bytes": 6671815789,
   "workspace_root": "/data/home/zhangzhiyong/lead_optimization_collection"
 }
