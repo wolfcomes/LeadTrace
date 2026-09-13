@@ -27,6 +27,8 @@ import ImportsPage from "../admin/ImportsPage.vue";
 import AuditPage from "../admin/AuditPage.vue";
 import JobsPage from "../admin/JobsPage.vue";
 import SystemPage from "../admin/SystemPage.vue";
+import PaperCatalogPage from "../admin/PaperCatalogPage.vue";
+import PaperCatalogDetailPage from "../admin/PaperCatalogDetailPage.vue";
 import AppShell from "./AppShell.vue";
 
 const PlaceholderPage = defineComponent({
@@ -67,6 +69,8 @@ export function createAppRouter(
           { path: "review/changesets", name: "review-changesets", component: ChangesetIndexPage, meta: { roles: reviewRoles } },
           { path: "review/changesets/:changesetId", name: "review-changeset", component: ChangesetPage, meta: { roles: reviewRoles } },
           { path: "admin/approvals", name: "admin-approvals", component: ApprovalCenterPage, meta: { roles: adminRoles } },
+          { path: "admin/papers", name: "admin-papers", component: PaperCatalogPage, meta: { roles: adminRoles } },
+          { path: "admin/papers/:paperId", name: "admin-paper-detail", component: PaperCatalogDetailPage, meta: { roles: adminRoles } },
           { path: "admin/files", component: FilesPage, meta: { roles: adminRoles } },
           { path: "admin/imports", component: ImportsPage, meta: { roles: adminRoles } },
           { path: "admin/releases", name: "admin-releases", component: ReleasePage, meta: { roles: adminRoles } },

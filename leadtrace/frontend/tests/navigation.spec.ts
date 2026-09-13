@@ -71,6 +71,7 @@ describe("role-aware application navigation", () => {
       "审核任务",
       "修改集",
       "审批中心",
+      "文章目录",
       "文件管理",
       "导入管理",
       "发布管理",

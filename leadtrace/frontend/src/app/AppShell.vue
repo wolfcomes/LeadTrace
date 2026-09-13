@@ -20,6 +20,7 @@ const navigation: readonly NavigationItem[] = [
   { label: zhCN.navigation.reviewTasks, to: "/review/tasks", section: "review", roles: ["reviewer", "admin"], symbol: "RT" },
   { label: zhCN.navigation.changesets, to: "/review/changesets", section: "review", roles: ["reviewer", "admin"], symbol: "CS" },
   { label: zhCN.navigation.approvals, to: "/admin/approvals", section: "admin", roles: ["admin"], symbol: "AP" },
+  { label: zhCN.navigation.articleCatalog, to: "/admin/papers", section: "admin", roles: ["admin"], symbol: "PC" },
   { label: zhCN.navigation.files, to: "/admin/files", section: "admin", roles: ["admin"], symbol: "FI" },
   { label: zhCN.navigation.imports, to: "/admin/imports", section: "admin", roles: ["admin"], symbol: "IM" },
   { label: zhCN.navigation.releases, to: "/admin/releases", section: "admin", roles: ["admin"], symbol: "RL" },

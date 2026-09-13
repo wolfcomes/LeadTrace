@@ -37,6 +37,7 @@ export const zhCN = {
     reviewTasks: "审核任务",
     changesets: "修改集",
     approvals: "审批中心",
+    articleCatalog: "文章目录",
     files: "文件管理",
     imports: "导入管理",
     releases: "发布管理",

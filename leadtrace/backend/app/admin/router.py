@@ -10,6 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.activities.models import Activity
+from app.admin.papers import (
+    AdminPaperCatalog,
+    AdminPaperNotFound,
+    AdminPaperSourceNotFound,
+    AdminPaperWorkflowState,
+    PublicationStatus,
+)
 from app.assets.models import Asset
 from app.api.errors import request_id_for
 from app.audit.service import (
@@ -163,6 +170,7 @@ def create_admin_router(settings: Settings, *, database_probe: Any | None = None
     router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
     require_admin = require_permission(Action.MANAGE_ACCOUNTS)
     user_service = UserService()
+    paper_catalog = AdminPaperCatalog()
 
     @router.get("/users", response_model=list[UserResponse])
     @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
@@ -203,6 +211,58 @@ def create_admin_router(settings: Settings, *, database_probe: Any | None = None
             if session.get(User, user_id) is None:
                 raise HTTPException(status_code=404, detail="User not found")
             user_service.revoke_sessions(session, user_id)
+
+    @router.get("/papers", response_model=dict[str, object])
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
+    def list_admin_papers(
+        request: Request,
+        candidate_id: UUID | None = None,
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=20, ge=1, le=100),
+        search: str | None = Query(default=None, max_length=255),
+        doi: str | None = Query(default=None, max_length=255),
+        workflow_state: AdminPaperWorkflowState | None = None,
+        publication_status: PublicationStatus | None = None,
+        assignee_id: UUID | None = None,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(require_admin),
+    ) -> dict[str, object]:
+        try:
+            with session.begin():
+                payload = paper_catalog.list(
+                    session,
+                    candidate_id=candidate_id,
+                    page=page,
+                    page_size=page_size,
+                    search=search,
+                    doi=doi,
+                    workflow_state=workflow_state,
+                    publication_status=publication_status,
+                    assignee_id=assignee_id,
+                )
+        except AdminPaperSourceNotFound as error:
+            raise HTTPException(status_code=404, detail="Import candidate not found") from error
+        return {"request_id": request_id_for(request), **payload}
+
+    @router.get("/papers/{paper_id}", response_model=dict[str, object])
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)
+    def get_admin_paper(
+        paper_id: UUID,
+        request: Request,
+        candidate_id: UUID | None = None,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(require_admin),
+    ) -> dict[str, object]:
+        try:
+            with session.begin():
+                payload = paper_catalog.detail(
+                    session,
+                    paper_id=paper_id,
+                    candidate_id=candidate_id,
+                )
+        except (AdminPaperNotFound, AdminPaperSourceNotFound) as error:
+            raise HTTPException(status_code=404, detail="Paper not found") from error
+        return {"request_id": request_id_for(request), **payload}
 
     @router.get("/files", response_model=list[dict[str, object]])
     @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_ACCOUNTS)

@@ -21,6 +21,18 @@ export function fetchReviewTasks(): Promise<ReviewTask[]> {
   return apiRequest("/api/v1/review/tasks", reviewTaskSchema.array());
 }
 
+export function createReviewTask(input: {
+  paper_id: string;
+  assigned_reviewer_id: string;
+  priority: number;
+}): Promise<ReviewTask> {
+  return apiRequest("/api/v1/review/tasks", reviewTaskSchema, {
+    method: "POST",
+    csrfToken: csrfToken(),
+    body: input,
+  });
+}
+
 export function fetchChangesets(): Promise<Changeset[]> {
   return apiRequest("/api/v1/review/changesets", changesetSchema.array());
 }
