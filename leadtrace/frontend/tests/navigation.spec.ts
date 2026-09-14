@@ -42,7 +42,7 @@ async function visibleNavigation(role: AuthUser["role"]): Promise<string[]> {
       stubs: { RouterView: true },
     },
   });
-  return wrapper.findAll("[data-navigation] a").map((link) => link.text());
+  return wrapper.findAll("[data-navigation-label]").map((label) => label.text());
 }
 
 
@@ -97,6 +97,26 @@ describe("role-aware application navigation", () => {
     );
     expect(wrapper.get(".skip-link").attributes("href")).toBe("#main-content");
     expect(wrapper.get("main").attributes("id")).toBe("main-content");
+  });
+
+  it("exposes the dashboard-aligned application landmarks and navigation indices", async () => {
+    const router = createAppRouter(createMemoryHistory());
+    useAuthStore().acceptSession({ user: users.admin, csrf_token: "csrf" });
+    await router.push("/overview");
+    await router.isReady();
+    const wrapper = mount(AppShell, {
+      global: { plugins: [router], stubs: { RouterView: true } },
+    });
+
+    expect(wrapper.get("[data-app-shell]").classes()).toContain("application-shell");
+    expect(wrapper.get("[data-app-sidebar]").attributes("aria-label")).toBeTruthy();
+    expect(wrapper.find("[data-app-topbar]").exists()).toBe(true);
+    expect(wrapper.findAll("[data-navigation-index]")).toHaveLength(12);
+    expect(wrapper.findAll("[data-navigation-index]").map((item) => item.text()).slice(0, 3)).toEqual([
+      "01",
+      "02",
+      "03",
+    ]);
   });
 
   it("lets a signed-in user open the optional password change page", async () => {
