@@ -46,4 +46,12 @@ describe("centralized visual system", () => {
       expect(layoutStyles, `${selector} should be centralized`).toContain(selector);
     }
   });
+
+  it("keeps Chinese glyph support in technical labels and collapses empty structure tracks", () => {
+    const tokens = source("src/styles/tokens.css");
+    const components = source("src/styles/components.css");
+
+    expect(tokens).toMatch(/--font-mono:[^;]*Noto Sans SC Variable[^;]*;/);
+    expect(components).toContain("repeat(auto-fit, minmax(250px, 1fr))");
+  });
 });

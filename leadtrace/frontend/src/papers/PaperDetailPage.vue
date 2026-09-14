@@ -59,7 +59,7 @@ watch(() => route.params.paperId, load, { immediate: true });
 </script>
 
 <template>
-  <div class="published-page detail-page">
+  <div class="published-page detail-page detail-layout" data-paper-detail>
     <RouterLink class="back-link" :to="{ name: 'papers' }">← {{ zhCN.published.detail.back }}</RouterLink>
 
     <section v-if="state === 'loading'" class="page-state" aria-live="polite">
@@ -111,7 +111,7 @@ watch(() => route.params.paperId, load, { immediate: true });
         </aside>
       </header>
 
-      <section class="content-section quality-section">
+      <section class="content-section panel quality-section">
         <div class="section-heading">
           <div>
             <p class="eyebrow">QUALITY SIGNALS</p>
@@ -121,7 +121,7 @@ watch(() => route.params.paperId, load, { immediate: true });
         <QualitySummary :summary="detail.quality_summary" />
       </section>
 
-      <section class="content-section">
+      <section class="content-section panel">
         <div class="section-heading">
           <div>
             <p class="eyebrow">LINEAGE</p>
@@ -139,7 +139,7 @@ watch(() => route.params.paperId, load, { immediate: true });
         <p v-else class="section-empty">{{ zhCN.published.detail.noLineage }}</p>
       </section>
 
-      <section class="content-section">
+      <section class="content-section panel">
         <div class="section-heading">
           <div>
             <p class="eyebrow">CONFIRMED CHEMISTRY</p>
@@ -160,7 +160,7 @@ watch(() => route.params.paperId, load, { immediate: true });
         <p v-else class="section-empty">{{ zhCN.published.detail.noStructures }}</p>
       </section>
 
-      <section class="content-section split-section">
+      <section class="content-section panel split-section">
         <div>
           <div class="section-heading">
             <div>
@@ -182,7 +182,7 @@ watch(() => route.params.paperId, load, { immediate: true });
             </div>
           </div>
           <div v-if="detail.activities.length" class="activity-table-wrap">
-            <table>
+            <table class="data-table">
               <thead>
                 <tr><th>Compound</th><th>Metric</th><th>Value</th><th>Status</th></tr>
               </thead>
@@ -202,56 +202,3 @@ watch(() => route.params.paperId, load, { immediate: true });
     </template>
   </div>
 </template>
-
-<style scoped>
-.detail-page { max-width: 1450px; margin: auto; padding: clamp(28px, 5vw, 58px); }
-.back-link { display: inline-flex; margin-bottom: 24px; color: var(--forest-750); font-size: .76rem; font-weight: 700; text-decoration: none; }
-.back-link:hover { text-decoration: underline; }
-.paper-hero { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 40px; padding: clamp(26px, 4vw, 44px); border: 1px solid #cedbd3; border-radius: var(--radius-lg); background: linear-gradient(145deg, white 58%, var(--forest-100)); box-shadow: var(--shadow-sm); }
-.paper-identifiers { display: flex; flex-wrap: wrap; gap: 10px 22px; color: var(--ink-500); font-size: .7rem; }
-.paper-identifiers code { color: var(--ink-650); user-select: all; }
-.paper-hero h1 { max-width: 900px; margin: 22px 0 26px; color: var(--ink-950); font: 600 clamp(2rem, 3.2vw, 3.4rem)/1.2 Georgia, "Noto Serif SC Variable", serif; letter-spacing: -.025em; }
-.hero-tags { display: flex; flex-wrap: wrap; gap: 9px; }
-.hero-tags span { padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-650); background: rgba(255,255,255,.75); font-size: .7rem; }
-.release-card { align-self: start; padding: 20px; border: 1px solid #d8c89f; border-radius: 13px; background: rgba(255,254,249,.9); }
-.release-card > span:first-child, .release-card strong, .release-card code, .release-card small { display: block; }
-.release-card > span:first-child { color: var(--gold-700); font-size: .63rem; font-weight: 800; letter-spacing: .09em; }
-.release-card strong { margin-top: 9px; color: var(--ink-950); font: 600 1rem/1.4 Georgia, "Noto Serif SC Variable", serif; }
-.release-card code { margin-top: 9px; color: var(--ink-650); font-size: .65rem; }
-.release-card small { margin-top: 14px; color: var(--ink-500); font-size: .65rem; line-height: 1.5; }
-.content-section { margin-top: 42px; }
-.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 15px; }
-.section-heading .eyebrow { margin-bottom: 6px; }
-.section-heading h2 { margin: 0; color: var(--ink-950); font: 600 1.45rem/1.3 Georgia, "Noto Serif SC Variable", serif; }
-.section-heading > span { color: var(--ink-500); font-size: .68rem; }
-.structure-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
-.structure-grid article { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-md); background: white; box-shadow: var(--shadow-sm); }
-.structure-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.structure-label span { color: var(--forest-750); font-size: .68rem; font-weight: 760; }
-.structure-label strong { color: var(--ink-950); }
-.structure-grid small, .structure-grid code { display: block; }
-.structure-grid small { margin-top: 26px; color: var(--ink-500); font-size: .62rem; }
-.structure-grid code { min-height: 68px; margin-top: 9px; padding: 15px; border: 1px solid #eef1ef; border-radius: 9px; color: var(--ink-800); background: #fbfcfb; font-size: .76rem; line-height: 1.6; overflow-wrap: anywhere; user-select: all; }
-.split-section { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; }
-.evidence-list { display: grid; gap: 12px; }
-.activity-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-md); background: white; }
-table { width: 100%; border-collapse: collapse; font-size: .74rem; }
-th, td { padding: 14px 15px; border-bottom: 1px solid #edf0ee; text-align: left; }
-th { color: var(--ink-500); background: #fafbf9; font-size: .64rem; letter-spacing: .04em; }
-td { color: var(--ink-650); }
-td strong { color: var(--ink-950); white-space: nowrap; }
-td span { padding: 4px 7px; border-radius: 999px; color: var(--forest-750); background: var(--forest-100); font-size: .63rem; }
-tbody tr:last-child td { border-bottom: 0; }
-.section-empty { margin: 0; padding: 28px; border: 1px dashed var(--line-strong); border-radius: var(--radius-md); color: var(--ink-500); background: #fafbf9; font-size: .78rem; text-align: center; }
-.page-state { display: grid; min-height: 360px; place-items: center; align-content: center; padding: 44px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: white; text-align: center; }
-.page-state h1 { margin: 15px 0 0; color: var(--ink-950); font: 600 1.55rem/1.3 Georgia, "Noto Serif SC Variable", serif; }
-.page-state p { max-width: 540px; margin: 11px 0 0; color: var(--ink-650); line-height: 1.7; }
-.page-state small { margin-top: 12px; color: var(--ink-500); }
-.state-symbol { display: grid; min-width: 42px; height: 42px; padding: 0 10px; place-items: center; border-radius: 50%; color: var(--gold-700); background: var(--gold-100); font-size: .72rem; font-weight: 800; }
-.state-symbol.is-error { color: var(--danger); background: var(--danger-soft); }
-.state-spinner { width: 28px; height: 28px; border: 3px solid var(--forest-100); border-top-color: var(--forest-750); border-radius: 50%; animation: spin .8s linear infinite; }
-.button-secondary { min-height: 40px; margin-top: 20px; padding: 8px 15px; border: 1px solid var(--forest-750); border-radius: var(--radius-sm); color: var(--forest-750); background: white; font-weight: 700; cursor: pointer; }
-@keyframes spin { to { transform: rotate(360deg); } }
-@media (max-width: 920px) { .paper-hero { grid-template-columns: 1fr; } .split-section { grid-template-columns: 1fr; } }
-@media (prefers-reduced-motion: reduce) { .state-spinner { animation: none; } }
-</style>

@@ -28,7 +28,7 @@
   --danger-soft: #f4ddd6;
   --font-serif: "Noto Serif SC Variable", Newsreader, Georgia, serif;
   --font-sans: "Noto Sans SC Variable", Manrope, "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "DM Mono", "SFMono-Regular", Consolas, monospace;
+  --font-mono: "DM Mono", "SFMono-Regular", Consolas, "Noto Sans SC Variable", monospace;
   --shadow-sm: 0 3px 12px rgba(23, 43, 60, .05);
   --shadow-panel: 0 16px 40px rgba(23, 43, 60, .08);
   --shadow-md: var(--shadow-panel);

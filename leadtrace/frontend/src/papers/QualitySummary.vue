@@ -26,13 +26,3 @@ defineProps<{ summary: QualitySummary }>();
     </article>
   </div>
 </template>
-
-<style scoped>
-.quality-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.quality-grid article { padding: 17px; border: 1px solid var(--line); border-radius: 11px; background: white; box-shadow: var(--shadow-sm); }
-.quality-grid span, .quality-grid strong { display: block; }
-.quality-grid span { color: var(--ink-500); font-size: .7rem; }
-.quality-grid strong { margin-top: 8px; color: var(--ink-950); font: 600 1.18rem/1.2 Georgia, "Noto Serif SC Variable", serif; }
-@media (max-width: 820px) { .quality-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 440px) { .quality-grid { grid-template-columns: 1fr; } }
-</style>

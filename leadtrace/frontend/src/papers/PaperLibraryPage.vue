@@ -136,7 +136,7 @@ watch(() => route.fullPath, load, { immediate: true });
 
 <template>
   <div class="published-page library-page">
-    <header class="page-heading">
+    <header class="page-heading page-heading--editorial">
       <div>
         <p class="eyebrow">{{ zhCN.published.library.eyebrow }}</p>
         <h1>{{ zhCN.published.library.title }}</h1>
@@ -149,20 +149,20 @@ watch(() => route.fullPath, load, { immediate: true });
       </div>
     </header>
 
-    <form class="filter-panel" data-filter-form @submit.prevent="applyFilters">
-      <div class="filter-field search-field">
+    <form class="filter-panel filter-toolbar" data-filter-form @submit.prevent="applyFilters">
+      <div class="filter-field form-field search-field">
         <label for="paper-search">{{ zhCN.published.library.search }}</label>
         <input id="paper-search" v-model="search" type="search" :placeholder="zhCN.published.library.searchPlaceholder">
       </div>
-      <div class="filter-field">
+      <div class="filter-field form-field">
         <label for="paper-doi">{{ zhCN.published.library.doi }}</label>
         <input id="paper-doi" v-model="doi" type="text" placeholder="10.xxxx/…">
       </div>
-      <div class="filter-field">
+      <div class="filter-field form-field">
         <label for="paper-target">{{ zhCN.published.library.target }}</label>
         <input id="paper-target" v-model="target" type="text" placeholder="Kinase A">
       </div>
-      <div class="filter-field">
+      <div class="filter-field form-field">
         <label for="paper-lineage">{{ zhCN.published.library.lineage }}</label>
         <select id="paper-lineage" v-model="hasLineage">
           <option value="">{{ zhCN.published.library.any }}</option>
@@ -170,7 +170,7 @@ watch(() => route.fullPath, load, { immediate: true });
           <option value="false">{{ zhCN.published.library.noLineage }}</option>
         </select>
       </div>
-      <div class="filter-field">
+      <div class="filter-field form-field">
         <label for="paper-relation">{{ zhCN.published.library.relation }}</label>
         <select id="paper-relation" v-model="relationStatus">
           <option value="">{{ zhCN.published.library.any }}</option>
@@ -179,7 +179,7 @@ watch(() => route.fullPath, load, { immediate: true });
           <option value="invalid">invalid</option>
         </select>
       </div>
-      <div class="filter-field">
+      <div class="filter-field form-field">
         <label for="paper-structure">{{ zhCN.published.library.structure }}</label>
         <select id="paper-structure" v-model="structureState">
           <option value="">{{ zhCN.published.library.any }}</option>
@@ -188,7 +188,7 @@ watch(() => route.fullPath, load, { immediate: true });
           <option value="source_mismatch">source_mismatch</option>
         </select>
       </div>
-      <div class="filter-field">
+      <div class="filter-field form-field">
         <label for="paper-review">{{ zhCN.published.library.review }}</label>
         <select id="paper-review" v-model="reviewStatus">
           <option value="">{{ zhCN.published.library.any }}</option>
@@ -197,7 +197,7 @@ watch(() => route.fullPath, load, { immediate: true });
           <option value="approved">approved</option>
         </select>
       </div>
-      <div class="filter-field">
+      <div class="filter-field form-field">
         <label for="paper-sort">{{ zhCN.published.library.sort }}</label>
         <select id="paper-sort" v-model="sort">
           <option value="manifest">{{ zhCN.published.library.manifest }}</option>
@@ -238,7 +238,7 @@ watch(() => route.fullPath, load, { immediate: true });
         <span v-if="response.pagination.total_pages">{{ zhCN.published.library.page(response.pagination.page, response.pagination.total_pages) }}</span>
       </div>
 
-      <section v-if="response.items.length" class="paper-list" aria-label="已发布文献">
+      <section v-if="response.items.length" class="paper-list panel" data-paper-list aria-label="已发布文献">
         <article v-for="paper in response.items" :key="paper.id" class="paper-card">
           <div class="paper-index" aria-hidden="true">LT</div>
           <div class="paper-content">
@@ -254,7 +254,7 @@ watch(() => route.fullPath, load, { immediate: true });
             <div class="paper-metadata">
               <span>{{ paper.year || "—" }}</span>
               <span>{{ paper.target || "—" }}</span>
-              <span class="status-pill">{{ paper.review_status || "—" }}</span>
+              <span class="status-chip is-pending">{{ paper.review_status || "—" }}</span>
             </div>
           </div>
           <RouterLink class="detail-link" :to="{ name: 'paper-detail', params: { paperId: paper.id } }" :aria-label="`${paper.title} · 查看详情`">→</RouterLink>
@@ -268,60 +268,10 @@ watch(() => route.fullPath, load, { immediate: true });
       </section>
 
       <nav v-if="response.pagination.total_pages > 0" class="pagination" aria-label="文献分页">
-        <button type="button" :disabled="response.pagination.page <= 1" @click="goToPage(response.pagination.page - 1)">{{ zhCN.published.library.previous }}</button>
+        <button class="button-secondary" type="button" :disabled="response.pagination.page <= 1" @click="goToPage(response.pagination.page - 1)">{{ zhCN.published.library.previous }}</button>
         <span>{{ zhCN.published.library.page(response.pagination.page, response.pagination.total_pages) }}</span>
-        <button type="button" :disabled="response.pagination.page >= response.pagination.total_pages" @click="goToPage(response.pagination.page + 1)">{{ zhCN.published.library.next }}</button>
+        <button class="button-secondary" type="button" :disabled="response.pagination.page >= response.pagination.total_pages" @click="goToPage(response.pagination.page + 1)">{{ zhCN.published.library.next }}</button>
       </nav>
     </template>
   </div>
 </template>
-
-<style scoped>
-.library-page { max-width: 1450px; margin: auto; padding: clamp(30px, 5vw, 58px); }
-.page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; margin-bottom: 28px; }
-.page-heading h1 { margin: 0; color: var(--ink-950); font: 600 clamp(2rem, 3vw, 3rem)/1.15 Georgia, "Noto Serif SC Variable", serif; letter-spacing: -.025em; }
-.page-heading > div > p:last-child { max-width: 710px; margin: 15px 0 0; color: var(--ink-650); font-size: .88rem; line-height: 1.75; }
-.release-chip { max-width: 300px; padding: 13px 15px; border: 1px solid #d8c89f; border-radius: 10px; background: var(--gold-100); }
-.release-chip > span:first-child, .release-chip code { display: block; }
-.release-chip > span:first-child { color: var(--ink-800); font-size: .73rem; font-weight: 700; }
-.release-chip code { margin-top: 5px; color: var(--ink-500); font-size: .62rem; }
-.filter-panel { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 14px; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-md); background: white; box-shadow: var(--shadow-sm); }
-.filter-field label { display: block; margin-bottom: 7px; color: var(--ink-650); font-size: .68rem; font-weight: 740; }
-.filter-field input, .filter-field select { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink-950); background: #fbfcfb; font-size: .78rem; }
-.filter-field input:focus, .filter-field select:focus { border-color: var(--forest-750); box-shadow: 0 0 0 3px rgba(29,90,71,.08); outline: 0; }
-.search-field { grid-column: span 2; }
-.filter-actions { display: flex; align-items: end; gap: 9px; }
-.filter-actions button { min-height: 42px; padding: 8px 14px; }
-.button-secondary { border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink-650); background: white; font-weight: 700; cursor: pointer; }
-.result-summary { display: flex; align-items: center; justify-content: space-between; margin: 30px 2px 13px; color: var(--ink-650); font-size: .75rem; }
-.result-summary strong { color: var(--ink-800); }
-.paper-list { display: grid; gap: 10px; }
-.paper-card { display: grid; grid-template-columns: 44px minmax(0, 1fr) 38px; align-items: center; gap: 18px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: var(--shadow-sm); transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
-.paper-card:hover { border-color: #b8c8bf; box-shadow: 0 10px 30px rgba(18,42,33,.07); transform: translateY(-1px); }
-.paper-index { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid #ccd8d1; border-radius: 10px; color: var(--forest-750); background: var(--forest-100); font: 700 .65rem/1 Georgia, serif; }
-.paper-identifiers { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--ink-500); font-size: .65rem; }
-.paper-identifiers code { color: var(--ink-650); user-select: all; }
-.paper-card h2 { margin: 9px 0 10px; font: 600 1rem/1.45 Georgia, "Noto Serif SC Variable", serif; }
-.paper-card h2 a { color: var(--ink-950); text-decoration: none; }
-.paper-card h2 a:hover { color: var(--forest-750); }
-.paper-metadata { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; color: var(--ink-500); font-size: .7rem; }
-.status-pill { padding: 4px 8px; border-radius: 999px; color: var(--gold-700); background: var(--gold-100); }
-.detail-link { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--forest-750); text-decoration: none; }
-.detail-link:hover { color: white; background: var(--forest-750); }
-.pagination { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 28px 0 0; color: var(--ink-650); font-size: .75rem; }
-.pagination button { min-height: 38px; padding: 7px 13px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--forest-750); background: white; font-weight: 700; cursor: pointer; }
-.pagination button:disabled { color: var(--ink-500); cursor: not-allowed; opacity: .5; }
-.page-state { display: grid; min-height: 270px; place-items: center; align-content: center; margin: 28px 0 0; padding: 38px; border: 1px solid var(--line); border-radius: var(--radius-md); background: white; text-align: center; }
-.page-state.compact { min-height: 220px; }
-.page-state h2 { margin: 14px 0 0; color: var(--ink-950); font: 600 1.35rem/1.3 Georgia, "Noto Serif SC Variable", serif; }
-.page-state p { max-width: 530px; margin: 10px 0 0; color: var(--ink-650); line-height: 1.65; }
-.page-state small { margin-top: 12px; color: var(--ink-500); }
-.page-state .button-secondary { margin-top: 18px; padding: 8px 14px; }
-.state-symbol { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 50%; color: var(--gold-700); background: var(--gold-100); font-weight: 800; }
-.state-symbol.is-error { color: var(--danger); background: var(--danger-soft); }
-.state-spinner { width: 28px; height: 28px; border: 3px solid var(--forest-100); border-top-color: var(--forest-750); border-radius: 50%; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-@media (max-width: 1100px) { .filter-panel { grid-template-columns: repeat(2, minmax(150px, 1fr)); } }
-@media (max-width: 700px) { .page-heading { flex-direction: column; } .filter-panel { grid-template-columns: 1fr; } .search-field { grid-column: auto; } .paper-card { grid-template-columns: 38px minmax(0, 1fr); } .detail-link { display: none; } }
-@media (prefers-reduced-motion: reduce) { .state-spinner { animation: none; } }
-</style>
