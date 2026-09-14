@@ -41,7 +41,7 @@ function formatValue(value: unknown, present: boolean): string {
 
 <template>
   <div v-if="open" class="conflict-layer" role="dialog" aria-modal="true" aria-labelledby="conflict-title" data-conflict-resolver>
-    <section class="conflict-dialog">
+    <section class="conflict-dialog panel">
       <p class="eyebrow">VERSION CONFLICT</p>
       <h2 id="conflict-title">草稿已被其他会话更新</h2>
       <p>本地内容仍保存在恢复缓冲中。系统会保留双方互不冲突的修改；同一字段被双方修改时，需要逐项选择。</p>
@@ -89,26 +89,26 @@ function formatValue(value: unknown, present: boolean): string {
 </template>
 
 <style scoped>
-.conflict-layer { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(13, 29, 23, .56); }
-.conflict-dialog { width: min(100%, 510px); padding: 28px; border-top: 4px solid var(--danger); background: white; box-shadow: 0 28px 80px rgba(13,29,23,.25); }
-.conflict-dialog h2 { margin: 0; color: var(--ink-950); font: 600 1.55rem/1.25 Georgia, "Noto Serif SC Variable", serif; }
-.conflict-dialog > p:not(.eyebrow) { margin: 14px 0 0; color: var(--ink-650); font-size: .83rem; line-height: 1.7; }
+.conflict-layer { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(23, 43, 60, .62); }
+.conflict-dialog { width: min(100%, 510px); padding: 28px; border-top: 4px solid var(--danger); box-shadow: 0 28px 80px rgba(23, 43, 60, .25); }
+.conflict-dialog h2 { margin: 0; color: var(--ink); font: 600 1.55rem/1.25 var(--font-serif); }
+.conflict-dialog > p:not(.eyebrow) { margin: 14px 0 0; color: var(--ink-muted); font-size: .81rem; line-height: 1.7; }
 dl { display: grid; grid-template-columns: repeat(2, 1fr); margin: 22px 0 0; border-block: 1px solid var(--line); }
 dl div { padding: 14px 0; }
-dt { color: var(--ink-500); font-size: .65rem; }
-dd { margin: 5px 0 0; color: var(--ink-950); font-weight: 760; }
-.conflict-dialog small { display: block; margin-top: 13px; color: var(--ink-500); font-size: .66rem; }
+dt { color: var(--ink-muted); font-size: .63rem; }
+dd { margin: 5px 0 0; color: var(--ink); font-weight: 760; }
+.conflict-dialog small { display: block; margin-top: 13px; color: var(--ink-muted); font-size: .64rem; }
 .merge-fields { display: grid; gap: 12px; max-height: min(46vh, 440px); margin-top: 18px; overflow-y: auto; }
-.merge-ready { margin: 0; padding: 12px; color: var(--forest-750); background: var(--forest-100); font-size: .74rem; }
-.merge-field { padding: 13px; border: 1px solid var(--line); background: #f8faf8; }
+.merge-ready { margin: 0; padding: 12px; color: var(--teal-deep); background: var(--teal-pale); font-size: .73rem; }
+.merge-field { padding: 13px; border: 1px solid var(--line); background: var(--paper); }
 .merge-field header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.merge-field header strong { color: var(--ink-800); font-size: .73rem; }
-.merge-field header code { overflow-wrap: anywhere; color: var(--ink-500); font-size: .58rem; }
+.merge-field header strong { color: var(--ink-soft); font-size: .72rem; }
+.merge-field header code { overflow-wrap: anywhere; color: var(--ink-muted); font-size: .57rem; }
 .field-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 10px; }
-.field-choices button { min-width: 0; padding: 10px; border: 1px solid var(--line); color: var(--ink-650); background: white; text-align: left; cursor: pointer; }
-.field-choices button[aria-pressed="true"] { border-color: var(--forest-750); box-shadow: inset 0 0 0 1px var(--forest-750); background: var(--forest-100); }
-.field-choices span { display: block; color: var(--forest-750); font-size: .64rem; font-weight: 760; }
-.field-choices pre { max-height: 90px; margin: 7px 0 0; overflow: auto; font: .64rem/1.45 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.field-choices button { min-width: 0; padding: 10px; border: 1px solid var(--line); color: var(--ink-muted); background: var(--surface); text-align: left; cursor: pointer; }
+.field-choices button[aria-pressed="true"] { border-color: var(--coral); box-shadow: inset 0 0 0 1px var(--coral); background: var(--coral-pale); }
+.field-choices span { display: block; color: var(--coral-deep); font-size: .62rem; font-weight: 760; }
+.field-choices pre { max-height: 90px; margin: 7px 0 0; overflow: auto; font: .62rem/1.45 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .conflict-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
 .conflict-actions button { min-height: 40px; padding: 8px 13px; }
 @media (max-width: 540px) { dl, .field-choices { grid-template-columns: 1fr; } .conflict-actions { align-items: stretch; flex-direction: column-reverse; } }

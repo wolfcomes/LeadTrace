@@ -188,34 +188,34 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="release-page">
+  <div class="release-page admin-page review-workspace">
     <header class="page-heading">
       <div><p class="eyebrow">ATOMIC PUBLICATION</p><h1>发布管理</h1><p>将已批准修改集原子发布，并保留确定性导出和历史回滚入口。</p></div>
       <RouterLink class="button-secondary" to="/admin/releases/rollback">回滚</RouterLink>
     </header>
-    <p v-if="error" class="message" role="alert">{{ error }}</p>
+    <p v-if="error" class="message inline-feedback is-error" role="alert">{{ error }}</p>
 
     <section
       v-if="approvedBaselines.length"
-      class="publish-band baseline-band"
+      class="publish-band baseline-band panel"
       data-baseline-publication
     >
       <div>
         <p class="eyebrow">APPROVED BASELINE</p>
         <h2>首次发布</h2>
-        <span class="baseline-state">已批准，待发布</span>
+        <span class="baseline-state status-chip is-approved">已批准，待发布</span>
       </div>
-      <label>
+      <label class="form-field">
         已批准导入候选
-        <select v-model="selectedBaseline" :disabled="busy">
+        <select v-model="selectedBaseline" class="form-control" :disabled="busy">
           <option v-for="candidate in approvedBaselines" :key="candidate.id" :value="candidate.id">
             {{ candidate.id }}
           </option>
         </select>
       </label>
-      <label>
+      <label class="form-field">
         版本标题
-        <input v-model="baselineTitle" maxlength="255" placeholder="LeadTrace initial baseline">
+        <input v-model="baselineTitle" class="form-control" maxlength="255" placeholder="LeadTrace initial baseline">
       </label>
       <div v-if="selectedBaselineCandidate" class="baseline-summary">
         <span>文献 <strong>{{ formatCount(selectedBaselineCandidate.manifest.counts?.corpus_papers as number | undefined) }}</strong></span>
@@ -226,9 +226,9 @@ onMounted(load);
         <span><strong>{{ formatCount(selectedBaselineCandidate.manifest.asset_linkage?.ambiguous_references) }}</strong> 歧义</span>
         <span><strong>{{ formatCount(selectedBaselineCandidate.manifest.asset_linkage?.corrupt_references) }}</strong> 损坏</span>
       </div>
-      <label class="notes">
+      <label class="notes form-field">
         发布说明
-        <textarea v-model="baselineNotes" rows="3" maxlength="4000" placeholder="记录首次发布核查结论" />
+        <textarea v-model="baselineNotes" class="form-control" rows="3" maxlength="4000" placeholder="记录首次发布核查结论" />
       </label>
       <button
         data-publish-baseline
@@ -239,15 +239,15 @@ onMounted(load);
       >发布初始版本</button>
     </section>
 
-    <section class="publish-band">
+    <section class="publish-band panel">
       <div><p class="eyebrow">APPROVED CHANGESET</p><h2>创建发布版本</h2></div>
-      <label>已批准修改集<select v-model="selectedChangeset" :disabled="busy"><option value="">请选择</option><option v-for="entry in approved" :key="entry.id" :value="entry.id">{{ entry.title }} · v{{ entry.version }}</option></select></label>
-      <label>版本标题<input v-model="title" maxlength="255" placeholder="默认使用修改集标题"></label>
-      <label class="notes">发布说明<textarea v-model="notes" rows="3" placeholder="记录本次发布范围与核查结论"></textarea></label>
+      <label class="form-field">已批准修改集<select v-model="selectedChangeset" class="form-control" :disabled="busy"><option value="">请选择</option><option v-for="entry in approved" :key="entry.id" :value="entry.id">{{ entry.title }} · v{{ entry.version }}</option></select></label>
+      <label class="form-field">版本标题<input v-model="title" class="form-control" maxlength="255" placeholder="默认使用修改集标题"></label>
+      <label class="notes form-field">发布说明<textarea v-model="notes" class="form-control" rows="3" placeholder="记录本次发布范围与核查结论"></textarea></label>
       <button data-publish-release class="button-primary" type="button" :disabled="busy || previewLoading || !selectedChangeset || !preview?.validation.valid" @click="publish">原子发布</button>
     </section>
 
-    <section v-if="selectedChangeset" class="preview-band" data-release-preview>
+    <section v-if="selectedChangeset" class="preview-band panel" data-release-preview>
       <div class="section-heading"><h2>发布前核查</h2><span v-if="previewLoading">正在校验</span><span v-else-if="preview?.validation.valid" class="preview-valid">校验通过</span><span v-else class="preview-invalid">需要处理</span></div>
       <div v-if="preview" class="delta-grid">
         <div><span>新增</span><strong>{{ preview.counts.create }}</strong></div>
@@ -260,29 +260,20 @@ onMounted(load);
       </ul>
     </section>
 
-    <section class="release-list">
+    <section class="release-list panel table-wrap">
       <div class="section-heading"><h2>版本历史</h2><span>{{ releases.length }} 个版本</span></div>
-      <table>
+      <table class="data-table">
         <thead><tr><th>版本</th><th>标题</th><th>发布时间</th><th>状态</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="release in releases" :key="release.id">
-            <td><code>{{ release.release_key }}</code></td><td>{{ release.title }}</td><td>{{ release.published_at }}</td><td><span :class="['state', { current: release.is_current }]">{{ release.is_current ? "当前版本" : "历史版本" }}</span></td>
-            <td class="actions"><button type="button" :disabled="busy" @click="inspect(release, 'validation')">重新校验</button><button type="button" :disabled="busy" @click="inspect(release, 'export')">导出清单</button></td>
+            <td><code>{{ release.release_key }}</code></td><td>{{ release.title }}</td><td>{{ release.published_at }}</td><td><span :class="['state', 'status-chip', { 'is-ok': release.is_current }]">{{ release.is_current ? "当前版本" : "历史版本" }}</span></td>
+            <td class="actions table-actions"><button class="button-secondary" type="button" :disabled="busy" @click="inspect(release, 'validation')">重新校验</button><button class="button-secondary" type="button" :disabled="busy" @click="inspect(release, 'export')">导出清单</button></td>
           </tr>
           <tr v-if="!loading && releases.length === 0"><td colspan="5" class="empty">暂无发布版本</td></tr>
         </tbody>
       </table>
     </section>
 
-    <section v-if="result" class="result-panel"><div class="section-heading"><h2>操作结果</h2><button type="button" title="关闭结果" @click="result = null">关闭</button></div><pre>{{ JSON.stringify(result, null, 2) }}</pre></section>
+    <section v-if="result" class="result-panel panel"><div class="section-heading"><h2>操作结果</h2><button class="button-secondary" type="button" title="关闭结果" @click="result = null">关闭</button></div><pre>{{ JSON.stringify(result, null, 2) }}</pre></section>
   </div>
 </template>
-
-<style scoped>
-.release-page{padding:clamp(24px,4vw,52px)}.page-heading>a{text-decoration:none}.message{padding:11px 14px;border-left:3px solid var(--danger);color:var(--danger);background:#fff;font-size:.76rem}.publish-band{display:grid;grid-template-columns:minmax(180px,.7fr) minmax(210px,1fr) minmax(190px,.8fr);gap:14px;align-items:end;margin-bottom:14px;padding:20px;border:1px solid var(--line);background:#fff}.publish-band h2,.section-heading h2{margin:0;font:600 1.15rem/1.3 Georgia,"Noto Serif SC Variable",serif}.publish-band label{display:grid;gap:7px;color:var(--ink-650);font-size:.68rem;font-weight:700}.publish-band input,.publish-band select,.publish-band textarea{width:100%;min-height:39px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit}.publish-band .notes{grid-column:2/4}.preview-band,.release-list,.result-panel{padding:20px;border:1px solid var(--line);background:#fff;overflow:auto}.preview-band{margin-bottom:22px}.preview-valid{color:var(--forest-800)!important}.preview-invalid{color:var(--danger)!important}.delta-grid{display:grid;grid-template-columns:repeat(4,minmax(100px,1fr));border:1px solid var(--line)}.delta-grid>div{display:grid;gap:5px;padding:12px;border-right:1px solid var(--line)}.delta-grid>div:last-child{border-right:0}.delta-grid span{color:var(--ink-500);font-size:.65rem}.delta-grid strong{font-size:1.1rem}.validation-list{margin:12px 0 0;padding-left:20px;color:var(--danger);font-size:.72rem}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}.section-heading span{color:var(--ink-500);font-size:.7rem}table{width:100%;border-collapse:collapse;font-size:.75rem}th,td{padding:12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{color:var(--ink-500);font-size:.65rem}.state{padding:4px 7px;border-radius:5px;color:var(--ink-600);background:var(--canvas);font-size:.64rem}.state.current{color:var(--forest-800);background:var(--forest-100)}.actions{display:flex;gap:7px}.actions button,.section-heading button{padding:6px 9px;border:1px solid var(--line);border-radius:6px;color:var(--ink-700);background:#fff;cursor:pointer}.empty{text-align:center;color:var(--ink-500)}.result-panel{margin-top:18px}.result-panel pre{max-height:360px;margin:0;padding:14px;overflow:auto;background:var(--canvas);font-size:.68rem}@media(max-width:900px){.publish-band,.delta-grid{grid-template-columns:1fr}.publish-band .notes{grid-column:auto}.delta-grid>div{border-right:0;border-bottom:1px solid var(--line)}.delta-grid>div:last-child{border-bottom:0}}
-.baseline-band{border-left:3px solid var(--forest-700)}
-.baseline-state{display:inline-block;margin-top:7px;padding:4px 7px;border-radius:5px;color:var(--forest-800);background:var(--forest-100);font-size:.64rem}
-.baseline-summary{display:flex;grid-column:1/2;gap:14px;align-items:center;color:var(--ink-500);font-size:.68rem}
-.baseline-summary span{white-space:nowrap}.baseline-summary strong{color:var(--ink-800)}
-@media(max-width:900px){.baseline-summary{grid-column:auto;flex-wrap:wrap}}
-</style>

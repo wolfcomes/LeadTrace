@@ -52,20 +52,16 @@ async function rollback(): Promise<void> {
 </script>
 
 <template>
-  <div class="rollback-page">
+  <div class="rollback-page admin-page review-workspace">
     <header class="page-heading"><div><p class="eyebrow">CONTROLLED ROLLBACK</p><h1>版本回滚</h1><p>从历史清单创建一个新的发布版本，不删除中间修订和审计记录。</p></div><RouterLink class="button-secondary" to="/admin/releases">返回版本历史</RouterLink></header>
-    <p v-if="error" class="message" role="alert">{{ error }}</p>
-    <section class="rollback-form">
+    <p v-if="error" class="message inline-feedback is-error" role="alert">{{ error }}</p>
+    <section class="rollback-form panel">
       <label for="rollback-target">目标历史版本</label>
-      <select id="rollback-target" v-model="targetId"><option value="">请选择历史版本</option><option v-for="release in historical" :key="release.id" :value="release.id">{{ release.release_key }} · {{ release.title }}</option></select>
+      <select id="rollback-target" v-model="targetId" class="form-control"><option value="">请选择历史版本</option><option v-for="release in historical" :key="release.id" :value="release.id">{{ release.release_key }} · {{ release.title }}</option></select>
       <div v-if="selected" class="target-summary"><strong>{{ selected.title }}</strong><code>{{ selected.id }}</code><p>{{ selected.notes || "无发布说明" }}</p></div>
       <label for="rollback-reason">回滚理由</label>
-      <textarea id="rollback-reason" v-model="reason" rows="5" placeholder="说明回滚原因、影响范围和核查依据"></textarea>
+      <textarea id="rollback-reason" v-model="reason" class="form-control" rows="5" placeholder="说明回滚原因、影响范围和核查依据"></textarea>
       <div class="actions"><RouterLink class="button-secondary" to="/admin/releases">取消</RouterLink><button class="button-danger" type="button" :disabled="busy || !targetId || !reason.trim()" @click="rollback">创建回滚版本</button></div>
     </section>
   </div>
 </template>
-
-<style scoped>
-.rollback-page{max-width:920px;padding:clamp(24px,4vw,52px)}.page-heading a,.actions a{text-decoration:none}.message{padding:11px 14px;border-left:3px solid var(--danger);color:var(--danger);background:#fff;font-size:.76rem}.rollback-form{display:grid;gap:10px;padding:22px;border:1px solid var(--line);background:#fff}.rollback-form label{margin-top:6px;color:var(--ink-700);font-size:.72rem;font-weight:720}.rollback-form select,.rollback-form textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit}.target-summary{padding:14px;border-left:3px solid var(--gold-600);background:var(--canvas)}.target-summary strong,.target-summary code{display:block}.target-summary code{margin-top:6px;color:var(--ink-500);font-size:.62rem}.target-summary p{margin:8px 0 0;color:var(--ink-600);font-size:.74rem}.actions{display:flex;justify-content:flex-end;gap:10px;margin-top:12px}.button-danger{min-height:40px;padding:8px 14px;border:1px solid #a94d48;border-radius:6px;color:#fff;background:#9e3f3a;cursor:pointer}.button-danger:disabled{opacity:.5;cursor:not-allowed}
-</style>

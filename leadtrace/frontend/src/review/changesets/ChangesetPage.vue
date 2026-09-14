@@ -593,19 +593,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="review-page changeset-page">
-    <section v-if="state === 'loading'" class="workspace-state" aria-live="polite">
+  <div class="review-page changeset-page review-workspace">
+    <section v-if="state === 'loading'" class="workspace-state page-state" aria-live="polite">
       <span class="state-spinner" aria-hidden="true"></span>
       <p>正在读取修改集…</p>
     </section>
 
-    <section v-else-if="state === 'not-found'" class="workspace-state">
+    <section v-else-if="state === 'not-found'" class="workspace-state page-state">
       <span class="state-symbol" aria-hidden="true">404</span>
       <h1>未找到修改集</h1>
       <p>该修改集不存在，或不属于当前核查任务。</p>
     </section>
 
-    <section v-else-if="state === 'error'" class="workspace-state" role="alert">
+    <section v-else-if="state === 'error'" class="workspace-state page-state" role="alert">
       <span class="state-symbol is-error" aria-hidden="true">!</span>
       <h1>暂时无法读取修改集</h1>
       <p>请稍后重试，或将请求编号提供给管理员。</p>
@@ -614,7 +614,7 @@ onBeforeUnmount(() => {
     </section>
 
     <template v-else-if="changeset">
-      <header class="workspace-header">
+      <header class="workspace-header page-heading">
         <div>
           <RouterLink class="back-link" to="/review/tasks">← 返回核查任务</RouterLink>
           <p class="eyebrow">CHANGESET WORKSPACE</p>
@@ -625,10 +625,10 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="workspace-status">
-          <span class="workflow-state" :data-state="changeset.workflow_state">
+          <span class="workflow-state status-chip" :data-state="changeset.workflow_state">
             {{ stateLabels[changeset.workflow_state] }}
           </span>
-          <span class="save-state" :data-save-state="autosaveState">
+          <span class="save-state status-chip" :data-save-state="autosaveState">
             <span aria-hidden="true"></span>{{ saveLabels[autosaveState] }}
           </span>
         </div>
@@ -644,14 +644,14 @@ onBeforeUnmount(() => {
 
       <div v-if="operationError" class="operation-alert" role="alert">{{ operationError }}</div>
 
-      <nav class="workspace-tabs" aria-label="修改集视图">
+      <nav class="workspace-tabs workspace-toolbar" aria-label="修改集视图">
         <button type="button" :aria-current="activeTab === 'edit' ? 'page' : undefined" @click="activeTab = 'edit'">编辑</button>
         <button type="button" :aria-current="activeTab === 'diff' ? 'page' : undefined" @click="activeTab = 'diff'">变更对比</button>
         <button type="button" :aria-current="activeTab === 'submit' ? 'page' : undefined" @click="activeTab = 'submit'">提交与审批</button>
       </nav>
 
       <section v-if="activeTab === 'edit'" class="editor-view" data-editor-view>
-        <section class="metadata-editor" aria-labelledby="metadata-title">
+        <section class="metadata-editor panel" aria-labelledby="metadata-title">
           <div class="section-heading">
             <div>
               <p class="eyebrow">CHANGE RECORD</p>
@@ -661,10 +661,10 @@ onBeforeUnmount(() => {
           </div>
           <div class="metadata-fields">
             <label for="changeset-title">修改集标题</label>
-            <input id="changeset-title" v-model="title" type="text" :readonly="!mutable" maxlength="255" @input="scheduleSave">
+            <input id="changeset-title" v-model="title" class="form-control" type="text" :readonly="!mutable" maxlength="255" @input="scheduleSave">
             <p v-if="!title.trim()" class="field-error">标题不能为空。</p>
             <label for="changeset-reason">修改原因</label>
-            <textarea id="changeset-reason" v-model="reason" rows="4" :readonly="!mutable" maxlength="4000" @input="scheduleSave"></textarea>
+            <textarea id="changeset-reason" v-model="reason" class="form-control" rows="4" :readonly="!mutable" maxlength="4000" @input="scheduleSave"></textarea>
             <p v-if="!reason.trim()" class="field-error">修改原因不能为空。</p>
           </div>
         </section>
@@ -678,7 +678,7 @@ onBeforeUnmount(() => {
             <span>{{ items.length }} 个对象</span>
           </div>
           <div class="domain-editors">
-            <article v-if="paperItem" class="domain-editor paper-editor" data-paper-editor>
+            <article v-if="paperItem" class="domain-editor paper-editor panel" data-paper-editor>
               <header>
                 <div>
                   <strong>文献元数据</strong>
@@ -691,6 +691,7 @@ onBeforeUnmount(() => {
                   <label for="paper-title-field">标题</label>
                   <input
                     id="paper-title-field"
+                    class="form-control"
                     :value="normalizedValue(paperItem, 'title_guess')"
                     type="text"
                     :readonly="!mutable"
@@ -701,6 +702,7 @@ onBeforeUnmount(() => {
                   <label for="paper-year-field">发表年份</label>
                   <input
                     id="paper-year-field"
+                    class="form-control"
                     :value="normalizedValue(paperItem, 'year')"
                     type="text"
                     inputmode="numeric"
@@ -712,6 +714,7 @@ onBeforeUnmount(() => {
                   <label for="paper-target-field">研究靶点</label>
                   <input
                     id="paper-target-field"
+                    class="form-control"
                     :value="normalizedValue(paperItem, 'target')"
                     type="text"
                     :readonly="!mutable"
@@ -722,6 +725,7 @@ onBeforeUnmount(() => {
                   <label for="paper-review-status-field">人工核查状态</label>
                   <input
                     id="paper-review-status-field"
+                    class="form-control"
                     :value="normalizedValue(paperItem, 'review_status')"
                     type="text"
                     :readonly="!mutable"
@@ -734,7 +738,7 @@ onBeforeUnmount(() => {
             <article
               v-for="evidenceItem in evidenceItems"
               :key="evidenceItem.id"
-              class="domain-editor evidence-editor"
+              class="domain-editor evidence-editor panel"
               data-evidence-editor
             >
               <header>
@@ -747,6 +751,7 @@ onBeforeUnmount(() => {
               <label :for="`evidence-text-${evidenceItem.id}`">原文证据</label>
               <textarea
                 :id="`evidence-text-${evidenceItem.id}`"
+                class="form-control"
                 :value="normalizedValue(evidenceItem, 'evidence_text')"
                 rows="7"
                 :readonly="!mutable"
@@ -762,7 +767,7 @@ onBeforeUnmount(() => {
             <summary>高级检查 · 完整 JSON 快照</summary>
             <p>用于核对尚未提供专用表单的字段。修改内容仍通过同一版本与自动保存流程提交。</p>
             <div class="item-editors">
-            <article v-for="item in items" :key="item.id" class="item-editor" data-item-editor>
+            <article v-for="item in items" :key="item.id" class="item-editor panel" data-item-editor>
               <header>
                 <div>
                   <strong>{{ objectLabels[item.object_kind] ?? item.object_kind }}</strong>
@@ -773,6 +778,7 @@ onBeforeUnmount(() => {
               <label :for="`snapshot-${item.id}`">提议快照</label>
               <textarea
                 :id="`snapshot-${item.id}`"
+                class="form-control"
                 v-model="itemJson[item.id]"
                 rows="14"
                 spellcheck="false"
@@ -824,77 +830,3 @@ onBeforeUnmount(() => {
     />
   </div>
 </template>
-
-<style scoped>
-.review-page { max-width: 1380px; margin: 0 auto; padding: clamp(28px, 5vw, 58px); }
-.workspace-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 26px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
-.back-link { display: inline-block; margin-bottom: 23px; color: var(--forest-750); font-size: .72rem; font-weight: 700; text-decoration: none; }
-.workspace-header h1 { margin: 0; color: var(--ink-950); font: 600 clamp(2rem, 3vw, 3rem)/1.15 Georgia, "Noto Serif SC Variable", serif; }
-.identity-line { display: flex; flex-wrap: wrap; gap: 9px 16px; margin-top: 13px; color: var(--ink-500); font-size: .68rem; }
-.identity-line code { user-select: all; }
-.workspace-status { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
-.workflow-state { padding: 6px 10px; border: 1px solid #c6d8ce; color: var(--forest-750); background: var(--forest-100); font-size: .68rem; font-weight: 760; }
-.workflow-state[data-state="submitted"] { border-color: #c9d9e1; color: #315f77; background: #edf5f8; }
-.workflow-state[data-state="changes_requested"] { border-color: #efcccc; color: var(--danger); background: var(--danger-soft); }
-.save-state { display: flex; align-items: center; gap: 7px; color: var(--ink-500); font-size: .67rem; }
-.save-state > span { width: 7px; height: 7px; border-radius: 50%; background: #51836a; }
-.save-state[data-save-state="pending"] > span, .save-state[data-save-state="saving"] > span { background: #c28a33; }
-.save-state[data-save-state="offline"] > span, .save-state[data-save-state="conflict"] > span, .save-state[data-save-state="error"] > span { background: var(--danger); }
-.workspace-tabs { display: flex; gap: 0; margin: 27px 0 31px; border-bottom: 1px solid var(--line); }
-.workspace-tabs button { min-width: 118px; padding: 12px 15px; border: 0; border-bottom: 3px solid transparent; color: var(--ink-500); background: transparent; font-size: .75rem; font-weight: 700; cursor: pointer; }
-.workspace-tabs button[aria-current="page"] { border-bottom-color: var(--forest-750); color: var(--forest-900); }
-.editor-view { display: grid; gap: 38px; }
-.section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 17px; }
-.section-heading h2 { margin: 0; color: var(--ink-950); font: 600 1.4rem/1.2 Georgia, "Noto Serif SC Variable", serif; }
-.section-heading > span { color: var(--ink-500); font-size: .7rem; }
-.metadata-editor { max-width: 900px; }
-.metadata-fields { padding: 22px; border-top: 2px solid var(--forest-900); background: white; box-shadow: var(--shadow-sm); }
-.metadata-fields label, .domain-editor label, .item-editor label { display: block; margin: 15px 0 7px; color: var(--ink-650); font-size: .7rem; font-weight: 720; }
-.metadata-fields label:first-child { margin-top: 0; }
-input, textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--ink-950); background: #fbfcfb; }
-input:focus, textarea:focus { border-color: var(--forest-750); box-shadow: 0 0 0 3px rgba(29,90,71,.08); outline: 0; }
-input[readonly], textarea[readonly] { color: var(--ink-650); background: #f2f4f2; cursor: not-allowed; }
-.metadata-fields textarea { resize: vertical; line-height: 1.6; }
-.domain-editors { display: grid; gap: 16px; }
-.domain-editor { min-width: 0; padding: 22px; border: 1px solid var(--line); border-top: 2px solid var(--forest-900); background: white; box-shadow: var(--shadow-sm); }
-.domain-editor > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
-.domain-editor header strong, .domain-editor header code { display: block; }
-.domain-editor header strong { color: var(--ink-800); font-size: .82rem; }
-.domain-editor header code { margin-top: 5px; overflow-wrap: anywhere; color: var(--ink-500); font-size: .61rem; }
-.domain-editor header > span { color: var(--gold-700); font-size: .67rem; font-weight: 760; }
-.paper-field-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 14px; }
-.paper-field-grid .field-wide { grid-column: 1 / -1; }
-.evidence-editor textarea { min-height: 138px; resize: vertical; line-height: 1.65; }
-.evidence-editor small { display: block; margin-top: 8px; color: var(--ink-500); font-size: .66rem; }
-.advanced-snapshots { margin-top: 22px; border-top: 1px solid var(--line); }
-.advanced-snapshots > summary { padding: 16px 0; color: var(--forest-750); font-size: .73rem; font-weight: 740; cursor: pointer; }
-.advanced-snapshots > p { margin: -4px 0 15px; color: var(--ink-500); font-size: .68rem; line-height: 1.55; }
-.item-editors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.item-editor { min-width: 0; padding: 19px; border: 1px solid var(--line); background: white; box-shadow: var(--shadow-sm); }
-.item-editor > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
-.item-editor header strong, .item-editor header code { display: block; }
-.item-editor header strong { color: var(--ink-800); font-size: .78rem; }
-.item-editor header code { margin-top: 5px; overflow-wrap: anywhere; color: var(--ink-500); font-size: .61rem; }
-.item-editor header > span { color: var(--gold-700); font-size: .67rem; font-weight: 760; }
-.item-editor textarea { resize: vertical; font: .71rem/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
-.field-error { margin: 6px 0 0; color: var(--danger); font-size: .68rem; }
-.recovery-banner, .operation-alert { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 18px; padding: 13px 15px; border-left: 4px solid #c1872e; color: var(--ink-650); background: #fff8e8; font-size: .73rem; }
-.recovery-banner strong, .recovery-banner span { display: block; }
-.recovery-banner strong { color: var(--ink-800); }
-.recovery-banner span { margin-top: 3px; }
-.recovery-banner button { flex: 0 0 auto; border: 0; color: var(--forest-750); background: transparent; font-weight: 720; cursor: pointer; }
-.operation-alert { border-left-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
-.empty-items { padding: 28px; border-top: 2px solid var(--line-strong); color: var(--ink-500); background: white; font-size: .78rem; text-align: center; }
-.workspace-state { display: grid; min-height: 520px; place-items: center; align-content: center; gap: 10px; text-align: center; }
-.workspace-state h1 { margin: 8px 0 0; color: var(--ink-950); font: 600 1.65rem/1.2 Georgia, "Noto Serif SC Variable", serif; }
-.workspace-state p { margin: 0; color: var(--ink-650); font-size: .8rem; }
-.workspace-state small { color: var(--ink-500); font-size: .68rem; }
-.workspace-state .button-secondary { margin-top: 10px; }
-.state-symbol { display: grid; width: 54px; height: 54px; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--forest-750); font: 600 1rem/1 Georgia, serif; }
-.state-symbol.is-error { color: var(--danger); }
-.state-spinner { width: 27px; height: 27px; border: 3px solid var(--line); border-top-color: var(--forest-750); border-radius: 50%; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-@media (max-width: 900px) { .item-editors { grid-template-columns: 1fr; } }
-@media (max-width: 650px) { .workspace-header { align-items: flex-start; flex-direction: column; } .workspace-status { align-items: flex-start; } .workspace-tabs { overflow-x: auto; } .workspace-tabs button { min-width: 108px; } .section-heading { align-items: flex-start; flex-direction: column; } .recovery-banner { align-items: flex-start; flex-direction: column; } .paper-field-grid { grid-template-columns: 1fr; } .paper-field-grid .field-wide { grid-column: auto; } }
-@media (prefers-reduced-motion: reduce) { .state-spinner { animation: none; } }
-</style>

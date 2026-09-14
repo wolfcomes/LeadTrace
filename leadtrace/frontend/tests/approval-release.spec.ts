@@ -400,6 +400,9 @@ describe("approval and release console", () => {
     await wrapper.get("#decision-reason").setValue("核对新提交版本");
     const actions = () => wrapper.findAll(".decision-actions button");
 
+    expect(wrapper.get(".approval-page").classes()).toContain("review-workspace");
+    expect(wrapper.get(".approval-workspace").classes()).toContain("panel");
+    expect(wrapper.get(".decision-panel").classes()).toContain("panel");
     expect(wrapper.text()).toContain("OLD_SUBMISSION_DIFF");
     expect(wrapper.text()).toContain("OLD_SUBMISSION_EVIDENCE");
     expect(actions().every((button) => button.attributes("disabled") === undefined)).toBe(true);
@@ -592,6 +595,10 @@ describe("approval and release console", () => {
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
+    expect(wrapper.get(".release-page").classes()).toContain("review-workspace");
+    expect(wrapper.get(".publish-band").classes()).toContain("panel");
+    expect(wrapper.get(".release-list").classes()).toContain("panel");
+    expect(wrapper.get(".release-list table").classes()).toContain("data-table");
     expect(wrapper.get("[data-release-preview]").text()).toContain("2");
     expect(wrapper.get("[data-release-preview]").text()).toContain("校验通过");
     await wrapper.get("[data-publish-release]").trigger("click");

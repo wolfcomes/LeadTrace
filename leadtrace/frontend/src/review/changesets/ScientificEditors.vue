@@ -142,12 +142,3 @@ function readiness(item: ChangesetItem) {
     </div>
   </section>
 </template>
-
-<style scoped>
-.scientific-editors { display: grid; gap: 16px; margin-top: 18px; padding-top: 24px; border-top: 1px solid var(--line); }
-.scientific-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
-.scientific-heading h2 { margin: 0; color: var(--ink-950); font: 600 1.25rem/1.2 Georgia, "Noto Serif SC Variable", serif; }
-.scientific-heading > span { color: var(--ink-500); font-size: .7rem; }
-.scientific-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 900px) { .scientific-grid { grid-template-columns: 1fr; } }
-</style>
