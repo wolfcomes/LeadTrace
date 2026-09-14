@@ -23,6 +23,7 @@ from app.assets.storage import LocalAssetStore
 from app.compounds.models import Compound
 from app.evidence.models import Evidence
 from app.lineages.models import Lineage, LineageEdge
+from app.molecule_proposals.models import MoleculeProposal
 from app.papers.models import Paper
 from app.releases.manifest import (
     canonical_hash,
@@ -93,6 +94,7 @@ def _portable_revision(revision: ObjectRevision) -> dict[str, object]:
         "activity_unit",
         "relation_type",
         "relation_status",
+        "proposal_disposition",
         "region_x0",
         "region_y0",
         "region_x1",
@@ -131,6 +133,7 @@ def build_release_export(
         "activities": [],
         "regions": [],
         "visual_objects": [],
+        "molecule_proposals": [],
         "revisions": [],
     }
     for item in items:
@@ -156,6 +159,7 @@ def build_release_export(
             "activity": "activities",
             "visual_region": "regions",
             "visual_object": "visual_objects",
+            "molecule_proposal": "molecule_proposals",
         }.get(item.object_kind.value)
         if key and revision is not None:
             sections[key].append(
@@ -192,6 +196,7 @@ def build_release_export(
         "activities": sections["activities"],
         "regions": sections["regions"],
         "visual_objects": sections["visual_objects"],
+        "molecule_proposals": sections["molecule_proposals"],
         "revisions": sections["revisions"],
         "bindings": bindings,
         "asset_manifest": assets,
@@ -400,6 +405,20 @@ def _validate_export_reference_closure(
         require(object_id, "parent_compound_id", "compound")
         require(object_id, "derived_compound_id", "compound", required=True)
         require(object_id, "evidence_ids", "evidence")
+    for object_id in kinds.get("molecule_proposal", set()):
+        require(object_id, "visual_object_id", "visual_object", required=True)
+        require(object_id, "source_region_id", "visual_region")
+        crop_asset_ids = _reference_ids(
+            _export_reference(
+                object_id,
+                snapshots[object_id],
+                object_references,
+                "crop_asset_id",
+            ),
+            "crop_asset_id",
+        )
+        if not crop_asset_ids <= set(asset_rows):
+            raise ValueError("Release export reference closure is invalid")
 
     bindings = _required_mapping(
         artifact_snapshot.get("bindings", {}), "artifact bindings"
@@ -483,6 +502,7 @@ def _validate_release_export_integrity(
         "activity": "activities",
         "visual_region": "regions",
         "visual_object": "visual_objects",
+        "molecule_proposal": "molecule_proposals",
     }
     for kind, section in section_by_kind.items():
         for row in _records(payload, section):
@@ -616,6 +636,7 @@ def restore_release_export(
         "lineage_edges",
         "regions",
         "visual_objects",
+        "molecule_proposals",
     )
     records_by_section = {name: _records(payload, name) for name in section_order}
 
@@ -736,7 +757,7 @@ def restore_release_export(
                     asset_id=region_asset_by_id.get(object_id),
                     page_number=int(_snapshot_value(snapshot, "page_number") or 1),
                 )
-            else:
+            elif section == "visual_objects":
                 identity = VisualObject(
                     id=object_id,
                     paper_id=paper_id,
@@ -746,6 +767,28 @@ def restore_release_export(
                             _snapshot_value(snapshot, "object_type")
                             or MoleculeObjectType.UNCERTAIN.value
                         )
+                    ),
+                )
+            else:
+                visual_object_id = reference(
+                    object_id, snapshot, "visual_object_id"
+                )
+                if visual_object_id is None:
+                    raise ValueError("Molecule proposal export omits visual_object_id")
+                identity = MoleculeProposal(
+                    id=object_id,
+                    paper_id=paper_id,
+                    visual_object_id=visual_object_id,
+                    proposal_key=str(
+                        _snapshot_value(snapshot, "proposal_key") or object_id
+                    ),
+                    model_run_key=str(
+                        _snapshot_value(snapshot, "model_run_key", "model_version")
+                        or object_id
+                    ),
+                    crop_asset_id=reference(object_id, snapshot, "crop_asset_id"),
+                    source_region_id=reference(
+                        object_id, snapshot, "source_region_id"
                     ),
                 )
             session.add(identity)
@@ -798,6 +841,7 @@ def restore_release_export(
             activity_unit=revision_data.get("activity_unit"),
             relation_type=revision_data.get("relation_type"),
             relation_status=revision_data.get("relation_status"),
+            proposal_disposition=revision_data.get("proposal_disposition"),
             region_x0=revision_data.get("region_x0"),
             region_y0=revision_data.get("region_y0"),
             region_x1=revision_data.get("region_x1"),

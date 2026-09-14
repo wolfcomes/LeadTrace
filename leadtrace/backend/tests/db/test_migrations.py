@@ -88,7 +88,7 @@ def test_admin_review_workflow_migration_contract(
     config = _alembic_config(empty_postgresql_database_url)
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "0017_unique_active_review_task"
+    assert script.get_current_head() == "0018_reviewer_scientific_workspace"
     command.upgrade(config, "head")
 
     engine = create_database_engine(empty_postgresql_database_url)
@@ -156,6 +156,102 @@ def test_admin_review_workflow_migration_contract(
             )
         )
         assert "completed" in predicate
+    finally:
+        engine.dispose()
+
+
+def test_reviewer_scientific_workspace_migration_contract(
+    empty_postgresql_database_url: str,
+) -> None:
+    config = _alembic_config(empty_postgresql_database_url)
+    command.upgrade(config, "head")
+
+    engine = create_database_engine(empty_postgresql_database_url)
+    try:
+        schema = inspect(engine)
+        proposal_columns = {
+            column["name"]: column
+            for column in schema.get_columns("molecule_proposals")
+        }
+        assert proposal_columns.keys() >= {
+            "id",
+            "paper_id",
+            "visual_object_id",
+            "proposal_key",
+            "model_run_key",
+            "crop_asset_id",
+            "source_region_id",
+        }
+        proposal_uniques = {
+            tuple(item["column_names"])
+            for item in schema.get_unique_constraints("molecule_proposals")
+        }
+        assert (
+            "paper_id",
+            "visual_object_id",
+            "proposal_key",
+            "model_run_key",
+        ) in proposal_uniques
+
+        scope_columns = {
+            column["name"]: column
+            for column in schema.get_columns("paper_review_scopes")
+        }
+        assert scope_columns.keys() >= {
+            "id",
+            "changeset_id",
+            "paper_id",
+            "base_release_id",
+            "base_paper_revision_id",
+            "snapshot",
+            "scope_hash",
+            "item_count",
+            "created_by_id",
+            "created_at",
+        }
+        scope_uniques = {
+            tuple(item["column_names"])
+            for item in schema.get_unique_constraints("paper_review_scopes")
+        }
+        assert ("changeset_id",) in scope_uniques
+
+        attestation_columns = {
+            column["name"]: column
+            for column in schema.get_columns("paper_review_attestations")
+        }
+        assert attestation_columns.keys() >= {
+            "id",
+            "changeset_id",
+            "scope_id",
+            "paper_id",
+            "paper_revision_id",
+            "changeset_version",
+            "scope_hash",
+            "reviewer_id",
+            "item_count",
+            "resolved_count",
+            "blocker_count",
+            "statement",
+            "created_at",
+        }
+
+        revision_columns = {
+            column["name"]: column
+            for column in schema.get_columns("object_revisions")
+        }
+        assert revision_columns["proposal_disposition"]["nullable"] is True
+        revision_checks = " ".join(
+            str(item["sqltext"])
+            for item in schema.get_check_constraints("object_revisions")
+        )
+        for disposition in (
+            "pending",
+            "accepted",
+            "corrected",
+            "rejected",
+            "not_applicable",
+        ):
+            assert disposition in revision_checks
     finally:
         engine.dispose()
 

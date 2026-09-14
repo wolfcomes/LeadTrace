@@ -13,6 +13,7 @@ from app.assets.storage import LocalAssetStore
 from app.compounds.models import Compound
 from app.evidence.models import Evidence
 from app.lineages.models import Lineage, LineageEdge
+from app.molecule_proposals.models import MoleculeProposal
 from app.papers.models import Paper
 from app.releases.manifest import canonical_hash, get_release_artifact_manifest
 from app.releases.models import Release, ReleaseItem
@@ -114,6 +115,7 @@ _MODEL_BY_KIND = {
     ObjectKind.LINEAGE_EDGE: LineageEdge,
     ObjectKind.VISUAL_REGION: VisualRegion,
     ObjectKind.VISUAL_OBJECT: VisualObject,
+    ObjectKind.MOLECULE_PROPOSAL: MoleculeProposal,
 }
 
 

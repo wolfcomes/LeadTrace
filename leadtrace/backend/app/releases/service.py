@@ -28,6 +28,7 @@ from app.imports.models import (
     ImportReleaseCandidate,
 )
 from app.lineages.models import Lineage, LineageEdge
+from app.molecule_proposals.models import MoleculeProposal
 from app.papers.models import Paper
 from app.releases.aggregate import (
     OVERVIEW_METRIC_KEYS,
@@ -257,6 +258,7 @@ _BASELINE_KIND_SPECS = (
     (ObjectKind.LINEAGE_EDGE, LineageEdge, "edge_key"),
     (ObjectKind.VISUAL_REGION, VisualRegion, "region_key"),
     (ObjectKind.VISUAL_OBJECT, VisualObject, "object_key"),
+    (ObjectKind.MOLECULE_PROPOSAL, MoleculeProposal, "proposal_key"),
 )
 _BASELINE_KIND_RANK = {
     kind: rank for rank, (kind, _, _) in enumerate(_BASELINE_KIND_SPECS)
