@@ -40,6 +40,10 @@ from app.imports.reconcile import (
     source_snapshot_is_unchanged,
 )
 from app.lineages.models import Lineage, LineageEdge
+from app.molecule_proposals.models import (
+    MoleculeProposal,
+    MoleculeProposalDisposition,
+)
 from app.papers.models import Paper
 from app.revisions.models import (
     ActivityState,
@@ -83,7 +87,20 @@ def _optional(record: StagedSourceRecord, field_name: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _safe_snapshot(record: StagedSourceRecord) -> dict[str, object]:
+def _safe_snapshot(
+    record: StagedSourceRecord,
+    domain_object: RevisionedObject,
+) -> dict[str, object]:
+    raw_values: dict[str, object] = dict(record.raw_values)
+    normalized_values: dict[str, object] = dict(record.normalized_values)
+    if isinstance(domain_object, MoleculeProposal):
+        raw_values.pop("crop_path", None)
+        normalized_values.pop("crop_path", None)
+        normalized_values["crop_asset_id"] = (
+            str(domain_object.crop_asset_id)
+            if domain_object.crop_asset_id is not None
+            else None
+        )
     return {
         "record_type": record.record_type,
         "original_id": record.original_id,
@@ -92,8 +109,8 @@ def _safe_snapshot(record: StagedSourceRecord) -> dict[str, object]:
             "row_locator": record.source_row_locator,
             "sha256": record.source_hash,
         },
-        "raw_values": record.raw_values,
-        "normalized_values": record.normalized_values,
+        "raw_values": raw_values,
+        "normalized_values": normalized_values,
     }
 
 
@@ -198,11 +215,11 @@ class BaselineImporter:
         session.flush()
         self._stage_records(session, batch.id, data)
         actor = self._system_actor(session)
-        objects = self._create_domain_objects(session, data)
-        revisions = self._create_revisions(data, objects, actor.id)
-        session.add_all(revisions)
         assets = self._register_assets(session, batch.id, report)
         self._link_assets(session, batch.id, report, assets)
+        objects = self._create_domain_objects(session, batch.id, data)
+        revisions = self._create_revisions(data, objects, actor.id)
+        session.add_all(revisions)
         candidate = ImportReleaseCandidate(
             id=uuid4(),
             import_batch_id=batch.id,
@@ -291,6 +308,7 @@ class BaselineImporter:
     @staticmethod
     def _create_domain_objects(
         session: Session,
+        batch_id: UUID,
         data: BaselineSourceData,
     ) -> dict[tuple[str, str], RevisionedObject]:
         doi_by_paper: dict[str, str] = {}
@@ -449,6 +467,38 @@ class BaselineImporter:
                 object_key=record.original_id,
             )
 
+        proposal_crop_assets = {
+            original_id: asset_id
+            for original_id, asset_id in session.execute(
+                select(ImportAssetLink.original_id, ImportAssetLink.asset_id).where(
+                    ImportAssetLink.import_batch_id == batch_id,
+                    ImportAssetLink.record_type == "molecule_proposal",
+                    ImportAssetLink.link_role == "proposal_crop",
+                )
+            )
+        }
+        proposals: dict[str, MoleculeProposal] = {}
+        for record in data.molecule_proposals:
+            paper = papers.get(_required(record, "paper_id"))
+            visual = visuals.get(_required(record, "object_id"))
+            if paper is None or visual is None:
+                raise ImportValidationError(
+                    f"Molecule proposal {record.original_id!r} has an unknown reference"
+                )
+            if visual.paper_id != paper.id:
+                raise ImportValidationError(
+                    f"Molecule proposal {record.original_id!r} crosses Paper boundaries"
+                )
+            proposals[record.original_id] = MoleculeProposal(
+                id=uuid4(),
+                paper_id=paper.id,
+                visual_object_id=visual.id,
+                proposal_key=_required(record, "proposal_key"),
+                model_run_key=_required(record, "model_run_key"),
+                crop_asset_id=proposal_crop_assets.get(record.original_id),
+                source_region_id=None,
+            )
+
         session.add_all(
             [
                 *structures.values(),
@@ -456,6 +506,7 @@ class BaselineImporter:
                 *activities.values(),
                 *edges.values(),
                 *visuals.values(),
+                *proposals.values(),
             ]
         )
         session.flush()
@@ -468,6 +519,10 @@ class BaselineImporter:
             **{("activity", key): value for key, value in activities.items()},
             **{("lineage_edge", key): value for key, value in edges.items()},
             **{("visual_object", key): value for key, value in visuals.items()},
+            **{
+                ("molecule_proposal", key): value
+                for key, value in proposals.items()
+            },
         }
 
     @staticmethod
@@ -484,7 +539,7 @@ class BaselineImporter:
                     f"No stable identity was created for {record.record_type} "
                     f"{record.original_id!r}"
                 )
-            snapshot = _safe_snapshot(record)
+            snapshot = _safe_snapshot(record, domain_object)
             revision = ObjectRevision(
                 id=uuid4(),
                 object_id=domain_object.id,
@@ -524,6 +579,10 @@ class BaselineImporter:
             elif record.record_type == "lineage_edge":
                 revision.relation_type = _optional(record, "relation_type")
                 revision.relation_status = _optional(record, "relation_status")
+            elif record.record_type == "molecule_proposal":
+                revision.proposal_disposition = (
+                    MoleculeProposalDisposition.PENDING.value
+                )
             revisions.append(revision)
         return revisions
 
@@ -670,7 +729,7 @@ class BaselineImporter:
         roles = {reference.link_role for reference in references}
         if roles & {"article_pdf", "visual_source_pdf"}:
             return AssetCategory.ARTICLE_PDF, AssetAccessLevel.REVIEWER
-        if "visual_crop" in roles:
+        if roles & {"visual_crop", "proposal_crop"}:
             return AssetCategory.REVIEWED_CROP, AssetAccessLevel.REVIEWER
         if "visual_source_crop" in roles:
             return AssetCategory.OCSR_INPUT, AssetAccessLevel.REVIEWER

@@ -9,7 +9,10 @@ from app.imports.readers.lineages import (
 )
 from app.imports.readers.manifest import StagedSourceRecord, read_csv_records
 from app.imports.readers.structures import read_confirmed_structure_records
-from app.imports.readers.visuals import read_visual_object_records
+from app.imports.readers.visuals import (
+    read_molecule_proposal_records,
+    read_visual_object_records,
+)
 
 __all__ = [
     "StagedSourceRecord",
@@ -20,5 +23,6 @@ __all__ = [
     "read_csv_records",
     "read_edge_records",
     "read_evidence_records",
+    "read_molecule_proposal_records",
     "read_visual_object_records",
 ]

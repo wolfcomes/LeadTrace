@@ -22,6 +22,10 @@ from app.imports.models import (
 )
 from app.imports.service import BaselineImporter, ImportValidationError
 from app.lineages.models import Lineage, LineageEdge
+from app.molecule_proposals.models import (
+    MoleculeProposal,
+    MoleculeProposalDisposition,
+)
 from app.papers.models import Paper
 from app.revisions.models import ObjectRevision
 from app.structures.models import Structure
@@ -88,9 +92,30 @@ def test_apply_is_staged_atomic_and_idempotent(
         assert _count(session, Lineage) == 1
         assert _count(session, LineageEdge) == 1
         assert _count(session, VisualObject) == 1
-        assert _count(session, ObjectRevision) == 10
+        assert _count(session, MoleculeProposal) == 1
+        assert _count(session, ObjectRevision) == 11
         assert _count(session, Asset) == 2
-        assert _count(session, ImportAssetLink) == 3
+        assert _count(session, ImportAssetLink) == 4
+        proposal = session.scalar(select(MoleculeProposal))
+        assert proposal is not None
+        proposal_revision = session.scalar(
+            select(ObjectRevision).where(ObjectRevision.object_id == proposal.id)
+        )
+        assert proposal_revision is not None
+        assert proposal_revision.proposal_disposition == (
+            MoleculeProposalDisposition.PENDING.value
+        )
+        normalized = proposal_revision.snapshot["normalized_values"]
+        assert normalized["raw_smiles"] == "CCO"
+        assert normalized["token_confidences"] == [
+            {"token": "C", "confidence": 0.9}
+        ]
+        assert normalized["model_version"] == "ocsr-v1"
+        assert normalized["crop_asset_id"] == str(proposal.crop_asset_id)
+        assert "crop_path" not in normalized
+        assert str(baseline_fixture["workspace"]) not in json.dumps(
+            proposal_revision.snapshot
+        )
         evidence_stage = session.scalar(
             select(ImportStagingRecord).where(
                 ImportStagingRecord.record_type == "evidence"
@@ -202,7 +227,7 @@ def test_apply_quarantines_a_non_utf8_source_table_without_losing_exact_link(
         )
         assert asset is not None
         assert asset.integrity_state is AssetIntegrityState.QUARANTINED
-        assert _count(session, ImportAssetLink) == 4
+        assert _count(session, ImportAssetLink) == 5
 
 
 def test_apply_rolls_back_if_a_fact_file_changes_after_reconciliation(

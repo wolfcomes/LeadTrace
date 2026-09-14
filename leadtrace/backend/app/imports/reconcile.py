@@ -24,7 +24,10 @@ from app.imports.readers.structures import (
     read_confirmed_structure_records,
     read_structure_source_records,
 )
-from app.imports.readers.visuals import read_visual_object_records
+from app.imports.readers.visuals import (
+    read_molecule_proposal_records,
+    read_visual_object_records,
+)
 
 
 _HERE = Path(__file__).resolve()
@@ -50,6 +53,7 @@ class BaselineSourceData:
     structures: list[StagedSourceRecord]
     confirmed_structures: list[StagedSourceRecord]
     visual_objects: list[StagedSourceRecord]
+    molecule_proposals: list[StagedSourceRecord]
     structure_sources: list[StagedSourceRecord]
 
     @property
@@ -63,6 +67,7 @@ class BaselineSourceData:
             *self.activities,
             *self.structures,
             *self.visual_objects,
+            *self.molecule_proposals,
         ]
 
     @property
@@ -203,6 +208,7 @@ def load_baseline_source(source_root: Path) -> BaselineSourceData:
         structures=structures,
         confirmed_structures=confirmed_structures,
         visual_objects=read_visual_object_records(source_root),
+        molecule_proposals=read_molecule_proposal_records(source_root),
         structure_sources=read_structure_source_records(source_root),
     )
 
@@ -386,6 +392,16 @@ def _integrity(data: BaselineSourceData) -> dict[str, int]:
     dangling_entities += sum(
         record.normalized_values.get("paper_id") not in paper_ids
         for record in data.visual_objects
+    )
+    visual_papers = {
+        record.original_id: record.normalized_values.get("paper_id")
+        for record in data.visual_objects
+    }
+    dangling_entities += sum(
+        proposal.normalized_values.get("paper_id") not in paper_ids
+        or visual_papers.get(proposal.normalized_values.get("object_id"))
+        != proposal.normalized_values.get("paper_id")
+        for proposal in data.molecule_proposals
     )
     for record in data.evidence:
         values = record.normalized_values
@@ -606,6 +622,16 @@ class _AssetResolver:
                     continue
                 self._add_exact(record, link_role, self._path_value(value))
 
+    def add_proposals(self, records: list[StagedSourceRecord]) -> None:
+        for record in records:
+            value = record.normalized_values.get("crop_path")
+            if isinstance(value, str):
+                self._add_exact(
+                    record,
+                    "proposal_crop",
+                    self._path_value(value),
+                )
+
     def add_structures(self, records: list[StagedSourceRecord]) -> None:
         for record in records:
             values = record.normalized_values
@@ -653,6 +679,7 @@ def _asset_linkage(
     )
     resolver.add_papers(data.papers)
     resolver.add_visuals(data.visual_objects)
+    resolver.add_proposals(data.molecule_proposals)
     resolver.add_structures(data.structures)
     return resolver.report
 

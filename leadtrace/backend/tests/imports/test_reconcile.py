@@ -43,7 +43,7 @@ def test_fixture_reconciliation_uses_exact_scientific_counts_and_paths(
     assert report.matches_expected is True
     assert report.counts == expected["counts"]
     assert report.integrity == expected["integrity_expectations"]
-    assert report.asset_linkage.resolved_references == 3
+    assert report.asset_linkage.resolved_references == 4
     assert report.asset_linkage.missing_references == 0
     assert report.asset_linkage.ambiguous_references == 0
     assert {item.manifest_path for item in report.asset_linkage.resolved} == {
@@ -81,6 +81,37 @@ def test_asset_linking_never_guesses_from_a_duplicate_basename(
         for item in report.asset_linkage.resolved
         if item.original_id == "paper-1"
     )
+
+
+def test_reconciliation_rejects_a_proposal_for_an_unknown_visual_object(
+    baseline_fixture: dict[str, object],
+) -> None:
+    source_root = baseline_fixture["source_root"]
+    manifest_path = baseline_fixture["manifest_path"]
+    expected = baseline_fixture["expected"]
+    assert isinstance(source_root, Path)
+    assert isinstance(manifest_path, Path)
+    assert isinstance(expected, dict)
+
+    def break_proposal(rows: list[dict[str, str]]) -> None:
+        rows[0]["object_id"] = "OBJ-MISSING"
+
+    _rewrite_csv(
+        source_root
+        / "09_paper_review"
+        / "auto_fill"
+        / "first_page_molecule_proposals.csv",
+        break_proposal,
+    )
+
+    report = reconcile_baseline(
+        source_root,
+        expected=expected,
+        source_manifest_path=manifest_path,
+    )
+
+    assert report.matches_expected is False
+    assert report.integrity["dangling_entity_references"] == 1
 
 
 def test_asset_reconciliation_detects_same_size_content_tampering(

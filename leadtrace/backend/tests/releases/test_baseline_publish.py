@@ -21,6 +21,7 @@ from app.imports.approval import ImportCandidateApprovalService
 from app.imports.models import ImportAssetLink, ImportBatch, ImportReleaseCandidate
 from app.imports.service import BaselineImporter
 from app.lineages.models import Lineage, LineageEdge
+from app.molecule_proposals.models import MoleculeProposal
 from app.papers.models import Paper
 from app.releases.aggregate import overview_metrics_from_counts
 from app.releases.manifest import get_release_artifact_manifest
@@ -63,6 +64,7 @@ DOMAIN_KEY_FIELDS = {
     ObjectKind.LINEAGE_EDGE: (LineageEdge, "edge_key"),
     ObjectKind.VISUAL_REGION: (VisualRegion, "region_key"),
     ObjectKind.VISUAL_OBJECT: (VisualObject, "object_key"),
+    ObjectKind.MOLECULE_PROPOSAL: (MoleculeProposal, "proposal_key"),
 }
 
 
@@ -205,8 +207,8 @@ def test_publish_approved_baseline_creates_complete_valid_current_release(
                 .order_by(ReleaseItem.manifest_order)
             )
         )
-        assert len(items) == candidate.manifest["revision_count"] == 10
-        assert [item.manifest_order for item in items] == list(range(1, 11))
+        assert len(items) == candidate.manifest["revision_count"] == 11
+        assert [item.manifest_order for item in items] == list(range(1, 12))
         expected_kind_order = {
             kind: index for index, kind in enumerate(ObjectKind)
         }
@@ -233,7 +235,7 @@ def test_publish_approved_baseline_creates_complete_valid_current_release(
                 select(ObjectRevision).order_by(ObjectRevision.object_id)
             )
         )
-        assert len(revisions) == 10
+        assert len(revisions) == 11
         assert all(
             revision.workflow_state is WorkflowState.PUBLISHED
             and revision.is_current_published
@@ -244,6 +246,8 @@ def test_publish_approved_baseline_creates_complete_valid_current_release(
         assert {
             key: result.release.metrics[key] for key in OVERVIEW_KEYS
         } == expected_metrics
+        assert result.release.metrics["human_review"]["numerator"] == 0
+        assert release_verification_status(result.release) == "unverified"
         assert result.release.metrics["baseline"] == {
             "candidate_id": str(candidate.id),
             "batch_id": str(batch.id),
@@ -251,7 +255,7 @@ def test_publish_approved_baseline_creates_complete_valid_current_release(
             "counts": batch.counts,
             "integrity": batch.integrity,
             "asset_linkage": batch.asset_linkage,
-            "item_count": 10,
+            "item_count": 11,
         }
 
         artifact = get_release_artifact_manifest(session, result.release.id)
@@ -371,7 +375,7 @@ def test_publish_baseline_rechecks_imported_candidate_invariants(
         if mutation == "incomplete_batch":
             batch.status = "staging"
         elif mutation == "changed_manifest":
-            candidate.manifest = {**candidate.manifest, "revision_count": 11}
+            candidate.manifest = {**candidate.manifest, "revision_count": 12}
         elif mutation == "wrong_counts":
             batch.counts = {**batch.counts, "corpus_papers": 2}
         else:

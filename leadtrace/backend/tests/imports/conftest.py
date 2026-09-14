@@ -180,6 +180,36 @@ def baseline_fixture(tmp_path: Path) -> dict[str, object]:
         ],
     )
     _write_csv(
+        auto / "first_page_molecule_proposals.csv",
+        [
+            {
+                "object_id": "OBJ-1",
+                "paper_id": "paper-1",
+                "candidate_id": "CAND-1",
+                "page": "1",
+                "object_type": "complete_molecule",
+                "compound_label": "26a′",
+                "crop_path": str(crop),
+                "raw_smiles": "CCO",
+                "token_confidences": json.dumps(
+                    [{"token": "C", "confidence": 0.9}],
+                    separators=(",", ":"),
+                ),
+                "mean_token_confidence": "0.9",
+                "min_token_confidence": "0.9",
+                "inference_status": "ok",
+                "inference_error": "",
+                "rdkit_status": "valid",
+                "canonical_smiles": "CCO",
+                "heuristic_primary_component_smiles": "CCO",
+                "model_version": "ocsr-v1",
+                "proposal_quality": "valid",
+                "review_status": "proposal_requires_human_review",
+                "updated_at": "2026-09-05T02:03:39+00:00",
+            }
+        ],
+    )
+    _write_csv(
         auto / "structure_source_manifest.csv",
         [
             {

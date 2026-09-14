@@ -20,7 +20,7 @@ class StagedSourceRecord:
     source_row_locator: str
     source_hash: str
     raw_values: dict[str, str | None]
-    normalized_values: dict[str, str | None]
+    normalized_values: dict[str, object | None]
 
 
 def normalize_source_value(value: str | None) -> str | None:
