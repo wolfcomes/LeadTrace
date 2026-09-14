@@ -1,6 +1,7 @@
 import json
 import csv
 from pathlib import Path
+import re
 import threading
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -8,6 +9,230 @@ from urllib.request import Request, urlopen
 import pytest
 
 from dashboard import server
+
+
+def test_split_source_location_resolves_unique_issue_pdf(tmp_path: Path) -> None:
+    source_root = tmp_path / "source_pdfs"
+    issue_root = source_root / "volume67 issue1"
+    issue_root.mkdir(parents=True)
+    issue_root.joinpath("paper.pdf").write_bytes(b"current pdf")
+
+    index = server.build_split_source_location_index(source_root)
+    resolved = server.resolve_split_source_location(
+        {
+            "filename": "paper.pdf",
+            "source_folder": "case5 volume67 issue1-4",
+            "source_pdf": "/old/location/paper.pdf",
+        },
+        index=index,
+    )
+
+    assert resolved == {
+        "source_folder": "volume67 issue1",
+        "source_pdf": "source_pdfs/volume67 issue1/paper.pdf",
+    }
+
+
+def test_split_source_location_allows_papers_to_share_one_pdf(tmp_path: Path) -> None:
+    source_root = tmp_path / "source_pdfs"
+    issue_root = source_root / "volume68 issue4"
+    issue_root.mkdir(parents=True)
+    issue_root.joinpath("shared.pdf").write_bytes(b"shared pdf")
+    index = server.build_split_source_location_index(source_root)
+
+    first = server.resolve_split_source_location(
+        {"filename": "shared.pdf", "source_folder": "old-a", "source_pdf": "/old/a.pdf"},
+        index=index,
+    )
+    second = server.resolve_split_source_location(
+        {"filename": "shared.pdf", "source_folder": "old-b", "source_pdf": "/old/b.pdf"},
+        index=index,
+    )
+
+    assert first == second == {
+        "source_folder": "volume68 issue4",
+        "source_pdf": "source_pdfs/volume68 issue4/shared.pdf",
+    }
+
+
+def test_split_source_location_preserves_snapshot_when_pdf_is_missing(tmp_path: Path) -> None:
+    source_root = tmp_path / "source_pdfs"
+    source_root.mkdir()
+    source = {
+        "filename": "missing.pdf",
+        "source_folder": "legacy folder",
+        "source_pdf": "/srv/project/source_pdfs/legacy folder/missing.pdf",
+    }
+
+    resolved = server.resolve_split_source_location(
+        source,
+        index=server.build_split_source_location_index(source_root),
+    )
+
+    assert resolved == {
+        "source_folder": "legacy folder",
+        "source_pdf": "source_pdfs/legacy folder/missing.pdf",
+    }
+
+
+def test_split_source_location_preserves_snapshot_when_filename_is_ambiguous(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source_pdfs"
+    for issue in ("volume67 issue1", "volume67 issue2"):
+        issue_root = source_root / issue
+        issue_root.mkdir(parents=True)
+        issue_root.joinpath("duplicate.pdf").write_bytes(issue.encode())
+    source = {
+        "filename": "duplicate.pdf",
+        "source_folder": "legacy folder",
+        "source_pdf": "C:\\project\\source_pdfs\\legacy folder\\duplicate.pdf",
+    }
+
+    resolved = server.resolve_split_source_location(
+        source,
+        index=server.build_split_source_location_index(source_root),
+    )
+
+    assert resolved == {
+        "source_folder": "legacy folder",
+        "source_pdf": "source_pdfs/legacy folder/duplicate.pdf",
+    }
+
+
+def test_split_source_location_redacts_unmappable_absolute_fallback(tmp_path: Path) -> None:
+    source_root = tmp_path / "source_pdfs"
+    source_root.mkdir()
+
+    resolved = server.resolve_split_source_location(
+        {
+            "filename": "missing.pdf",
+            "source_folder": "legacy folder",
+            "source_pdf": "/unrelated/private/missing.pdf",
+        },
+        index=server.build_split_source_location_index(source_root),
+    )
+
+    assert resolved == {
+        "source_folder": "legacy folder",
+        "source_pdf": "",
+    }
+
+
+def test_split_source_index_degrades_when_source_root_cannot_be_scanned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_root = tmp_path / "source_pdfs"
+    source_root.mkdir()
+    original_iterdir = Path.iterdir
+
+    def fail_for_source_root(path: Path):
+        if path == source_root:
+            raise OSError("source root unavailable")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_for_source_root)
+
+    assert server.build_split_source_location_index(source_root) == {}
+
+
+def test_split_source_index_degrades_when_source_root_metadata_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_root = tmp_path / "source_pdfs"
+    source_root.mkdir()
+    original_is_dir = Path.is_dir
+
+    def fail_for_source_root(path: Path):
+        if path == source_root:
+            raise OSError("source root metadata unavailable")
+        return original_is_dir(path)
+
+    monkeypatch.setattr(Path, "is_dir", fail_for_source_root)
+
+    assert server.build_split_source_location_index(source_root) == {}
+
+
+def test_split_source_index_skips_unreadable_issue_and_keeps_other_matches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_root = tmp_path / "source_pdfs"
+    readable_issue = source_root / "volume67 issue1"
+    unreadable_issue = source_root / "volume67 issue2"
+    readable_issue.mkdir(parents=True)
+    unreadable_issue.mkdir()
+    readable_issue.joinpath("readable.pdf").write_bytes(b"readable")
+    original_iterdir = Path.iterdir
+
+    def fail_for_unreadable_issue(path: Path):
+        if path == unreadable_issue:
+            raise OSError("issue unavailable")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_for_unreadable_issue)
+
+    assert server.build_split_source_location_index(source_root) == {
+        "readable.pdf": {
+            "source_folder": "volume67 issue1",
+            "source_pdf": "source_pdfs/volume67 issue1/readable.pdf",
+        }
+    }
+
+
+def test_split_source_index_skips_file_with_unreadable_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_root = tmp_path / "source_pdfs"
+    issue_root = source_root / "volume67 issue1"
+    issue_root.mkdir(parents=True)
+    readable_pdf = issue_root / "readable.pdf"
+    unreadable_pdf = issue_root / "unreadable.pdf"
+    readable_pdf.write_bytes(b"readable")
+    unreadable_pdf.write_bytes(b"unreadable")
+    original_is_file = Path.is_file
+
+    def fail_for_unreadable_pdf(path: Path):
+        if path == unreadable_pdf:
+            raise OSError("file metadata unavailable")
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", fail_for_unreadable_pdf)
+
+    assert server.build_split_source_location_index(source_root) == {
+        "readable.pdf": {
+            "source_folder": "volume67 issue1",
+            "source_pdf": "source_pdfs/volume67 issue1/readable.pdf",
+        }
+    }
+
+
+def test_split_source_index_ignores_symlinked_issue_directory(tmp_path: Path) -> None:
+    source_root = tmp_path / "source_pdfs"
+    source_root.mkdir()
+    external_issue = tmp_path / "external_issue"
+    external_issue.mkdir()
+    external_issue.joinpath("external.pdf").write_bytes(b"external")
+    source_root.joinpath("volume67 issue1").symlink_to(
+        external_issue,
+        target_is_directory=True,
+    )
+
+    assert server.build_split_source_location_index(source_root) == {}
+
+
+def test_split_source_index_ignores_symlinked_pdf(tmp_path: Path) -> None:
+    source_root = tmp_path / "source_pdfs"
+    issue_root = source_root / "volume67 issue1"
+    issue_root.mkdir(parents=True)
+    external_pdf = tmp_path / "external.pdf"
+    external_pdf.write_bytes(b"external")
+    issue_root.joinpath("linked.pdf").symlink_to(external_pdf)
+
+    assert server.build_split_source_location_index(source_root) == {}
 
 
 def test_overview_keeps_project_layers_separate() -> None:
@@ -178,6 +403,49 @@ def test_paper_catalog_has_672_records_and_20_item_pages() -> None:
     assert len({item["paper_id"] for item in first_page["items"]}) == 20
     assert first_page["items"][0]["paper_id"]
     assert first_page["items"][0]["title"]
+
+
+def test_paper_payload_uses_split_source_location(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    filename = (
+        "akula-et-al-2025-structure-based-optimization-of-pyridone-α-ketoamides-"
+        "as-inhibitors-of-the-sars-cov-2-main-protease.pdf"
+    )
+    monkeypatch.setattr(
+        server,
+        "SPLIT_SOURCE_LOCATION_INDEX",
+        {
+            filename: {
+                "source_folder": "volume68 issue3",
+                "source_pdf": f"source_pdfs/volume68 issue3/{filename}",
+            }
+        },
+    )
+
+    listing = server.load_papers(query="04effc6577c7", page_size=1)
+    detail = server.load_paper_detail("04effc6577c7")
+
+    assert listing["items"][0]["source_folder"] == "volume68 issue3"
+    assert listing["items"][0]["source_pdf"] == f"source_pdfs/volume68 issue3/{filename}"
+    assert detail["paper"]["source_folder"] == listing["items"][0]["source_folder"]
+    assert detail["paper"]["source_pdf"] == listing["items"][0]["source_pdf"]
+
+
+def test_paper_payload_never_exposes_absolute_snapshot_source_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(server, "SPLIT_SOURCE_LOCATION_INDEX", {})
+
+    listing = server.load_papers(query="04effc6577c7", page_size=1)
+    detail = server.load_paper_detail("04effc6577c7")
+
+    list_source_pdf = str(listing["items"][0]["source_pdf"])
+    detail_source_pdf = str(detail["paper"]["source_pdf"])
+    assert list_source_pdf.startswith("source_pdfs/")
+    assert detail_source_pdf == list_source_pdf
+    assert not list_source_pdf.startswith("/")
+    assert not re.match(r"^[A-Za-z]:[/\\]", list_source_pdf)
 
 
 def test_paper_catalog_preserves_manifest_order() -> None:

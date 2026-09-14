@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import math
 import mimetypes
 import os
@@ -25,9 +26,11 @@ from rdkit import Chem
 from rdkit.Chem import Draw
 
 
+LOGGER = logging.getLogger(__name__)
 DASHBOARD_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = DASHBOARD_ROOT.parent
-PIPELINE_ROOT = PROJECT_ROOT / "source_pdfs" / "分子修改提取_2024_JMC"
+SOURCE_PDFS_ROOT = PROJECT_ROOT / "source_pdfs"
+PIPELINE_ROOT = SOURCE_PDFS_ROOT / "分子修改提取_2024_JMC"
 VISUAL_PAGES_ROOT = PIPELINE_ROOT / "05_visual_review" / "explicit_path_pages"
 CROPS_ROOT = PIPELINE_ROOT / "08_ocsr_benchmark" / "crops"
 STRUCTURES_ROOT = PIPELINE_ROOT / "09_structure_confirmation" / "generated_structures"
@@ -81,6 +84,8 @@ PAPER_REVIEWED_ENTRY_FIELDS = [
     "review_status", "review_note", "correction_note", "source_kind", "updated_at",
 ]
 PAPER_REVIEW_LOCK = RLock()
+SOURCE_ISSUE_DIRECTORY_PATTERN = re.compile(r"volume\d+ issue\d+\Z")
+WINDOWS_DRIVE_PATH_PATTERN = re.compile(r"^[A-Za-z]:")
 
 PATH_FILES = {
     "explicit": PIPELINE_ROOT / "06_text_confirmed_paths" / "explicit_text_confirmed_paths.csv",
@@ -131,6 +136,83 @@ class ReviewItemNotFound(KeyError):
 
 class ReviewItemLocked(RuntimeError):
     """Raised when a confirmed review item would be changed or deleted."""
+
+
+def build_split_source_location_index(
+    source_pdfs_root: Path = SOURCE_PDFS_ROOT,
+) -> dict[str, dict[str, str]]:
+    """Index uniquely named PDFs in direct volume/issue corpus directories."""
+    candidates: dict[str, list[Path]] = defaultdict(list)
+    if not source_pdfs_root.is_dir():
+        return {}
+    try:
+        issue_roots = list(source_pdfs_root.iterdir())
+    except OSError as exc:
+        LOGGER.warning("Cannot scan source PDF root %s: %s", source_pdfs_root, exc)
+        return {}
+    for issue_root in issue_roots:
+        if (
+            issue_root.is_symlink()
+            or not issue_root.is_dir()
+            or not SOURCE_ISSUE_DIRECTORY_PATTERN.fullmatch(issue_root.name)
+        ):
+            continue
+        try:
+            issue_candidates = list(issue_root.iterdir())
+        except OSError as exc:
+            LOGGER.warning("Cannot scan source PDF issue directory %s: %s", issue_root, exc)
+            continue
+        for candidate in issue_candidates:
+            if (
+                not candidate.is_symlink()
+                and candidate.is_file()
+                and candidate.suffix.casefold() == ".pdf"
+            ):
+                candidates[candidate.name].append(candidate)
+    return {
+        filename: {
+            "source_folder": matches[0].parent.name,
+            "source_pdf": (Path(source_pdfs_root.name) / matches[0].parent.name / filename).as_posix(),
+        }
+        for filename, matches in candidates.items()
+        if len(matches) == 1
+    }
+
+
+SPLIT_SOURCE_LOCATION_INDEX = build_split_source_location_index()
+
+
+def safe_source_pdf_display_path(value: object) -> str:
+    """Return a project-relative display path without leaking local roots."""
+    raw_path = str(value or "").strip()
+    normalized = raw_path.replace("\\", "/")
+    parts = normalized.split("/")
+    if "source_pdfs" in parts:
+        parts = parts[parts.index("source_pdfs"):]
+    elif normalized.startswith("/") or WINDOWS_DRIVE_PATH_PATTERN.match(normalized):
+        return ""
+    if ".." in parts:
+        return ""
+    return "/".join(part for part in parts if part not in {"", "."})
+
+
+def resolve_split_source_location(
+    source: Mapping[str, object],
+    *,
+    index: Mapping[str, Mapping[str, str]] | None = None,
+) -> dict[str, str]:
+    """Return display-only split-corpus paths, falling back to snapshot values."""
+    locations = SPLIT_SOURCE_LOCATION_INDEX if index is None else index
+    resolved = locations.get(str(source.get("filename", "")))
+    if resolved is not None:
+        return {
+            "source_folder": str(resolved.get("source_folder", "")),
+            "source_pdf": str(resolved.get("source_pdf", "")),
+        }
+    return {
+        "source_folder": str(source.get("source_folder", "")),
+        "source_pdf": safe_source_pdf_display_path(source.get("source_pdf", "")),
+    }
 
 
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
@@ -765,6 +847,14 @@ def _paper_records() -> list[dict[str, object]]:
         title_override = str(override.get("title_override", ""))
         paper_molecule_objects = molecule_objects_by_paper.get(paper_id, [])
         paper_lineage_edges = lineage_edges_by_paper.get(paper_id, [])
+        filename = document.get("filename") or row.get("filename", "")
+        source_location = resolve_split_source_location(
+            {
+                "filename": filename,
+                "source_folder": document.get("source_folder") or row.get("source_folder", ""),
+                "source_pdf": document.get("source_pdf") or row.get("source_pdf", ""),
+            }
+        )
         records.append(
             {
                 "paper_id": paper_id,
@@ -773,9 +863,9 @@ def _paper_records() -> list[dict[str, object]]:
                 "title_original": document.get("title_guess") or row.get("title_guess", ""),
                 "doi": doi,
                 "year": document.get("filename_year") or row.get("filename_year", ""),
-                "source_folder": document.get("source_folder") or row.get("source_folder", ""),
-                "filename": document.get("filename") or row.get("filename", ""),
-                "source_pdf": document.get("source_pdf") or row.get("source_pdf", ""),
+                "source_folder": source_location["source_folder"],
+                "filename": filename,
+                "source_pdf": source_location["source_pdf"],
                 "page_count": _integer(document.get("page_count")),
                 "text_characters": _integer(document.get("text_characters")),
                 "text_status": document.get("text_status", "not_indexed"),

@@ -16,6 +16,19 @@ python dashboard/server.py --host 127.0.0.1 --port 8765
 Open <http://127.0.0.1:8765/> in a browser. The port can be changed if another
 local service is already using it.
 
+At startup, the Dashboard resolves each Paper filename against PDF files in
+direct `source_pdfs/volume<number> issue<number>/` directories. Paper list and
+detail views display the matched issue directory and a project-relative source
+path instead of the historical absolute path stored in the extraction
+snapshots. Missing or duplicate filename matches keep the snapshot folder and
+a safe project-relative snapshot path when one can be derived; unrelated
+absolute paths are redacted, and the Dashboard never guesses between sources.
+Unreadable directories and symlinks are skipped so an optional location index
+cannot take down the Dashboard or escape the corpus boundary. Restart the
+Dashboard after reorganizing these issue directories so it rebuilds the
+read-only location index. This display-only resolution does not expose or serve
+the source PDFs.
+
 ## Views
 
 - Project overview is the first top-level view. It separates corpus, evidence,
