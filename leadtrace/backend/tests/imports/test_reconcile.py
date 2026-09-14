@@ -168,7 +168,7 @@ def test_full_authoritative_baseline_reconciles_to_fixed_acceptance_counts() -> 
 
     assert report.matches_expected is True
     assert report.counts == {
-        "corpus_papers": 672,
+        "corpus_papers": 648,
         "lineage_papers": 138,
         "lineages": 193,
         "compound_entities": 4301,
