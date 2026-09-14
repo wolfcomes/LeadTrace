@@ -135,6 +135,11 @@
 .scientific-editors { display: grid; gap: 16px; margin-top: 18px; padding-top: 24px; border-top: 1px solid var(--line); }
 .scientific-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .rollback-page { max-width: 1020px; margin-left: 0; }
+.check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.admin-metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; }
+.catalog-page .filter-panel { grid-template-columns: minmax(240px, 1.5fr) minmax(150px, .7fr) minmax(220px, 1fr) minmax(130px, .6fr) auto; }
+.workspace-grid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(310px, .75fr); gap: 24px; }
+.main-column { display: grid; gap: 24px; }
 .filter-panel { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 14px; align-items: end; }
 .filter-panel .search-field { grid-column: span 2; }
 .filter-actions { display: flex; align-items: flex-end; gap: 9px; }
@@ -167,6 +172,9 @@
   .paper-hero { grid-template-columns: 1fr; }
   .creation-layout { grid-template-columns: 1fr; }
   .paper-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .catalog-page .filter-panel { grid-template-columns: 1fr 1fr; }
+  .catalog-page .filter-actions { grid-column: 1 / -1; }
 }
 
 @media (max-width: 980px) {
@@ -185,6 +193,11 @@
   .delta-grid > div:last-child { border-bottom: 0; }
   .approval-page .summary-band { flex-direction: column; }
   .scientific-grid { grid-template-columns: 1fr; }
+  .workspace-grid { grid-template-columns: 1fr; }
+  .review-panel { position: static; }
+  .paper-header,
+  .source-panel { align-items: flex-start; flex-direction: column; }
+  .paper-header > aside { width: 100%; }
 }
 
 @media (max-width: 760px) {
@@ -223,4 +236,14 @@
   .submission-view .summary-band div { border-right: 0; border-bottom: 1px solid var(--line); }
   .domain-list { grid-template-columns: 1fr; }
   .requested-panel { align-items: stretch; flex-direction: column; }
+  .check-grid,
+  .admin-metric-grid,
+  .catalog-page .filter-panel { grid-template-columns: 1fr; }
+  .catalog-page .filter-actions { grid-column: auto; }
+  .source-summary { width: 100%; }
+  .quality-panel .quality-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .quality-panel .quality-grid { grid-template-columns: 1fr; }
 }

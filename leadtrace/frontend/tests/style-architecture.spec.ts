@@ -54,4 +54,17 @@ describe("centralized visual system", () => {
     expect(tokens).toMatch(/--font-mono:[^;]*Noto Sans SC Variable[^;]*;/);
     expect(components).toContain("repeat(auto-fit, minmax(250px, 1fr))");
   });
+
+  it("keeps simple administration page styles in the centralized layers", () => {
+    for (const path of [
+      "src/admin/AuditPage.vue",
+      "src/admin/FilesPage.vue",
+      "src/admin/JobsPage.vue",
+      "src/admin/SystemPage.vue",
+      "src/admin/UsersPage.vue",
+    ]) {
+      const pageSource = source(path);
+      expect(pageSource, `${path} should not own shared table or control CSS`).not.toContain("<style scoped>");
+    }
+  });
 });

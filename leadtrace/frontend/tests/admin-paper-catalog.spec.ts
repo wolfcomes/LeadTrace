@@ -109,6 +109,11 @@ describe("Admin Paper catalog", () => {
     await flushPromises();
 
     expect(wrapper.get("h1").text()).toBe("文章目录");
+    expect(wrapper.get(".catalog-page").classes()).toContain("admin-page");
+    expect(wrapper.get("[data-admin-paper-filters]").classes()).toContain("filter-toolbar");
+    expect(wrapper.get(".table-wrap").classes()).toContain("admin-panel");
+    expect(wrapper.get(".table-wrap table").classes()).toContain("data-table");
+    expect(wrapper.get("[data-admin-paper] .workflow-badge").classes()).toContain("status-chip");
     expect(wrapper.text()).toContain("共 672 篇");
     expect(wrapper.text()).toContain("初始状态");
     expect(wrapper.text()).toContain("AI 提取基线（未分配）");
@@ -177,6 +182,9 @@ describe("Admin Paper catalog", () => {
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
+    expect(wrapper.get(".detail-page").classes()).toContain("admin-page");
+    expect(wrapper.get("[data-assignment-form] select").classes()).toContain("form-control");
+    expect(wrapper.get("[data-assignment-form] input").classes()).toContain("form-control");
     expect(wrapper.text()).toContain("Lead optimization article 1");
     expect(wrapper.text()).toContain("10.1000/1");
     expect(wrapper.text()).toContain("AI 提取基线（未分配）");
