@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from urllib.parse import quote
 from uuid import UUID
 
@@ -33,12 +34,25 @@ def _safe_filename(filename: str) -> str:
     return candidate or "source.pdf"
 
 
+def _content_disposition(filename: str) -> str:
+    safe = _safe_filename(filename)
+    fallback = (
+        unicodedata.normalize("NFKD", safe)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    ) or "source.pdf"
+    disposition = f'inline; filename="{fallback}"'
+    if fallback != safe:
+        disposition += f"; filename*=UTF-8''{quote(safe, safe='')}"
+    return disposition
+
+
 def _headers(asset, *, partial: bool, start: int, end: int, full_size: int) -> dict[str, str]:
     filename = _safe_filename(asset.original_filename)
     headers = {
         "Accept-Ranges": "bytes",
         "Cache-Control": "private, no-store",
-        "Content-Disposition": f'inline; filename="{filename}"',
+        "Content-Disposition": _content_disposition(filename),
         "Content-Type": "application/pdf",
         "ETag": f'"{asset.sha256}"',
         "X-Content-Type-Options": "nosniff",

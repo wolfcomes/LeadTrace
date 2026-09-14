@@ -113,6 +113,28 @@ def test_admin_reads_supporting_information_pdf(
     )
 
 
+def test_source_pdf_encodes_non_latin_filename_in_content_disposition(
+    document_fixture: DocumentFixture,
+) -> None:
+    with document_fixture.session_factory.begin() as session:
+        asset = session.get(Asset, document_fixture.article_asset_id)
+        assert asset is not None
+        asset.original_filename = "pyridone-α-ketoamide.pdf"
+    login(document_fixture.client, "document.admin")
+
+    response = document_fixture.client.get(
+        f"/api/v1/papers/{document_fixture.paper_id}/source-pdf",
+        headers={"Range": "bytes=0-4"},
+    )
+
+    assert response.status_code == 206
+    assert response.content == b"%PDF-"
+    assert response.headers["Content-Disposition"] == (
+        "inline; filename=\"pyridone--ketoamide.pdf\"; "
+        "filename*=UTF-8''pyridone-%CE%B1-ketoamide.pdf"
+    )
+
+
 def test_admin_candidate_pdf_is_bound_to_the_selected_import_batch(
     document_fixture: DocumentFixture,
 ) -> None:
