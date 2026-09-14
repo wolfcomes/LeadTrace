@@ -23,10 +23,10 @@ const stateLabels: Record<string, string> = {
 
 <template>
   <section class="comparison" aria-label="已发布与草稿结构对比">
-    <article v-for="side in [props.published, props.draft]" :key="side.label" data-structure-side>
+    <article v-for="side in [props.published, props.draft]" :key="side.label" class="panel" data-structure-side>
       <header>
         <h3>{{ side.label }}</h3>
-        <span v-if="side.structureState">{{ stateLabels[side.structureState] ?? side.structureState }}</span>
+        <span v-if="side.structureState" class="status-chip" :data-state="side.structureState">{{ stateLabels[side.structureState] ?? side.structureState }}</span>
       </header>
       <img v-if="side.imageUrl" :src="side.imageUrl" :alt="`${side.label}结构图`">
       <div v-else class="unavailable">无唯一结构图</div>
@@ -38,13 +38,12 @@ const stateLabels: Record<string, string> = {
 
 <style scoped>
 .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-article { display: grid; grid-template-rows: auto minmax(190px, 1fr) auto; gap: 10px; min-width: 0; border: 1px solid #d8dee4; padding: 14px; background: #fff; }
+article { display: grid; grid-template-rows: auto minmax(190px, 1fr) auto; gap: 10px; min-width: 0; padding: 14px; }
 header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-h3 { margin: 0; color: #1f2d38; font-size: .9rem; }
-header span { color: #6a4b16; font-size: .72rem; }
-img { width: 100%; height: 100%; min-height: 190px; object-fit: contain; background: #f6f8f9; }
-.unavailable { display: grid; min-height: 190px; place-items: center; color: #77828b; background: #f3f5f6; font-size: .78rem; }
-code { overflow-wrap: anywhere; color: #394650; font-size: .7rem; }
-.empty-smiles { color: #7a858e; font-size: .72rem; }
+h3 { margin: 0; color: var(--ink); font-size: .88rem; }
+img { width: 100%; height: 100%; min-height: 190px; object-fit: contain; background: var(--paper); }
+.unavailable { display: grid; min-height: 190px; place-items: center; color: var(--ink-muted); background: var(--paper); font-size: .76rem; }
+code { overflow-wrap: anywhere; color: var(--ink-soft); font: .68rem/1.5 var(--font-mono); }
+.empty-smiles { color: var(--ink-muted); font-size: .7rem; }
 @media (max-width: 700px) { .comparison { grid-template-columns: 1fr; } }
 </style>

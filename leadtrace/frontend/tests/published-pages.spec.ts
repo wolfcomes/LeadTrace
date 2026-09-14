@@ -208,10 +208,15 @@ describe("published Paper detail", () => {
     expect(wrapper.text()).toContain("10.1000/paper-24");
     expect(wrapper.text()).toContain("LINEAGE-1");
     expect(wrapper.get("[data-edge-status='unresolved']").text()).toContain("关系待解析");
+    expect(wrapper.get(".lineage-card").classes()).toContain("panel");
+    expect(wrapper.get("[data-edge-status='unresolved'] .edge-state").classes()).toContain("status-chip");
     expect(wrapper.findAll("[data-molecule-pair]")).toHaveLength(1);
+    expect(wrapper.get("[data-molecule-pair]").classes()).toContain("panel");
     expect(wrapper.text()).toContain("CCN");
     expect(wrapper.text()).not.toContain("FAKE-SCREENSHOT-SMILES");
     expect(wrapper.text()).toContain("已核查证据");
+    expect(wrapper.get(".evidence-card").classes()).toContain("panel");
+    expect(wrapper.get(".evidence-card .evidence-meta span").classes()).toContain("status-chip");
     expect(wrapper.text()).toContain("Potency improved.");
     expect(wrapper.text()).toContain("IC50");
     expect(wrapper.text()).toContain("1 / 2");

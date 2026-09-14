@@ -557,6 +557,48 @@
 .scientific-heading h2 { margin: 0; color: var(--ink); font: 600 1.22rem/1.3 var(--font-serif); }
 .scientific-heading > span { color: var(--ink-muted); font: 500 .62rem/1.2 var(--font-mono); }
 
+.editor-form { display: grid; gap: 13px; padding: 18px; border-top: 2px solid var(--coral); }
+.editor-heading { display: grid; gap: 4px; }
+.editor-heading--split { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.editor-heading > span,
+.editor-heading > div > span { color: var(--coral-deep); font: 600 .62rem/1.2 var(--font-mono); }
+.editor-heading h2 { margin: 2px 0 0; color: var(--ink); font: 600 1rem/1.3 var(--font-serif); }
+.editor-form textarea { resize: vertical; }
+.editor-form > .button-primary { justify-self: start; }
+.editor-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.editor-actions > small,
+.editor-actions > span { color: var(--ink-muted); font-size: .68rem; }
+.editor-actions > span { color: var(--amber-deep); }
+.editor-form [data-pair-readiness] { display: grid; width: 100%; gap: 4px; justify-content: stretch; white-space: normal; overflow-wrap: anywhere; }
+
+.object-inspector { display: grid; gap: 14px; padding: 16px; border-top: 2px solid var(--coral); }
+.object-inspector > header { display: grid; gap: 4px; }
+.object-inspector h2 { margin: 0; color: var(--ink); font: 600 1rem/1.3 var(--font-serif); }
+.object-inspector code { overflow-wrap: anywhere; color: var(--ink-muted); font: .67rem/1.45 var(--font-mono); }
+
+.binding-panel { display: grid; gap: 12px; padding: 16px; }
+.binding-panel > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.binding-panel h2 { margin: 0; color: var(--ink); font: 600 1rem/1.3 var(--font-serif); }
+.binding-panel > header span,
+.binding-panel small,
+.binding-panel > .empty { color: var(--ink-muted); font-size: .7rem; }
+.binding-panel ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.binding-panel li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
+.binding-panel li.is-remove { margin-inline: -8px; padding: 9px 8px 0; border-left: 3px solid var(--danger); background: var(--danger-soft); }
+.binding-select { display: grid; min-width: 0; gap: 2px; padding: 0; border: 0; color: var(--teal-deep); background: transparent; text-align: left; cursor: pointer; }
+.binding-select span { overflow-wrap: anywhere; color: var(--ink-muted); font-size: .69rem; }
+.binding-meta { display: grid; gap: 4px; justify-items: end; }
+.operation-badge { min-height: 0; padding: 3px 6px; font-size: .59rem; }
+.operation-add { color: var(--teal-deep); background: var(--teal-pale); }
+.operation-update { color: var(--amber-deep); background: var(--amber-pale); }
+.operation-remove { color: var(--danger); background: var(--danger-soft); }
+
+.evidence-card { padding: 20px; }
+.evidence-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.evidence-meta small { color: var(--ink-muted); font: 500 .62rem/1.3 var(--font-mono); }
+.evidence-card blockquote { margin: 18px 0; padding-left: 16px; border-left: 3px solid var(--coral); color: var(--ink-soft); font: 400 1rem/1.7 var(--font-serif); }
+.evidence-card > code { color: var(--ink-muted); font: 500 .62rem/1.4 var(--font-mono); overflow-wrap: anywhere; }
+
 /* Administration surfaces */
 .admin-panel { overflow: hidden; }
 .admin-panel.table-wrap { overflow-x: auto; }

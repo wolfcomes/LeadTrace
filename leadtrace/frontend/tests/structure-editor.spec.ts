@@ -19,6 +19,10 @@ describe("source-aware structure review", () => {
       },
     });
 
+    expect(wrapper.get("form").classes()).toEqual(expect.arrayContaining(["editor-form", "panel"]));
+    expect(wrapper.get("[data-parse-status]").classes()).toContain("status-chip");
+    expect(wrapper.findAll("label.form-field").length).toBeGreaterThanOrEqual(3);
+    expect(wrapper.get("button[type='submit']").classes()).toContain("button-primary");
     expect(wrapper.get("[data-parse-status]").text()).toBe("RDKit 可解析");
     expect(wrapper.get("button[type='submit']").attributes("disabled")).toBeDefined();
 
@@ -41,6 +45,8 @@ describe("source-aware structure review", () => {
     });
 
     expect(wrapper.findAll("[data-structure-side]")).toHaveLength(2);
+    expect(wrapper.findAll("[data-structure-side].panel")).toHaveLength(2);
+    expect(wrapper.get("[data-structure-side] .status-chip").text()).toContain("非唯一立体化学");
     expect(wrapper.text()).toContain("非唯一立体化学");
   });
 });

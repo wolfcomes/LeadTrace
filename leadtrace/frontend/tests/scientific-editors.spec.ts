@@ -22,6 +22,9 @@ describe("scientific review editors", () => {
       },
     });
 
+    expect(wrapper.get("form").classes()).toEqual(expect.arrayContaining(["editor-form", "panel"]));
+    expect(wrapper.findAll("label.form-field")).toHaveLength(4);
+    expect(wrapper.get("button[type='submit']").classes()).toContain("button-primary");
     expect(wrapper.get("textarea[name='original-text']").element).toHaveProperty(
       "value",
       "Compound 3 showed improved potency.",
@@ -47,6 +50,8 @@ describe("scientific review editors", () => {
       },
     });
 
+    expect(wrapper.get("form").classes()).toEqual(expect.arrayContaining(["editor-form", "panel"]));
+    expect(wrapper.findAll("[data-activity-field].form-field")).toHaveLength(5);
     expect(wrapper.findAll("[data-activity-field]")).toHaveLength(5);
   });
 
@@ -68,6 +73,7 @@ describe("scientific review editors", () => {
     });
 
     expect(wrapper.find("input[name='pair-ready']").exists()).toBe(false);
+    expect(wrapper.get("[data-pair-readiness]").classes()).toContain("status-chip");
     expect(wrapper.get("[data-pair-readiness]").text()).toContain("UNRESOLVED_PARENT");
   });
 
@@ -79,6 +85,7 @@ describe("scientific review editors", () => {
       },
     });
 
+    expect(wrapper.get("form").classes()).toEqual(expect.arrayContaining(["editor-form", "panel"]));
     expect(wrapper.get("button[type='submit']").attributes("disabled")).toBeDefined();
     await wrapper.get("textarea[name='reason']").setValue("New label appears in Table S3");
     expect(wrapper.get("button[type='submit']").attributes("disabled")).toBeUndefined();

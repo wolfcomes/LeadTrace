@@ -127,21 +127,21 @@ onMounted(() => { void renderPdfPage(); });
 
 <template>
   <section class="pdf-review-canvas" aria-label="PDF 区域核查">
-    <header class="canvas-toolbar">
-      <label>页码 <input aria-label="页码" type="number" :min="1" :max="pageCount" :value="currentPage" @change="changePage(Number(($event.target as HTMLInputElement).value))"></label>
+    <header class="canvas-toolbar workspace-toolbar">
+      <label class="form-field">页码 <input class="form-control" aria-label="页码" type="number" :min="1" :max="pageCount" :value="currentPage" @change="changePage(Number(($event.target as HTMLInputElement).value))"></label>
       <span>/ {{ pageCount }}</span>
-      <button type="button" aria-label="上一页" :disabled="currentPage <= 1" @click="changePage(currentPage - 1)">上一页</button>
-      <button type="button" aria-label="下一页" :disabled="currentPage >= pageCount" @click="changePage(currentPage + 1)">下一页</button>
-      <label>搜索 <input v-model="search" type="search" aria-label="区域搜索"></label>
-      <button type="button" aria-label="缩小" @click="setZoom(zoom - .1)">-</button>
+      <button class="button-quiet" type="button" aria-label="上一页" :disabled="currentPage <= 1" @click="changePage(currentPage - 1)">上一页</button>
+      <button class="button-quiet" type="button" aria-label="下一页" :disabled="currentPage >= pageCount" @click="changePage(currentPage + 1)">下一页</button>
+      <label class="form-field">搜索 <input v-model="search" class="form-control" type="search" aria-label="区域搜索"></label>
+      <button class="button-quiet" type="button" aria-label="缩小" title="缩小" @click="setZoom(zoom - .1)">-</button>
       <output aria-label="缩放">{{ Math.round(zoom * 100) }}%</output>
-      <button type="button" aria-label="放大" @click="setZoom(zoom + .1)">+</button>
-      <button type="button" aria-label="旋转" @click="setRotation(rotation + 90)">旋转</button>
+      <button class="button-quiet" type="button" aria-label="放大" title="放大" @click="setZoom(zoom + .1)">+</button>
+      <button class="button-quiet" type="button" aria-label="旋转" @click="setRotation(rotation + 90)">旋转</button>
     </header>
     <nav class="page-thumbnails" aria-label="页面缩略图">
-      <button v-for="page in pageCount" :key="page" type="button" :class="{ active: page === currentPage }" :aria-label="`第 ${page} 页`" @click="changePage(page)">{{ page }}</button>
+      <button v-for="page in pageCount" :key="page" type="button" :class="['button-quiet', { active: page === currentPage }]" :aria-label="`第 ${page} 页`" @click="changePage(page)">{{ page }}</button>
     </nav>
-    <div class="page-shell" :class="{ 'is-rendered': renderedPage }">
+    <div class="pdf-page-shell" :class="{ 'is-rendered': renderedPage }">
       <div
         class="pdf-page"
         data-pdf-page
@@ -175,17 +175,15 @@ onMounted(() => { void renderPdfPage(); });
 </template>
 
 <style scoped>
-.pdf-review-canvas { display: grid; gap: 12px; color: #24313d; }
-.canvas-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
-.canvas-toolbar input { min-width: 4rem; border: 1px solid #c7d0d9; border-radius: 4px; padding: 5px 7px; }
-.canvas-toolbar button, .page-thumbnails button { border: 1px solid #c7d0d9; background: #fff; border-radius: 4px; padding: 5px 8px; cursor: pointer; }
-.canvas-toolbar button:disabled { opacity: .5; cursor: not-allowed; }
+.pdf-review-canvas { display: grid; gap: 12px; color: var(--ink-soft); }
+.canvas-toolbar { align-items: flex-end; font-size: 13px; }
+.canvas-toolbar .form-control { min-width: 4rem; }
 .page-thumbnails { display: flex; gap: 6px; overflow-x: auto; }
-.page-thumbnails button.active { background: #0b7285; border-color: #0b7285; color: #fff; }
-.page-shell { width: 800px; max-width: 100%; transform-origin: top left; }
-.pdf-page { position: relative; width: 800px; max-width: 100%; min-height: 400px; border: 1px solid #b9c2ca; background-color: #fbfcfd; touch-action: none; overflow: hidden; }
+.page-thumbnails button.active { border-color: var(--teal); color: white; background: var(--teal); }
+.pdf-page-shell { width: 800px; max-width: 100%; transform-origin: top left; }
+.pdf-page { position: relative; width: 800px; max-width: 100%; min-height: 400px; border: 1px solid var(--line-strong); background-color: var(--surface); touch-action: none; overflow: hidden; }
 .pdf-page canvas { display: block; width: 100%; height: auto; min-height: 400px; object-fit: contain; }
-.pdf-fallback { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fbfcfd; }
-.render-error { position: absolute; inset: 12px auto auto 12px; margin: 0; padding: 5px 8px; color: #6b3c00; background: rgb(255 247 230 / 92%); font-size: 12px; }
-.draft-region { position: absolute; border: 2px dashed #d9480f; background: rgb(217 72 15 / 12%); pointer-events: none; }
+.pdf-fallback { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--surface); }
+.render-error { position: absolute; inset: 12px auto auto 12px; margin: 0; padding: 5px 8px; color: var(--amber-deep); background: color-mix(in srgb, var(--amber-pale) 92%, transparent); font-size: 12px; }
+.draft-region { position: absolute; border: 2px dashed var(--coral-deep); background: color-mix(in srgb, var(--coral) 12%, transparent); pointer-events: none; }
 </style>

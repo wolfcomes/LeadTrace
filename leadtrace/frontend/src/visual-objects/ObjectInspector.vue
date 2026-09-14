@@ -25,15 +25,16 @@ const objectTypes = [
 </script>
 
 <template>
-  <section class="object-inspector" aria-label="分子对象属性">
+  <section class="object-inspector panel" aria-label="分子对象属性">
     <header>
       <span class="eyebrow">VISUAL OBJECT</span>
       <h2>{{ props.object.objectKey }}</h2>
       <code>{{ props.object.id }}</code>
     </header>
-    <label>
+    <label class="form-field">
       对象类型
       <select
+        class="form-control"
         :value="props.object.objectType"
         :disabled="!props.editable"
         @change="emit('update-type', ($event.target as HTMLSelectElement).value)"
@@ -41,9 +42,10 @@ const objectTypes = [
         <option v-for="[value, label] in objectTypes" :key="value" :value="value">{{ label }}</option>
       </select>
     </label>
-    <label>
+    <label class="form-field">
       显示标签
       <input
+        class="form-control"
         :value="props.object.label ?? ''"
         :disabled="!props.editable"
         @input="emit('update-label', ($event.target as HTMLInputElement).value)"
@@ -51,13 +53,3 @@ const objectTypes = [
     </label>
   </section>
 </template>
-
-<style scoped>
-.object-inspector { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--line, #d9e0e6); background: #fff; }
-header { display: grid; gap: 4px; }
-.eyebrow { color: #6b7785; font-size: .68rem; font-weight: 750; letter-spacing: .1em; }
-h2 { margin: 0; color: #1e2b36; font-size: 1rem; }
-code { overflow-wrap: anywhere; color: #74808b; font-size: .7rem; }
-label { display: grid; gap: 6px; color: #4a5661; font-size: .78rem; font-weight: 650; }
-select, input { min-height: 36px; border: 1px solid #cdd6de; border-radius: 5px; padding: 7px 9px; color: #24313d; background: #fff; font: inherit; }
-</style>

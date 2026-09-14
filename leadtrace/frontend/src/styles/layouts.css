@@ -140,6 +140,7 @@
 .catalog-page .filter-panel { grid-template-columns: minmax(240px, 1.5fr) minmax(150px, .7fr) minmax(220px, 1fr) minmax(130px, .6fr) auto; }
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(310px, .75fr); gap: 24px; }
 .main-column { display: grid; gap: 24px; }
+.editor-form .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .filter-panel { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 14px; align-items: end; }
 .filter-panel .search-field { grid-column: span 2; }
 .filter-actions { display: flex; align-items: flex-end; gap: 9px; }
@@ -242,6 +243,7 @@
   .catalog-page .filter-actions { grid-column: auto; }
   .source-summary { width: 100%; }
   .quality-panel .quality-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .editor-form .form-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 520px) {
