@@ -13,6 +13,9 @@ describe("PDF region review canvas", () => {
       },
     });
 
+    expect(wrapper.get(".canvas-toolbar").classes()).toContain("workspace-toolbar");
+    expect(wrapper.get(".canvas-toolbar input").classes()).toContain("form-control");
+    expect(wrapper.get(".canvas-toolbar button").classes()).toContain("button-quiet");
     const canvas = wrapper.get("[data-pdf-page]");
     await canvas.trigger("pointerdown", { clientX: 100, clientY: 50 });
     await canvas.trigger("pointermove", { clientX: 300, clientY: 250 });
@@ -64,6 +67,7 @@ describe("PDF region review canvas", () => {
     });
 
     expect(wrapper.get("[data-pdf-canvas]").element.tagName).toBe("CANVAS");
+    expect(wrapper.find(".pdf-page-shell").exists()).toBe(true);
     expect(wrapper.get(".pdf-fallback").attributes("src")).toContain("source-pdf");
   });
 });

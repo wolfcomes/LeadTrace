@@ -7,6 +7,9 @@ import "@fontsource-variable/noto-serif-sc";
 import App from "./App.vue";
 import { createAppRouter } from "./app/router";
 import "./styles/tokens.css";
+import "./styles/base.css";
+import "./styles/components.css";
+import "./styles/layouts.css";
 
 
 const application = createApp(App);

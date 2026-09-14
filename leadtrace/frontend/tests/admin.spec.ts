@@ -26,7 +26,14 @@ describe("Admin console", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("renders the user lifecycle page from the admin route", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => response([])));
+    vi.stubGlobal("fetch", vi.fn(async () => response([{
+      id: "91000000-0000-4000-8000-000000000010",
+      username: "reviewer.one",
+      display_name: "核查员一",
+      role: "reviewer",
+      is_enabled: true,
+      must_change_password: false,
+    }])));
     const router = createAppRouter(createMemoryHistory());
     await router.push("/admin/users");
     await router.isReady();
@@ -34,7 +41,10 @@ describe("Admin console", () => {
     await flushPromises();
     expect(wrapper.get("h1").text()).toBe("用户管理");
     expect(wrapper.get("[data-admin-users]")).toBeTruthy();
+    expect(wrapper.get("[data-admin-users] table").classes()).toContain("data-table");
+    expect(wrapper.get("[data-admin-users] tbody .actions").classes()).toContain("table-actions");
     await wrapper.get("[data-admin-users] header button").trigger("click");
+    expect(wrapper.get("[data-admin-users] .create-form").classes()).toContain("workspace-toolbar");
     expect(wrapper.find("input[type='password']").exists()).toBe(false);
     expect(wrapper.get("select[name='role']")).toBeTruthy();
   });
@@ -84,10 +94,15 @@ describe("Admin console", () => {
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
     expect(wrapper.get("h1").text()).toBe("任务队列");
+    expect(wrapper.get(".admin-panel").classes()).toContain("table-wrap");
+    expect(wrapper.get(".admin-panel table").classes()).toContain("data-table");
+    expect(wrapper.get("[data-job-id='job-1'] td:nth-child(2) span").classes()).toContain("status-chip");
     expect(wrapper.get("[data-job-id='job-1']").text()).toContain("render failed");
     await router.push("/admin/system");
     await flushPromises();
     expect(wrapper.get("h1").text()).toBe("系统状态");
+    expect(wrapper.get("[data-check='database']").classes()).toContain("panel");
+    expect(wrapper.get("[data-check='database'] .check-status").classes()).toContain("status-chip");
     expect(wrapper.text()).toContain("healthy");
   });
 
@@ -174,6 +189,9 @@ describe("Admin console", () => {
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
+    expect(wrapper.get(".import-controls").classes()).toContain("workspace-toolbar");
+    expect(wrapper.get(".candidate-panel table").classes()).toContain("data-table");
+    expect(wrapper.get(".candidate-state").classes()).toContain("status-chip");
     expect(wrapper.text()).toContain("待审批");
     expect(wrapper.text()).toContain("已批准，待发布");
     expect(wrapper.text()).toContain("已拒绝");

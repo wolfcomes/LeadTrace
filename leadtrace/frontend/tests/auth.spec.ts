@@ -29,6 +29,22 @@ describe("authenticated login flow", () => {
     vi.unstubAllGlobals();
   });
 
+  it("uses the shared authentication and form primitives", async () => {
+    const router = createAppRouter(createMemoryHistory());
+    await router.push("/login");
+    await router.isReady();
+    const login = mount(LoginPage, { global: { plugins: [router] } });
+
+    expect(login.get("main").classes()).toContain("auth-shell");
+    expect(login.get("form").classes()).toContain("auth-panel");
+    expect(login.findAll(".form-field")).toHaveLength(2);
+
+    const password = mount(ChangePasswordPage, { global: { plugins: [router] } });
+    expect(password.get("main").classes()).toContain("auth-shell");
+    expect(password.get("form").classes()).toContain("auth-panel");
+    expect(password.findAll(".form-field")).toHaveLength(3);
+  });
+
   it("shows one generic login error without revealing account state", async () => {
     vi.stubGlobal(
       "fetch",

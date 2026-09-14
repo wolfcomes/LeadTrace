@@ -113,23 +113,23 @@ watch(
 </script>
 
 <template>
-  <div class="detail-page">
+  <div class="detail-page admin-page review-workspace">
     <RouterLink class="back-link" :to="{ name: 'admin-papers', query: route.query.candidate_id ? { candidate_id: route.query.candidate_id } : {} }">← 返回文章目录</RouterLink>
-    <section v-if="state === 'loading'" class="page-state"><span class="spinner"></span><p>正在读取文章信息…</p></section>
+    <section v-if="state === 'loading'" class="page-state"><span class="state-spinner"></span><p>正在读取文章信息…</p></section>
     <section v-else-if="state === 'not-found'" class="page-state"><span>404</span><h1>未找到文章</h1><p>该文章可能不属于当前数据库或导入候选。</p></section>
-    <section v-else-if="state === 'error'" class="page-state" role="alert"><span>!</span><h1>暂时无法读取文章</h1><small v-if="requestId">请求编号 · {{ requestId }}</small><button type="button" @click="load">重新加载</button></section>
+    <section v-else-if="state === 'error'" class="page-state" role="alert"><span class="state-symbol is-error">!</span><h1>暂时无法读取文章</h1><small v-if="requestId">请求编号 · {{ requestId }}</small><button class="button-secondary" type="button" @click="load">重新加载</button></section>
 
     <template v-else-if="detail">
-      <header class="paper-header">
+      <header class="paper-header page-heading">
         <div>
-          <div class="identifiers"><code>{{ detail.paper.paper_key }}</code><code v-if="detail.paper.doi">{{ detail.paper.doi }}</code></div>
+          <div class="identifiers"><code class="status-chip">{{ detail.paper.paper_key }}</code><code v-if="detail.paper.doi" class="status-chip">{{ detail.paper.doi }}</code></div>
           <h1>{{ detail.paper.title }}</h1>
           <p>{{ detail.paper.year || "年份未知" }}<template v-if="detail.paper.target"> · {{ detail.paper.target }}</template></p>
         </div>
-        <aside>
+        <aside class="panel">
           <span>{{ detail.source.title }}</span>
-          <strong>{{ detail.paper.verification_status === "human_verified" ? "已人工核验" : "未验证" }}</strong>
-          <small>{{ detail.paper.publication_status === "published" ? "已发布" : "未发布" }}</small>
+          <strong class="status-chip" :data-verification="detail.paper.verification_status">{{ detail.paper.verification_status === "human_verified" ? "已人工核验" : "未验证" }}</strong>
+          <small class="status-chip" :data-status="detail.paper.publication_status">{{ detail.paper.publication_status === "published" ? "已发布" : "未发布" }}</small>
         </aside>
       </header>
 
@@ -155,31 +155,24 @@ watch(
 
         <aside class="review-panel panel">
           <p class="eyebrow">TRACEABLE REVIEW</p><h2>人工核验与修改</h2>
-          <div class="current-state"><span>当前状态</span><strong>{{ adminPaperWorkflowLabel(detail.paper.workflow_state) }}</strong></div>
+          <div class="current-state"><span>当前状态</span><strong class="status-chip" :data-state="detail.paper.workflow_state">{{ adminPaperWorkflowLabel(detail.paper.workflow_state) }}</strong></div>
           <template v-if="reviewEntry">
             <p v-if="detail.paper.task">已分配给 {{ detail.paper.task.assignee_display_name }}。所有修改将记录在 changeset 中，可审批、追溯和回滚。</p>
             <RouterLink class="button-primary full" data-open-review :to="reviewEntry">进入修改工作区</RouterLink>
           </template>
           <form v-else-if="detail.paper.publication_status === 'published'" data-assignment-form @submit.prevent="assignPaper">
             <p>{{ blockerText }}</p>
-            <label>核查员<select id="paper-reviewer" v-model="reviewerId" required><option value="" disabled>请选择</option><option v-for="reviewer in enabledReviewers" :key="reviewer.id" :value="reviewer.id">{{ reviewer.display_name }} · {{ reviewer.username }}</option></select></label>
-            <label>优先级<input v-model.number="priority" type="number" min="0" max="100"></label>
+            <label class="form-field">核查员<select id="paper-reviewer" v-model="reviewerId" class="form-control" required><option value="" disabled>请选择</option><option v-for="reviewer in enabledReviewers" :key="reviewer.id" :value="reviewer.id">{{ reviewer.display_name }} · {{ reviewer.username }}</option></select></label>
+            <label class="form-field">优先级<input v-model.number="priority" class="form-control" type="number" min="0" max="100"></label>
             <button class="button-primary full" data-assign-paper type="submit" :disabled="busy || !reviewerId">{{ busy ? "正在分配…" : "分配并准备修改" }}</button>
           </form>
           <template v-else>
             <p>{{ blockerText }}</p>
             <RouterLink class="button-secondary full" to="/admin/imports">前往导入审批</RouterLink>
           </template>
-          <p v-if="actionError" class="action-error" role="alert">{{ actionError }}<small v-if="requestId">请求编号 · {{ requestId }}</small></p>
+          <p v-if="actionError" class="action-error inline-feedback is-error" role="alert">{{ actionError }}<small v-if="requestId">请求编号 · {{ requestId }}</small></p>
         </aside>
       </section>
     </template>
   </div>
 </template>
-
-<style scoped>
-.detail-page{max-width:1460px;margin:auto;padding:clamp(26px,4vw,52px)}.back-link{display:inline-block;margin-bottom:24px;color:var(--forest-750);font-size:.73rem;font-weight:700;text-decoration:none}.paper-header{display:flex;justify-content:space-between;gap:30px;padding-bottom:28px;border-bottom:1px solid var(--line)}.paper-header h1{max-width:900px;margin:12px 0;color:var(--ink-950);font:600 clamp(1.8rem,3vw,2.8rem)/1.2 Georgia,"Noto Serif SC Variable",serif}.paper-header p{margin:0;color:var(--ink-650)}.identifiers{display:flex;gap:8px;flex-wrap:wrap}.identifiers code{padding:4px 7px;border-radius:5px;color:var(--forest-750);background:var(--forest-100);font-size:.67rem}.paper-header>aside{display:grid;min-width:200px;align-content:start;gap:8px;padding:15px;border-left:3px solid var(--forest-750);background:#fff}.paper-header>aside span{font-size:.72rem;font-weight:750}.paper-header>aside strong,.paper-header>aside small{width:max-content;padding:4px 7px;border-radius:99px;font-size:.65rem}.paper-header>aside strong{color:#8b3d2f;background:#fbe9e3}.paper-header>aside small{background:#eef2ef;color:var(--ink-650)}
-.workspace-grid{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(310px,.75fr);gap:24px;margin-top:30px}.main-column{display:grid;gap:24px}.panel{padding:22px;border:1px solid var(--line);background:#fff;box-shadow:var(--shadow-sm)}.section-heading h2,.panel h2{margin:0;color:var(--ink-950);font:600 1.3rem/1.25 Georgia,"Noto Serif SC Variable",serif}.quality-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:18px;background:var(--line)}.quality-grid div{display:grid;gap:5px;padding:18px;background:#fbfcfb}.quality-grid strong{color:var(--forest-900);font:600 1.6rem/1 Georgia,serif}.quality-grid span{color:var(--ink-500);font-size:.67rem}.source-panel{display:flex;align-items:center;justify-content:space-between;gap:20px}.source-panel h2{margin:0}.source-panel p:last-child{margin:8px 0 0;color:var(--ink-650);font-size:.76rem}.button-secondary{display:inline-flex;min-height:42px;align-items:center;justify-content:center;padding:9px 14px;border:1px solid var(--line-strong);border-radius:7px;color:var(--ink-650);background:#fff;font-size:.72rem;font-weight:700;text-decoration:none;cursor:pointer;white-space:nowrap}
-.review-panel{align-self:start;position:sticky;top:96px}.review-panel>h2{margin-bottom:16px}.review-panel p{color:var(--ink-650);font-size:.74rem;line-height:1.7}.current-state{display:grid;gap:4px;margin-bottom:14px;padding:12px;background:#f5f8f6}.current-state span{color:var(--ink-500);font-size:.64rem}.current-state strong{color:var(--forest-750);font-size:.7rem}.review-panel form,.review-panel label{display:grid;gap:7px}.review-panel form{gap:12px}.review-panel label{color:var(--ink-650);font-size:.68rem;font-weight:700}.review-panel select,.review-panel input{min-height:40px;padding:8px 10px;border:1px solid var(--line-strong);border-radius:6px;background:#fff}.full{width:100%;margin-top:8px;text-decoration:none}.action-error{padding:10px;color:var(--danger)!important;background:var(--danger-soft)}.action-error small{display:block;margin-top:4px}.page-state{display:flex;min-height:360px;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--ink-650);text-align:center}.page-state h1,.page-state p{margin:0}.page-state>span{display:grid;width:48px;height:48px;place-items:center;border:1px solid var(--line);border-radius:50%}.spinner{border-top-color:var(--forest-750)!important;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:900px){.paper-header,.source-panel{align-items:flex-start;flex-direction:column}.paper-header>aside{width:100%}.workspace-grid{grid-template-columns:1fr}.review-panel{position:static}.quality-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:520px){.quality-grid{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){.spinner{animation:none}}
-</style>

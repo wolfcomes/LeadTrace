@@ -47,6 +47,8 @@ describe("published overview", () => {
     const wrapper = mount(OverviewPage);
     await flushPromises();
 
+    expect(wrapper.get(".page-heading").classes()).toContain("page-heading--editorial");
+    expect(wrapper.findAll(".metric-card--dashboard")).toHaveLength(6);
     expect(wrapper.get("[data-metric='lineage']").text()).toContain("138 / 672");
     expect(wrapper.text()).toContain("文献语料");
     expect(wrapper.text()).toContain("谱系覆盖");
@@ -121,6 +123,8 @@ describe("published Paper library", () => {
     const wrapper = mount(PaperLibraryPage, { global: { plugins: [router] } });
     await flushPromises();
 
+    expect(wrapper.get("[data-filter-form]").classes()).toContain("filter-toolbar");
+    expect(wrapper.get("[data-paper-list]").classes()).toContain("panel");
     expect(wrapper.get("#paper-search").element).toHaveProperty("value", "kinase");
     expect(wrapper.get("#paper-target").element).toHaveProperty("value", "Kinase A");
     expect(wrapper.text()).toContain("paper-24");
@@ -197,15 +201,22 @@ describe("published Paper detail", () => {
     const wrapper = mount(PaperDetailPage, { global: { plugins: [router] } });
     await flushPromises();
 
+    expect(wrapper.get("[data-paper-detail]").classes()).toContain("detail-layout");
+    expect(wrapper.findAll(".content-section.panel").length).toBeGreaterThanOrEqual(4);
     expect(wrapper.text()).toContain("paper-24");
     expect(wrapper.text()).toContain("未验证");
     expect(wrapper.text()).toContain("10.1000/paper-24");
     expect(wrapper.text()).toContain("LINEAGE-1");
     expect(wrapper.get("[data-edge-status='unresolved']").text()).toContain("关系待解析");
+    expect(wrapper.get(".lineage-card").classes()).toContain("panel");
+    expect(wrapper.get("[data-edge-status='unresolved'] .edge-state").classes()).toContain("status-chip");
     expect(wrapper.findAll("[data-molecule-pair]")).toHaveLength(1);
+    expect(wrapper.get("[data-molecule-pair]").classes()).toContain("panel");
     expect(wrapper.text()).toContain("CCN");
     expect(wrapper.text()).not.toContain("FAKE-SCREENSHOT-SMILES");
     expect(wrapper.text()).toContain("已核查证据");
+    expect(wrapper.get(".evidence-card").classes()).toContain("panel");
+    expect(wrapper.get(".evidence-card .evidence-meta span").classes()).toContain("status-chip");
     expect(wrapper.text()).toContain("Potency improved.");
     expect(wrapper.text()).toContain("IC50");
     expect(wrapper.text()).toContain("1 / 2");

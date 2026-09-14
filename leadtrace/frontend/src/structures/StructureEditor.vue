@@ -48,19 +48,19 @@ const states = [
 </script>
 
 <template>
-  <form class="structure-editor" aria-label="结构核查" @submit.prevent="emit('save', { ...draft })">
-    <header>
+  <form class="structure-editor editor-form panel" aria-label="结构核查" @submit.prevent="emit('save', { ...draft })">
+    <header class="editor-heading editor-heading--split">
       <div>
         <span>STRUCTURE REVIEW</span>
         <h2>结构核查</h2>
       </div>
       <strong
         data-parse-status
-        :class="props.validation?.parseable ? 'valid' : 'pending'"
+        :class="['status-chip', props.validation?.parseable ? 'is-ok' : 'is-pending']"
       >{{ props.validation?.parseable ? "RDKit 可解析" : "待解析" }}</strong>
     </header>
 
-    <label>
+    <label class="form-field">
       SMILES
       <textarea
         v-model="draft.smiles"
@@ -72,47 +72,30 @@ const states = [
     </label>
 
     <div class="form-grid">
-      <label>
+      <label class="form-field">
         科学状态
         <select v-model="draft.structureState" :disabled="!props.editable">
           <option v-for="[value, label] in states" :key="value" :value="value">{{ label }}</option>
         </select>
       </label>
-      <label v-if="(props.validation?.componentCount ?? 0) > 1">
+      <label v-if="(props.validation?.componentCount ?? 0) > 1" class="form-field">
         选定组分
         <input v-model="draft.selectedComponentSmiles" name="selected-component" :disabled="!props.editable">
       </label>
     </div>
 
-    <label>
+    <label class="form-field">
       来源
       <input v-model="draft.source" name="source" :disabled="!props.editable">
     </label>
-    <label>
+    <label class="form-field">
       修改理由
       <textarea v-model="draft.reason" name="reason" rows="2" :disabled="!props.editable" />
     </label>
 
-    <footer>
+    <footer class="editor-actions">
       <span v-if="props.validation?.messages.length">{{ props.validation.messages.join(" · ") }}</span>
-      <button type="submit" :disabled="!canSave">保存草稿</button>
+      <button class="button-primary" type="submit" :disabled="!canSave">保存草稿</button>
     </footer>
   </form>
 </template>
-
-<style scoped>
-.structure-editor { display: grid; gap: 14px; padding: 18px; border: 1px solid #d8dee4; background: #fff; }
-header, footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-header span { color: #68737e; font-size: .68rem; font-weight: 750; letter-spacing: .08em; }
-h2 { margin: 3px 0 0; color: #1f2d38; font-size: 1rem; }
-header strong { border-left: 3px solid; padding-left: 8px; font-size: .76rem; }
-header strong.valid { border-color: #17835c; color: #126447; }
-header strong.pending { border-color: #b78024; color: #785619; }
-label { display: grid; gap: 6px; color: #46525d; font-size: .78rem; font-weight: 650; }
-.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-input, select, textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd3da; border-radius: 4px; padding: 8px 10px; color: #1f2d38; background: #fff; font: inherit; resize: vertical; }
-footer span { color: #8a5b13; font-size: .73rem; }
-button { min-height: 36px; border: 1px solid #174f66; border-radius: 4px; padding: 7px 13px; color: #fff; background: #174f66; font: inherit; font-weight: 700; }
-button:disabled { border-color: #b7c0c7; background: #b7c0c7; cursor: not-allowed; }
-@media (max-width: 620px) { .form-grid { grid-template-columns: 1fr; } }
-</style>

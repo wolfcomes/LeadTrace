@@ -73,7 +73,7 @@ function formatValue(value: unknown, present: boolean): string {
     </div>
 
     <div v-if="changedDiffs.length" class="diff-groups">
-      <article v-for="entry in changedDiffs" :key="entry.object_id" class="diff-group">
+      <article v-for="entry in changedDiffs" :key="entry.object_id" class="diff-group panel">
         <header>
           <div>
             <span>{{ objectLabels[entry.object_kind] ?? entry.object_kind }}</span>
@@ -110,30 +110,27 @@ function formatValue(value: unknown, present: boolean): string {
 </template>
 
 <style scoped>
-.section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
-.section-heading h2 { margin: 0; color: var(--ink-950); font: 600 1.4rem/1.2 Georgia, "Noto Serif SC Variable", serif; }
-.section-heading > span { color: var(--ink-500); font-size: .72rem; }
 .diff-groups { display: grid; gap: 18px; }
-.diff-group { border: 1px solid var(--line); background: white; box-shadow: var(--shadow-sm); }
-.diff-group > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 18px; border-bottom: 1px solid var(--line); background: #f8faf8; }
+.diff-group { overflow: hidden; }
+.diff-group > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 18px; border-bottom: 1px solid var(--line); background: var(--paper-deep); }
 .diff-group header span, .diff-group header code { display: block; }
-.diff-group header span { color: var(--ink-800); font-size: .78rem; font-weight: 760; }
-.diff-group header code { margin-top: 4px; color: var(--ink-500); font-size: .62rem; }
-.diff-group header > strong { color: var(--forest-750); font-size: .7rem; }
+.diff-group header span { color: var(--ink-soft); font-size: .77rem; font-weight: 760; }
+.diff-group header code { margin-top: 4px; color: var(--ink-muted); font-size: .61rem; }
+.diff-group header > strong { color: var(--coral-deep); font-size: .68rem; }
 .change-row { display: grid; grid-template-columns: minmax(135px, .65fr) minmax(0, 1fr) 24px minmax(0, 1fr); gap: 14px; align-items: stretch; padding: 17px 18px; border-bottom: 1px solid var(--line); }
 .change-row:last-child { border-bottom: 0; }
 .change-field { min-width: 0; padding-top: 4px; }
 .change-field strong, .change-field span, .change-field code { display: block; }
-.change-field strong { color: var(--ink-800); font-size: .78rem; }
-.change-field span { margin-top: 5px; color: var(--gold-700); font-size: .65rem; font-weight: 700; }
-.change-field code { margin-top: 9px; overflow-wrap: anywhere; color: var(--ink-500); font-size: .58rem; }
-.value { min-width: 0; padding: 11px 13px; border-left: 3px solid var(--line-strong); background: #f7f8f7; }
-.value > span { color: var(--ink-500); font-size: .61rem; font-weight: 750; }
-.value pre { max-height: 180px; margin: 8px 0 0; overflow: auto; color: var(--ink-800); font: .7rem/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-.after-value { border-left-color: #4e8b6b; background: #f1f7f3; }
-.change-arrow { align-self: center; color: var(--gold-700); text-align: center; }
-.empty-diff { display: grid; min-height: 190px; place-items: center; align-content: center; gap: 10px; border-top: 2px solid var(--line-strong); color: var(--ink-500); background: white; }
-.empty-diff span { font: 600 1.4rem/1 Georgia, serif; }
+.change-field strong { color: var(--ink-soft); font-size: .77rem; }
+.change-field span { margin-top: 5px; color: var(--coral-deep); font-size: .63rem; font-weight: 700; }
+.change-field code { margin-top: 9px; overflow-wrap: anywhere; color: var(--ink-muted); font-size: .57rem; }
+.value { min-width: 0; padding: 11px 13px; border-left: 3px solid var(--line-strong); background: var(--paper); }
+.value > span { color: var(--ink-muted); font-size: .6rem; font-weight: 750; }
+.value pre { max-height: 180px; margin: 8px 0 0; overflow: auto; color: var(--ink-soft); font: .69rem/1.55 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.after-value { border-left-color: var(--teal); background: var(--teal-pale); }
+.change-arrow { align-self: center; color: var(--coral-deep); text-align: center; }
+.empty-diff { display: grid; min-height: 190px; place-items: center; align-content: center; gap: 10px; border: 1px dashed var(--line-strong); color: var(--ink-muted); background: var(--surface); }
+.empty-diff span { font: 600 1.4rem/1 var(--font-serif); }
 .empty-diff p { margin: 0; font-size: .8rem; }
 @media (max-width: 860px) { .change-row { grid-template-columns: 1fr; } .change-arrow { transform: rotate(90deg); } .section-heading { align-items: flex-start; flex-direction: column; } }
 </style>

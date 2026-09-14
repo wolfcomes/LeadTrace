@@ -64,7 +64,7 @@ function canRenderPair(edge: LineageEdge): boolean {
 
 <template>
   <div class="lineage-list">
-    <article v-for="lineage in lineages" :key="lineage.id" class="lineage-card">
+    <article v-for="lineage in lineages" :key="lineage.id" class="lineage-card panel">
       <header>
         <div>
           <p>{{ zhCN.published.lineage.branch }}</p>
@@ -79,7 +79,7 @@ function canRenderPair(edge: LineageEdge): boolean {
           :class="`is-${edgeState(edge)}`"
           :data-edge-status="edgeState(edge)"
         >
-          <div class="edge-state">
+          <div :class="['edge-state', 'status-chip', edgeState(edge) === 'resolved' ? 'is-ok' : edgeState(edge) === 'invalid' ? 'is-error' : 'is-warning']">
             <span aria-hidden="true"></span>
             <strong>{{ edgeLabel(edge) }}</strong>
           </div>
@@ -113,27 +113,27 @@ function canRenderPair(edge: LineageEdge): boolean {
 
 <style scoped>
 .lineage-list { display: grid; gap: 16px; }
-.lineage-card { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-md); background: white; box-shadow: var(--shadow-sm); }
-.lineage-card > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 20px; border-bottom: 1px solid var(--line); background: #fafbf9; }
+.lineage-card { overflow: hidden; }
+.lineage-card > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 20px; border-bottom: 1px solid var(--line); background: var(--paper-deep); }
 .lineage-card header p, .lineage-card header h3 { margin: 0; }
-.lineage-card header p { color: var(--gold-700); font-size: .65rem; font-weight: 780; letter-spacing: .09em; }
-.lineage-card header h3 { margin-top: 5px; color: var(--ink-950); font: 600 1.1rem/1.2 Georgia, "Noto Serif SC Variable", serif; }
-.lineage-card header code { color: var(--ink-500); font-size: .61rem; overflow-wrap: anywhere; }
-.edge-block { display: grid; grid-template-columns: minmax(0, .8fr) minmax(320px, 1.2fr); gap: 16px; padding: 18px 20px; border-bottom: 1px solid #edf0ee; }
+.lineage-card header p { color: var(--coral-deep); font: 600 .61rem/1.2 var(--font-mono); }
+.lineage-card header h3 { margin-top: 5px; color: var(--ink); font: 600 1.08rem/1.25 var(--font-serif); }
+.lineage-card header code { color: var(--ink-muted); font-size: .6rem; overflow-wrap: anywhere; }
+.edge-block { display: grid; grid-template-columns: minmax(0, .8fr) minmax(320px, 1.2fr); gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
 .edge-block:last-child { border-bottom: 0; }
-.edge-summary { padding: 16px; border: 1px solid var(--line); border-left: 4px solid var(--forest-750); border-radius: 10px; background: #fbfcfb; }
-.edge-summary.is-unresolved { border-style: dashed; border-left: 4px solid var(--gold-700); background: #fffdf7; }
+.edge-summary { padding: 16px; border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: var(--radius-md); background: var(--surface); }
+.edge-summary.is-unresolved { border-style: dashed; border-left: 3px solid var(--amber); background: var(--amber-pale); }
 .edge-summary.is-invalid { border-left-color: var(--danger); background: var(--danger-soft); }
-.edge-state { display: flex; align-items: center; gap: 8px; color: var(--forest-750); font-size: .72rem; }
+.edge-state { width: max-content; }
 .edge-state span { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.is-unresolved .edge-state { color: var(--gold-700); }
+.is-unresolved .edge-state { color: var(--amber-deep); }
 .is-invalid .edge-state { color: var(--danger); }
-.edge-route { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; margin: 17px 0; color: var(--ink-950); font-weight: 720; }
+.edge-route { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; margin: 17px 0; color: var(--ink); font-weight: 720; }
 .edge-route span:last-child { text-align: right; }
-.edge-route b { color: var(--gold-700); }
+.edge-route b { color: var(--coral-deep); }
 dl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
-dt { color: var(--ink-500); font-size: .64rem; }
-dd { margin: 4px 0 0; color: var(--ink-650); font-size: .7rem; overflow-wrap: anywhere; }
+dt { color: var(--ink-muted); font-size: .62rem; }
+dd { margin: 4px 0 0; color: var(--ink-muted); font-size: .68rem; overflow-wrap: anywhere; }
 @media (max-width: 980px) { .edge-block { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .lineage-card > header { align-items: flex-start; flex-direction: column; } .edge-route { grid-template-columns: 1fr; } .edge-route b { transform: rotate(90deg); text-align: center; } .edge-route span:last-child { text-align: left; } }
 </style>

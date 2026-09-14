@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { expectNoHorizontalPageOverflow } from "./support/layout";
+
 
 const release = {
   id: "10000000-0000-4000-8000-000000000001",
@@ -107,6 +109,7 @@ test("Visitor browses only the current release with shareable filters", async ({
   expect(await page.evaluate(() => [...document.fonts].some(
     (font) => font.family === "Noto Sans SC Variable" && font.status === "loaded",
   ))).toBe(true);
+  await expectNoHorizontalPageOverflow(page);
 
   await page.getByLabel("搜索文献").fill("protease");
   await page.getByRole("button", { name: "应用筛选" }).click();
@@ -124,6 +127,7 @@ test("Visitor browses only the current release with shareable filters", async ({
   await expect(page.getByText("已核查证据")).toBeVisible();
   await expect(page.getByText("Potency improved.")).toBeVisible();
   await expect(page.getByRole("link", { name: /原始 PDF/ })).toHaveCount(0);
+  await expectNoHorizontalPageOverflow(page);
   await page.screenshot({ path: "test-results/visitor-detail.png", fullPage: true });
 
   const fullPdfStatus = await page.evaluate(async (id) => {

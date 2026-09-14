@@ -169,6 +169,10 @@ describe("Reviewer task and changeset workflow", () => {
     await flushPromises();
 
     expect(wrapper.get("h1").text()).toBe("核查任务");
+    expect(wrapper.get(".task-list-page").classes()).toContain("review-workspace");
+    expect(wrapper.get(".task-table-section").classes()).toContain("panel");
+    expect(wrapper.get(".task-table").classes()).toContain("data-table");
+    expect(wrapper.get("[data-review-task] [data-status]").classes()).toContain("status-chip");
     expect(wrapper.findAll("[data-review-task]")).toHaveLength(2);
     expect(wrapper.get(`[data-task-id='${openTaskId}']`).text()).toContain("高优先级");
     expect(wrapper.get(`[data-task-id='${openTaskId}']`).text()).toContain("开始核查");
@@ -197,6 +201,8 @@ describe("Reviewer task and changeset workflow", () => {
     await flushPromises();
 
     expect(wrapper.get("h1").text()).toBe("修改集");
+    expect(wrapper.get(".changeset-index-page").classes()).toContain("review-workspace");
+    expect(wrapper.get(".changeset-table-wrap").classes()).toContain("panel");
     expect(wrapper.findAll("[data-changeset-row]")).toHaveLength(1);
     expect(wrapper.get("[data-changeset-row]").text()).toContain(draft.title);
     expect(wrapper.get("[data-changeset-row] a").attributes("href")).toBe(`/review/changesets/${changesetId}`);
@@ -299,6 +305,9 @@ describe("Reviewer task and changeset workflow", () => {
     await flushPromises();
 
     expect(wrapper.get("h1").text()).toBe("核查修改集");
+    expect(wrapper.get(".changeset-page").classes()).toContain("review-workspace");
+    expect(wrapper.get(".workspace-tabs").classes()).toContain("workspace-toolbar");
+    expect(wrapper.get(".metadata-editor").classes()).toContain("panel");
     expect(wrapper.get("#changeset-title").element).toHaveProperty("value", draft.title);
     expect(wrapper.get("#changeset-reason").element).toHaveProperty("value", draft.reason);
     expect(wrapper.get("[data-changeset-version]").text()).toContain("版本 3");

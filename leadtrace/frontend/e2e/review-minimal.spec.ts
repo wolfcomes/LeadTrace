@@ -1,5 +1,7 @@
 import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 
+import { expectNoHorizontalPageOverflow } from "./support/layout";
+
 
 const paperId = "20000000-0000-4000-8000-000000000001";
 const reviewerAId = "30000000-0000-4000-8000-000000000001";
@@ -216,6 +218,7 @@ test("isolates Reviewer drafts, exposes conflicts, and keeps publication approva
     await reviewerAPage.goto(`/review/changesets/${changesetId}`);
     const paperTitleField = reviewerAPage.locator("#paper-title-field");
     await expect(paperTitleField).toHaveValue("Published optimization study 24");
+    await expectNoHorizontalPageOverflow(reviewerAPage);
     await paperTitleField.fill("Reviewer A local correction");
     const conflictDialog = reviewerAPage.getByRole("dialog", { name: "草稿已被其他会话更新" });
     await expect(conflictDialog).toBeVisible();
@@ -226,6 +229,13 @@ test("isolates Reviewer drafts, exposes conflicts, and keeps publication approva
     await expect(conflictDialog).toBeHidden();
     await reviewerAPage.evaluate(() => window.scrollTo(0, 0));
     await reviewerAPage.screenshot({ path: "test-results/reviewer-editor.png", fullPage: true });
+    await reviewerAPage.setViewportSize({ width: 390, height: 844 });
+    await expect.poll(() => reviewerAPage.locator(".workspace-header").evaluate((header) => {
+      const heading = header.firstElementChild?.getBoundingClientRect();
+      const bounds = header.getBoundingClientRect();
+      return heading ? Math.abs(heading.width - bounds.width) : Number.POSITIVE_INFINITY;
+    })).toBeLessThanOrEqual(1);
+    await reviewerAPage.setViewportSize({ width: 1280, height: 720 });
 
     await visitorPage.goto(`/papers/${paperId}`);
     await expect(visitorPage.getByRole("heading", { name: "Published optimization study 24" })).toBeVisible();

@@ -14,6 +14,9 @@ describe("molecule object review controls", () => {
       },
     });
 
+    expect(wrapper.get(".object-inspector").classes()).toContain("panel");
+    expect(wrapper.findAll("label.form-field")).toHaveLength(2);
+    expect(wrapper.get("select").classes()).toContain("form-control");
     await wrapper.get("select").setValue("linker");
     expect(wrapper.emitted("update-type")).toEqual([["linker"]]);
   });
@@ -22,13 +25,15 @@ describe("molecule object review controls", () => {
     const wrapper = mount(CompoundBindings, {
       props: {
         bindings: [
-          { id: "b1", compoundId: "c1", label: "26a", role: "primary" },
+          { id: "b1", compoundId: "c1", label: "26a", role: "primary", operation: "add" },
           { id: "b2", compoundId: "c1", label: "26a'", role: "alternate" },
         ],
       },
     });
 
+    expect(wrapper.get(".binding-panel").classes()).toContain("panel");
     expect(wrapper.findAll("[data-compound-binding]")).toHaveLength(2);
+    expect(wrapper.get("[data-binding-operation]").classes()).toContain("status-chip");
     expect(wrapper.text()).toContain("26a'");
   });
 
@@ -39,6 +44,7 @@ describe("molecule object review controls", () => {
       },
     });
 
+    expect(wrapper.get(".binding-panel").classes()).toContain("panel");
     expect(wrapper.get("[data-image-binding='asset-1']").text()).toContain("3");
   });
 });

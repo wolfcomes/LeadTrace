@@ -54,15 +54,15 @@ const style = computed(() => ({
   position: absolute;
   min-width: 12px;
   min-height: 12px;
-  border: 2px solid var(--color-accent, #0b7285);
-  background: color-mix(in srgb, #0b7285 12%, transparent);
+  border: 2px solid var(--teal);
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
   cursor: pointer;
   padding: 0;
   text-align: left;
 }
 .region-overlay.selected {
-  border-color: #d9480f;
-  background: color-mix(in srgb, #d9480f 14%, transparent);
+  border-color: var(--coral-deep);
+  background: color-mix(in srgb, var(--coral) 14%, transparent);
 }
 .region-overlay.tombstone {
   opacity: .45;
@@ -73,8 +73,8 @@ const style = computed(() => ({
   top: -1.4rem;
   left: -2px;
   padding: 2px 5px;
-  background: #1f2937;
-  color: #fff;
+  color: white;
+  background: var(--ink);
   font-size: 11px;
   white-space: nowrap;
 }

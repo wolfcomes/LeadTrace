@@ -5,5 +5,20 @@ const payload=ref<Record<string,unknown>|null>(null);const loading=ref(true);con
 const checks = computed(() => (payload.value?.checks ?? {}) as Record<string, Record<string, unknown>>);
 onMounted(async()=>{try{payload.value=await fetchSystemHealth()}catch{error.value="系统状态未能读取。"}finally{loading.value=false}});
 </script>
-<template><div class="admin-page"><header class="page-heading"><div><p class="eyebrow">OPERATIONS</p><h1>系统状态</h1><p>数据库、资产存储、任务队列和发布状态的可操作摘要。</p></div><span v-if="payload" class="status-chip">{{ payload.status }}</span></header><section v-if="loading" class="page-state"><span class="state-spinner"></span></section><section v-else-if="error" class="page-state"><p>{{ error }}</p></section><section v-else class="check-grid"><article v-for="(check,name) in checks" :key="name" class="check" :data-check="name"><div><strong>{{ name }}</strong><p>{{ check.summary }}</p></div><span :class="['check-status',`is-${check.status}`]">{{ check.status }}</span></article></section><p v-if="payload?.request_id" class="request-id">请求编号：{{ payload.request_id }}</p></div></template>
-<style scoped>.admin-page{padding:clamp(24px,4vw,52px)}.status-chip{padding:7px 11px;border-radius:6px;color:var(--forest-800);background:var(--forest-100);font-size:.72rem;font-weight:760}.check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.check{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:18px;border:1px solid var(--line);background:#fff}.check strong{font:600 1rem Georgia,serif;text-transform:capitalize}.check p{margin:7px 0 0;color:var(--ink-600);font-size:.75rem}.check-status{padding:4px 8px;border-radius:5px;background:var(--canvas);font-size:.65rem;font-weight:760}.is-ok{color:var(--forest-750);background:var(--forest-100)}.is-unavailable{color:var(--danger);background:var(--danger-soft)}.request-id{margin-top:18px;color:var(--ink-500);font-size:.7rem}@media(max-width:700px){.check-grid{grid-template-columns:1fr}}</style>
+<template>
+  <div class="admin-page review-workspace">
+    <header class="page-heading">
+      <div><p class="eyebrow">OPERATIONS</p><h1>系统状态</h1><p>数据库、资产存储、任务队列和发布状态的可操作摘要。</p></div>
+      <span v-if="payload" class="status-chip" :data-status="payload.status">{{ payload.status }}</span>
+    </header>
+    <section v-if="loading" class="page-state"><span class="state-spinner"></span></section>
+    <section v-else-if="error" class="page-state"><p>{{ error }}</p></section>
+    <section v-else class="check-grid">
+      <article v-for="(check,name) in checks" :key="name" class="check panel" :data-check="name">
+        <div><strong>{{ name }}</strong><p>{{ check.summary }}</p></div>
+        <span :class="['check-status', 'status-chip', `is-${check.status}`]" :data-status="check.status">{{ check.status }}</span>
+      </article>
+    </section>
+    <p v-if="payload?.request_id" class="request-id">请求编号：{{ payload.request_id }}</p>
+  </div>
+</template>

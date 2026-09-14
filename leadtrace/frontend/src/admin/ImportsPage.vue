@@ -97,7 +97,7 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="admin-page">
+  <div class="admin-page review-workspace">
     <header class="page-heading">
       <div>
         <p class="eyebrow">STAGED INGESTION</p>
@@ -106,26 +106,26 @@ onMounted(load);
       </div>
     </header>
 
-    <p v-if="error" class="message" role="alert">{{ error }}</p>
+    <p v-if="error" class="message inline-feedback is-error" role="alert">{{ error }}</p>
 
-    <section class="admin-panel import-controls">
-      <label for="source-root">来源配置</label>
-      <input id="source-root" v-model="sourceRoot" autocomplete="off">
+    <section class="admin-panel import-controls workspace-toolbar">
+      <label class="form-label" for="source-root">来源配置</label>
+      <input id="source-root" v-model="sourceRoot" class="form-control" autocomplete="off">
       <button class="button-secondary" type="button" :disabled="busy" @click="preview">预检</button>
       <button class="button-primary" type="button" :disabled="busy" @click="apply">应用到 staging</button>
     </section>
 
-    <section v-if="report" class="admin-panel">
+    <section v-if="report" class="admin-panel panel-content">
       <h2>预检结果</h2>
       <pre>{{ JSON.stringify(report, null, 2) }}</pre>
     </section>
 
-    <section class="admin-panel candidate-panel">
+    <section class="admin-panel candidate-panel table-wrap">
       <div class="section-heading">
         <h2>首次发布候选</h2>
         <span>{{ candidates.length }} 个候选</span>
       </div>
-      <table>
+      <table class="data-table">
         <thead>
           <tr>
             <th>状态</th>
@@ -139,7 +139,7 @@ onMounted(load);
         <tbody>
           <tr v-for="candidate in candidates" :key="candidate.id">
             <td>
-              <span :class="['candidate-state', `state-${candidate.status}`]">
+              <span class="candidate-state status-chip" :data-status="candidate.status">
                 {{ stateLabels[candidate.status] }}
               </span>
             </td>
@@ -162,8 +162,8 @@ onMounted(load);
               </small>
             </td>
             <td>
-              <span v-if="manifestValue(candidate, 'integrity', 'dangling_entity_references') === '0'" class="integrity-ok">通过</span>
-              <span v-else>需核查</span>
+              <span v-if="manifestValue(candidate, 'integrity', 'dangling_entity_references') === '0'" class="integrity-ok status-chip is-ok">通过</span>
+              <span v-else class="status-chip is-warning">需核查</span>
             </td>
             <td class="decision-cell">
               <template v-if="candidate.status === 'imported_baseline'">
@@ -172,10 +172,11 @@ onMounted(load);
                   :id="`candidate-reason-${candidate.id}`"
                   v-model="decisionReasons[candidate.id]"
                   :data-candidate-reason="candidate.id"
+                  class="form-control"
                   rows="2"
                   maxlength="4000"
                 />
-                <div class="decision-actions">
+                <div class="decision-actions table-actions">
                   <button
                     data-candidate-decision
                     :data-candidate-approve="candidate.id"
@@ -213,16 +214,16 @@ onMounted(load);
       </table>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel table-wrap">
       <div class="section-heading">
         <h2>导入批次</h2>
         <span>{{ imports.length }} 个批次</span>
       </div>
-      <table>
+      <table class="data-table">
         <thead><tr><th>状态</th><th>指纹</th><th>开始时间</th></tr></thead>
         <tbody>
           <tr v-for="item in imports" :key="String(item.id)">
-            <td>{{ item.status }}</td>
+            <td><span class="status-chip" :data-status="item.status">{{ item.status }}</span></td>
             <td><code class="fingerprint">{{ item.source_fingerprint }}</code></td>
             <td>{{ item.started_at }}</td>
           </tr>
@@ -232,32 +233,3 @@ onMounted(load);
     </section>
   </div>
 </template>
-
-<style scoped>
-.admin-page{padding:clamp(24px,4vw,52px)}
-.admin-panel{margin-bottom:18px;padding:20px;border:1px solid var(--line);background:#fff;overflow:auto}
-.message{margin:0 0 14px;padding:11px 14px;border-left:3px solid var(--danger);color:var(--danger);background:#fff;font-size:.76rem}
-.import-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.import-controls label,.decision-cell label{font-size:.68rem;font-weight:700;color:var(--ink-650)}
-.import-controls input,.decision-cell textarea{min-height:38px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit}
-.section-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}
-.section-heading span{color:var(--ink-500);font-size:.7rem}
-h2{margin:0;font:600 1.15rem Georgia,"Noto Serif SC Variable",serif}
-pre{max-height:280px;overflow:auto;background:var(--canvas);padding:14px;font-size:.72rem}
-table{width:100%;min-width:820px;border-collapse:collapse;font-size:.75rem}
-th,td{padding:12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-th{color:var(--ink-500);font-size:.65rem;white-space:nowrap}
-.fingerprint{display:block;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.candidate-state{display:inline-block;padding:4px 7px;border-radius:5px;background:var(--canvas);white-space:nowrap;font-size:.64rem}
-.state-approved,.state-published,.integrity-ok{color:var(--forest-800)}
-.state-rejected{color:var(--danger)}
-.decision-cell{min-width:240px}
-.decision-cell textarea{display:block;width:100%;margin:6px 0;resize:vertical}
-.decision-actions{display:flex;gap:7px}
-.decision-actions button{min-width:64px}
-.publish-link{display:inline-block;text-decoration:none;white-space:nowrap}
-.decision-record{display:grid;gap:5px;max-width:280px}
-.decision-record span,td small{color:var(--ink-500);font-size:.66rem;white-space:normal}
-.empty{text-align:center;color:var(--ink-500)}
-@media(max-width:760px){.admin-page{padding:20px 14px}.admin-panel{padding:14px}.import-controls{align-items:stretch}.import-controls input{flex:1 1 100%}}
-</style>
