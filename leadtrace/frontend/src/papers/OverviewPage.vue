@@ -5,6 +5,7 @@ import { ApiError } from "../api/client";
 import { fetchOverview } from "../api/published";
 import type { OverviewResponse } from "../api/schema";
 import { zhCN } from "../i18n/zh-CN";
+import ReleaseVerificationBadge from "./ReleaseVerificationBadge.vue";
 
 
 type ViewState = "loading" | "ready" | "empty" | "error";
@@ -61,6 +62,7 @@ onMounted(load);
       <div v-if="overview" class="release-card">
         <span>{{ zhCN.published.overview.releaseLabel }}</span>
         <strong>{{ overview.release.title }}</strong>
+        <ReleaseVerificationBadge :status="overview.release.verification_status" />
         <code>{{ overview.release.key }}</code>
         <small>{{ zhCN.published.overview.publishedAt }} · {{ formatDate(overview.release.published_at) }}</small>
       </div>
@@ -111,8 +113,8 @@ onMounted(load);
 .page-heading h1 { margin: 0; color: var(--ink-950); font: 600 clamp(2rem, 3vw, 3.1rem)/1.15 Georgia, "Noto Serif SC Variable", serif; letter-spacing: -.025em; }
 .page-description { max-width: 690px; margin: 16px 0 0; color: var(--ink-650); font-size: .9rem; line-height: 1.8; }
 .release-card { width: min(100%, 330px); flex: 0 0 330px; padding: 18px 20px; border: 1px solid #d8c89f; border-radius: var(--radius-md); background: linear-gradient(145deg, #fffef9, var(--gold-100)); box-shadow: var(--shadow-sm); }
-.release-card span, .release-card strong, .release-card code, .release-card small { display: block; }
-.release-card span { color: var(--gold-700); font-size: .64rem; font-weight: 800; letter-spacing: .1em; }
+.release-card > span:first-child, .release-card strong, .release-card code, .release-card small { display: block; }
+.release-card > span:first-child { color: var(--gold-700); font-size: .64rem; font-weight: 800; letter-spacing: .1em; }
 .release-card strong { margin-top: 8px; color: var(--ink-950); font: 600 1rem/1.35 Georgia, "Noto Serif SC Variable", serif; }
 .release-card code { margin-top: 8px; color: var(--ink-650); font-size: .68rem; overflow-wrap: anywhere; }
 .release-card small { margin-top: 13px; color: var(--ink-500); font-size: .66rem; }

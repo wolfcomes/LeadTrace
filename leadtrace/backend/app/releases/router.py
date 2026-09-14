@@ -73,6 +73,7 @@ def create_releases_router() -> APIRouter:
                 "key": metadata.key,
                 "title": metadata.title,
                 "published_at": metadata.published_at.isoformat(),
+                "verification_status": metadata.verification_status,
             },
             "metrics": metadata.metrics,
         }

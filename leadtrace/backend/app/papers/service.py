@@ -20,6 +20,7 @@ from app.papers.repository import (
     release_items_for_paper,
 )
 from app.releases.models import Release
+from app.releases.service import release_verification_status
 from app.revisions.models import (
     ActivityState,
     EvidenceState,
@@ -35,6 +36,7 @@ def _release_metadata(release: Release) -> dict[str, object]:
         "key": release.release_key,
         "title": release.title,
         "published_at": release.published_at.isoformat(),
+        "verification_status": release_verification_status(release),
     }
 
 

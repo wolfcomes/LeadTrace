@@ -119,6 +119,7 @@ test("application shell provides landmarks, skip navigation, and visible focus",
           key: "r1",
           title: '<img src=x onerror="window.__leadtraceXss=1">',
           published_at: "2026-09-12T00:00:00Z",
+          verification_status: "unverified",
         },
         metrics: Object.fromEntries(
           ["corpus", "lineage", "relation", "structure", "pair", "human_review"].map(

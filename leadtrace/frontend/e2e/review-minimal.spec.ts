@@ -16,6 +16,7 @@ const release = {
   key: "baseline-2026-09-12",
   title: "LeadTrace verified baseline",
   published_at: "2026-09-12T00:00:00Z",
+  verification_status: "unverified",
 };
 
 const draft = {

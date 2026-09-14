@@ -214,6 +214,7 @@ describe("Reviewer task and changeset workflow", () => {
         key: "baseline-2026-09-12",
         title: "LeadTrace baseline",
         published_at: "2026-09-12T00:00:00Z",
+        verification_status: "unverified",
       },
       paper: {
         id,
@@ -1260,6 +1261,7 @@ describe("Reviewer task and changeset workflow", () => {
           key: "baseline-2026-09-12",
           title: "LeadTrace baseline",
           published_at: "2026-09-12T00:00:00Z",
+          verification_status: "unverified",
         },
         paper: {
           id: paperId,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from uuid import uuid4
 
@@ -7,12 +8,17 @@ import pytest
 from sqlalchemy import func, select
 
 from app.activities.models import Activity
-from app.assets.models import Asset
+from app.assets.models import (
+    Asset,
+    AssetAccessLevel,
+    AssetCategory,
+    AssetIntegrityState,
+)
 from app.assets.storage import LocalAssetStore
 from app.compounds.models import Compound
 from app.evidence.models import Evidence
 from app.imports.approval import ImportCandidateApprovalService
-from app.imports.models import ImportBatch, ImportReleaseCandidate
+from app.imports.models import ImportAssetLink, ImportBatch, ImportReleaseCandidate
 from app.imports.service import BaselineImporter
 from app.lineages.models import Lineage, LineageEdge
 from app.papers.models import Paper
@@ -23,13 +29,18 @@ from app.releases.service import (
     BaselineValidationError,
     ReleaseConflict,
     publish_approved_baseline,
+    release_verification_status,
 )
 from app.revisions.models import ObjectKind, ObjectRevision
 from app.security.policies import WorkflowState
 from app.structures.models import Structure
 from app.users.models import UserRole
 from app.users.service import UserService
-from app.visual_objects.models import VisualObject, VisualRegion
+from app.visual_objects.models import (
+    VisualObject,
+    VisualObjectAssetBinding,
+    VisualRegion,
+)
 PASSWORD = "Baseline publish test password 2026!"
 pytest_plugins = ("tests.imports.conftest",)
 
@@ -135,6 +146,25 @@ def test_overview_metrics_from_fixed_baseline_counts() -> None:
             "unit": "papers",
         },
     }
+
+
+@pytest.mark.parametrize(
+    ("metric", "expected"),
+    [
+        ({"numerator": 0, "denominator": 672}, "unverified"),
+        ({"numerator": 1, "denominator": 672}, "partially_verified"),
+        ({"numerator": 672, "denominator": 672}, "human_verified"),
+        ({"numerator": 673, "denominator": 672}, "unverified"),
+        ({"numerator": True, "denominator": 672}, "unverified"),
+    ],
+)
+def test_release_verification_status_rejects_invalid_metrics(
+    metric: dict[str, object],
+    expected: str,
+) -> None:
+    release = Release(metrics={"human_review": metric})
+
+    assert release_verification_status(release) == expected
 
 
 def test_publish_approved_baseline_creates_complete_valid_current_release(
@@ -408,6 +438,188 @@ def test_publish_baseline_validates_imported_asset_bytes(
                 candidate_id=candidate.id,
                 actor_id=admin.id,
                 idempotency_key="baseline-missing-asset",
+                asset_store=_asset_store(tmp_path, baseline_fixture),
+            )
+
+
+def test_publish_baseline_allows_intact_quarantined_unreferenced_auxiliary_asset(
+    tmp_path: Path,
+    baseline_fixture: dict[str, object],
+    auth_session_factory,
+) -> None:
+    workspace = baseline_fixture["workspace"]
+    assert isinstance(workspace, Path)
+    auxiliary_path = workspace / "source_pdfs" / "auxiliary.csv"
+    auxiliary_path.write_bytes(b"\xff\xfeauxiliary-source\x00\x01")
+    relative_path = auxiliary_path.relative_to(workspace).as_posix()
+    content = auxiliary_path.read_bytes()
+
+    with auth_session_factory.begin() as session:
+        admin, candidate = _import_candidate(session, tmp_path, baseline_fixture)
+        batch = session.get(ImportBatch, candidate.import_batch_id)
+        assert batch is not None
+        auxiliary_asset = Asset(
+            storage_key=_asset_store(tmp_path, baseline_fixture).source_storage_key(
+                "baseline", relative_path
+            ),
+            original_filename=auxiliary_path.name,
+            sha256=hashlib.sha256(content).hexdigest(),
+            byte_size=len(content),
+            mime_type="application/octet-stream",
+            category=AssetCategory.SI_TABLE,
+            access_level=AssetAccessLevel.ADMIN,
+            integrity_state=AssetIntegrityState.QUARANTINED,
+            import_batch_id=batch.id,
+            derivation_metadata={},
+            source_metadata={"manifest_path": relative_path},
+        )
+        session.add(auxiliary_asset)
+        session.flush()
+        session.add(
+            ImportAssetLink(
+                import_batch_id=batch.id,
+                record_type="structure",
+                original_id="structure-auxiliary",
+                asset_id=auxiliary_asset.id,
+                link_role="structure_source",
+                source_reference=relative_path,
+            )
+        )
+        session.flush()
+        _approve(session, admin, candidate)
+
+        result = publish_approved_baseline(
+            session,
+            candidate_id=candidate.id,
+            actor_id=admin.id,
+            idempotency_key="baseline-quarantined-auxiliary",
+            asset_store=_asset_store(tmp_path, baseline_fixture),
+        )
+
+        assert result.validation.valid is True
+        assert auxiliary_asset.integrity_state is AssetIntegrityState.QUARANTINED
+    assert auxiliary_asset.id not in result.validation.asset_ids
+
+
+def test_publish_baseline_rejects_quarantined_source_pdf(
+    tmp_path: Path,
+    baseline_fixture: dict[str, object],
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        admin, candidate = _import_candidate(session, tmp_path, baseline_fixture)
+        article_pdf = session.scalar(
+            select(Asset).where(Asset.category == AssetCategory.ARTICLE_PDF)
+        )
+        assert article_pdf is not None
+        article_pdf.integrity_state = AssetIntegrityState.QUARANTINED
+        article_pdf.access_level = AssetAccessLevel.ADMIN
+        article_pdf.verified_at = None
+        _approve(session, admin, candidate)
+
+        with pytest.raises(BaselineValidationError, match="verified state"):
+            publish_approved_baseline(
+                session,
+                candidate_id=candidate.id,
+                actor_id=admin.id,
+                idempotency_key="baseline-quarantined-source-pdf",
+                asset_store=_asset_store(tmp_path, baseline_fixture),
+            )
+
+
+def test_publish_baseline_rejects_pdf_disguised_as_a_source_table(
+    tmp_path: Path,
+    baseline_fixture: dict[str, object],
+    auth_session_factory,
+) -> None:
+    workspace = baseline_fixture["workspace"]
+    assert isinstance(workspace, Path)
+    disguised_path = workspace / "source_pdfs" / "disguised.csv"
+    disguised_path.write_bytes(b"%PDF-1.4\ndisguised source\n%%EOF\n")
+    relative_path = disguised_path.relative_to(workspace).as_posix()
+    content = disguised_path.read_bytes()
+
+    with auth_session_factory.begin() as session:
+        admin, candidate = _import_candidate(session, tmp_path, baseline_fixture)
+        batch = session.get(ImportBatch, candidate.import_batch_id)
+        assert batch is not None
+        disguised_asset = Asset(
+            storage_key=_asset_store(tmp_path, baseline_fixture).source_storage_key(
+                "baseline", relative_path
+            ),
+            original_filename=disguised_path.name,
+            sha256=hashlib.sha256(content).hexdigest(),
+            byte_size=len(content),
+            mime_type="application/pdf",
+            category=AssetCategory.SI_TABLE,
+            access_level=AssetAccessLevel.ADMIN,
+            integrity_state=AssetIntegrityState.QUARANTINED,
+            import_batch_id=batch.id,
+            derivation_metadata={},
+            source_metadata={"manifest_path": relative_path},
+        )
+        session.add(disguised_asset)
+        session.flush()
+        session.add(
+            ImportAssetLink(
+                import_batch_id=batch.id,
+                record_type="structure",
+                original_id="structure-disguised-pdf",
+                asset_id=disguised_asset.id,
+                link_role="structure_source",
+                source_reference=relative_path,
+            )
+        )
+        session.flush()
+        _approve(session, admin, candidate)
+
+        with pytest.raises(BaselineValidationError, match="integrity verification"):
+            publish_approved_baseline(
+                session,
+                candidate_id=candidate.id,
+                actor_id=admin.id,
+                idempotency_key="baseline-disguised-source-pdf",
+                asset_store=_asset_store(tmp_path, baseline_fixture),
+            )
+
+
+def test_publish_baseline_rejects_quarantined_release_asset(
+    tmp_path: Path,
+    baseline_fixture: dict[str, object],
+    auth_session_factory,
+) -> None:
+    with auth_session_factory.begin() as session:
+        admin, candidate = _import_candidate(session, tmp_path, baseline_fixture)
+        crop = baseline_fixture["crop"]
+        assert isinstance(crop, Path)
+        crop_asset = session.scalar(
+            select(Asset).where(Asset.original_filename == crop.name)
+        )
+        assert crop_asset is not None
+        visual_object = session.scalar(select(VisualObject))
+        assert visual_object is not None
+        session.add(
+            VisualObjectAssetBinding(
+                visual_object_id=visual_object.id,
+                asset_id=crop_asset.id,
+                changeset_id=None,
+                operation="add",
+                logical_key=f"{visual_object.id}:{crop_asset.id}:image",
+                role="image",
+                is_primary=True,
+            )
+        )
+        crop_asset.integrity_state = AssetIntegrityState.QUARANTINED
+        crop_asset.access_level = AssetAccessLevel.ADMIN
+        crop_asset.verified_at = None
+        _approve(session, admin, candidate)
+
+        with pytest.raises(BaselineValidationError, match="verified state"):
+            publish_approved_baseline(
+                session,
+                candidate_id=candidate.id,
+                actor_id=admin.id,
+                idempotency_key="baseline-quarantined-release-asset",
                 asset_store=_asset_store(tmp_path, baseline_fixture),
             )
 

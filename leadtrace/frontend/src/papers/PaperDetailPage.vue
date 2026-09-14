@@ -9,6 +9,7 @@ import EvidenceCard from "../evidence/EvidenceCard.vue";
 import { zhCN } from "../i18n/zh-CN";
 import LineageView from "../lineages/LineageView.vue";
 import QualitySummary from "./QualitySummary.vue";
+import ReleaseVerificationBadge from "./ReleaseVerificationBadge.vue";
 
 
 type ViewState = "loading" | "ready" | "not-found" | "empty-release" | "error";
@@ -104,6 +105,7 @@ watch(() => route.params.paperId, load, { immediate: true });
         <aside class="release-card">
           <span>{{ zhCN.published.detail.release }}</span>
           <strong>{{ detail.release.title }}</strong>
+          <ReleaseVerificationBadge :status="detail.release.verification_status" />
           <code>{{ detail.release.key }}</code>
           <small>{{ zhCN.published.detail.publishedAt }} · {{ formatDate(detail.release.published_at) }}</small>
         </aside>
@@ -212,8 +214,8 @@ watch(() => route.params.paperId, load, { immediate: true });
 .hero-tags { display: flex; flex-wrap: wrap; gap: 9px; }
 .hero-tags span { padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-650); background: rgba(255,255,255,.75); font-size: .7rem; }
 .release-card { align-self: start; padding: 20px; border: 1px solid #d8c89f; border-radius: 13px; background: rgba(255,254,249,.9); }
-.release-card span, .release-card strong, .release-card code, .release-card small { display: block; }
-.release-card span { color: var(--gold-700); font-size: .63rem; font-weight: 800; letter-spacing: .09em; }
+.release-card > span:first-child, .release-card strong, .release-card code, .release-card small { display: block; }
+.release-card > span:first-child { color: var(--gold-700); font-size: .63rem; font-weight: 800; letter-spacing: .09em; }
 .release-card strong { margin-top: 9px; color: var(--ink-950); font: 600 1rem/1.4 Georgia, "Noto Serif SC Variable", serif; }
 .release-card code { margin-top: 9px; color: var(--ink-650); font-size: .65rem; }
 .release-card small { margin-top: 14px; color: var(--ink-500); font-size: .65rem; line-height: 1.5; }

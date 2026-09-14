@@ -12,6 +12,7 @@ const release = {
   key: "baseline-2026-09-11",
   title: "LeadTrace verified baseline",
   published_at: "2026-09-11T01:00:00+00:00",
+  verification_status: "unverified",
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -53,6 +54,7 @@ describe("published overview", () => {
     expect(wrapper.text()).toContain("结构质量");
     expect(wrapper.text()).toContain("配对就绪");
     expect(wrapper.text()).toContain("人工核查");
+    expect(wrapper.text()).toContain("未验证");
     expect(wrapper.text()).not.toContain("16-path");
     expect(wrapper.text()).not.toContain("总体完成度");
   });
@@ -124,6 +126,7 @@ describe("published Paper library", () => {
     expect(wrapper.text()).toContain("paper-24");
     expect(wrapper.text()).toContain("10.1000/paper-24");
     expect(wrapper.text()).toContain("Published optimization study 24");
+    expect(wrapper.text()).toContain("未验证");
     expect(wrapper.text()).toContain("第 2 / 2 页");
     expect(requests[0].searchParams.get("page")).toBe("2");
     expect(requests[0].searchParams.get("has_lineage")).toBe("true");
@@ -195,6 +198,7 @@ describe("published Paper detail", () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain("paper-24");
+    expect(wrapper.text()).toContain("未验证");
     expect(wrapper.text()).toContain("10.1000/paper-24");
     expect(wrapper.text()).toContain("LINEAGE-1");
     expect(wrapper.get("[data-edge-status='unresolved']").text()).toContain("关系待解析");

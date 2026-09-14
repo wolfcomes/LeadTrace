@@ -26,6 +26,7 @@ export const releaseSchema = z.object({
   key: z.string(),
   title: z.string(),
   published_at: z.string(),
+  verification_status: z.enum(["unverified", "partially_verified", "human_verified"]),
 });
 
 export const metricSchema = z.object({

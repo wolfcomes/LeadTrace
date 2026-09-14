@@ -25,6 +25,7 @@ def test_visitor_reads_only_the_revision_pinned_by_the_current_release(
     payload = response.json()
     assert payload["request_id"] == "visitor-request-001"
     assert payload["release"]["id"] == str(published_api.release_id)
+    assert payload["release"]["verification_status"] == "unverified"
     assert payload["paper"]["revision_id"] == str(
         published_api.published_revision_id
     )
@@ -93,6 +94,7 @@ def test_paper_list_defaults_to_twenty_items_in_manifest_order(
     first_payload = first.json()
     second_payload = second.json()
     assert first_payload["release"]["id"] == str(published_api.release_id)
+    assert first_payload["release"]["verification_status"] == "unverified"
     assert first_payload["pagination"] == {
         "page": 1,
         "page_size": 20,

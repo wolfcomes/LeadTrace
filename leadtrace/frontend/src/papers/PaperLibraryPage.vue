@@ -6,6 +6,7 @@ import { ApiError } from "../api/client";
 import { fetchPapers, type PaperQuery } from "../api/published";
 import type { PaperListResponse } from "../api/schema";
 import { zhCN } from "../i18n/zh-CN";
+import ReleaseVerificationBadge from "./ReleaseVerificationBadge.vue";
 
 
 type ViewState = "loading" | "ready" | "empty-release" | "error";
@@ -143,6 +144,7 @@ watch(() => route.fullPath, load, { immediate: true });
       </div>
       <div v-if="response" class="release-chip">
         <span>{{ response.release.title }}</span>
+        <ReleaseVerificationBadge :status="response.release.verification_status" />
         <code>{{ response.release.key }}</code>
       </div>
     </header>
@@ -280,8 +282,8 @@ watch(() => route.fullPath, load, { immediate: true });
 .page-heading h1 { margin: 0; color: var(--ink-950); font: 600 clamp(2rem, 3vw, 3rem)/1.15 Georgia, "Noto Serif SC Variable", serif; letter-spacing: -.025em; }
 .page-heading > div > p:last-child { max-width: 710px; margin: 15px 0 0; color: var(--ink-650); font-size: .88rem; line-height: 1.75; }
 .release-chip { max-width: 300px; padding: 13px 15px; border: 1px solid #d8c89f; border-radius: 10px; background: var(--gold-100); }
-.release-chip span, .release-chip code { display: block; }
-.release-chip span { color: var(--ink-800); font-size: .73rem; font-weight: 700; }
+.release-chip > span:first-child, .release-chip code { display: block; }
+.release-chip > span:first-child { color: var(--ink-800); font-size: .73rem; font-weight: 700; }
 .release-chip code { margin-top: 5px; color: var(--ink-500); font-size: .62rem; }
 .filter-panel { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 14px; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-md); background: white; box-shadow: var(--shadow-sm); }
 .filter-field label { display: block; margin-bottom: 7px; color: var(--ink-650); font-size: .68rem; font-weight: 740; }

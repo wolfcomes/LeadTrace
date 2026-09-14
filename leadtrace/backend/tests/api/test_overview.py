@@ -12,6 +12,7 @@ def test_overview_reports_separate_metrics_with_explicit_denominators(
     payload = response.json()
     assert payload["release"]["id"] == str(published_api.release_id)
     assert payload["release"]["key"] == published_api.release_key
+    assert payload["release"]["verification_status"] == "unverified"
     assert payload["metrics"] == {
         "corpus": {"numerator": 672, "denominator": 672, "unit": "papers"},
         "lineage": {"numerator": 138, "denominator": 672, "unit": "papers"},

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from collections.abc import Mapping
+from typing import Literal
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, or_, select, text
@@ -10,7 +11,12 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import APIError
 from app.activities.models import Activity
-from app.assets.models import Asset, AssetIntegrityState
+from app.assets.models import (
+    Asset,
+    AssetAccessLevel,
+    AssetCategory,
+    AssetIntegrityState,
+)
 from app.assets.storage import LocalAssetStore
 from app.audit.service import canonical_content_hash, persisted_json_value
 from app.compounds.models import Compound
@@ -29,6 +35,7 @@ from app.releases.aggregate import (
     recompute_release_aggregate,
 )
 from app.releases.manifest import (
+    build_artifact_snapshot_for_content,
     build_release_artifact_snapshot,
     canonical_hash,
     capture_release_artifact_manifest,
@@ -51,6 +58,17 @@ from app.users.models import User, UserRole
 from app.visual_objects.models import VisualObject, VisualRegion
 
 
+_QUARANTINED_SOURCE_TRACE_MIME_TYPES = frozenset(
+    {
+        "application/octet-stream",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/zip",
+        "text/csv",
+    }
+)
+
+
 @dataclass(frozen=True, slots=True)
 class PublishedRelease:
     id: UUID
@@ -58,6 +76,11 @@ class PublishedRelease:
     title: str
     published_at: datetime
     metrics: dict[str, object]
+    verification_status: Literal[
+        "unverified",
+        "partially_verified",
+        "human_verified",
+    ]
 
     @classmethod
     def from_model(cls, release: Release) -> "PublishedRelease":
@@ -67,7 +90,33 @@ class PublishedRelease:
             title=release.title,
             published_at=release.published_at,
             metrics=release.metrics,
+            verification_status=release_verification_status(release),
         )
+
+
+def release_verification_status(
+    release: Release,
+) -> Literal["unverified", "partially_verified", "human_verified"]:
+    metric = release.metrics.get("human_review")
+    if not isinstance(metric, Mapping):
+        return "unverified"
+    numerator = metric.get("numerator")
+    denominator = metric.get("denominator")
+    if (
+        isinstance(numerator, bool)
+        or not isinstance(numerator, int)
+        or isinstance(denominator, bool)
+        or not isinstance(denominator, int)
+        or numerator < 0
+        or denominator <= 0
+        or numerator > denominator
+    ):
+        return "unverified"
+    if numerator == denominator:
+        return "human_verified"
+    if numerator > 0:
+        return "partially_verified"
+    return "unverified"
 
 
 def get_current_release(session: Session) -> Release:
@@ -294,15 +343,19 @@ def _validate_baseline_assets(
     session: Session,
     *,
     batch_id: UUID,
+    publication_asset_ids: set[UUID],
     asset_store: LocalAssetStore | None,
 ) -> list[Asset]:
-    asset_ids = set(
+    asset_links = list(
         session.scalars(
-            select(ImportAssetLink.asset_id).where(
-                ImportAssetLink.import_batch_id == batch_id
-            )
+            select(ImportAssetLink).where(ImportAssetLink.import_batch_id == batch_id)
         )
     )
+    asset_ids = {link.asset_id for link in asset_links}
+    source_trace_asset_ids = set(asset_ids)
+    for link in asset_links:
+        if link.record_type != "structure" or link.link_role != "structure_source":
+            source_trace_asset_ids.discard(link.asset_id)
     assets = list(
         session.scalars(
             select(Asset).where(Asset.id.in_(asset_ids)).order_by(Asset.id)
@@ -311,14 +364,32 @@ def _validate_baseline_assets(
     if len(assets) != len(asset_ids):
         raise BaselineValidationError("Imported baseline asset record is missing")
     for asset in assets:
-        if asset.integrity_state is not AssetIntegrityState.VERIFIED:
+        quarantined_auxiliary = (
+            asset.integrity_state is AssetIntegrityState.QUARANTINED
+            and asset.id not in publication_asset_ids
+            and asset.access_level is AssetAccessLevel.ADMIN
+            and asset.category is AssetCategory.SI_TABLE
+            and asset.id in source_trace_asset_ids
+        )
+        if (
+            asset.integrity_state is not AssetIntegrityState.VERIFIED
+            and not quarantined_auxiliary
+        ):
             raise BaselineValidationError(
                 "Imported baseline asset is not in the verified state"
             )
         if asset_store is None:
+            if quarantined_auxiliary:
+                raise BaselineValidationError(
+                    "Quarantined baseline asset bytes require integrity verification"
+                )
             continue
         try:
-            inspected = asset_store.inspect(asset.storage_key)
+            inspected = asset_store.inspect(
+                asset.storage_key,
+                validate_extension=not quarantined_auxiliary,
+                validate_content=not quarantined_auxiliary,
+            )
         except (OSError, ValueError) as error:
             raise BaselineValidationError(
                 "Imported baseline asset bytes are unavailable or invalid"
@@ -327,11 +398,38 @@ def _validate_baseline_assets(
             inspected.sha256 != asset.sha256
             or inspected.byte_size != asset.byte_size
             or inspected.mime_type != asset.mime_type
+            or (
+                quarantined_auxiliary
+                and inspected.mime_type
+                not in _QUARANTINED_SOURCE_TRACE_MIME_TYPES
+            )
         ):
             raise BaselineValidationError(
                 "Imported baseline asset bytes failed integrity verification"
             )
     return assets
+
+
+def _baseline_publication_asset_ids(
+    session: Session,
+    release_items: list[tuple[UUID, UUID, UUID, ObjectKind, int]],
+) -> set[UUID]:
+    content: list[tuple[UUID, str, ObjectRevision]] = []
+    for object_id, revision_id, _, kind, _ in release_items:
+        revision = session.get(ObjectRevision, revision_id)
+        if revision is None:
+            raise BaselineValidationError("Imported baseline revision disappeared")
+        content.append((object_id, kind.value, revision))
+    snapshot = build_artifact_snapshot_for_content(session, content)
+    asset_ids = snapshot.get("asset_ids")
+    if not isinstance(asset_ids, list):
+        raise BaselineValidationError("Imported baseline asset manifest is invalid")
+    try:
+        return {UUID(str(asset_id)) for asset_id in asset_ids}
+    except (TypeError, ValueError, AttributeError) as error:
+        raise BaselineValidationError(
+            "Imported baseline asset manifest is invalid"
+        ) from error
 
 
 def _approved_baseline_context(
@@ -571,9 +669,11 @@ def publish_approved_baseline(
         session,
         expected_revision_count=revision_count,
     )
+    publication_asset_ids = _baseline_publication_asset_ids(session, release_items)
     linked_assets = _validate_baseline_assets(
         session,
         batch_id=batch.id,
+        publication_asset_ids=publication_asset_ids,
         asset_store=asset_store,
     )
     if fail_stage == "final_transaction":

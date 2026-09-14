@@ -6,6 +6,7 @@ const release = {
   key: "baseline-2026-09-11",
   title: "LeadTrace verified baseline",
   published_at: "2026-09-11T01:00:00+00:00",
+  verification_status: "unverified",
 };
 const paperId = "20000000-0000-4000-8000-000000000001";
 
