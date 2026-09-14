@@ -1,4 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
+
+import { expectNoHorizontalPageOverflow } from "./support/layout";
 
 
 function contrastRatio(foreground: string, background: string): number {
@@ -32,6 +34,16 @@ async function mockAnonymousSession(page: import("@playwright/test").Page): Prom
       }),
     });
   });
+}
+
+async function expectVisibleFocus(locator: Locator): Promise<void> {
+  await locator.focus();
+  const indicator = await locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+  });
+  expect(indicator.outlineStyle).not.toBe("none");
+  expect(indicator.outlineWidth).not.toBe("0px");
 }
 
 test("login is keyboard operable, labelled, zoom-safe, and exposes errors", async ({ page }) => {
@@ -70,6 +82,7 @@ test("login is keyboard operable, labelled, zoom-safe, and exposes errors", asyn
   await expect(page).toHaveURL(/\/login$/);
   await expect(password).toHaveValue("space remains inside input ");
   await username.fill("unknown.user");
+  await expectVisibleFocus(submit);
   await submit.click();
   const alert = page.getByRole("alert");
   await expect(alert).toBeVisible();
@@ -141,6 +154,18 @@ test("application shell provides landmarks, skip navigation, and visible focus",
   await expect(page.locator("#main-content")).toBeFocused();
   await expect(page.getByText('<img src=x onerror="window.__leadtraceXss=1">')).toBeVisible();
   expect(await page.evaluate(() => (window as typeof window & { __leadtraceXss?: number }).__leadtraceXss)).toBeUndefined();
+
+  await expect(page.getByRole("heading", { name: "发布数据概览", level: 1 })).toBeVisible();
+  await expectVisibleFocus(page.getByRole("link", { name: "文献库" }));
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const reducedMotion = await page.getByRole("link", { name: "文献库" }).evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { transitionDuration: style.transitionDuration, animationDuration: style.animationDuration };
+  });
+  expect(parseFloat(reducedMotion.transitionDuration)).toBeLessThanOrEqual(0.01);
+  expect(parseFloat(reducedMotion.animationDuration)).toBeLessThanOrEqual(0.01);
+
+  await expectNoHorizontalPageOverflow(page);
 });
 
 
@@ -185,4 +210,63 @@ test("review status uses readable text in addition to color", async ({ page }) =
   await expect(status).toHaveAttribute("data-status", "changes_requested");
   await expect(status).toContainText("需修改");
   await expect(status.locator(".status-dot")).toHaveAttribute("aria-hidden", "true");
+  await expect(page.getByRole("heading", { name: "核查任务", level: 1 })).toBeVisible();
+  await expectVisibleFocus(page.getByRole("link", { name: "开始核查" }));
+  await expectNoHorizontalPageOverflow(page);
+});
+
+
+test("admin import decisions keep form, primary, and danger actions keyboard-visible", async ({ page }) => {
+  await page.route("**/api/v1/auth/session", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        user: {
+          username: "admin.accessibility",
+          display_name: "可访问性管理员",
+          role: "admin",
+          must_change_password: false,
+        },
+        csrf_token: "accessibility-csrf",
+      }),
+    });
+  });
+  await page.route("**/api/v1/admin/imports", async (route) => {
+    await route.fulfill({ contentType: "application/json", body: "[]" });
+  });
+  await page.route("**/api/v1/admin/import-candidates", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: "90000000-0000-4000-8000-000000000001",
+        import_batch_id: "90000000-0000-4000-8000-000000000002",
+        status: "imported_baseline",
+        is_current: true,
+        manifest: {
+          source_fingerprint: "sha256:accessibility",
+          counts: { corpus_papers: 1 },
+          revision_count: 1,
+          integrity: { dangling_entity_references: 0 },
+          asset_linkage: {
+            resolved_references: 1,
+            unique_resolved_assets: 1,
+            missing_references: 0,
+            ambiguous_references: 0,
+            corrupt_references: 0,
+          },
+        },
+        decision: null,
+        created_at: "2026-09-12T00:00:00Z",
+      }]),
+    });
+  });
+
+  await page.goto("/admin/imports");
+  await expect(page.getByRole("heading", { name: "导入管理", level: 1 })).toBeVisible();
+  const reason = page.getByLabel("审批原因");
+  await reason.fill("键盘可访问性检查");
+  await expectVisibleFocus(reason);
+  await expectVisibleFocus(page.getByRole("button", { name: "批准" }));
+  await expectVisibleFocus(page.getByRole("button", { name: "拒绝" }));
+  await expectNoHorizontalPageOverflow(page);
 });

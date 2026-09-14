@@ -219,7 +219,7 @@
   .account-action,
   .sign-out { margin-left: 0; }
   .page-shell, .published-page, .review-page, .admin-page { padding: 26px 18px; }
-  .page-heading, .review-heading { flex-direction: column; gap: 20px; }
+  .page-heading, .review-heading { align-items: stretch; flex-direction: column; gap: 20px; }
   .metric-grid { grid-template-columns: 1fr; }
   .filter-panel { grid-template-columns: 1fr; }
   .filter-panel .search-field { grid-column: auto; }
