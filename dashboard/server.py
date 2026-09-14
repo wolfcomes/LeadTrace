@@ -143,7 +143,12 @@ def build_split_source_location_index(
 ) -> dict[str, dict[str, str]]:
     """Index uniquely named PDFs in direct volume/issue corpus directories."""
     candidates: dict[str, list[Path]] = defaultdict(list)
-    if not source_pdfs_root.is_dir():
+    try:
+        source_root_is_dir = source_pdfs_root.is_dir()
+    except OSError as exc:
+        LOGGER.warning("Cannot inspect source PDF root %s: %s", source_pdfs_root, exc)
+        return {}
+    if not source_root_is_dir:
         return {}
     try:
         issue_roots = list(source_pdfs_root.iterdir())
@@ -151,11 +156,16 @@ def build_split_source_location_index(
         LOGGER.warning("Cannot scan source PDF root %s: %s", source_pdfs_root, exc)
         return {}
     for issue_root in issue_roots:
-        if (
-            issue_root.is_symlink()
-            or not issue_root.is_dir()
-            or not SOURCE_ISSUE_DIRECTORY_PATTERN.fullmatch(issue_root.name)
-        ):
+        try:
+            eligible_issue_root = (
+                not issue_root.is_symlink()
+                and issue_root.is_dir()
+                and SOURCE_ISSUE_DIRECTORY_PATTERN.fullmatch(issue_root.name) is not None
+            )
+        except OSError as exc:
+            LOGGER.warning("Cannot inspect source PDF issue entry %s: %s", issue_root, exc)
+            continue
+        if not eligible_issue_root:
             continue
         try:
             issue_candidates = list(issue_root.iterdir())
@@ -163,11 +173,16 @@ def build_split_source_location_index(
             LOGGER.warning("Cannot scan source PDF issue directory %s: %s", issue_root, exc)
             continue
         for candidate in issue_candidates:
-            if (
-                not candidate.is_symlink()
-                and candidate.is_file()
-                and candidate.suffix.casefold() == ".pdf"
-            ):
+            try:
+                eligible_candidate = (
+                    not candidate.is_symlink()
+                    and candidate.is_file()
+                    and candidate.suffix.casefold() == ".pdf"
+                )
+            except OSError as exc:
+                LOGGER.warning("Cannot inspect source PDF entry %s: %s", candidate, exc)
+                continue
+            if eligible_candidate:
                 candidates[candidate.name].append(candidate)
     return {
         filename: {
