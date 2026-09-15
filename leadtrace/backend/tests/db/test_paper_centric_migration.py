@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from alembic import command
 from alembic.config import Config
@@ -10,7 +10,7 @@ from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 import pytest
 from sqlalchemy import inspect, text
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.exc import DBAPIError
 
 from app.auth.service import AuthService
@@ -386,6 +386,13 @@ def test_paper_centric_schema_enforces_the_fixed_workflow_contract(
             (tuple(item["constrained_columns"]), item["referred_table"])
             for item in schema.get_foreign_keys("papers")
         } == {(('source_id',), 'paper_sources')}
+        paper_source_checks = {
+            item["name"] for item in schema.get_check_constraints("paper_sources")
+        }
+        assert {
+            "ck_paper_sources_root_key_logical",
+            "ck_paper_sources_source_key_relative_posix",
+        } <= paper_source_checks
 
         expected_check_values = {
             "review_tasks": {
@@ -429,6 +436,154 @@ def test_paper_centric_schema_enforces_the_fixed_workflow_contract(
             columns not in {("changeset_id",), ("release_id",)}
             for columns, _ in audit_foreign_keys
         )
+    finally:
+        engine.dispose()
+
+
+def _insert_paper_source(
+    connection: Connection,
+    *,
+    source_root_key: str,
+    source_key: str,
+) -> UUID:
+    now = datetime.now(UTC).replace(microsecond=0)
+    asset_id = uuid4()
+    source_id = uuid4()
+    sha256 = uuid4().hex + uuid4().hex
+    connection.execute(
+        text(
+            """
+            INSERT INTO assets (
+                id, storage_key, original_filename, sha256, byte_size,
+                mime_type, category, access_level, integrity_state,
+                derivation_metadata, source_metadata, created_at, updated_at
+            ) VALUES (
+                :id, :storage_key, 'article.pdf', :sha256, 100,
+                'application/pdf', 'article_pdf', 'reviewer', 'verified',
+                '{}'::jsonb, '{}'::jsonb, :now, :now
+            )
+            """
+        ),
+        {
+            "id": asset_id,
+            "storage_key": f"source/source_pdfs/{asset_id}.pdf",
+            "sha256": sha256,
+            "now": now,
+        },
+    )
+    connection.execute(
+        text(
+            """
+            INSERT INTO paper_sources (
+                id, asset_id, source_root_key, source_key, sha256,
+                byte_size, page_count, integrity_state, created_at, updated_at
+            ) VALUES (
+                :id, :asset_id, :source_root_key, :source_key, :sha256,
+                100, 1, 'verified', :now, :now
+            )
+            """
+        ),
+        {
+            "id": source_id,
+            "asset_id": asset_id,
+            "source_root_key": source_root_key,
+            "source_key": source_key,
+            "sha256": sha256,
+            "now": now,
+        },
+    )
+    return source_id
+
+
+@pytest.mark.parametrize(
+    "source_root_key",
+    [
+        "/data/source_pdfs",
+        "../source_pdfs",
+        "source/roots",
+        "source\\roots",
+        ".",
+        "..",
+        "C:\\source_pdfs",
+    ],
+)
+def test_paper_sources_reject_physical_or_unsafe_root_keys(
+    empty_postgresql_database_url: str,
+    source_root_key: str,
+) -> None:
+    command.upgrade(_alembic_config(empty_postgresql_database_url), "head")
+    engine = create_database_engine(empty_postgresql_database_url)
+    try:
+        with pytest.raises(DBAPIError) as error:
+            with engine.begin() as connection:
+                _insert_paper_source(
+                    connection,
+                    source_root_key=source_root_key,
+                    source_key="volume67 issue5/article.pdf",
+                )
+        assert error.value.orig.sqlstate == "23514"
+        assert error.value.orig.diag.constraint_name == (
+            "ck_paper_sources_root_key_logical"
+        )
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "source_key",
+    [
+        "/data/source.pdf",
+        "../source.pdf",
+        "volume/../../source.pdf",
+        "volume\\source.pdf",
+        "volume/./source.pdf",
+        "volume//source.pdf",
+    ],
+)
+def test_paper_sources_reject_non_relative_or_non_posix_source_keys(
+    empty_postgresql_database_url: str,
+    source_key: str,
+) -> None:
+    command.upgrade(_alembic_config(empty_postgresql_database_url), "head")
+    engine = create_database_engine(empty_postgresql_database_url)
+    try:
+        with pytest.raises(DBAPIError) as error:
+            with engine.begin() as connection:
+                _insert_paper_source(
+                    connection,
+                    source_root_key="source_pdfs",
+                    source_key=source_key,
+                )
+        assert error.value.orig.sqlstate == "23514"
+        assert error.value.orig.diag.constraint_name == (
+            "ck_paper_sources_source_key_relative_posix"
+        )
+    finally:
+        engine.dispose()
+
+
+def test_paper_sources_accept_logical_root_and_relative_posix_source_key(
+    empty_postgresql_database_url: str,
+) -> None:
+    command.upgrade(_alembic_config(empty_postgresql_database_url), "head")
+    engine = create_database_engine(empty_postgresql_database_url)
+    try:
+        with engine.begin() as connection:
+            source_id = _insert_paper_source(
+                connection,
+                source_root_key="source_pdfs",
+                source_key="volume67 issue5/article.pdf",
+            )
+            assert connection.execute(
+                text(
+                    "SELECT source_root_key, source_key FROM paper_sources "
+                    "WHERE id = :id"
+                ),
+                {"id": source_id},
+            ).one() == (
+                "source_pdfs",
+                "volume67 issue5/article.pdf",
+            )
     finally:
         engine.dispose()
 

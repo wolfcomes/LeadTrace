@@ -220,8 +220,21 @@ def _create_catalog_tables() -> None:
             name="ck_paper_sources_root_key_required",
         ),
         sa.CheckConstraint(
+            "source_root_key ~ '^[A-Za-z0-9][A-Za-z0-9._-]*$' "
+            "AND source_root_key NOT IN ('.', '..')",
+            name="ck_paper_sources_root_key_logical",
+        ),
+        sa.CheckConstraint(
             "btrim(source_key) <> ''",
             name="ck_paper_sources_source_key_required",
+        ),
+        sa.CheckConstraint(
+            r"source_key !~ '^/' "
+            r"AND source_key !~ '/$' "
+            r"AND source_key !~ '(^|/)\.\.?(/|$)' "
+            r"AND source_key NOT LIKE '%//%' "
+            r"AND strpos(source_key, chr(92)) = 0",
+            name="ck_paper_sources_source_key_relative_posix",
         ),
         sa.CheckConstraint(
             "sha256 ~ '^[0-9a-f]{64}$'",
