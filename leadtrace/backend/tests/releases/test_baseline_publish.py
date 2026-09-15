@@ -207,8 +207,8 @@ def test_publish_approved_baseline_creates_complete_valid_current_release(
                 .order_by(ReleaseItem.manifest_order)
             )
         )
-        assert len(items) == candidate.manifest["revision_count"] == 11
-        assert [item.manifest_order for item in items] == list(range(1, 12))
+        assert len(items) == candidate.manifest["revision_count"] == 12
+        assert [item.manifest_order for item in items] == list(range(1, 13))
         expected_kind_order = {
             kind: index for index, kind in enumerate(ObjectKind)
         }
@@ -235,7 +235,7 @@ def test_publish_approved_baseline_creates_complete_valid_current_release(
                 select(ObjectRevision).order_by(ObjectRevision.object_id)
             )
         )
-        assert len(revisions) == 11
+        assert len(revisions) == 12
         assert all(
             revision.workflow_state is WorkflowState.PUBLISHED
             and revision.is_current_published
@@ -255,7 +255,7 @@ def test_publish_approved_baseline_creates_complete_valid_current_release(
             "counts": batch.counts,
             "integrity": batch.integrity,
             "asset_linkage": batch.asset_linkage,
-            "item_count": 11,
+            "item_count": 12,
         }
 
         artifact = get_release_artifact_manifest(session, result.release.id)
@@ -266,6 +266,8 @@ def test_publish_approved_baseline_creates_complete_valid_current_release(
         assert set(artifact.snapshot["baseline_import"]["asset_ids"]) == {
             str(value) for value in session.scalars(select(Asset.id))
         }
+        assert len(artifact.snapshot["bindings"]["visual_object_regions"]) == 1
+        assert len(artifact.snapshot["bindings"]["visual_object_assets"]) == 1
 
         operation = session.scalar(select(ReleaseOperation))
         assert operation is not None
@@ -375,7 +377,7 @@ def test_publish_baseline_rechecks_imported_candidate_invariants(
         if mutation == "incomplete_batch":
             batch.status = "staging"
         elif mutation == "changed_manifest":
-            candidate.manifest = {**candidate.manifest, "revision_count": 12}
+            candidate.manifest = {**candidate.manifest, "revision_count": 13}
         elif mutation == "wrong_counts":
             batch.counts = {**batch.counts, "corpus_papers": 2}
         else:

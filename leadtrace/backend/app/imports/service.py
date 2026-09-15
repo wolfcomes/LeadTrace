@@ -4,10 +4,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 import json
+import math
 from pathlib import Path, PurePosixPath
 import secrets
 from uuid import UUID, uuid4
 
+import pymupdf
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -56,7 +58,19 @@ from app.security.passwords import hash_password
 from app.security.policies import WorkflowState
 from app.structures.models import Structure
 from app.users.models import User, UserRole
-from app.visual_objects.models import VisualObject
+from app.visual_objects.models import (
+    MoleculeObjectType,
+    VisualObject,
+    VisualObjectAssetBinding,
+    VisualObjectRegionBinding,
+    VisualRegion,
+)
+from app.visual_objects.regions import (
+    RegionBounds,
+    RegionValidationError,
+    build_region_snapshot,
+    normalize_bounds,
+)
 
 
 SYSTEM_IMPORT_USERNAME = "system.baseline-import"
@@ -71,6 +85,16 @@ class ImportApplyResult:
     batch_id: UUID
     release_candidate_id: UUID
     created: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _RegionMaterialization:
+    region: VisualRegion
+    visual_object: VisualObject
+    source_record: StagedSourceRecord
+    bounds: RegionBounds
+    source_asset_id: UUID
+    crop_asset_id: UUID | None
 
 
 def _required(record: StagedSourceRecord, field_name: str) -> str:
@@ -99,6 +123,11 @@ def _safe_snapshot(
         normalized_values["crop_asset_id"] = (
             str(domain_object.crop_asset_id)
             if domain_object.crop_asset_id is not None
+            else None
+        )
+        normalized_values["source_region_id"] = (
+            str(domain_object.source_region_id)
+            if domain_object.source_region_id is not None
             else None
         )
     return {
@@ -217,8 +246,16 @@ class BaselineImporter:
         actor = self._system_actor(session)
         assets = self._register_assets(session, batch.id, report)
         self._link_assets(session, batch.id, report, assets)
-        objects = self._create_domain_objects(session, batch.id, data)
-        revisions = self._create_revisions(data, objects, actor.id)
+        objects, regions, localization_blockers = self._create_domain_objects(
+            session, batch.id, data
+        )
+        revisions = self._create_revisions(
+            data,
+            objects,
+            actor.id,
+            regions=regions,
+            localization_blockers=localization_blockers,
+        )
         session.add_all(revisions)
         candidate = ImportReleaseCandidate(
             id=uuid4(),
@@ -305,12 +342,16 @@ class BaselineImporter:
         session.flush()
         return actor
 
-    @staticmethod
     def _create_domain_objects(
+        self,
         session: Session,
         batch_id: UUID,
         data: BaselineSourceData,
-    ) -> dict[tuple[str, str], RevisionedObject]:
+    ) -> tuple[
+        dict[tuple[str, str], RevisionedObject],
+        dict[str, _RegionMaterialization],
+        dict[str, list[str]],
+    ]:
         doi_by_paper: dict[str, str] = {}
         for compound_record in data.compounds:
             paper_key = _required(compound_record, "paper_id")
@@ -465,18 +506,69 @@ class BaselineImporter:
                 id=uuid4(),
                 paper_id=paper.id,
                 object_key=record.original_id,
+                object_type=self._molecule_object_type(record),
             )
 
-        proposal_crop_assets = {
-            original_id: asset_id
-            for original_id, asset_id in session.execute(
-                select(ImportAssetLink.original_id, ImportAssetLink.asset_id).where(
-                    ImportAssetLink.import_batch_id == batch_id,
-                    ImportAssetLink.record_type == "molecule_proposal",
-                    ImportAssetLink.link_role == "proposal_crop",
-                )
+        asset_links = {
+            (record_type, original_id, link_role): asset_id
+            for record_type, original_id, link_role, asset_id in session.execute(
+                select(
+                    ImportAssetLink.record_type,
+                    ImportAssetLink.original_id,
+                    ImportAssetLink.link_role,
+                    ImportAssetLink.asset_id,
+                ).where(ImportAssetLink.import_batch_id == batch_id)
             )
         }
+        workspace_root = self._manifest_workspace_root()
+        source_store = LocalAssetStore(
+            self.managed_asset_root,
+            source_roots={"baseline": workspace_root},
+        )
+        regions: dict[str, _RegionMaterialization] = {}
+        localization_blockers: dict[str, list[str]] = {}
+        page_dimensions: dict[tuple[UUID, int], tuple[float, float]] = {}
+        for record in data.visual_objects:
+            visual = visuals[record.original_id]
+            source_asset_id = asset_links.get(
+                ("visual_object", record.original_id, "visual_source_pdf")
+            )
+            crop_asset_id = asset_links.get(
+                ("visual_object", record.original_id, "visual_crop")
+            )
+            source_asset = (
+                session.get(Asset, source_asset_id)
+                if source_asset_id is not None
+                else None
+            )
+            try:
+                if source_asset is None:
+                    raise RegionValidationError("Source PDF asset is missing")
+                page_number, bounds = self._source_region_bounds(
+                    record,
+                    source_asset=source_asset,
+                    source_store=source_store,
+                    page_dimensions=page_dimensions,
+                )
+            except (OSError, RuntimeError, ValueError, RegionValidationError):
+                localization_blockers[record.original_id] = ["localization"]
+                continue
+            region = VisualRegion(
+                id=uuid4(),
+                paper_id=visual.paper_id,
+                region_key=f"{record.original_id}:source",
+                asset_id=source_asset.id,
+                page_number=page_number,
+            )
+            regions[record.original_id] = _RegionMaterialization(
+                region=region,
+                visual_object=visual,
+                source_record=record,
+                bounds=bounds,
+                source_asset_id=source_asset.id,
+                crop_asset_id=crop_asset_id,
+            )
+
         proposals: dict[str, MoleculeProposal] = {}
         for record in data.molecule_proposals:
             paper = papers.get(_required(record, "paper_id"))
@@ -489,14 +581,21 @@ class BaselineImporter:
                 raise ImportValidationError(
                     f"Molecule proposal {record.original_id!r} crosses Paper boundaries"
                 )
+            materialized_region = regions.get(record.original_id)
             proposals[record.original_id] = MoleculeProposal(
                 id=uuid4(),
                 paper_id=paper.id,
                 visual_object_id=visual.id,
                 proposal_key=_required(record, "proposal_key"),
                 model_run_key=_required(record, "model_run_key"),
-                crop_asset_id=proposal_crop_assets.get(record.original_id),
-                source_region_id=None,
+                crop_asset_id=asset_links.get(
+                    ("molecule_proposal", record.original_id, "proposal_crop")
+                ),
+                source_region_id=(
+                    materialized_region.region.id
+                    if materialized_region is not None
+                    else None
+                ),
             )
 
         session.add_all(
@@ -506,11 +605,47 @@ class BaselineImporter:
                 *activities.values(),
                 *edges.values(),
                 *visuals.values(),
+                *(item.region for item in regions.values()),
                 *proposals.values(),
             ]
         )
         session.flush()
-        return {
+        bindings: list[VisualObjectRegionBinding | VisualObjectAssetBinding] = []
+        for original_id, visual in visuals.items():
+            materialized_region = regions.get(original_id)
+            if materialized_region is not None:
+                region = materialized_region.region
+                bindings.append(
+                    VisualObjectRegionBinding(
+                        id=uuid4(),
+                        visual_object_id=visual.id,
+                        region_id=region.id,
+                        changeset_id=None,
+                        operation="add",
+                        logical_key=f"region:{visual.id}:{region.id}",
+                        role="source",
+                        note="Authoritative baseline import",
+                    )
+                )
+            crop_asset_id = asset_links.get(
+                ("visual_object", original_id, "visual_crop")
+            )
+            if crop_asset_id is not None:
+                bindings.append(
+                    VisualObjectAssetBinding(
+                        id=uuid4(),
+                        visual_object_id=visual.id,
+                        asset_id=crop_asset_id,
+                        changeset_id=None,
+                        operation="add",
+                        logical_key=f"asset:{visual.id}:{crop_asset_id}",
+                        role="crop",
+                        is_primary=True,
+                    )
+                )
+        session.add_all(bindings)
+        session.flush()
+        objects: dict[tuple[str, str], RevisionedObject] = {
             **{("paper", key): value for key, value in papers.items()},
             **{("compound", key): value for key, value in compounds.items()},
             **{("lineage", key): value for key, value in lineages.items()},
@@ -524,12 +659,99 @@ class BaselineImporter:
                 for key, value in proposals.items()
             },
         }
+        objects.update(
+            {
+                ("visual_region", item.region.region_key): item.region
+                for item in regions.values()
+            }
+        )
+        return objects, regions, localization_blockers
+
+    def _manifest_workspace_root(self) -> Path:
+        manifest_payload = json.loads(
+            self.source_manifest_path.read_text(encoding="utf-8")
+        )
+        value = manifest_payload.get("workspace_root")
+        if not isinstance(value, str):
+            raise ImportValidationError("Source manifest workspace_root is invalid")
+        return Path(value).resolve()
+
+    @staticmethod
+    def _molecule_object_type(
+        record: StagedSourceRecord,
+    ) -> MoleculeObjectType:
+        value = record.normalized_values.get("object_type")
+        try:
+            return MoleculeObjectType(str(value))
+        except ValueError:
+            return MoleculeObjectType.UNCERTAIN
+
+    @staticmethod
+    def _source_region_bounds(
+        record: StagedSourceRecord,
+        *,
+        source_asset: Asset,
+        source_store: LocalAssetStore,
+        page_dimensions: dict[tuple[UUID, int], tuple[float, float]],
+    ) -> tuple[int, RegionBounds]:
+        def number(field: str) -> float:
+            value = record.normalized_values.get(field)
+            try:
+                parsed = float(str(value))
+            except (TypeError, ValueError) as error:
+                raise RegionValidationError(
+                    f"Visual object geometry requires {field}"
+                ) from error
+            if not math.isfinite(parsed):
+                raise RegionValidationError("Visual object geometry must be finite")
+            return parsed
+
+        page_value = record.normalized_values.get("page")
+        try:
+            page_number = int(str(page_value))
+        except (TypeError, ValueError) as error:
+            raise RegionValidationError("Visual object page is invalid") from error
+        if page_number < 1:
+            raise RegionValidationError("Visual object page is invalid")
+        x0, y0, x1, y1 = (number(field) for field in ("x0", "y0", "x1", "y1"))
+        local_x0, local_y0, local_x1, local_y1 = (
+            number(field)
+            for field in ("local_x0", "local_y0", "local_x1", "local_y1")
+        )
+        if (
+            x0 >= x1
+            or y0 >= y1
+            or not 0 <= local_x0 < local_x1 <= 1
+            or not 0 <= local_y0 < local_y1 <= 1
+        ):
+            raise RegionValidationError("Visual object geometry is invalid")
+        dimension_key = (source_asset.id, page_number)
+        dimensions = page_dimensions.get(dimension_key)
+        if dimensions is None:
+            with pymupdf.open(source_store.path_for(source_asset.storage_key)) as document:
+                if page_number > document.page_count:
+                    raise RegionValidationError("Visual object page is outside the PDF")
+                page = document[page_number - 1]
+                dimensions = (float(page.rect.width), float(page.rect.height))
+            page_dimensions[dimension_key] = dimensions
+        page_width, page_height = dimensions
+        candidate_width = x1 - x0
+        candidate_height = y1 - y0
+        return page_number, normalize_bounds(
+            (x0 + local_x0 * candidate_width) / page_width,
+            (y0 + local_y0 * candidate_height) / page_height,
+            (x0 + local_x1 * candidate_width) / page_width,
+            (y0 + local_y1 * candidate_height) / page_height,
+        )
 
     @staticmethod
     def _create_revisions(
         data: BaselineSourceData,
         objects: dict[tuple[str, str], RevisionedObject],
         actor_id: UUID,
+        *,
+        regions: dict[str, _RegionMaterialization],
+        localization_blockers: dict[str, list[str]],
     ) -> list[ObjectRevision]:
         revisions: list[ObjectRevision] = []
         for record in data.object_records:
@@ -540,6 +762,34 @@ class BaselineImporter:
                     f"{record.original_id!r}"
                 )
             snapshot = _safe_snapshot(record, domain_object)
+            if record.record_type == "visual_object":
+                raw_values = snapshot["raw_values"]
+                normalized_values = snapshot["normalized_values"]
+                assert isinstance(raw_values, dict)
+                assert isinstance(normalized_values, dict)
+                for field in ("source_pdf", "source_crop_path", "crop_path"):
+                    raw_values.pop(field, None)
+                    normalized_values.pop(field, None)
+                materialized_region = regions.get(record.original_id)
+                normalized_values["source_pdf_asset_id"] = (
+                    str(materialized_region.source_asset_id)
+                    if materialized_region is not None
+                    else None
+                )
+                normalized_values["crop_asset_id"] = (
+                    str(materialized_region.crop_asset_id)
+                    if materialized_region is not None
+                    and materialized_region.crop_asset_id is not None
+                    else None
+                )
+                normalized_values["source_region_id"] = (
+                    str(materialized_region.region.id)
+                    if materialized_region is not None
+                    else None
+                )
+                snapshot["review_blockers"] = localization_blockers.get(
+                    record.original_id, []
+                )
             revision = ObjectRevision(
                 id=uuid4(),
                 object_id=domain_object.id,
@@ -584,6 +834,41 @@ class BaselineImporter:
                     MoleculeProposalDisposition.PENDING.value
                 )
             revisions.append(revision)
+        for materialized in regions.values():
+            record = materialized.source_record
+            snapshot = build_region_snapshot(
+                region_key=materialized.region.region_key,
+                page_number=materialized.region.page_number,
+                bounds=materialized.bounds,
+                rotation=0,
+                region_id=materialized.region.id,
+            )
+            snapshot["provenance"] = {
+                "candidate_id": _optional(record, "candidate_id"),
+                "object_id": record.original_id,
+            }
+            revisions.append(
+                ObjectRevision(
+                    id=uuid4(),
+                    object_id=materialized.region.id,
+                    revision_number=1,
+                    predecessor_id=None,
+                    changeset_id=None,
+                    actor_id=actor_id,
+                    reason="Materialize authoritative source Region",
+                    content_hash=_snapshot_hash(snapshot),
+                    search_text=f"{record.original_id} source region",
+                    snapshot=snapshot,
+                    workflow_state=WorkflowState.APPROVED,
+                    is_current_published=False,
+                    is_tombstone=False,
+                    region_x0=materialized.bounds.x0,
+                    region_y0=materialized.bounds.y0,
+                    region_x1=materialized.bounds.x1,
+                    region_y1=materialized.bounds.y1,
+                    region_rotation=0,
+                )
+            )
         return revisions
 
     def _register_assets(
@@ -592,13 +877,7 @@ class BaselineImporter:
         batch_id: UUID,
         report: ReconciliationReport,
     ) -> dict[str, Asset]:
-        manifest_payload = json.loads(
-            self.source_manifest_path.read_text(encoding="utf-8")
-        )
-        workspace_root_value = manifest_payload.get("workspace_root")
-        if not isinstance(workspace_root_value, str):
-            raise ImportValidationError("Source manifest workspace_root is invalid")
-        workspace_root = Path(workspace_root_value).resolve()
+        workspace_root = self._manifest_workspace_root()
         store = LocalAssetStore(
             self.managed_asset_root,
             source_roots={"baseline": workspace_root},
