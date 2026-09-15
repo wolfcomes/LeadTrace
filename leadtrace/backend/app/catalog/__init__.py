@@ -1,0 +1,1 @@
+"""Source PDF catalog identities."""

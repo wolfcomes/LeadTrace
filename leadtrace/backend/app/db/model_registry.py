@@ -4,25 +4,15 @@ import importlib
 
 
 _MODEL_MODULES = (
-    "app.activities.models",
-    "app.approvals.models",
     "app.assets.models",
     "app.audit.models",
     "app.auth.models",
-    "app.compounds.models",
-    "app.evidence.models",
-    "app.imports.models",
+    "app.catalog.models",
     "app.jobs.models",
-    "app.lineages.models",
     "app.maintenance.models",
     "app.papers.models",
-    "app.releases.models",
-    "app.reviews.comments",
-    "app.reviews.models",
-    "app.revisions.models",
-    "app.structures.models",
     "app.users.models",
-    "app.visual_objects.models",
+    "app.workspaces.models",
 )
 
 

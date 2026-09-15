@@ -47,12 +47,15 @@ The worktree-local `source_pdfs/` contains only tracked legacy Dashboard code, n
 - Create: `leadtrace/backend/app/workspaces/models.py`
 - Modify: `leadtrace/backend/app/assets/models.py`
 - Modify: `leadtrace/backend/app/audit/models.py`
+- Modify: `leadtrace/backend/app/jobs/models.py`
+- Modify: `leadtrace/backend/app/jobs/service.py`
 - Modify: `leadtrace/backend/app/db/model_registry.py`
 - Modify: `leadtrace/backend/app/main.py`
 - Modify: `leadtrace/backend/migrations/env.py`
 - Modify: `leadtrace/backend/tests/db/test_migrations.py`
 - Modify: `leadtrace/backend/tests/security/test_route_permission_matrix.py`
 - Test: `leadtrace/backend/tests/db/test_paper_centric_migration.py`
+- Test: `leadtrace/backend/tests/jobs/test_worker_execution.py`
 
 **Step 1: Write the failing migration inventory test**
 
@@ -115,11 +118,13 @@ The migration must:
 2. Preserve users, sessions, login attempts, assets, audit chain, and maintenance state.
 3. Detach `assets.import_batch_id` from the retired import tables.
 4. Detach obsolete audit foreign keys before retiring legacy Paper/Changeset/Release tables.
-5. Retire the empty legacy scientific/import/review/release tables in dependency order.
+5. Retire the empty legacy scientific/import/review/release tables in dependency order, including `crop_job_subscriptions`, which depends on retired Paper/Visual Region rows.
 6. Create the foundation tables and append-only mutation trigger for `change_events`.
 7. Rebind optional `audit_events.paper_id` to the new `papers` table.
 
 Keep the nullable `audit_events.changeset_id` and `audit_events.release_id` values for chain compatibility, but remove their retired foreign keys. The migration must not rewrite existing Audit Event content or hashes.
+
+`CropJobSubscription` belongs to the retired review/Visual Region workflow. Remove only that model and table after refusing nonempty subscription data; preserve reusable `crop_jobs`, `crop_job_attempts`, and `crop_job_retry_operations` models/tables. Decouple `CropService.enqueue` from subscription creation so the preserved crop worker remains importable and job creation no longer writes the retired table.
 
 The downgrade must explicitly raise an irreversible-migration error and instruct operators to restore the mandatory pre-cutover PostgreSQL backup. Do not pretend to reconstruct retired data.
 
@@ -143,7 +148,9 @@ cd leadtrace/backend
   tests/db/test_paper_centric_migration.py \
   tests/auth \
   tests/assets \
-  tests/security/test_route_permission_matrix.py -v
+  tests/security/test_route_permission_matrix.py \
+  tests/jobs/test_worker_execution.py::test_celery_registers_crop_execution_and_periodic_reconciliation \
+  -v
 ```
 
 Expected: PASS. No test may claim the retired `0018` business schema is still the current head. Any downgrade-through-head assertion must be replaced with the documented restore-only rollback contract.
@@ -151,9 +158,11 @@ Expected: PASS. No test may claim the retired `0018` business schema is still th
 **Step 8: Commit**
 
 ```bash
-git add leadtrace/backend/migrations leadtrace/backend/app/catalog \
+git add docs/plans/2026-09-15-leadtrace-paper-centric-redesign.md \
+  leadtrace/backend/migrations leadtrace/backend/app/catalog \
   leadtrace/backend/app/papers/models.py leadtrace/backend/app/workspaces \
   leadtrace/backend/app/assets/models.py leadtrace/backend/app/audit/models.py \
+  leadtrace/backend/app/jobs/models.py leadtrace/backend/app/jobs/service.py \
   leadtrace/backend/app/db/model_registry.py leadtrace/backend/app/main.py \
   leadtrace/backend/tests/db \
   leadtrace/backend/tests/security/test_route_permission_matrix.py

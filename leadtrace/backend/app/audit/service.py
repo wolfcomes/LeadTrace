@@ -18,7 +18,6 @@ from app.audit.models import (
     AuditEvent,
     AuditImmutableError,
 )
-from app.releases.models import Release
 
 
 GENESIS_HASH = "0" * 64
@@ -185,14 +184,6 @@ class AuditService:
         details: Mapping[str, object] | None = None,
         occurred_at: datetime | None = None,
     ) -> AuditEvent:
-        if release_id is not None:
-            release = session.scalar(
-                select(Release)
-                .where(Release.id == release_id)
-                .with_for_update()
-            )
-            if release is None:
-                raise ValueError("release_id does not identify a Release")
         head = session.scalar(
             select(AuditChainHead)
             .where(AuditChainHead.id == 1)

@@ -82,14 +82,17 @@ def test_empty_postgresql_database_upgrades_to_single_alembic_head(
         engine.dispose()
 
 
-def test_admin_review_workflow_migration_contract(
+def test_legacy_admin_review_workflow_revision_contract(
     empty_postgresql_database_url: str,
 ) -> None:
     config = _alembic_config(empty_postgresql_database_url)
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "0018_reviewer_scientific_workspace"
-    command.upgrade(config, "head")
+    assert script.get_current_head() == "0019_paper_centric_foundation"
+    reviewer_revision = script.get_revision("0018_reviewer_scientific_workspace")
+    assert reviewer_revision is not None
+    assert reviewer_revision.down_revision == "0017_unique_active_review_task"
+    command.upgrade(config, "0018_reviewer_scientific_workspace")
 
     engine = create_database_engine(empty_postgresql_database_url)
     try:
@@ -161,11 +164,11 @@ def test_admin_review_workflow_migration_contract(
         engine.dispose()
 
 
-def test_reviewer_scientific_workspace_migration_contract(
+def test_legacy_reviewer_scientific_workspace_revision_contract(
     empty_postgresql_database_url: str,
 ) -> None:
     config = _alembic_config(empty_postgresql_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0018_reviewer_scientific_workspace")
 
     engine = create_database_engine(empty_postgresql_database_url)
     try:
@@ -261,7 +264,7 @@ def test_reviewer_workspace_downgrade_rejects_machine_evidence_operation(
     empty_postgresql_database_url: str,
 ) -> None:
     config = _alembic_config(empty_postgresql_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0018_reviewer_scientific_workspace")
     engine = create_database_engine(empty_postgresql_database_url)
     actor_id = uuid4()
     release_id = uuid4()
@@ -348,7 +351,7 @@ def test_initial_baseline_release_downgrade_rejects_used_features_before_ddl(
     used_feature: str,
 ) -> None:
     config = _alembic_config(empty_postgresql_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0016_initial_baseline_release")
     engine = create_database_engine(empty_postgresql_database_url)
     actor_id = uuid4()
     created_at = datetime(2026, 9, 13, 8, 0, tzinfo=UTC)
@@ -531,15 +534,18 @@ def test_initial_baseline_release_downgrade_rejects_used_features_before_ddl(
         engine.dispose()
 
 
-def test_foundation_migration_safely_downgrades_to_base(
+def test_paper_centric_foundation_requires_backup_restore_for_rollback(
     empty_postgresql_database_url: str,
 ) -> None:
     config = _alembic_config(empty_postgresql_database_url)
     command.upgrade(config, "head")
 
-    command.downgrade(config, "base")
+    with pytest.raises(RuntimeError, match="restore.*backup"):
+        command.downgrade(config, "0018_reviewer_scientific_workspace")
 
-    assert _database_revision(empty_postgresql_database_url) is None
+    assert _database_revision(empty_postgresql_database_url) == (
+        "0019_paper_centric_foundation"
+    )
 
 
 @pytest.mark.parametrize(

@@ -6,28 +6,17 @@ import os
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.activities import models as activity_models  # noqa: F401
-from app.approvals import models as approval_models  # noqa: F401
 from app.audit import models as audit_models  # noqa: F401
 from app.assets import models as asset_models  # noqa: F401
 from app.auth import models as auth_models  # noqa: F401
-from app.compounds import models as compound_models  # noqa: F401
+from app.catalog import models as catalog_models  # noqa: F401
 from app.database import postgresql_url
 from app.db.base import Base
-from app.evidence import models as evidence_models  # noqa: F401
-from app.imports import models as import_models  # noqa: F401
 from app.jobs import models as job_models  # noqa: F401
-from app.lineages import models as lineage_models  # noqa: F401
 from app.maintenance import models as maintenance_models  # noqa: F401
-from app.molecule_proposals import models as molecule_proposal_models  # noqa: F401
 from app.papers import models as paper_models  # noqa: F401
-from app.revisions import models as revision_models  # noqa: F401
-from app.releases import models as release_models  # noqa: F401
-from app.reviews import models as review_models  # noqa: F401
-from app.reviews import comments as review_comment_models  # noqa: F401
-from app.structures import models as structure_models  # noqa: F401
 from app.users import models as user_models  # noqa: F401
-from app.visual_objects import models as visual_object_models  # noqa: F401
+from app.workspaces import models as workspace_models  # noqa: F401
 
 
 config = context.config

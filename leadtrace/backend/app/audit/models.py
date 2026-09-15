@@ -83,12 +83,10 @@ class AuditEvent(UUIDPrimaryKeyMixin, Base):
     )
     changeset_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
-        ForeignKey("changesets.id", ondelete="RESTRICT"),
         nullable=True,
     )
     release_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
-        ForeignKey("releases.id", ondelete="RESTRICT"),
         nullable=True,
     )
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

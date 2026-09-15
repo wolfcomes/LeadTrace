@@ -142,48 +142,6 @@ class CropJobAttempt(UUIDPrimaryKeyMixin, Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class CropJobSubscription(UUIDPrimaryKeyMixin, Base):
-    __tablename__ = "crop_job_subscriptions"
-    __table_args__ = (
-        UniqueConstraint(
-            "job_id",
-            "paper_id",
-            "region_id",
-            "requested_by_id",
-            name="uq_crop_job_subscriptions_scope",
-        ),
-        Index(
-            "ix_crop_job_subscriptions_requester_job",
-            "requested_by_id",
-            "job_id",
-        ),
-    )
-
-    job_id: Mapped[UUID] = mapped_column(
-        PostgreSQLUUID(as_uuid=True),
-        ForeignKey("crop_jobs.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    paper_id: Mapped[UUID] = mapped_column(
-        PostgreSQLUUID(as_uuid=True),
-        ForeignKey("papers.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
-    region_id: Mapped[UUID] = mapped_column(
-        PostgreSQLUUID(as_uuid=True),
-        ForeignKey("visual_regions.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
-    requested_by_id: Mapped[UUID] = mapped_column(
-        PostgreSQLUUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-
-
 class CropJobRetryOperation(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "crop_job_retry_operations"
     __table_args__ = (

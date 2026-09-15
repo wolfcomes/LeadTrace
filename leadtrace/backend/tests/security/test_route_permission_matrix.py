@@ -170,3 +170,33 @@ def test_every_user_route_enforces_the_role_matrix_over_http(
         assert responses[("GET", "/api/v1/users")] == 200
         assert responses[("POST", "/api/v1/users")] == 201
         assert responses[("POST", "/api/v1/users/{user_id}/sessions/revoke")] == 204
+
+
+def test_retired_scientific_v1_routes_are_not_registered(
+    role_matrix_client: tuple[TestClient, UUID],
+) -> None:
+    client, _ = role_matrix_client
+    paths = {route.path for route in client.app.routes}
+
+    assert {
+        "/health/live",
+        "/health/ready",
+        "/internal/metrics",
+        "/api/v1/auth/login",
+        "/api/v1/users",
+        "/api/v1/assets/{asset_id}",
+        "/api/v1/audit/events",
+    } <= paths
+    assert not any(
+        path.startswith(prefix)
+        for path in paths
+        for prefix in (
+            "/api/v1/admin",
+            "/api/v1/approvals",
+            "/api/v1/crop-jobs",
+            "/api/v1/papers",
+            "/api/v1/published",
+            "/api/v1/releases",
+            "/api/v1/review",
+        )
+    )
