@@ -12,6 +12,19 @@ import {
   type ReviewTask,
 } from "../api/schema";
 import { useAuthStore } from "../auth/store";
+import {
+  moleculeObjectQueueSchema,
+  moleculeProposalSchema,
+  paperAttestationSchema,
+  workspaceSchema,
+  type MoleculeObjectQueue,
+  type MoleculeObjectType,
+  type MoleculeProposal,
+  type MoleculeProposalDisposition,
+  type PaperAttestation,
+  type QueueState,
+  type Workspace,
+} from "./workspace/types";
 
 function csrfToken(): string | null {
   return useAuthStore().csrfToken;
@@ -19,6 +32,91 @@ function csrfToken(): string | null {
 
 export function fetchReviewTasks(): Promise<ReviewTask[]> {
   return apiRequest("/api/v1/review/tasks", reviewTaskSchema.array());
+}
+
+export function fetchWorkspace(changesetId: string): Promise<Workspace> {
+  return apiRequest(
+    `/api/v1/review/changesets/${encodeURIComponent(changesetId)}/workspace`,
+    workspaceSchema,
+  );
+}
+
+export interface MoleculeObjectQueueFilters {
+  status?: QueueState;
+  paper_id?: string;
+  page?: number;
+  object_type?: MoleculeObjectType;
+  has_blocker?: boolean;
+  cursor?: string;
+  limit?: number;
+}
+
+export function fetchMoleculeObjectQueue(
+  filters: MoleculeObjectQueueFilters = {},
+): Promise<MoleculeObjectQueue> {
+  const query = new URLSearchParams();
+  if (filters.status) query.set("status", filters.status);
+  if (filters.paper_id) query.set("paper_id", filters.paper_id);
+  if (filters.page !== undefined) query.set("page", String(filters.page));
+  if (filters.object_type) query.set("object_type", filters.object_type);
+  if (filters.has_blocker !== undefined) {
+    query.set("has_blocker", String(filters.has_blocker));
+  }
+  if (filters.cursor) query.set("cursor", filters.cursor);
+  if (filters.limit !== undefined) query.set("limit", String(filters.limit));
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return apiRequest(
+    `/api/v1/review/tasks/first-page-molecule-objects${suffix}`,
+    moleculeObjectQueueSchema,
+  );
+}
+
+export function fetchMoleculeProposals(paperId: string): Promise<MoleculeProposal[]> {
+  return apiRequest(
+    `/api/v1/papers/${encodeURIComponent(paperId)}/molecule-proposals`,
+    moleculeProposalSchema.array(),
+  );
+}
+
+export interface MoleculeProposalUpdate {
+  changeset_id: string;
+  expected_version: number;
+  disposition: MoleculeProposalDisposition;
+  reviewed_smiles?: string | null;
+  selected_component_smiles?: string | null;
+  compound_id?: string | null;
+  resulting_structure_id?: string | null;
+  rationale?: string | null;
+  source_comparison?: "match" | "mismatch" | "not_compared";
+  source_verified?: boolean;
+}
+
+export function updateMoleculeProposal(
+  paperId: string,
+  proposalId: string,
+  input: MoleculeProposalUpdate,
+): Promise<MoleculeProposal> {
+  return apiRequest(
+    `/api/v1/papers/${encodeURIComponent(paperId)}/molecule-proposals/${encodeURIComponent(proposalId)}`,
+    moleculeProposalSchema,
+    { method: "PATCH", csrfToken: csrfToken(), body: input },
+  );
+}
+
+export function attestPaper(
+  changesetId: string,
+  input: {
+    expected_version: number;
+    scope_hash: string;
+    statement: string;
+    confirmed: true;
+  },
+): Promise<PaperAttestation> {
+  return apiRequest(
+    `/api/v1/review/changesets/${encodeURIComponent(changesetId)}/attestation`,
+    paperAttestationSchema,
+    { method: "POST", csrfToken: csrfToken(), body: input },
+  );
 }
 
 export function createReviewTask(input: {

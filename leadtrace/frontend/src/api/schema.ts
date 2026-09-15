@@ -197,6 +197,7 @@ export const changesetItemSchema = z.object({
     "lineage_edge",
     "visual_region",
     "visual_object",
+    "molecule_proposal",
   ]),
   base_revision_id: z.string().uuid().nullable(),
   proposed_revision_id: z.string().uuid().nullable(),
