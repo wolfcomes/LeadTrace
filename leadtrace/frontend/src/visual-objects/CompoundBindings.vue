@@ -9,9 +9,10 @@ defineProps<{
     note?: string | null;
     operation?: "add" | "update" | "remove";
   }>;
+  editable?: boolean;
 }>();
 
-const emit = defineEmits<{ select: [id: string] }>();
+const emit = defineEmits<{ select: [id: string]; remove: [id: string] }>();
 
 const operationLabels = { add: "新增", update: "修改", remove: "删除" } as const;
 </script>
@@ -28,6 +29,7 @@ const operationLabels = { add: "新增", update: "修改", remove: "删除" } as
         <div class="binding-meta">
           <span v-if="binding.operation" :class="['operation-badge', 'status-chip', `operation-${binding.operation}`]" data-binding-operation>{{ operationLabels[binding.operation] }}</span>
           <small>{{ binding.role ?? "label" }}<template v-if="binding.confidence != null"> · {{ Math.round(binding.confidence * 100) }}%</template></small>
+          <button v-if="editable && binding.operation !== 'remove'" class="button-quiet" type="button" @click="emit('remove', binding.id)">移除</button>
         </div>
       </li>
     </ul>

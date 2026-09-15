@@ -16,6 +16,8 @@ from app.reviews.models import (
     Changeset,
     ChangesetItem,
     ChangesetSubmission,
+    PaperReviewAttestation,
+    PaperReviewScope,
     ReviewTask,
     ReviewTaskStatus,
 )
@@ -135,6 +137,37 @@ def _snapshot_field(snapshot: Mapping[str, object], field: str) -> object:
     return _MISSING
 
 
+def _reject_scoped_paper_status_edit(
+    session: Session,
+    *,
+    changeset: Changeset,
+    object_kind: ObjectKind,
+    proposed_snapshot: Mapping[str, object],
+    base_snapshot: Mapping[str, object] | None,
+) -> None:
+    """Keep Paper review status server-owned once a scope is frozen."""
+
+    if object_kind is not ObjectKind.PAPER:
+        return
+    scoped = session.scalar(
+        select(PaperReviewScope.id).where(
+            PaperReviewScope.changeset_id == changeset.id
+        )
+    )
+    if scoped is None:
+        return
+    candidate = _snapshot_field(proposed_snapshot, "review_status")
+    baseline = (
+        _snapshot_field(base_snapshot, "review_status")
+        if base_snapshot is not None
+        else _MISSING
+    )
+    if candidate is not _MISSING and candidate != baseline:
+        raise InvalidReview(
+            "Paper review_status is controlled by the Paper attestation endpoint"
+        )
+
+
 def _evidence_search_text(
     snapshot: Mapping[str, object],
     evidence_text: object,
@@ -171,6 +204,9 @@ def _revision_column_values(
     values: dict[str, object] = {}
     if predecessor is not None:
         values["search_text"] = predecessor.search_text
+        if object_kind is ObjectKind.MOLECULE_PROPOSAL:
+            values["proposal_disposition"] = predecessor.proposal_disposition
+            values["canonical_smiles"] = predecessor.canonical_smiles
         if object_kind is ObjectKind.STRUCTURE:
             values.update(
                 structure_state=predecessor.structure_state,
@@ -195,6 +231,12 @@ def _revision_column_values(
             )
         elif object_kind is ObjectKind.VISUAL_REGION:
             values["region_rotation"] = predecessor.region_rotation
+
+    # Proposal machine fields are immutable through the generic changeset API.
+    # The typed proposal service has already validated and materialized the
+    # dedicated revision columns, so submission only carries those columns.
+    if object_kind is ObjectKind.MOLECULE_PROPOSAL:
+        return values
 
     for field in _EDITABLE_DEDICATED_FIELDS:
         candidate = _snapshot_field(snapshot, field)
@@ -459,6 +501,10 @@ class ReviewService:
             parsed_kind = ObjectKind(object_kind.strip())
         except ValueError as error:
             raise InvalidReview("object_kind is not supported") from error
+        if parsed_kind is ObjectKind.MOLECULE_PROPOSAL:
+            raise InvalidReview(
+                "Molecule proposals must be edited through the typed proposal endpoint"
+            )
         object_identity = session.get(RevisionedObject, object_id)
         if object_identity is None:
             raise ReviewNotFound("Revisioned object not found")
@@ -481,6 +527,13 @@ class ReviewService:
             session.get(ObjectRevision, base_revision_id)
             if base_revision_id is not None
             else None
+        )
+        _reject_scoped_paper_status_edit(
+            session,
+            changeset=changeset,
+            object_kind=parsed_kind,
+            proposed_snapshot=proposed_snapshot,
+            base_snapshot=base_revision.snapshot if base_revision is not None else None,
         )
         _revision_column_values(
             base_revision,
@@ -565,11 +618,26 @@ class ReviewService:
             or item.base_revision_id is not None
             else None
         )
+        _reject_scoped_paper_status_edit(
+            session,
+            changeset=changeset,
+            object_kind=ObjectKind(item.object_kind),
+            proposed_snapshot=proposed_snapshot,
+            base_snapshot=(
+                validation_predecessor.snapshot
+                if validation_predecessor is not None
+                else None
+            ),
+        )
         _revision_column_values(
             validation_predecessor,
             proposed_snapshot,
             object_kind=ObjectKind(item.object_kind),
         )
+        if ObjectKind(item.object_kind) is ObjectKind.MOLECULE_PROPOSAL:
+            raise InvalidReview(
+                "Molecule proposals must be edited through the typed proposal endpoint"
+            )
         proposed_content_hash = _snapshot_hash(session, proposed_snapshot)
         content_changed = (
             item.proposed_snapshot != proposed_snapshot
@@ -757,6 +825,31 @@ class ReviewService:
             paper_id=changeset.paper_id,
             lock=True,
         )
+        scope = session.scalar(
+            select(PaperReviewScope)
+            .where(PaperReviewScope.changeset_id == changeset.id)
+            .with_for_update()
+        )
+        attestation = None
+        if scope is not None:
+            attestation = session.scalar(
+                select(PaperReviewAttestation)
+                .where(
+                    PaperReviewAttestation.changeset_id == changeset.id,
+                    PaperReviewAttestation.scope_id == scope.id,
+                    PaperReviewAttestation.changeset_version == changeset.version,
+                    PaperReviewAttestation.scope_hash == scope.scope_hash,
+                    PaperReviewAttestation.blocker_count == 0,
+                    PaperReviewAttestation.resolved_count
+                    == PaperReviewAttestation.item_count,
+                )
+                .order_by(PaperReviewAttestation.created_at.desc())
+                .limit(1)
+            )
+            if attestation is None:
+                raise InvalidReview(
+                    "A current Paper review attestation is required before submission"
+                )
         transition_state(changeset.workflow_state, WorkflowState.SUBMITTED)
         items = list(
             session.scalars(
@@ -1047,6 +1140,7 @@ class ReviewService:
         from app.evidence.models import Evidence
         from app.lineages.models import Lineage, LineageEdge
         from app.structures.models import Structure
+        from app.molecule_proposals.models import MoleculeProposal
         from app.visual_objects.models import VisualObject, VisualRegion
 
         model_by_kind = {
@@ -1058,6 +1152,7 @@ class ReviewService:
             ObjectKind.STRUCTURE: Structure,
             ObjectKind.VISUAL_OBJECT: VisualObject,
             ObjectKind.VISUAL_REGION: VisualRegion,
+            ObjectKind.MOLECULE_PROPOSAL: MoleculeProposal,
         }
         model = model_by_kind.get(object_kind)
         record = session.get(model, object_id) if model is not None else None

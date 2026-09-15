@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +36,21 @@ class Settings(BaseSettings):
     trusted_proxy_addresses: list[str] = []
     asset_root: Path = Path("/var/lib/leadtrace/assets")
     source_roots: dict[str, Path] = Field(default_factory=dict)
+    baseline_import_root: Path | None = None
+    baseline_source_manifest: Path | None = None
+    baseline_expected_aggregate: Path | None = None
+
+    @field_validator(
+        "baseline_import_root",
+        "baseline_source_manifest",
+        "baseline_expected_aggregate",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_path(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @model_validator(mode="after")
     def validate_production_safety(self) -> "Settings":
@@ -94,6 +109,16 @@ class Settings(BaseSettings):
             for path in self.source_roots.values()
         ):
             raise ValueError("production source_roots must be dedicated absolute paths")
+        optional_baseline_paths = {
+            "baseline_import_root": self.baseline_import_root,
+            "baseline_source_manifest": self.baseline_source_manifest,
+            "baseline_expected_aggregate": self.baseline_expected_aggregate,
+        }
+        for name, path in optional_baseline_paths.items():
+            if path is not None and (not path.is_absolute() or path == Path("/")):
+                raise ValueError(
+                    f"production {name} must be a dedicated absolute path"
+                )
         return self
 
 

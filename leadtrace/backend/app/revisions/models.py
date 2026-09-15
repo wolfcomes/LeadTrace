@@ -38,6 +38,7 @@ class ObjectKind(StrEnum):
     LINEAGE_EDGE = "lineage_edge"
     VISUAL_REGION = "visual_region"
     VISUAL_OBJECT = "visual_object"
+    MOLECULE_PROPOSAL = "molecule_proposal"
 
 
 class StructureState(StrEnum):
@@ -143,6 +144,12 @@ class ObjectRevision(UUIDPrimaryKeyMixin, Base):
         CheckConstraint(
             "region_rotation IS NULL OR region_rotation IN (0, 90, 180, 270)",
             name="ck_object_revisions_region_rotation",
+        ),
+        CheckConstraint(
+            "proposal_disposition IS NULL OR proposal_disposition IN ("
+            "'pending', 'accepted', 'corrected', 'rejected', 'not_applicable'"
+            ")",
+            name="ck_object_revisions_proposal_disposition",
         ),
         Index("ix_object_revisions_object", "object_id", "revision_number"),
         Index("ix_object_revisions_relation_status", "relation_status"),
@@ -255,6 +262,9 @@ class ObjectRevision(UUIDPrimaryKeyMixin, Base):
     activity_unit: Mapped[str | None] = mapped_column(String(80), nullable=True)
     relation_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     relation_status: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    proposal_disposition: Mapped[str | None] = mapped_column(
+        String(24), nullable=True
+    )
     region_x0: Mapped[float | None] = mapped_column(Float, nullable=True)
     region_y0: Mapped[float | None] = mapped_column(Float, nullable=True)
     region_x1: Mapped[float | None] = mapped_column(Float, nullable=True)

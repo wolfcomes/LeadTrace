@@ -32,6 +32,7 @@ from app.admin.router import create_admin_router
 from app.lineages.router import create_lineages_router
 from app.visual_objects.router import create_visual_regions_router
 from app.visual_objects.objects_router import create_visual_objects_router
+from app.molecule_proposals.router import create_molecule_proposals_router
 
 
 DatabaseBootstrap = Callable[[Settings], DatabaseResources | None]
@@ -103,6 +104,9 @@ def create_app(
     )
     application.include_router(
         create_visual_objects_router(runtime_settings.session_secret.get_secret_value())
+    )
+    application.include_router(
+        create_molecule_proposals_router(runtime_settings.session_secret.get_secret_value())
     )
     application.include_router(
         create_structures_router(

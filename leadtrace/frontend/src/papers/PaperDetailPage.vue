@@ -27,6 +27,10 @@ const compoundLabels = computed(() => new Map(
   detail.value?.compounds.map((compound) => [compound.id, compound.label]) ?? [],
 ));
 
+const publishedRegions = computed(() => detail.value?.regions ?? []);
+const publishedProposals = computed(() => detail.value?.molecule_proposals ?? []);
+const sourceLocators = computed(() => detail.value?.source_locators ?? []);
+
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
@@ -111,6 +115,19 @@ watch(() => route.params.paperId, load, { immediate: true });
         </aside>
       </header>
 
+      <section class="content-section panel verification-section" data-paper-verification aria-label="Paper 发布核验状态">
+        <div class="section-heading">
+          <div><p class="eyebrow">PAPER-LEVEL STATUS</p><h2>Paper 发布状态</h2></div>
+          <ReleaseVerificationBadge :status="detail.release.verification_status" />
+        </div>
+        <div class="verification-grid">
+          <div><span>AI baseline</span><strong>{{ detail.verification?.ai_baseline || "published" }}</strong></div>
+          <div><span>人工核验</span><strong>{{ detail.verification?.human_verified ? "已人工核验" : "尚未人工核验" }}</strong></div>
+          <div><span>发布版本</span><strong>{{ detail.verification?.release_status || detail.release.verification_status }}</strong></div>
+        </div>
+        <a v-if="detail.review_entry" class="button-secondary internal-review-link" :href="detail.review_entry.href">{{ detail.review_entry.label }}</a>
+      </section>
+
       <section class="content-section panel quality-section">
         <div class="section-heading">
           <div>
@@ -155,9 +172,39 @@ watch(() => route.params.paperId, load, { immediate: true });
             </div>
             <small>{{ zhCN.published.structure.smiles }}</small>
             <code>{{ structure.canonical_smiles }}</code>
+            <img v-if="structure.drawing_asset" :src="structure.drawing_asset.url" :alt="`${compoundLabels.get(structure.compound_id) || structure.id} 的 RDKit 结构图`" data-rdkit-drawing>
           </article>
         </div>
         <p v-else class="section-empty">{{ zhCN.published.detail.noStructures }}</p>
+      </section>
+
+      <section v-if="publishedProposals.length || publishedRegions.length" class="content-section panel source-evidence-section" data-source-evidence aria-label="来源图像与 OCSR 证据">
+        <div class="section-heading">
+          <div><p class="eyebrow">VISUAL EVIDENCE</p><h2>来源图像与 OCSR</h2></div>
+          <span>{{ publishedProposals.length }} proposals · {{ publishedRegions.length }} Regions</span>
+        </div>
+        <div class="published-proposal-grid">
+          <article v-for="proposal in publishedProposals" :key="proposal.id" class="published-proposal-card" data-ocsr-proposal>
+            <header><strong>{{ proposal.proposal_key }}</strong><span class="status-chip">{{ proposal.disposition }}</span></header>
+            <dl>
+              <div><dt>机器 raw SMILES</dt><dd><code>{{ proposal.machine.raw_values.raw_smiles || "—" }}</code></dd></div>
+              <div><dt>机器 canonical</dt><dd><code>{{ proposal.machine.normalized_values.machine_canonical_smiles || proposal.machine.normalized_values.canonical_smiles || "—" }}</code></dd></div>
+              <div><dt>Reviewer 结果</dt><dd><code>{{ proposal.review.reviewed_smiles || "—" }}</code></dd></div>
+            </dl>
+            <img v-if="proposal.crop_asset" :src="proposal.crop_asset.url" :alt="`${proposal.proposal_key} 来源 crop`" data-published-crop>
+            <p v-else class="section-empty">当前发布版本没有公开 crop 资产。</p>
+          </article>
+        </div>
+        <div v-if="sourceLocators.length" class="published-locator-list">
+          <article v-for="locator in sourceLocators" :key="locator.proposal_id" class="published-locator-card" data-source-locator>
+            <header><strong>来源定位</strong><span>第 {{ locator.region.page_number }} 页 · {{ locator.region.id }}</span></header>
+            <div class="locator-grid">
+              <img v-if="locator.crop_asset" :src="locator.crop_asset.url" alt="来源 crop">
+              <img v-if="locator.source_asset" :src="locator.source_asset.url" alt="来源页面">
+              <code>{{ locator.region.bounds.x0.toFixed(3) }}, {{ locator.region.bounds.y0.toFixed(3) }} → {{ locator.region.bounds.x1.toFixed(3) }}, {{ locator.region.bounds.y1.toFixed(3) }}</code>
+            </div>
+          </article>
+        </div>
       </section>
 
       <section class="content-section panel split-section">

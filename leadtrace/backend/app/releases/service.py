@@ -28,9 +28,11 @@ from app.imports.models import (
     ImportReleaseCandidate,
 )
 from app.lineages.models import Lineage, LineageEdge
+from app.molecule_proposals.models import MoleculeProposal
 from app.papers.models import Paper
 from app.releases.aggregate import (
     OVERVIEW_METRIC_KEYS,
+    human_review_metric,
     overview_metrics_from_counts,
     recompute_release_aggregate,
 )
@@ -152,7 +154,9 @@ class ReleaseOperationResult:
     operation_id: UUID | None = None
 
 
-def _advisory_lock(session: Session) -> None:
+def lock_release_pointer(session: Session) -> None:
+    """Serialize every transaction that can replace the current Release."""
+
     session.execute(
         text("SELECT pg_advisory_xact_lock(hashtext('leadtrace.release.pointer'))")
     )
@@ -257,6 +261,7 @@ _BASELINE_KIND_SPECS = (
     (ObjectKind.LINEAGE_EDGE, LineageEdge, "edge_key"),
     (ObjectKind.VISUAL_REGION, VisualRegion, "region_key"),
     (ObjectKind.VISUAL_OBJECT, VisualObject, "object_key"),
+    (ObjectKind.MOLECULE_PROPOSAL, MoleculeProposal, "proposal_key"),
 )
 _BASELINE_KIND_RANK = {
     kind: rank for rank, (kind, _, _) in enumerate(_BASELINE_KIND_SPECS)
@@ -619,7 +624,7 @@ def publish_approved_baseline(
         }
     )
 
-    _advisory_lock(session)
+    lock_release_pointer(session)
     _require_admin(session, actor_id)
     existing_operation = session.scalar(
         select(ReleaseOperation)
@@ -680,6 +685,7 @@ def publish_approved_baseline(
         raise RuntimeError("Injected failure in final transaction")
 
     metrics: dict[str, object] = overview_metrics_from_counts(batch.counts)
+    metrics["human_review"] = human_review_metric(session, release_items)
     metrics["baseline"] = {
         "candidate_id": str(candidate.id),
         "batch_id": str(batch.id),
@@ -859,7 +865,7 @@ def publish_approved_changeset(
         if fail_stage == "after_asset_preparation":
             raise RuntimeError("Injected failure after asset preparation")
 
-    _advisory_lock(session)
+    lock_release_pointer(session)
     _require_admin(session, actor_id)
     changeset = session.scalar(
         select(Changeset)
@@ -999,18 +1005,20 @@ def publish_approved_changeset(
 
     if fail_stage == "final_transaction":
         raise RuntimeError("Injected failure in final transaction")
+    metrics = _metrics_with_operation(
+        current.metrics,
+        {
+            "type": "publish",
+            "changeset_id": str(changeset.id),
+            "item_count": len(release_items),
+        },
+    )
+    metrics["human_review"] = human_review_metric(session, release_items)
     new_release = Release(
         release_key=f"release-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}",
         title=title or f"Release for {changeset.title}",
         notes=notes,
-        metrics=_metrics_with_operation(
-            current.metrics,
-            {
-                "type": "publish",
-                "changeset_id": str(changeset.id),
-                "item_count": len(release_items),
-            },
-        ),
+        metrics=metrics,
         published_by_id=actor_id,
         published_at=datetime.now(UTC),
         is_current=False,
@@ -1167,7 +1175,7 @@ def rollback_release(
         }
     )
 
-    _advisory_lock(session)
+    lock_release_pointer(session)
     _require_admin(session, actor_id)
     existing_operation = session.scalar(
         select(ReleaseOperation)
@@ -1331,20 +1339,22 @@ def rollback_release(
         )
     if fail_stage == "final_transaction":
         raise RuntimeError("Injected failure in final transaction")
+    metrics = _metrics_with_operation(
+        target.metrics,
+        {
+            "type": "rollback",
+            "rollback_of": str(target.id),
+            "replaced_release_id": str(current.id),
+            "item_count": len(cloned_items),
+            "tombstone_count": len(rollback_revisions) - len(cloned_items),
+        },
+    )
+    metrics["human_review"] = human_review_metric(session, target_items)
     new_release = Release(
         release_key=f"rollback-{target.release_key}-{uuid4().hex[:8]}",
         title=f"Rollback to {target.title}",
         notes=clean_reason,
-        metrics=_metrics_with_operation(
-            target.metrics,
-            {
-                "type": "rollback",
-                "rollback_of": str(target.id),
-                "replaced_release_id": str(current.id),
-                "item_count": len(cloned_items),
-                "tombstone_count": len(rollback_revisions) - len(cloned_items),
-            },
-        ),
+        metrics=metrics,
         published_by_id=actor_id,
         published_at=datetime.now(UTC),
         is_current=False,

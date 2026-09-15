@@ -1,17 +1,35 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import { ApiError } from "../../api/client";
 import type { Changeset, ReviewTask } from "../../api/schema";
 import { fetchChangesets, fetchReviewTasks } from "../api";
+import MoleculeObjectQueue from "./MoleculeObjectQueue.vue";
 
 type ViewState = "loading" | "ready" | "error";
 
 const state = ref<ViewState>("loading");
+const route = useRoute();
+const router = useRouter();
 const tasks = ref<ReviewTask[]>([]);
 const changesets = ref<Changeset[]>([]);
 const requestId = ref<string>();
+const activeTab = computed(() => (
+  route.query.tab === "molecules" ? "molecules" : "papers"
+));
+
+function selectTab(tab: "papers" | "molecules"): void {
+  const query = { ...route.query };
+  if (tab === "molecules") query.tab = "molecules";
+  else {
+    delete query.tab;
+    delete query.status;
+    delete query.object_type;
+    delete query.has_blocker;
+  }
+  void router.replace({ path: route.path, query });
+}
 
 const changesetByTask = computed(() => new Map(
   changesets.value.map((changeset) => [changeset.review_task_id, changeset]),
@@ -86,7 +104,26 @@ onMounted(load);
       </div>
     </header>
 
-    <section v-if="state === 'loading'" class="review-state page-state" aria-live="polite">
+    <nav class="workspace-tabs task-queue-tabs" role="tablist" aria-label="核查任务类型">
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="activeTab === 'papers'"
+        :aria-current="activeTab === 'papers' ? 'page' : undefined"
+        @click="selectTab('papers')"
+      >Paper 任务 · {{ orderedTasks.length }}</button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="activeTab === 'molecules'"
+        :aria-current="activeTab === 'molecules' ? 'page' : undefined"
+        @click="selectTab('molecules')"
+      >分子对象</button>
+    </nav>
+
+    <MoleculeObjectQueue v-if="activeTab === 'molecules'" />
+
+    <section v-else-if="state === 'loading'" class="review-state page-state" aria-live="polite">
       <span class="state-spinner" aria-hidden="true"></span>
       <p>正在读取核查任务…</p>
     </section>

@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
+import pymupdf
 import pytest
 
 
@@ -40,7 +41,11 @@ def baseline_fixture(tmp_path: Path) -> dict[str, object]:
     duplicate_dir.mkdir(parents=True)
     crop_dir.mkdir(parents=True)
     paper_pdf = article_dir / "paper.pdf"
-    paper_pdf.write_bytes(b"%PDF-1.4\nfixture paper\n%%EOF\n")
+    document = pymupdf.open()
+    page = document.new_page(width=600, height=800)
+    page.insert_text((72, 72), "LeadTrace fixture paper")
+    document.save(paper_pdf)
+    document.close()
     duplicate_pdf = duplicate_dir / "paper.pdf"
     duplicate_pdf.write_bytes(b"%PDF-1.4\nwrong same basename\n%%EOF\n")
     crop = crop_dir / "OBJ-1.png"
@@ -171,11 +176,52 @@ def baseline_fixture(tmp_path: Path) -> dict[str, object]:
                 "paper_id": "paper-1",
                 "source_pdf": str(paper_pdf),
                 "page": "1",
+                "candidate_id": "CAND-1",
                 "object_type": "complete_molecule",
                 "compound_label": "26a′",
                 "source_crop_path": "--",
                 "crop_path": str(crop),
+                "x0": "100",
+                "y0": "200",
+                "x1": "300",
+                "y1": "400",
+                "local_x0": "0.25",
+                "local_y0": "0.25",
+                "local_x1": "0.75",
+                "local_y1": "0.75",
+                "localization_status": "isolated_2d_molecule_region",
+                "split_status": "isolated_object_ready_for_ocsr",
                 "review_status": "object_requires_human_review",
+            }
+        ],
+    )
+    _write_csv(
+        auto / "first_page_molecule_proposals.csv",
+        [
+            {
+                "object_id": "OBJ-1",
+                "paper_id": "paper-1",
+                "candidate_id": "CAND-1",
+                "page": "1",
+                "object_type": "complete_molecule",
+                "compound_label": "26a′",
+                "crop_path": str(crop),
+                "raw_smiles": "CCO",
+                "token_confidences": json.dumps(
+                    [{"token": "C", "confidence": 0.9}],
+                    separators=(",", ":"),
+                ),
+                "mean_token_confidence": "0.9",
+                "min_token_confidence": "0.9",
+                "inference_status": "ok",
+                "inference_error": "",
+                "rdkit_status": "valid",
+                "canonical_smiles": "CCO",
+                "heuristic_primary_component_smiles": "CCO",
+                "model_version": "ocsr-v1",
+                "proposal_quality": "valid",
+                "review_status": "proposal_requires_human_review",
+                "updated_at": "2026-09-05T02:03:39+00:00",
             }
         ],
     )

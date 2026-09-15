@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -31,9 +31,11 @@ from app.reviews.schemas import (
     ChangesetSubmitRequest,
     ChangesetTransitionRequest,
     ChangesetUpdateRequest,
+    MoleculeObjectQueueResponse,
     ReviewTaskCreateRequest,
     ReviewTaskReassignRequest,
     ReviewTaskResponse,
+    WorkspaceResponse,
 )
 from app.reviews.comments import (
     CommentAction,
@@ -58,10 +60,24 @@ from app.reviews.service import (
     ReviewService,
     ReviewStateConflict,
 )
+from app.reviews.attestations import (
+    AttestationValidationError,
+    PaperAttestationRequest,
+    PaperAttestationResponse,
+    PaperReviewScopeService,
+)
+from app.reviews.workspace import (
+    WorkspaceConflict,
+    WorkspaceNotFound,
+    WorkspaceQueryError,
+    build_workspace,
+    list_molecule_object_queue,
+)
 from app.releases.models import ReleaseItem
 from app.reviews.models import ChangesetItem, ReviewTask
 from app.revisions.diff import build_revision_diff
 from app.revisions.models import ObjectKind, ObjectRevision
+from app.reviews.completeness import QueueState
 from app.security.permissions import (
     RouteAccess,
     declare_route_access,
@@ -70,6 +86,7 @@ from app.security.permissions import (
 )
 from app.security.policies import Principal, WorkflowState
 from app.users.models import UserRole
+from app.visual_objects.models import MoleculeObjectType
 
 
 def _region_fields_for_revision(
@@ -99,6 +116,7 @@ def _dedicated_fields_for_revision(
         "evidence_text": revision.evidence_text,
         "relation_status": revision.relation_status,
         "relation_type": revision.relation_type,
+        "proposal_disposition": revision.proposal_disposition,
     }
 
 
@@ -111,6 +129,7 @@ _DEDICATED_FIELD_NAMES = (
     "evidence_text",
     "relation_status",
     "relation_type",
+    "proposal_disposition",
 )
 
 
@@ -205,6 +224,8 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                 details={"item_id": str(error.item_id)},
             )
         if isinstance(error, InvalidReview):
+            return HTTPException(status_code=422, detail=str(error))
+        if isinstance(error, AttestationValidationError):
             return HTTPException(status_code=422, detail=str(error))
         if isinstance(error, IntegrityError):
             return APIError(
@@ -428,6 +449,70 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                 None if principal.role is UserRole.ADMIN else principal.user_id,
             )
         return [ReviewTaskResponse.from_model(task) for task in tasks]
+
+    @router.get(
+        "/tasks/first-page-molecule-objects",
+        response_model=MoleculeObjectQueueResponse,
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def molecule_object_queue(
+        status: QueueState | None = Query(default=None),
+        paper_id: UUID | None = Query(default=None),
+        page: int | None = Query(default=None, ge=1),
+        object_type: MoleculeObjectType | None = Query(default=None),
+        has_blocker: bool | None = Query(default=None),
+        cursor: str | None = Query(default=None),
+        limit: int = Query(default=20, ge=1, le=100),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> MoleculeObjectQueueResponse:
+        require_reviewer_or_admin(principal)
+        try:
+            with session.begin():
+                return list_molecule_object_queue(
+                    session,
+                    actor_id=principal.user_id,
+                    is_admin=principal.role is UserRole.ADMIN,
+                    status=status.value if status is not None else None,
+                    paper_id=paper_id,
+                    page=page,
+                    object_type=(
+                        object_type.value if object_type is not None else None
+                    ),
+                    has_blocker=has_blocker,
+                    cursor=cursor,
+                    limit=limit,
+                )
+        except (WorkspaceNotFound, ReviewNotFound) as error:
+            raise HTTPException(status_code=404, detail="Resource not found") from error
+        except WorkspaceConflict as error:
+            raise APIError(409, "WORKSPACE_CONFLICT", str(error)) from error
+        except WorkspaceQueryError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @router.get(
+        "/changesets/{changeset_id}/workspace",
+        response_model=WorkspaceResponse,
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def changeset_workspace(
+        changeset_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> WorkspaceResponse:
+        require_reviewer_or_admin(principal)
+        try:
+            with session.begin():
+                return build_workspace(
+                    session,
+                    changeset_id=changeset_id,
+                    actor_id=principal.user_id,
+                    is_admin=principal.role is UserRole.ADMIN,
+                )
+        except WorkspaceNotFound as error:
+            raise HTTPException(status_code=404, detail="Resource not found") from error
+        except WorkspaceConflict as error:
+            raise APIError(409, "WORKSPACE_CONFLICT", str(error)) from error
 
     @router.post("/tasks", response_model=ReviewTaskResponse, status_code=201)
     @declare_route_access(RouteAccess.AUTHENTICATED)
@@ -774,6 +859,72 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         except (ReviewNotFound, ReviewForbidden) as error:
             raise as_error(error) from error
         return result
+
+    @router.post(
+        "/changesets/{changeset_id}/attestation",
+        response_model=PaperAttestationResponse,
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def attest_changeset(
+        changeset_id: UUID,
+        payload: PaperAttestationRequest,
+        request: Request,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    ) -> PaperAttestationResponse:
+        require_reviewer_or_admin(principal)
+        verify_csrf(principal, csrf_token)
+        try:
+            with session.begin():
+                changeset = service.get_changeset(session, changeset_id, for_update=True)
+                if (
+                    principal.role is not UserRole.ADMIN
+                    and changeset.owner_id != principal.user_id
+                ):
+                    raise ReviewNotFound("Changeset not found")
+                scope, attestation, progress = PaperReviewScopeService.attest(
+                    session,
+                    changeset=changeset,
+                    actor_id=principal.user_id,
+                    expected_version=payload.expected_version,
+                    scope_hash=payload.scope_hash,
+                    statement=payload.statement,
+                )
+                response = PaperAttestationResponse(
+                    id=attestation.id,
+                    changeset_id=attestation.changeset_id,
+                    paper_id=attestation.paper_id,
+                    changeset_version=attestation.changeset_version,
+                    scope_hash=attestation.scope_hash,
+                    item_count=progress.item_count,
+                    resolved_count=progress.resolved_count,
+                    blocker_count=progress.blocker_count,
+                    statement=attestation.statement,
+                )
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.paper_attested",
+                    target_type="paper_review_attestation",
+                    target_id=attestation.id,
+                    paper_id=attestation.paper_id,
+                    changeset_id=changeset.id,
+                    release_id=changeset.base_release_id,
+                    reason=attestation.statement,
+                    before=None,
+                    after=response.model_dump(mode="json"),
+                )
+                return response
+        except (
+            ReviewNotFound,
+            ReviewForbidden,
+            InvalidReview,
+            RevisionConflict,
+            AttestationValidationError,
+        ) as error:
+            raise as_error(error) from error
 
     @router.post(
         "/changesets/{changeset_id}/items",

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from "vue";
 type StructureSide = {
   label: string;
   imageUrl: string | null;
@@ -7,6 +8,7 @@ type StructureSide = {
 };
 
 const props = defineProps<{ published: StructureSide; draft: StructureSide }>();
+const failed = ref<Record<string, boolean>>({});
 
 const stateLabels: Record<string, string> = {
   proposal: "候选结构",
@@ -28,8 +30,8 @@ const stateLabels: Record<string, string> = {
         <h3>{{ side.label }}</h3>
         <span v-if="side.structureState" class="status-chip" :data-state="side.structureState">{{ stateLabels[side.structureState] ?? side.structureState }}</span>
       </header>
-      <img v-if="side.imageUrl" :src="side.imageUrl" :alt="`${side.label}结构图`">
-      <div v-else class="unavailable">无唯一结构图</div>
+      <img v-if="side.imageUrl && !failed[side.label]" :src="side.imageUrl" :alt="`${side.label}结构图`" @error="failed = { ...failed, [side.label]: true }">
+      <div v-else class="unavailable">{{ side.imageUrl ? "结构图加载失败" : "无唯一结构图" }}</div>
       <code v-if="side.smiles">{{ side.smiles }}</code>
       <span v-else class="empty-smiles">未指定唯一 SMILES</span>
     </article>

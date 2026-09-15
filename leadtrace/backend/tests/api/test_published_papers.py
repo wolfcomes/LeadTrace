@@ -60,9 +60,17 @@ def test_paper_detail_contains_only_release_pinned_scientific_objects(
     assert payload["activities"][0]["unit"] == "nM"
     assert payload["quality_summary"] == {
         "relations": {"resolved": 1, "total": 1},
-            "structures": {"confirmed": 2, "total": 2},
+        "structures": {"confirmed": 2, "total": 2},
         "pair_ready": {"eligible": 1, "total": 1},
-            "human_review": {"reviewed": 0, "total": 9},
+        "human_review": {
+            "reviewed": 0,
+            "total": 1,
+            "status": "unverified",
+            "verified": False,
+            "release_id": str(published_api.release_id),
+            "paper_revision_id": str(published_api.published_revision_id),
+            "attestation_id": None,
+        },
     }
 
 

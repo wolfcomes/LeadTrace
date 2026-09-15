@@ -70,7 +70,7 @@ def create_papers_router() -> APIRouter:
         paper_id: UUID,
         request: Request,
         session: Session = Depends(get_db_session),
-        _: Principal = Depends(require_published_data),
+        principal: Principal = Depends(require_published_data),
     ) -> dict[str, object]:
         with session.begin():
             release = get_current_release(session)
@@ -79,6 +79,7 @@ def create_papers_router() -> APIRouter:
                 release,
                 paper_id,
                 request_id=request_id_for(request),
+                include_review_entry=principal.role.value in {"reviewer", "admin"},
             )
 
     return router

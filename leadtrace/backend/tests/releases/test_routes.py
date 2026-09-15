@@ -13,8 +13,10 @@ from app.audit.models import AuditEvent
 from app.config import Settings
 from app.database import DatabaseResources
 from app.imports.approval import ImportCandidateApprovalService
+from app.imports.reconcile import DEFAULT_EXPECTED_AGGREGATE
 from app.imports.service import BaselineImporter
 from app.main import create_app
+from app.releases import router as releases_router
 from app.releases.models import Release
 from app.users.models import User
 from app.users.models import UserRole
@@ -33,7 +35,11 @@ def release_api_client(
     auth_session_factory: sessionmaker[Session],
 ) -> Iterator[TestClient]:
     workspace = baseline_fixture["workspace"]
+    source_root = baseline_fixture["source_root"]
+    manifest_path = baseline_fixture["manifest_path"]
     assert isinstance(workspace, Path)
+    assert isinstance(source_root, Path)
+    assert isinstance(manifest_path, Path)
     with auth_session_factory.begin() as session:
         for role in UserRole:
             user = UserService().create_user(
@@ -53,6 +59,9 @@ def release_api_client(
         allowed_hosts=["testserver"],
         asset_root=tmp_path / "managed",
         source_roots={"baseline": workspace},
+        baseline_import_root=source_root,
+        baseline_source_manifest=manifest_path,
+        baseline_expected_aggregate=DEFAULT_EXPECTED_AGGREGATE,
     )
     resources = DatabaseResources(
         engine=auth_session_factory.kw["bind"],
@@ -123,6 +132,11 @@ def test_release_routes_enforce_admin_role_over_http(
             "reason": "Route test rollback",
         },
     )
+    backfill = client.post(
+        "/api/v1/releases/backfill-machine-evidence",
+        headers=headers,
+        json={"source_fingerprint": "f" * 64, "notes": "Route test"},
+    )
 
     if role is UserRole.ADMIN:
         assert listing.status_code == 200
@@ -133,6 +147,7 @@ def test_release_routes_enforce_admin_role_over_http(
     assert publish.status_code == expected
     assert publish_baseline.status_code == expected
     assert rollback.status_code == expected
+    assert backfill.status_code == (404 if role is UserRole.ADMIN else expected)
 
 
 def test_release_mutations_require_csrf_and_idempotency_key(
@@ -166,11 +181,85 @@ def test_release_mutations_require_csrf_and_idempotency_key(
         headers={"X-CSRF-Token": csrf},
         json={"candidate_id": target_id, "notes": "Protected baseline"},
     )
+    missing_backfill_csrf = client.post(
+        "/api/v1/releases/backfill-machine-evidence",
+        headers={"Idempotency-Key": "missing-backfill-csrf"},
+        json={"source_fingerprint": "f" * 64},
+    )
+    missing_backfill_idempotency = client.post(
+        "/api/v1/releases/backfill-machine-evidence",
+        headers={"X-CSRF-Token": csrf},
+        json={"source_fingerprint": "f" * 64},
+    )
 
     assert missing_csrf.status_code == 403
     assert missing_idempotency.status_code == 400
     assert missing_baseline_csrf.status_code == 403
     assert missing_baseline_idempotency.status_code == 400
+    assert missing_backfill_csrf.status_code == 403
+    assert missing_backfill_idempotency.status_code == 400
+
+
+def test_machine_evidence_backfill_maps_source_failures_to_a_safe_422(
+    release_api_client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret_path = tmp_path / "private-baseline-source"
+
+    def fail_backfill(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise OSError(f"Cannot read {secret_path}")
+
+    monkeypatch.setattr(releases_router, "backfill_machine_evidence", fail_backfill)
+    client = release_api_client
+    csrf = _login(client, UserRole.ADMIN)
+
+    response = client.post(
+        "/api/v1/releases/backfill-machine-evidence",
+        headers={
+            "X-CSRF-Token": csrf,
+            "Idempotency-Key": "safe-backfill-source-error",
+        },
+        json={"source_fingerprint": "f" * 64},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "MACHINE_EVIDENCE_BACKFILL_FAILED"
+    assert str(tmp_path) not in response.text
+
+
+def test_machine_evidence_backfill_uses_the_configured_import_root(
+    release_api_client: TestClient,
+    baseline_fixture: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_root = baseline_fixture["source_root"]
+    assert isinstance(source_root, Path)
+    received: dict[str, object] = {}
+
+    def capture_backfill(*args: object, **kwargs: object) -> None:
+        del args
+        received.update(kwargs)
+        raise ValueError("stop after capturing the configured source root")
+
+    monkeypatch.setattr(releases_router, "backfill_machine_evidence", capture_backfill)
+    client = release_api_client
+    csrf = _login(client, UserRole.ADMIN)
+
+    response = client.post(
+        "/api/v1/releases/backfill-machine-evidence",
+        headers={
+            "X-CSRF-Token": csrf,
+            "Idempotency-Key": "configured-backfill-import-root",
+        },
+        json={"source_fingerprint": "f" * 64},
+    )
+
+    assert response.status_code == 422
+    assert received["source_root"] == source_root
+    assert received["source_manifest_path"] == baseline_fixture["manifest_path"]
+    assert received["expected_path"] == DEFAULT_EXPECTED_AGGREGATE
 
 
 def test_publish_baseline_route_is_idempotent_and_writes_corpus_audit_once(

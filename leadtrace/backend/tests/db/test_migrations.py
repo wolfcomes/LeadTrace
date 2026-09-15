@@ -88,7 +88,7 @@ def test_admin_review_workflow_migration_contract(
     config = _alembic_config(empty_postgresql_database_url)
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "0017_unique_active_review_task"
+    assert script.get_current_head() == "0018_reviewer_scientific_workspace"
     command.upgrade(config, "head")
 
     engine = create_database_engine(empty_postgresql_database_url)
@@ -138,6 +138,7 @@ def test_admin_review_workflow_migration_contract(
             for item in schema.get_check_constraints("release_operations")
         )
         assert "baseline_publish" in release_operation_checks
+        assert "machine_evidence" in release_operation_checks
 
         audit_columns = {
             column["name"]: column
@@ -156,6 +157,184 @@ def test_admin_review_workflow_migration_contract(
             )
         )
         assert "completed" in predicate
+    finally:
+        engine.dispose()
+
+
+def test_reviewer_scientific_workspace_migration_contract(
+    empty_postgresql_database_url: str,
+) -> None:
+    config = _alembic_config(empty_postgresql_database_url)
+    command.upgrade(config, "head")
+
+    engine = create_database_engine(empty_postgresql_database_url)
+    try:
+        schema = inspect(engine)
+        proposal_columns = {
+            column["name"]: column
+            for column in schema.get_columns("molecule_proposals")
+        }
+        assert proposal_columns.keys() >= {
+            "id",
+            "paper_id",
+            "visual_object_id",
+            "proposal_key",
+            "model_run_key",
+            "crop_asset_id",
+            "source_region_id",
+        }
+        proposal_uniques = {
+            tuple(item["column_names"])
+            for item in schema.get_unique_constraints("molecule_proposals")
+        }
+        assert (
+            "paper_id",
+            "visual_object_id",
+            "proposal_key",
+            "model_run_key",
+        ) in proposal_uniques
+
+        scope_columns = {
+            column["name"]: column
+            for column in schema.get_columns("paper_review_scopes")
+        }
+        assert scope_columns.keys() >= {
+            "id",
+            "changeset_id",
+            "paper_id",
+            "base_release_id",
+            "base_paper_revision_id",
+            "snapshot",
+            "scope_hash",
+            "item_count",
+            "created_by_id",
+            "created_at",
+        }
+        scope_uniques = {
+            tuple(item["column_names"])
+            for item in schema.get_unique_constraints("paper_review_scopes")
+        }
+        assert ("changeset_id",) in scope_uniques
+
+        attestation_columns = {
+            column["name"]: column
+            for column in schema.get_columns("paper_review_attestations")
+        }
+        assert attestation_columns.keys() >= {
+            "id",
+            "changeset_id",
+            "scope_id",
+            "paper_id",
+            "paper_revision_id",
+            "changeset_version",
+            "scope_hash",
+            "reviewer_id",
+            "item_count",
+            "resolved_count",
+            "blocker_count",
+            "statement",
+            "created_at",
+        }
+
+        revision_columns = {
+            column["name"]: column
+            for column in schema.get_columns("object_revisions")
+        }
+        assert revision_columns["proposal_disposition"]["nullable"] is True
+        revision_checks = " ".join(
+            str(item["sqltext"])
+            for item in schema.get_check_constraints("object_revisions")
+        )
+        for disposition in (
+            "pending",
+            "accepted",
+            "corrected",
+            "rejected",
+            "not_applicable",
+        ):
+            assert disposition in revision_checks
+    finally:
+        engine.dispose()
+
+
+def test_reviewer_workspace_downgrade_rejects_machine_evidence_operation(
+    empty_postgresql_database_url: str,
+) -> None:
+    config = _alembic_config(empty_postgresql_database_url)
+    command.upgrade(config, "head")
+    engine = create_database_engine(empty_postgresql_database_url)
+    actor_id = uuid4()
+    release_id = uuid4()
+    created_at = datetime(2026, 9, 15, 8, 0, tzinfo=UTC)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO users (
+                        id, username, normalized_username, display_name, role,
+                        is_enabled, password_hash, must_change_password,
+                        password_changed_at, created_at, updated_at
+                    ) VALUES (
+                        :actor_id, 'workspace-admin', 'workspace-admin',
+                        'Workspace Admin', 'admin', true, :password_hash, false,
+                        :created_at, :created_at, :created_at
+                    )
+                    """
+                ),
+                {
+                    "actor_id": actor_id,
+                    "password_hash": hash_password("Migration test password 2026!"),
+                    "created_at": created_at,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO releases (
+                        id, release_key, title, notes, metrics, published_by_id,
+                        published_at, is_current, manifest_finalized
+                    ) VALUES (
+                        :release_id, 'machine-evidence-release',
+                        'Machine evidence', '', '{}'::jsonb, :actor_id,
+                        :created_at, true, true
+                    )
+                    """
+                ),
+                {
+                    "actor_id": actor_id,
+                    "release_id": release_id,
+                    "created_at": created_at,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO release_operations (
+                        id, operation_type, actor_id, idempotency_key,
+                        request_hash, target_release_id, replaced_release_id,
+                        result_release_id, reason, delta
+                    ) VALUES (
+                        :operation_id, 'machine_evidence', :actor_id,
+                        'migration-machine-evidence', :request_hash, NULL, NULL,
+                        :release_id, 'Downgrade guard', '{}'::jsonb
+                    )
+                    """
+                ),
+                {
+                    "actor_id": actor_id,
+                    "release_id": release_id,
+                    "operation_id": uuid4(),
+                    "request_hash": "f" * 64,
+                },
+            )
+
+        with pytest.raises(RuntimeError, match="cannot be downgraded after use"):
+            command.downgrade(config, "0017_unique_active_review_task")
+
+        assert _database_revision(empty_postgresql_database_url) == (
+            "0018_reviewer_scientific_workspace"
+        )
     finally:
         engine.dispose()
 

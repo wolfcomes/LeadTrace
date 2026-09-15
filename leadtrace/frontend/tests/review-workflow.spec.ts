@@ -128,6 +128,51 @@ const diff = [{
   ],
 }];
 
+const scientificWorkspace = {
+  workspace_version: draft.version,
+  changeset: {
+    id: draft.id,
+    review_task_id: draft.review_task_id,
+    paper_id: draft.paper_id,
+    owner_id: draft.owner_id,
+    base_release_id: draft.base_release_id,
+    workflow_state: draft.workflow_state,
+    version: draft.version,
+    title: draft.title,
+    reason: draft.reason,
+  },
+  paper: {
+    id: draft.paper_id,
+    paper_key: "paper-25",
+    title: "Scientific workspace Paper",
+    base_release_id: draft.base_release_id,
+  },
+  progress: {
+    scope_count: 1,
+    resolved_count: 1,
+    blocker_count: 0,
+    by_kind: { paper: { total: 1, resolved: 1, blockers: 0 } },
+  },
+  document: {
+    url: `/api/v1/papers/${draft.paper_id}/source-pdf?kind=article&release_id=${draft.base_release_id}`,
+    release_id: draft.base_release_id,
+  },
+  pages: [],
+  regions: [],
+  visual_objects: [],
+  molecule_proposals: [],
+  structures: [],
+  evidence: [],
+  assets: [],
+  source_locators: [],
+  attestation: null,
+  scope: {
+    id: "90000000-0000-4000-8000-000000000001",
+    scope_hash: "d".repeat(64),
+    item_count: 1,
+  },
+};
+
 describe("Reviewer task and changeset workflow", () => {
   beforeEach(() => {
     const pinia = createPinia();
@@ -179,6 +224,136 @@ describe("Reviewer task and changeset workflow", () => {
     const resume = wrapper.get(`[data-task-id='${activeTaskId}'] a`);
     expect(resume.text()).toContain("继续核查");
     expect(resume.attributes("href")).toBe(`/review/changesets/${changesetId}`);
+  });
+
+  it("reviews first-page molecule objects inside the existing task queue", async () => {
+    const visualId = "91000000-0000-4000-8000-000000000001";
+    const proposalId = "92000000-0000-4000-8000-000000000001";
+    const regionId = "93000000-0000-4000-8000-000000000001";
+    const assetId = "94000000-0000-4000-8000-000000000001";
+    const queuePayload = {
+      items: [
+        {
+          paper_id: tasks[1].paper_id,
+          paper_key: "paper-25",
+          base_release_id: releaseId,
+          review_task_id: activeTaskId,
+          changeset_id: changesetId,
+          changeset_version: 3,
+          visual_object: {
+            id: visualId,
+            object_key: "first-page-object-1",
+            object_type: "complete_molecule",
+            region_id: regionId,
+          },
+          proposal: {
+            id: proposalId,
+            proposal_key: "ocsr-1",
+            disposition: "pending",
+            revision_id: baseRevisionId,
+          },
+          crop_asset: {
+            id: assetId,
+            url: `/api/v1/assets/${assetId}/content`,
+            original_filename: "molecule-crop.png",
+            sha256: "c".repeat(64),
+            byte_size: 1024,
+            mime_type: "image/png",
+            width: 240,
+            height: 160,
+            page_count: null,
+            category: "ocsr_input",
+            access_level: "reviewer",
+          },
+          page: 1,
+          state: "proposal_review",
+          blocking: true,
+          reasons: ["proposal_pending"],
+          paper_progress: { scope_count: 12, resolved_count: 11, blocker_count: 1 },
+          deep_link: { view: "ocsr", page: 1, object: visualId, proposal: proposalId },
+          priority: 40,
+        },
+        {
+          paper_id: paperId,
+          paper_key: "paper-24",
+          base_release_id: releaseId,
+          review_task_id: openTaskId,
+          changeset_id: null,
+          changeset_version: null,
+          visual_object: {
+            id: "91000000-0000-4000-8000-000000000002",
+            object_key: "first-page-object-2",
+            object_type: "non_structure",
+            region_id: "93000000-0000-4000-8000-000000000002",
+          },
+          proposal: null,
+          crop_asset: null,
+          page: 1,
+          state: "complete",
+          blocking: false,
+          reasons: [],
+          paper_progress: { scope_count: 4, resolved_count: 4, blocker_count: 0 },
+          deep_link: {
+            view: "ocsr",
+            page: 1,
+            object: "91000000-0000-4000-8000-000000000002",
+            proposal: null,
+          },
+          priority: 90,
+        },
+      ],
+      next_cursor: null,
+      status_counts: {
+        localization_or_split: 0,
+        needs_ocsr: 0,
+        proposal_review: 1,
+        source_or_attachment: 0,
+        structure_assembly: 0,
+        complete: 1,
+      },
+      pagination: { limit: 50, returned: 2 },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/review/tasks") return jsonResponse(200, tasks);
+      if (path === "/api/v1/review/changesets") return jsonResponse(200, [draft]);
+      if (path === "/api/v1/review/tasks/first-page-molecule-objects") {
+        return jsonResponse(200, queuePayload);
+      }
+      return jsonResponse(404, {
+        code: "RESOURCE_NOT_FOUND",
+        message: "Resource not found",
+        details: {},
+        request_id: "review-ui-request",
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const router = createAppRouter(createMemoryHistory());
+    await router.push("/review/tasks?tab=molecules");
+    await router.isReady();
+
+    const wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.findAll("[role='tab']")).toHaveLength(2);
+    expect(wrapper.get("[role='tab'][aria-selected='true']").text()).toContain("分子对象");
+    expect(wrapper.get("[data-molecule-queue]").classes()).toContain("panel");
+    expect(wrapper.get("[data-queue-counts]").text()).toContain("待审核 1");
+    expect(wrapper.get("[data-molecule-row]").text()).toContain("paper-25");
+    expect(wrapper.get("[data-molecule-row]").text()).toContain("11 / 12");
+    expect(wrapper.get("[data-molecule-row] img").attributes("alt")).toContain(
+      "paper-25 的分子对象裁剪图",
+    );
+    expect(wrapper.get("[data-molecule-row] a").attributes("href")).toBe(
+      `/review/changesets/${changesetId}?view=ocsr&page=1&object=${visualId}&proposal=${proposalId}`,
+    );
+    expect(wrapper.get("[data-completed-group]").attributes("open")).toBeUndefined();
+    expect(wrapper.text()).not.toContain("对象已核验");
+    expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true);
+
+    await wrapper.get("select[name='queue-status']").setValue("complete");
+    await flushPromises();
+    expect(router.currentRoute.value.query.status).toBe("complete");
   });
 
   it("lists accessible changesets when opened without a task query", async () => {
@@ -311,14 +486,48 @@ describe("Reviewer task and changeset workflow", () => {
     expect(wrapper.get("#changeset-title").element).toHaveProperty("value", draft.title);
     expect(wrapper.get("#changeset-reason").element).toHaveProperty("value", draft.reason);
     expect(wrapper.get("[data-changeset-version]").text()).toContain("版本 3");
-    expect(wrapper.get("[data-item-editor] textarea").element).toHaveProperty(
+    expect(wrapper.get("#paper-title-field").element).toHaveProperty(
       "value",
-      expect.stringContaining("修订后的标题"),
+      "修订后的标题",
     );
+    expect(wrapper.get("[data-evidence-editor] textarea").element).toHaveProperty(
+      "value",
+      "Potency improved in the follow-up assay.",
+    );
+    expect(wrapper.find("[data-item-editor]").exists()).toBe(false);
     await wrapper.get("[aria-label='修改集视图'] button:nth-child(2)").trigger("click");
     expect(wrapper.get("[data-diff-summary]").text()).toContain("标题");
     expect(wrapper.get("[data-diff-summary]").text()).toContain("原始标题");
     expect(wrapper.get("[data-diff-summary]").text()).toContain("修订后的标题");
+  });
+
+  it("integrates the scientific Paper workspace at the existing changeset route", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === `/api/v1/review/changesets/${changesetId}`) return jsonResponse(200, draft);
+      if (path === `/api/v1/review/changesets/${changesetId}/items`) return jsonResponse(200, [item]);
+      if (path === `/api/v1/review/changesets/${changesetId}/diff`) return jsonResponse(200, diff);
+      if (path === `/api/v1/review/changesets/${changesetId}/workspace`) {
+        return jsonResponse(200, scientificWorkspace);
+      }
+      return jsonResponse(404, {
+        code: "RESOURCE_NOT_FOUND",
+        message: "Resource not found",
+        details: {},
+        request_id: "review-ui-request",
+      });
+    }));
+    const router = createAppRouter(createMemoryHistory());
+    await router.push(`/review/changesets/${changesetId}?view=overview`);
+    await router.isReady();
+
+    const wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.find("[data-paper-workspace]").exists()).toBe(true);
+    expect(wrapper.find("[data-legacy-workspace]").exists()).toBe(false);
+    expect(wrapper.findAll("[data-workspace-tabs] button")).toHaveLength(7);
+    expect(wrapper.get("[data-paper-workspace]").text()).toContain("Scientific workspace Paper");
   });
 
   it("keeps the newest workspace when an earlier route load finishes late", async () => {
@@ -554,6 +763,8 @@ describe("Reviewer task and changeset workflow", () => {
     );
     expect(wrapper.get("[data-paper-editor]").text()).toContain("文献元数据");
     expect(wrapper.get("[data-evidence-editor]").text()).toContain("证据文本");
+    expect(wrapper.find(".advanced-snapshots").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("系统快照");
   });
 
   it("autosaves focused field edits through the versioned item endpoint", async () => {
@@ -972,7 +1183,18 @@ describe("Reviewer task and changeset workflow", () => {
     expect(wrapper.get(".submit-button").attributes("disabled")).toBeDefined();
   });
 
-  it("blocks submission while a full snapshot contains invalid JSON", async () => {
+  it("blocks submission when recovered internal snapshot data is invalid", async () => {
+    localStorage.setItem(reviewerAutosaveKey, JSON.stringify({
+      baseVersion: draft.version,
+      base: {
+        title: draft.title,
+        reason: draft.reason,
+        itemJson: { [itemId]: JSON.stringify(item.proposed_snapshot, null, 2) },
+      },
+      title: draft.title,
+      reason: draft.reason,
+      itemJson: { [itemId]: "{" },
+    }));
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), "http://leadtrace.test").pathname;
       if (path === `/api/v1/review/changesets/${changesetId}`) return jsonResponse(200, draft);
@@ -991,7 +1213,6 @@ describe("Reviewer task and changeset workflow", () => {
 
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
-    await wrapper.get("[data-item-editor] textarea").setValue("{");
     await wrapper.get("[aria-label='修改集视图'] button:nth-child(3)").trigger("click");
 
     expect(wrapper.get("[data-submission-page]").text()).toContain("请先修正编辑器中的格式错误");

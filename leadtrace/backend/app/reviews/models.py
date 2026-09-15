@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
     func,
     text,
 )
@@ -279,4 +280,139 @@ class ChangesetSubmission(UUIDPrimaryKeyMixin, Base):
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class _AppendOnlyReviewEvidence:
+    @staticmethod
+    def reject_mutation(*_: object) -> None:
+        raise RuntimeError("Paper review evidence is append-only")
+
+
+class PaperReviewScope(_AppendOnlyReviewEvidence, UUIDPrimaryKeyMixin, Base):
+    """Immutable denominator for one Paper changeset review."""
+
+    __tablename__ = "paper_review_scopes"
+    __table_args__ = (
+        UniqueConstraint("changeset_id", name="uq_paper_review_scopes_changeset"),
+        CheckConstraint(
+            "char_length(scope_hash) = 64",
+            name="ck_paper_review_scopes_hash_length",
+        ),
+        CheckConstraint(
+            "item_count >= 0", name="ck_paper_review_scopes_nonnegative_items"
+        ),
+        Index("ix_paper_review_scopes_paper", "paper_id"),
+    )
+
+    changeset_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("changesets.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    paper_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("papers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    base_release_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("releases.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    base_paper_revision_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("object_revisions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    snapshot: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    scope_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_by_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class PaperReviewAttestation(
+    _AppendOnlyReviewEvidence,
+    UUIDPrimaryKeyMixin,
+    Base,
+):
+    """Append-only Reviewer confirmation for one exact changeset version."""
+
+    __tablename__ = "paper_review_attestations"
+    __table_args__ = (
+        UniqueConstraint(
+            "changeset_id",
+            "changeset_version",
+            name="uq_paper_review_attestations_version",
+        ),
+        CheckConstraint(
+            "char_length(scope_hash) = 64",
+            name="ck_paper_review_attestations_hash_length",
+        ),
+        CheckConstraint(
+            "changeset_version > 0",
+            name="ck_paper_review_attestations_positive_version",
+        ),
+        CheckConstraint(
+            "item_count >= 0 AND resolved_count >= 0 "
+            "AND resolved_count <= item_count AND blocker_count >= 0 "
+            "AND blocker_count <= item_count",
+            name="ck_paper_review_attestations_counts",
+        ),
+        Index("ix_paper_review_attestations_paper", "paper_id", "created_at"),
+    )
+
+    changeset_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("changesets.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    scope_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("paper_review_scopes.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    paper_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("papers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    paper_revision_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("object_revisions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    changeset_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    scope_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    reviewer_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    resolved_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    blocker_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+for _append_only_model in (PaperReviewScope, PaperReviewAttestation):
+    event.listen(
+        _append_only_model,
+        "before_update",
+        _append_only_model.reject_mutation,
+    )
+    event.listen(
+        _append_only_model,
+        "before_delete",
+        _append_only_model.reject_mutation,
     )

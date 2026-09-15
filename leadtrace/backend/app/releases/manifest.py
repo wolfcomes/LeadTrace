@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.assets.models import Asset
 from app.activities.models import Activity
 from app.lineages.models import LineageEdge
+from app.molecule_proposals.models import MoleculeProposal
 from app.releases.models import ReleaseArtifactManifest, ReleaseItem
 from app.revisions.models import ObjectRevision
 from app.reviews.models import Changeset
@@ -28,7 +29,13 @@ from app.visual_objects.models import (
 
 
 ASSET_REFERENCE_FIELDS = frozenset(
-    {"asset_id", "asset_ids", "drawing_asset_id", "source_asset_id"}
+    {
+        "asset_id",
+        "asset_ids",
+        "crop_asset_id",
+        "drawing_asset_id",
+        "source_asset_id",
+    }
 )
 BINDING_COLLECTIONS = (
     "visual_object_regions",
@@ -217,8 +224,7 @@ def _binding_rows_for_visual_objects(
         filters,
         strict=True,
     ):
-        if changeset_id is not None:
-            statement = statement.where(attribution_filter)
+        statement = statement.where(attribution_filter)
         records = session.scalars(statement.order_by(model.id))
         rows[collection] = [row_snapshot(record) for record in records]
     return rows
@@ -396,6 +402,22 @@ def build_artifact_snapshot_for_content(
                         else None
                     ),
                     derived_compound_id=str(edge.derived_compound_id),
+                )
+        elif kind == "molecule_proposal":
+            proposal = session.get(MoleculeProposal, object_id)
+            if proposal is not None:
+                references.update(
+                    visual_object_id=str(proposal.visual_object_id),
+                    crop_asset_id=(
+                        str(proposal.crop_asset_id)
+                        if proposal.crop_asset_id is not None
+                        else None
+                    ),
+                    source_region_id=(
+                        str(proposal.source_region_id)
+                        if proposal.source_region_id is not None
+                        else None
+                    ),
                 )
         if references:
             object_references[str(object_id)] = references

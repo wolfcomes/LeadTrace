@@ -1979,6 +1979,12 @@ def test_scientific_approval_evidence_uses_frozen_submission_and_base_release(
                     "after": region_revision.snapshot,
                 }
             ],
+            "visual_objects": [],
+            "molecule_proposals": [],
+            "source_context": [],
+            "scope": None,
+            "attestation": None,
+            "progress": None,
         }
 
 
@@ -3043,6 +3049,16 @@ def test_approval_migration_backfills_existing_release_artifact_manifest(
     command.upgrade(config, "0012_molecule_objects")
 
     engine = create_database_engine(empty_postgresql_database_url)
+    # This fixture intentionally exercises the 0012 schema using current ORM
+    # helpers. Temporarily bridge columns introduced after 0012, then remove
+    # them before Alembic performs the real upgrade.
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE object_revisions "
+                "ADD COLUMN proposal_disposition VARCHAR(24)"
+            )
+        )
     try:
         session_factory = create_session_factory(engine)
         with session_factory.begin() as session:
@@ -3129,6 +3145,13 @@ def test_approval_migration_backfills_existing_release_artifact_manifest(
                 str(outside_object.id),
             }
     finally:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE object_revisions "
+                    "DROP COLUMN proposal_disposition"
+                )
+            )
         engine.dispose()
 
     command.upgrade(config, "head")
@@ -3367,7 +3390,7 @@ def test_physical_asset_preparation_occurs_before_publication_lock(
         events.append("publication_lock")
 
     monkeypatch.setattr(release_service, "validate_release", track_validate)
-    monkeypatch.setattr(release_service, "_advisory_lock", track_lock)
+    monkeypatch.setattr(release_service, "lock_release_pointer", track_lock)
 
     with auth_session_factory.begin() as session:
         _, admin, _, _, changeset, _ = _approved_changeset(session)

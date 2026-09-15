@@ -63,6 +63,40 @@ web process and worker start. The application itself never changes schemas at
 startup; it refuses to serve when the database is not at the expected Alembic
 head.
 
+## Reviewer scientific workspace rollout
+
+Migration `0018_reviewer_scientific_workspace` adds immutable OCSR proposal
+evidence, source Regions, Paper review scopes, and append-only attestations.
+Baseline imports created after this migration include proposal/crop evidence in
+the candidate and its first Release. A baseline that was published before the
+proposal tables were populated must be repaired explicitly by an enabled Admin;
+historical Release manifests and active Reviewer changesets are never edited or
+silently rebased.
+
+After reauthenticating as an Admin, run the evidence-only successor operation
+with the exact source fingerprint recorded in the current Release's baseline
+metadata:
+
+```bash
+python -m app.cli.import_proposals \
+  --source-root /absolute/path/to/source-workspace/source_pdfs/project \
+  --source-manifest /absolute/path/to/source-manifest.json \
+  --expected-aggregate /absolute/path/to/expected-aggregate.json \
+  --source-fingerprint <64-character-baseline-fingerprint> \
+  --actor-id <admin-uuid> \
+  --idempotency-key machine-evidence-2026-09-15
+```
+
+The command prints only Release IDs, counts, and idempotency state. It never
+prints credentials, storage keys, source paths, or crop paths. The successor
+Release keeps the existing `human_review` metric and remains unverified until a
+Reviewer Paper attestation, independent Admin approval, and successor Release
+publication complete the normal workflow. Verify the metric before publishing:
+
+```bash
+python -m app.cli.audit verify
+```
+
 ## Native development without Docker
 
 Docker is optional during the current development phase. Point LeadTrace at a
@@ -82,6 +116,9 @@ export LEADTRACE_DEFAULT_ACCOUNT_PASSWORD='replace-with-a-protected-local-defaul
 export LEADTRACE_ALLOWED_HOSTS='["127.0.0.1","localhost","leadtrace.lan"]'
 export LEADTRACE_ASSET_ROOT='/absolute/path/to/leadtrace-data/assets'
 export LEADTRACE_SOURCE_ROOTS='{"baseline":"/absolute/path/to/source-workspace"}'
+export LEADTRACE_BASELINE_IMPORT_ROOT='/absolute/path/to/source-workspace/source_pdfs/project'
+export LEADTRACE_BASELINE_SOURCE_MANIFEST='/absolute/path/to/source-manifest.json'
+export LEADTRACE_BASELINE_EXPECTED_AGGREGATE='/absolute/path/to/expected-aggregate.json'
 export LEADTRACE_NGINX_INTERNAL_TRANSFER='false'
 cd leadtrace/backend
 ../../.venv/bin/python -m alembic -c alembic.ini upgrade head
@@ -90,6 +127,13 @@ cd leadtrace/backend
 ../../.venv/bin/python -m uvicorn app.main:app \
   --host 0.0.0.0 --port 8876 --no-proxy-headers
 ```
+
+`LEADTRACE_SOURCE_ROOTS.baseline` is the manifest workspace used to resolve
+protected source assets. `LEADTRACE_BASELINE_IMPORT_ROOT` is the narrower,
+read-only dataset directory containing `01_manifest` and `09_paper_review`.
+The two other baseline settings point to the approved manifest and aggregate
+contract. The Admin HTTP backfill operation is unavailable unless all three
+paths are configured and mounted read-only in the web container.
 
 Replace the default-password placeholder through a protected, non-versioned
 service environment before creating accounts. The CLI never accepts or prints

@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 
 import type { Changeset, ChangesetItem, RevisionDiff, UserRole } from "../../api/schema";
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   changeset: Changeset;
   items: ChangesetItem[];
   diffs: RevisionDiff[];
@@ -11,7 +11,15 @@ const props = defineProps<{
   busy?: boolean;
   hasInvalidEditor?: boolean;
   savePending?: boolean;
-}>();
+  requiresAttestation?: boolean;
+  attestationCurrent?: boolean;
+}>(), {
+  busy: false,
+  hasInvalidEditor: false,
+  savePending: false,
+  requiresAttestation: false,
+  attestationCurrent: false,
+});
 
 const emit = defineEmits<{
   submit: [];
@@ -35,6 +43,8 @@ const changedFields = computed(() => props.diffs.reduce(
   0,
 ));
 
+const attestationBlocker = "请先完成当前版本的 Paper 核查确认";
+
 const blockers = computed(() => {
   const entries: string[] = [];
   if (!props.changeset.title.trim()) entries.push("修改集标题不能为空");
@@ -43,6 +53,7 @@ const blockers = computed(() => {
   if (changedFields.value === 0) entries.push("当前没有可提交的字段变更");
   if (props.hasInvalidEditor) entries.push("请先修正编辑器中的格式错误");
   if (props.savePending) entries.push("请等待当前草稿保存完成");
+  if (props.requiresAttestation && !props.attestationCurrent) entries.push(attestationBlocker);
   return entries;
 });
 
@@ -62,6 +73,7 @@ const objectLabels: Record<string, string> = {
   lineage_edge: "谱系关系",
   visual_region: "图像区域",
   visual_object: "图像对象",
+  molecule_proposal: "OCSR 提议",
 };
 
 const stateLabels: Record<Changeset["workflow_state"], string> = {
@@ -145,7 +157,11 @@ function decide(action: "request-changes" | "approve"): void {
         <template v-if="blockers.length">
           <p>还有 {{ blockers.length }} 项阻断问题：</p>
           <ul>
-            <li v-for="blocker in blockers" :key="blocker">{{ blocker }}</li>
+            <li
+              v-for="blocker in blockers"
+              :key="blocker"
+              :data-attestation-submit-blocker="blocker === attestationBlocker ? '' : undefined"
+            >{{ blocker }}</li>
           </ul>
         </template>
         <p v-else class="validation-ready"><span aria-hidden="true">✓</span>当前修改集满足提交条件。</p>

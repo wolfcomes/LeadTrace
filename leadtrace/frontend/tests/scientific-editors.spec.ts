@@ -119,4 +119,34 @@ describe("scientific review editors", () => {
     expect(updates).toBeTruthy();
     expect(updates?.at(-1)?.[1]).toMatchObject({ local_identity: "26b-main", display_label: "26b corrected" });
   });
+
+  it("hands visual and chemistry objects to the typed Paper workspace", () => {
+    const base = {
+      id: "70000000-0000-4000-8000-000000000002",
+      changeset_id: "60000000-0000-4000-8000-000000000001",
+      paper_id: "20000000-0000-4000-8000-000000000001",
+      base_revision_id: null,
+      proposed_revision_id: null,
+      proposed_snapshot: {},
+      content_hash: "b".repeat(64),
+      sequence: 2,
+      changeset_version: 2,
+      created_at: "2026-09-12T01:00:00Z",
+    };
+    const wrapper = mount(ScientificEditors, {
+      props: {
+        items: [
+          { ...base, object_id: "71000000-0000-4000-8000-000000000001", object_kind: "visual_region" },
+          { ...base, id: "70000000-0000-4000-8000-000000000003", object_id: "71000000-0000-4000-8000-000000000002", object_kind: "molecule_proposal", sequence: 3 },
+        ],
+        editable: true,
+        reason: "review",
+      },
+    });
+
+    expect(wrapper.findAll("[data-specialized-handoff]")).toHaveLength(2);
+    expect(wrapper.find("a[href*='view=pdf']").attributes("href")).toContain("region=71000000-0000-4000-8000-000000000001");
+    expect(wrapper.find("a[href*='view=ocsr']").attributes("href")).toContain("proposal=71000000-0000-4000-8000-000000000002");
+    expect(wrapper.find("[data-specialized-handoff] textarea").exists()).toBe(false);
+  });
 });

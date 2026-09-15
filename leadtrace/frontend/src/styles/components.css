@@ -421,6 +421,33 @@
 .workspace-tabs button { min-width: 118px; padding: 12px 15px; border: 0; border-bottom: 3px solid transparent; color: var(--ink-muted); background: transparent; font-size: .73rem; font-weight: 700; cursor: pointer; }
 .workspace-tabs button:hover { color: var(--coral-deep); }
 .workspace-tabs button[aria-current="page"] { border-bottom-color: var(--coral); color: var(--ink); }
+.task-queue-tabs { align-items: stretch; }
+.task-queue-tabs button { flex: 0 0 auto; }
+.molecule-object-queue { overflow: hidden; }
+.molecule-queue-heading > div:first-child { max-width: 720px; }
+.molecule-queue-heading p:last-child { margin: 8px 0 0; color: var(--ink-muted); font-size: .74rem; line-height: 1.55; }
+.molecule-queue-counts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.molecule-queue-counts span { padding: 6px 8px; border-radius: var(--radius-sm); color: var(--ink-muted); background: var(--paper-deep); font: 600 .61rem/1 var(--font-mono); }
+.molecule-queue-filters { border-width: 0 0 1px; }
+.molecule-queue-filters .form-field { min-width: 180px; }
+.molecule-queue-table { min-width: 880px; }
+.molecule-queue-table th strong,
+.molecule-queue-table th code,
+.molecule-queue-table th small,
+.molecule-queue-table td small { display: block; }
+.molecule-queue-table th code { margin-top: 5px; color: var(--ink-muted); font-size: .61rem; }
+.molecule-queue-table th small,
+.molecule-queue-table td small { margin-top: 5px; color: var(--ink-muted); font-size: .63rem; font-weight: 500; }
+.molecule-crop-thumbnail,
+.crop-placeholder { width: 92px; height: 62px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper-deep); }
+.molecule-crop-thumbnail { display: block; object-fit: contain; }
+.crop-placeholder { display: grid; place-items: center; color: var(--ink-muted); font: 600 .57rem/1.2 var(--font-mono); text-align: center; }
+.queue-reason { max-width: 220px; overflow-wrap: anywhere; }
+.progress-ratio { color: var(--teal-deep); font: 650 .86rem/1 var(--font-mono); }
+.completed-object-group { border-top: 1px solid var(--line); }
+.completed-object-group summary { padding: 14px 18px; color: var(--ink-muted); background: var(--paper-deep); font: 650 .69rem/1.3 var(--font-mono); cursor: pointer; }
+.completed-object-group[open] summary { border-bottom: 1px solid var(--line); }
+.compact-state { min-height: 220px; border: 0; border-radius: 0; box-shadow: none; }
 .metadata-editor { max-width: 900px; padding: 0; overflow: hidden; }
 .metadata-fields { padding: 22px; border-top: 2px solid var(--coral); }
 .metadata-fields label,
@@ -455,6 +482,35 @@
 .advanced-snapshots { margin-top: 22px; border-top: 1px solid var(--line); }
 .advanced-snapshots > summary { padding: 16px 0; color: var(--coral-deep); font-size: .72rem; font-weight: 740; cursor: pointer; }
 .advanced-snapshots > p { margin: -4px 0 15px; color: var(--ink-muted); font-size: .67rem; line-height: 1.55; }
+.system-owned-field { display: grid; gap: 4px; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); color: var(--ink-soft); background: var(--slate-pale); }
+.system-owned-field strong { font-size: .73rem; }
+.system-owned-field small { color: var(--ink-muted); font-size: .62rem; line-height: 1.45; }
+.specialized-handoff { display: grid; gap: 9px; padding: 16px; border: 1px solid var(--line); background: var(--paper-deep); }
+.specialized-handoff h3 { margin: 0; font: 600 1rem/1.25 var(--font-serif); }
+.specialized-handoff p { margin: 0; color: var(--ink-soft); font-size: .7rem; line-height: 1.5; }
+.specialized-handoff code { color: var(--ink-muted); font-size: .61rem; overflow-wrap: anywhere; }
+.verification-section { display: grid; gap: 14px; }
+.verification-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); background: var(--line); }
+.verification-grid div { display: grid; gap: 5px; padding: 12px; background: var(--surface); }
+.verification-grid span { color: var(--ink-muted); font-size: .64rem; }
+.verification-grid strong { font: 700 .84rem/1.2 var(--font-mono); overflow-wrap: anywhere; }
+.internal-review-link { justify-self: start; }
+.source-evidence-section { display: grid; gap: 16px; }
+.published-proposal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+.published-proposal-card, .published-locator-card { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); background: var(--surface); }
+.published-proposal-card > header, .published-locator-card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.published-proposal-card dl { display: grid; gap: 7px; margin: 0; }
+.published-proposal-card dl div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 7px; font-size: .66rem; }
+.published-proposal-card dt { color: var(--ink-muted); }
+.published-proposal-card dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.published-proposal-card > img { display: block; width: 100%; max-height: 220px; object-fit: contain; border: 1px solid var(--line); background: var(--paper-deep); }
+.published-locator-list { display: grid; gap: 10px; }
+.published-locator-card > header { color: var(--ink-muted); font-size: .65rem; }
+.locator-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; align-items: center; }
+.locator-grid img { display: block; width: 100%; max-height: 180px; object-fit: contain; border: 1px solid var(--line); background: var(--paper-deep); }
+.locator-grid code { grid-column: 1 / -1; color: var(--ink-muted); font-size: .61rem; overflow-wrap: anywhere; }
+.structure-grid article > img { display: block; width: 100%; max-height: 190px; margin-top: 10px; object-fit: contain; border: 1px solid var(--line); background: var(--paper-deep); }
+@media (max-width: 760px) { .verification-grid { grid-template-columns: 1fr; } .locator-grid { grid-template-columns: 1fr; } }
 .item-editor { min-width: 0; padding: 19px; }
 .item-editor textarea { resize: vertical; font: .69rem/1.55 var(--font-mono); }
 

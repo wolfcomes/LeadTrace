@@ -22,10 +22,19 @@ from app.imports.models import (
 )
 from app.imports.service import BaselineImporter, ImportValidationError
 from app.lineages.models import Lineage, LineageEdge
+from app.molecule_proposals.models import (
+    MoleculeProposal,
+    MoleculeProposalDisposition,
+)
 from app.papers.models import Paper
 from app.revisions.models import ObjectRevision
 from app.structures.models import Structure
 from app.visual_objects.models import VisualObject
+from app.visual_objects.models import (
+    VisualObjectAssetBinding,
+    VisualObjectRegionBinding,
+    VisualRegion,
+)
 
 
 def _count(session: Session, model: type[object]) -> int:
@@ -88,9 +97,60 @@ def test_apply_is_staged_atomic_and_idempotent(
         assert _count(session, Lineage) == 1
         assert _count(session, LineageEdge) == 1
         assert _count(session, VisualObject) == 1
-        assert _count(session, ObjectRevision) == 10
+        assert _count(session, VisualRegion) == 1
+        assert _count(session, MoleculeProposal) == 1
+        assert _count(session, ObjectRevision) == 12
         assert _count(session, Asset) == 2
-        assert _count(session, ImportAssetLink) == 3
+        assert _count(session, ImportAssetLink) == 4
+        proposal = session.scalar(select(MoleculeProposal))
+        assert proposal is not None
+        proposal_revision = session.scalar(
+            select(ObjectRevision).where(ObjectRevision.object_id == proposal.id)
+        )
+        assert proposal_revision is not None
+        assert proposal_revision.proposal_disposition == (
+            MoleculeProposalDisposition.PENDING.value
+        )
+        normalized = proposal_revision.snapshot["normalized_values"]
+        assert normalized["raw_smiles"] == "CCO"
+        assert normalized["token_confidences"] == [
+            {"token": "C", "confidence": 0.9}
+        ]
+        assert normalized["model_version"] == "ocsr-v1"
+        assert normalized["crop_asset_id"] == str(proposal.crop_asset_id)
+        assert "crop_path" not in normalized
+        assert str(baseline_fixture["workspace"]) not in json.dumps(
+            proposal_revision.snapshot
+        )
+        visual = session.scalar(select(VisualObject))
+        region = session.scalar(select(VisualRegion))
+        assert visual is not None and region is not None
+        region_revision = session.scalar(
+            select(ObjectRevision).where(ObjectRevision.object_id == region.id)
+        )
+        assert region.asset_id is not None
+        assert region.page_number == 1
+        assert region_revision is not None
+        assert region_revision.region_x0 == pytest.approx(0.25)
+        assert region_revision.region_y0 == pytest.approx(0.3125)
+        assert region_revision.region_x1 == pytest.approx(5 / 12)
+        assert region_revision.region_y1 == pytest.approx(0.4375)
+        assert region_revision.region_rotation == 0
+        assert region_revision.snapshot["provenance"] == {
+            "candidate_id": "CAND-1",
+            "object_id": "OBJ-1",
+        }
+        region_binding = session.scalar(select(VisualObjectRegionBinding))
+        crop_binding = session.scalar(select(VisualObjectAssetBinding))
+        assert region_binding is not None
+        assert region_binding.visual_object_id == visual.id
+        assert region_binding.region_id == region.id
+        assert region_binding.changeset_id is None
+        assert crop_binding is not None
+        assert crop_binding.visual_object_id == visual.id
+        assert crop_binding.asset_id == proposal.crop_asset_id
+        assert crop_binding.is_primary is True
+        assert proposal.source_region_id == region.id
         evidence_stage = session.scalar(
             select(ImportStagingRecord).where(
                 ImportStagingRecord.record_type == "evidence"
@@ -99,6 +159,51 @@ def test_apply_is_staged_atomic_and_idempotent(
         assert evidence_stage is not None
         assert evidence_stage.raw_values["evidence_text"] == "line one\nline two"
         assert evidence_stage.source_row_locator == "row:2"
+
+
+def test_apply_keeps_a_localization_blocker_for_invalid_object_geometry(
+    tmp_path: Path,
+    baseline_fixture: dict[str, object],
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    source_root = baseline_fixture["source_root"]
+    manifest_path = baseline_fixture["manifest_path"]
+    expected = baseline_fixture["expected"]
+    assert isinstance(source_root, Path)
+    assert isinstance(manifest_path, Path)
+    assert isinstance(expected, dict)
+
+    def invalidate_local_bounds(rows: list[dict[str, str]]) -> None:
+        rows[0]["local_x1"] = "1.2"
+
+    _rewrite_csv(
+        source_root
+        / "09_paper_review"
+        / "auto_fill"
+        / "first_page_molecule_objects.csv",
+        invalidate_local_bounds,
+    )
+    importer = BaselineImporter(
+        source_root,
+        managed_asset_root=tmp_path / "managed",
+        expected=expected,
+        source_manifest_path=manifest_path,
+    )
+
+    with auth_session_factory.begin() as session:
+        importer.apply(session)
+
+    with auth_session_factory() as session:
+        visual = session.scalar(select(VisualObject))
+        assert visual is not None
+        revision = session.scalar(
+            select(ObjectRevision).where(ObjectRevision.object_id == visual.id)
+        )
+        assert revision is not None
+        assert revision.snapshot["review_blockers"] == ["localization"]
+        assert _count(session, VisualRegion) == 0
+        assert _count(session, VisualObjectRegionBinding) == 0
+        assert _count(session, VisualObjectAssetBinding) == 1
 
 
 def test_validation_failure_leaves_existing_candidate_unchanged(
@@ -202,7 +307,7 @@ def test_apply_quarantines_a_non_utf8_source_table_without_losing_exact_link(
         )
         assert asset is not None
         assert asset.integrity_state is AssetIntegrityState.QUARANTINED
-        assert _count(session, ImportAssetLink) == 4
+        assert _count(session, ImportAssetLink) == 5
 
 
 def test_apply_rolls_back_if_a_fact_file_changes_after_reconciliation(
