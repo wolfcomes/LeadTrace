@@ -472,6 +472,12 @@ def paper_detail_payload(
     paper_release_item = next(
         item for item, _ in entries if item.object_kind is ObjectKind.PAPER
     )
+    paper_review = paper_human_review_summary(
+        session,
+        release_id=release.id,
+        item=paper_release_item,
+    )
+    release_status = release_verification_status(release)
     payload = {
         "request_id": request_id,
         "release": _release_metadata(release),
@@ -493,16 +499,12 @@ def paper_detail_payload(
                 "total": len(structure_payload),
             },
             "pair_ready": {"eligible": pair_ready, "total": len(edge_payload)},
-            "human_review": paper_human_review_summary(
-                session,
-                release_id=release.id,
-                item=paper_release_item,
-            ),
+            "human_review": paper_review,
         },
         "verification": {
             "ai_baseline": "published",
-            "human_verified": release_verification_status(release) == "human_verified",
-            "release_status": release_verification_status(release),
+            "human_verified": paper_review["verified"] is True,
+            "release_status": release_status,
         },
     }
     if include_review_entry:

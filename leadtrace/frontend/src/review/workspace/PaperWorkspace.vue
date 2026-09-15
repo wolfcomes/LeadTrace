@@ -55,6 +55,22 @@ const emit = defineEmits<{
   "attestation-updated": [attestation: PaperAttestation];
 }>();
 
+defineSlots<{
+  scientific?: (props: Record<string, never>) => unknown;
+  diff?: (props: Record<string, never>) => unknown;
+  submit?: (props: {
+    requiresAttestation?: boolean;
+    attestationCurrent?: boolean;
+  }) => unknown;
+  inspector?: (props: {
+    workspace: unknown;
+    region: unknown;
+    visualObject: unknown;
+    proposal: unknown;
+    editable: boolean;
+  }) => unknown;
+}>();
+
 const route = useRoute();
 const router = useRouter();
 const controller = useWorkspace();
@@ -99,6 +115,18 @@ const selectedDrawingUrl = computed(() => {
   return typeof assetId === "string"
     ? workspace.assets.find((asset) => asset.id === assetId)?.url ?? null
     : null;
+});
+
+const attestationCurrent = computed(() => {
+  const workspace = controller.workspace.value;
+  const attestation = workspace?.attestation;
+  return Boolean(
+    workspace
+    && attestation
+    && !attestation.stale
+    && attestation.changeset_version === workspace.workspace_version
+    && attestation.scope_hash === workspace.scope.scope_hash,
+  );
 });
 
 function queryValue(value: unknown): string | string[] | null | undefined {
@@ -536,22 +564,27 @@ onBeforeUnmount(() => {
           @resize-region="updateRegionGeometry($event); emit('resize-region', $event)"
         />
 
-        <PaperAttestationPanel
-          v-if="controller.selectedView.value === 'submit'"
-          :workspace="controller.workspace.value"
-          :editable="mutable && !mobilePrecision"
-          :busy="mutationBusy"
-          @attest="attestPaperForWorkspace"
-        />
+        <div v-else-if="controller.selectedView.value === 'submit'" class="workspace-submit-stack">
+          <PaperAttestationPanel
+            :workspace="controller.workspace.value"
+            :editable="mutable && !mobilePrecision"
+            :busy="mutationBusy"
+            @attest="attestPaperForWorkspace"
+          />
+          <slot
+            name="submit"
+            :requires-attestation="true"
+            :attestation-current="attestationCurrent"
+          >
+            <section class="workspace-placeholder panel"><h2>提交</h2><p>完成 Paper 核查确认后提交管理员审批。</p></section>
+          </slot>
+        </div>
 
         <slot v-else-if="controller.selectedView.value === 'scientific'" name="scientific">
           <section class="workspace-placeholder panel"><h2>科学数据</h2><p>Activity、Evidence 与 Lineage 编辑器将在这里保持同一 Paper 上下文。</p></section>
         </slot>
         <slot v-else-if="controller.selectedView.value === 'diff'" name="diff">
           <section class="workspace-placeholder panel"><h2>Diff</h2><p>当前修改的结构化差异将在这里显示。</p></section>
-        </slot>
-        <slot v-else name="submit">
-          <section class="workspace-placeholder panel"><h2>提交</h2><p>完成所有 blocker 后确认 Paper 核查范围。</p></section>
         </slot>
       </main>
 

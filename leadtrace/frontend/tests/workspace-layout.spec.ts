@@ -5,6 +5,8 @@ import { createMemoryHistory, createRouter } from "vue-router";
 
 import PdfReviewCanvas from "../src/pdf-viewer/PdfReviewCanvas.vue";
 import { useAuthStore } from "../src/auth/store";
+import type { Changeset, ChangesetItem, RevisionDiff } from "../src/api/schema";
+import SubmissionPage from "../src/review/changesets/SubmissionPage.vue";
 import PaperWorkspace from "../src/review/workspace/PaperWorkspace.vue";
 
 const ids = {
@@ -212,7 +214,7 @@ function errorResponse(status: number, body: unknown): Response {
   });
 }
 
-async function mountWorkspace(query = "") {
+async function mountWorkspace(query = "", slots: Record<string, string> = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: "/review/changesets/:changesetId", component: { template: "<div />" } }],
@@ -222,6 +224,7 @@ async function mountWorkspace(query = "") {
   const wrapper = mount(PaperWorkspace, {
     props: { changesetId: ids.changeset, saveState: "saved" },
     global: { plugins: [router] },
+    slots,
   });
   await flushPromises();
   return { wrapper, router };
@@ -375,6 +378,82 @@ describe("Paper scientific workspace layout", () => {
       confirmed: true,
     });
     expect(wrapper.get("[data-attestation-current]").text()).toContain("已确认");
+  });
+
+  it("shows Paper attestation and the formal submission view together", async () => {
+    const { wrapper } = await mountWorkspace("?view=submit", {
+      submit: "<section data-formal-submission>正式提交检查</section>",
+    });
+
+    expect(wrapper.find("[data-paper-attestation]").exists()).toBe(true);
+    expect(wrapper.get("[data-formal-submission]").text()).toContain("正式提交检查");
+  });
+
+  it("blocks the formal submission until the current Paper version is attested", async () => {
+    const changeset: Changeset = {
+      id: ids.changeset,
+      review_task_id: ids.task,
+      paper_id: ids.paper,
+      owner_id: ids.owner,
+      base_release_id: ids.release,
+      title: "Review Paper",
+      reason: "Verify source evidence",
+      workflow_state: "draft",
+      version: 3,
+      validation_results: {},
+      submitted_snapshot: null,
+      submitted_content_hash: null,
+      submitted_at: null,
+      created_at: "2026-09-14T00:00:00Z",
+      updated_at: "2026-09-14T00:00:00Z",
+    };
+    const items: ChangesetItem[] = [{
+      id: ids.revision,
+      changeset_id: ids.changeset,
+      paper_id: ids.paper,
+      object_id: ids.paper,
+      object_kind: "paper",
+      base_revision_id: ids.revision,
+      proposed_revision_id: ids.scope,
+      proposed_snapshot: { title: "Reviewed Paper" },
+      content_hash: "d".repeat(64),
+      sequence: 1,
+      changeset_version: 3,
+      created_at: "2026-09-14T00:00:00Z",
+    }];
+    const diffs: RevisionDiff[] = [{
+      object_id: ids.paper,
+      object_kind: "paper",
+      base_revision_id: ids.revision,
+      proposed_revision_id: ids.scope,
+      change_type: "update",
+      changes: [{
+        path: "/title",
+        category: "metadata",
+        before_present: true,
+        after_present: true,
+        before: "Draft Paper",
+        after: "Reviewed Paper",
+      }],
+    }];
+    const wrapper = mount(SubmissionPage, {
+      props: {
+        changeset,
+        items,
+        diffs,
+        role: "reviewer",
+        requiresAttestation: true,
+        attestationCurrent: false,
+      },
+    });
+
+    expect(wrapper.get("[data-attestation-submit-blocker]").text()).toContain("当前版本");
+    expect(wrapper.get(".submit-button").attributes("disabled")).toBeDefined();
+
+    await wrapper.setProps({ attestationCurrent: true });
+
+    expect(wrapper.find("[data-attestation-submit-blocker]").exists()).toBe(false);
+    expect(wrapper.get(".submit-button").attributes("disabled")).toBeUndefined();
   });
 
   it("makes precision Region interaction read-only on mobile", async () => {

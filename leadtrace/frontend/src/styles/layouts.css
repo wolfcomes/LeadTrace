@@ -171,6 +171,7 @@
 .context-navigation { grid-template-columns: 1fr 1fr; }
 .context-navigation a { grid-column: 1 / -1; color: var(--teal-deep); font-size: .74rem; }
 .workspace-primary { min-width: 0; padding: 18px; background: var(--paper); }
+.workspace-submit-stack { display: grid; gap: 16px; }
 .workspace-overview { padding: 28px; }
 .workspace-overview h2 { margin: 0; font: 600 1.7rem/1.2 var(--font-serif); }
 .workspace-overview dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 24px 0 0; background: var(--line); }

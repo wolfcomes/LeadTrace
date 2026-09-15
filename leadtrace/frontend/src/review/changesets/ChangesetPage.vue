@@ -831,7 +831,7 @@ onBeforeUnmount(() => {
           <ChangesetDiff :diffs="diffs" />
         </template>
 
-        <template #submit>
+        <template #submit="{ attestationCurrent, requiresAttestation }">
           <SubmissionPage
             :changeset="changeset"
             :items="items"
@@ -840,6 +840,8 @@ onBeforeUnmount(() => {
             :busy="operationBusy"
             :has-invalid-editor="hasInvalidEditor"
             :save-pending="savePending"
+            :requires-attestation="requiresAttestation"
+            :attestation-current="attestationCurrent"
             @submit="submit"
             @revise="revise"
             @decision="decide"
