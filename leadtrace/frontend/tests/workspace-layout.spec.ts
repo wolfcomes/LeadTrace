@@ -96,6 +96,7 @@ const workspace = {
       rotation: 0,
       asset_id: null,
       asset: null,
+      is_tombstone: false,
     },
     {
       id: ids.secondRegion,
@@ -106,6 +107,7 @@ const workspace = {
       rotation: 0,
       asset_id: null,
       asset: null,
+      is_tombstone: false,
     },
   ],
   visual_objects: [
@@ -200,6 +202,13 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "Content-Type": "application/json" },
+  });
+}
+
+function errorResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", "X-Request-ID": "workspace-request" },
   });
 }
 
@@ -318,5 +327,137 @@ describe("Paper scientific workspace layout", () => {
 
     expect(wrapper.get("[data-desktop-required]").text()).toContain("桌面端");
     expect(wrapper.findComponent(PdfReviewCanvas).props("readOnly")).toBe(true);
+  });
+
+  it("saves typed Region bounds and refreshes the version-consistent projection", async () => {
+    const calls: Array<{ path: string; method?: string; body?: Record<string, unknown> }> = [];
+    let workspaceReads = 0;
+    const updatedWorkspace = {
+      ...workspace,
+      workspace_version: 4,
+      changeset: { ...workspace.changeset, version: 4 },
+      regions: workspace.regions.map((region) => region.id === ids.firstRegion
+        ? { ...region, bounds: { ...region.bounds, x1: 0.5 } }
+        : region),
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      calls.push({
+        path,
+        method: init?.method,
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      if (path.endsWith("/workspace")) {
+        workspaceReads += 1;
+        return jsonResponse(workspaceReads === 1 ? workspace : updatedWorkspace);
+      }
+      if (path.endsWith(`/regions/${ids.firstRegion}`) && init?.method === "PATCH") {
+        return jsonResponse({ revision_id: ids.revision, revision_number: 2 });
+      }
+      return errorResponse(404, { code: "RESOURCE_NOT_FOUND", message: "missing", details: {}, request_id: "workspace-request" });
+    }));
+    const { wrapper } = await mountWorkspace(`?view=pdf&page=1&region=${ids.firstRegion}`);
+
+    await wrapper.get("input[name='x1']").setValue("0.5");
+    await wrapper.get("[data-save-region]").trigger("click");
+    await flushPromises();
+
+    const patchCall = calls.find((call) => call.method === "PATCH");
+    expect(patchCall).toMatchObject({
+      path: `/api/v1/papers/${ids.paper}/regions/${ids.firstRegion}`,
+      body: {
+        changeset_id: ids.changeset,
+        expected_version: 3,
+        page_number: 1,
+        bounds: { x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.6 },
+        rotation: 0,
+      },
+    });
+    expect(workspaceReads).toBe(2);
+    expect(wrapper.get("input[name='x1']").element).toHaveProperty("value", "0.5");
+  });
+
+  it("surfaces a Region version conflict without replaying the mutation", async () => {
+    let workspaceReads = 0;
+    let patchWrites = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path.endsWith("/workspace")) {
+        workspaceReads += 1;
+        return jsonResponse(workspace);
+      }
+      if (path.endsWith(`/regions/${ids.firstRegion}`) && init?.method === "PATCH") {
+        patchWrites += 1;
+        return errorResponse(409, {
+          code: "REVISION_CONFLICT",
+          message: "Region changed",
+          details: { expected_version: 3, current_version: 4 },
+          request_id: "workspace-request",
+        });
+      }
+      return errorResponse(404, { code: "RESOURCE_NOT_FOUND", message: "missing", details: {}, request_id: "workspace-request" });
+    }));
+    const { wrapper } = await mountWorkspace(`?view=pdf&page=1&region=${ids.firstRegion}`);
+
+    await wrapper.get("[data-save-region]").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-workspace-conflict]").text()).toContain("版本冲突");
+    expect(patchWrites).toBe(1);
+    expect(workspaceReads).toBe(1);
+    await wrapper.get("[data-refresh-conflict]").trigger("click");
+    await flushPromises();
+    expect(workspaceReads).toBe(2);
+    expect(patchWrites).toBe(1);
+  });
+
+  it("saves Visual Object type and label through its typed inspector", async () => {
+    const writes: Array<Record<string, unknown>> = [];
+    let workspaceReads = 0;
+    const updatedWorkspace = {
+      ...workspace,
+      workspace_version: 4,
+      changeset: { ...workspace.changeset, version: 4 },
+      visual_objects: workspace.visual_objects.map((visual) => visual.id === ids.firstVisual
+        ? { ...visual, object_type: "shared_scaffold", snapshot: { display_label: "Lead compound" } }
+        : visual),
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path.endsWith("/workspace")) {
+        workspaceReads += 1;
+        return jsonResponse(workspaceReads === 1 ? workspace : updatedWorkspace);
+      }
+      if (path.endsWith(`/visual-objects/${ids.firstVisual}`) && init?.method === "PATCH") {
+        writes.push(JSON.parse(String(init.body)));
+        return jsonResponse({
+          id: ids.firstVisual,
+          paper_id: ids.paper,
+          object_key: "object-1",
+          object_type: "shared_scaffold",
+          revision_id: ids.revision,
+          revision_number: 2,
+          changeset_id: ids.changeset,
+          changeset_version: 4,
+          snapshot: { object_key: "object-1", object_type: "shared_scaffold", label: "Lead compound" },
+          workflow_state: "draft",
+        });
+      }
+      return errorResponse(404, { code: "RESOURCE_NOT_FOUND", message: "missing", details: {}, request_id: "workspace-request" });
+    }));
+    const { wrapper } = await mountWorkspace(`?view=molecules&page=1&object=${ids.firstVisual}`);
+
+    await wrapper.get("select[data-object-type]").setValue("shared_scaffold");
+    await wrapper.get("[data-save-object]").trigger("click");
+    await flushPromises();
+
+    expect(writes).toEqual([{
+      changeset_id: ids.changeset,
+      expected_version: 3,
+      object_type: "shared_scaffold",
+      label: "Lead compound",
+    }]);
+    expect(workspaceReads).toBe(2);
+    expect(wrapper.get("select[data-object-type]").element).toHaveProperty("value", "shared_scaffold");
   });
 });

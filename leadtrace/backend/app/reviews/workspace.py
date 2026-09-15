@@ -580,6 +580,7 @@ def build_workspace(
                 "rotation": row.revision.region_rotation or 0,
                 "asset_id": str(region.asset_id) if region.asset_id else None,
                 "asset": asset_payload(asset),
+                "is_tombstone": bool(row.revision.is_tombstone),
             }
             regions.append(payload)
             region_by_id[region.id] = payload

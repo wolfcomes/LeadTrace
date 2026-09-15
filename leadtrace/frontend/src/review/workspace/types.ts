@@ -213,6 +213,7 @@ const regionSchema = z.object({
   rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
   asset_id: z.string().uuid().nullable(),
   asset: workspaceAssetSchema.nullable(),
+  is_tombstone: z.boolean(),
 }).strict();
 
 const visualObjectSchema = z.object({

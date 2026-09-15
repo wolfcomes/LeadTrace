@@ -114,6 +114,7 @@ const workspace = {
     rotation: 0,
     asset_id: ids.asset,
     asset,
+    is_tombstone: false,
   }],
   visual_objects: [{
     id: ids.visual,

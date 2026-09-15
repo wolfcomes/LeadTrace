@@ -255,6 +255,7 @@ class WorkspaceRegionResponse(_ProjectionModel):
     rotation: int
     asset_id: UUID | None = None
     asset: WorkspaceAssetResponse | None = None
+    is_tombstone: bool
 
 
 class WorkspaceObjectBindingsResponse(_ProjectionModel):

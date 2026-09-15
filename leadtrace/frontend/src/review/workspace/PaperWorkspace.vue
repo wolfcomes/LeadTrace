@@ -2,10 +2,28 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import { ApiError } from "../../api/client";
+import {
+  bindVisualObjectAsset,
+  bindVisualObjectCompound,
+  bindVisualObjectRegion,
+  createRegion,
+  duplicateRegion,
+  removeVisualObjectBinding,
+  setRegionTombstone,
+  splitRegion,
+  updateRegion,
+  updateVisualObject,
+  updateVisualObjectAssetBinding,
+  type DraftMutationContext,
+} from "../api";
 import type { AutosaveState } from "../autosave";
+import RegionInspector from "./RegionInspector.vue";
+import VisualObjectInspector from "./VisualObjectInspector.vue";
 import WorkspaceActionBar from "./WorkspaceActionBar.vue";
 import WorkspaceContextRail from "./WorkspaceContextRail.vue";
 import WorkspaceEvidenceCanvas from "./WorkspaceEvidenceCanvas.vue";
+import type { MoleculeObjectType } from "./types";
 import type { WorkspaceView } from "./useWorkspace";
 import { useWorkspace } from "./useWorkspace";
 
@@ -20,6 +38,7 @@ const emit = defineEmits<{
   "create-region": [payload: Record<string, unknown>];
   "move-region": [payload: Record<string, unknown>];
   "resize-region": [payload: Record<string, unknown>];
+  "workspace-updated": [version: number];
 }>();
 
 const route = useRoute();
@@ -27,6 +46,8 @@ const router = useRouter();
 const controller = useWorkspace();
 const mobilePrecision = ref(false);
 const fallbackView = ref<"scientific" | "diff" | "submit">("scientific");
+const mutationBusy = ref(false);
+const mutationError = ref<{ conflict: boolean; message: string }>();
 let mediaQuery: MediaQueryList | undefined;
 
 const tabs: Array<[WorkspaceView, string]> = [
@@ -113,6 +134,186 @@ function adjacent(direction: 1 | -1): void {
   syncQuery();
 }
 
+function mutationContext(): DraftMutationContext | undefined {
+  const workspace = controller.workspace.value;
+  if (!workspace) return undefined;
+  return {
+    changeset_id: workspace.changeset.id,
+    expected_version: workspace.workspace_version,
+  };
+}
+
+async function runMutation<Result>(
+  mutate: () => Promise<Result>,
+  after?: (result: Result) => void,
+): Promise<void> {
+  if (mutationBusy.value) return;
+  mutationBusy.value = true;
+  mutationError.value = undefined;
+  try {
+    const result = await mutate();
+    after?.(result);
+    await controller.refreshAfterConflict();
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "REVISION_CONFLICT") {
+      mutationError.value = {
+        conflict: true,
+        message: `版本冲突：服务端版本为 ${String(error.details.current_version ?? "未知")}，请刷新后重新检查。`,
+      };
+    } else if (error instanceof ApiError && error.status === 422) {
+      mutationError.value = { conflict: false, message: "输入未通过服务端校验，请检查字段和关联范围。" };
+    } else {
+      mutationError.value = { conflict: false, message: "修改未保存，请稍后重试。" };
+    }
+  } finally {
+    mutationBusy.value = false;
+  }
+}
+
+async function refreshConflict(): Promise<void> {
+  mutationError.value = undefined;
+  await controller.refreshAfterConflict();
+}
+
+function saveRegion(payload: {
+  page_number: number;
+  bounds: { x0: number; y0: number; x1: number; y1: number };
+  rotation: 0 | 90 | 180 | 270;
+}): void {
+  const workspace = controller.workspace.value;
+  const region = controller.selectedRegion.value;
+  const context = mutationContext();
+  if (!workspace || !region || !context) return;
+  void runMutation(() => updateRegion(workspace.paper.id, region.id, { ...context, ...payload }));
+}
+
+function updateRegionGeometry(payload: Record<string, unknown>): void {
+  const workspace = controller.workspace.value;
+  const context = mutationContext();
+  const regionId = typeof payload.id === "string" ? payload.id : undefined;
+  if (!workspace || !context || !regionId) return;
+  const bounds = {
+    x0: Number(payload.x0), y0: Number(payload.y0), x1: Number(payload.x1), y1: Number(payload.y1),
+  };
+  void runMutation(() => updateRegion(workspace.paper.id, regionId, {
+    ...context,
+    page_number: Number(payload.pageNumber),
+    bounds,
+    rotation: Number(payload.rotation),
+  }));
+}
+
+function createDrawnRegion(payload: Record<string, unknown>): void {
+  const workspace = controller.workspace.value;
+  const context = mutationContext();
+  if (!workspace || !context) return;
+  const page = Number(payload.pageNumber);
+  const prefix = `region-p${page}-`;
+  const sequence = workspace.regions.filter((region) => region.region_key.startsWith(prefix)).length + 1;
+  void runMutation(() => createRegion(workspace.paper.id, {
+    ...context,
+    region_key: `${prefix}${sequence}`,
+    page_number: page,
+    bounds: {
+      x0: Number(payload.x0), y0: Number(payload.y0), x1: Number(payload.x1), y1: Number(payload.y1),
+    },
+    rotation: Number(payload.rotation),
+  }), (result) => {
+    controller.selectedRegionId.value = result.id;
+    controller.selectedPage.value = page;
+  });
+}
+
+function duplicateSelectedRegion(regionKey: string): void {
+  const workspace = controller.workspace.value;
+  const region = controller.selectedRegion.value;
+  const context = mutationContext();
+  if (!workspace || !region || !context) return;
+  void runMutation(
+    () => duplicateRegion(workspace.paper.id, region.id, { ...context, region_key: regionKey }),
+    (result) => { controller.selectedRegionId.value = result.id; },
+  );
+}
+
+function splitSelectedRegion(payload: {
+  first_key: string;
+  second_key: string;
+  first_bounds: { x0: number; y0: number; x1: number; y1: number };
+  second_bounds: { x0: number; y0: number; x1: number; y1: number };
+}): void {
+  const workspace = controller.workspace.value;
+  const region = controller.selectedRegion.value;
+  const context = mutationContext();
+  if (!workspace || !region || !context) return;
+  void runMutation(
+    () => splitRegion(workspace.paper.id, region.id, { ...context, ...payload }),
+    (result) => { controller.selectedRegionId.value = result.regions[0]?.id; },
+  );
+}
+
+function toggleSelectedRegion(action: "tombstone" | "restore"): void {
+  const workspace = controller.workspace.value;
+  const region = controller.selectedRegion.value;
+  const context = mutationContext();
+  if (!workspace || !region || !context) return;
+  void runMutation(() => setRegionTombstone(workspace.paper.id, region.id, action, context));
+}
+
+function saveVisualObject(payload: { object_type: MoleculeObjectType; label: string | null }): void {
+  const workspace = controller.workspace.value;
+  const visual = controller.selectedVisualObject.value;
+  const context = mutationContext();
+  if (!workspace || !visual || !context) return;
+  void runMutation(() => updateVisualObject(workspace.paper.id, visual.id, { ...context, ...payload }));
+}
+
+function bindRegion(payload: { region_id: string; role: string }): void {
+  const workspace = controller.workspace.value;
+  const visual = controller.selectedVisualObject.value;
+  const context = mutationContext();
+  if (!workspace || !visual || !context) return;
+  void runMutation(() => bindVisualObjectRegion(workspace.paper.id, visual.id, { ...context, ...payload }));
+}
+
+function bindAsset(payload: { asset_id: string; role: string; is_primary: boolean }): void {
+  const workspace = controller.workspace.value;
+  const visual = controller.selectedVisualObject.value;
+  const context = mutationContext();
+  if (!workspace || !visual || !context) return;
+  void runMutation(() => bindVisualObjectAsset(workspace.paper.id, visual.id, { ...context, ...payload }));
+}
+
+function bindCompound(payload: { compound_id: string; label: string; role: string }): void {
+  const workspace = controller.workspace.value;
+  const visual = controller.selectedVisualObject.value;
+  const context = mutationContext();
+  if (!workspace || !visual || !context) return;
+  void runMutation(() => bindVisualObjectCompound(workspace.paper.id, visual.id, { ...context, ...payload }));
+}
+
+function removeBinding(payload: { kind: "regions" | "assets" | "compounds"; id: string }): void {
+  const workspace = controller.workspace.value;
+  const visual = controller.selectedVisualObject.value;
+  const context = mutationContext();
+  if (!workspace || !visual || !context) return;
+  void runMutation(() => removeVisualObjectBinding(workspace.paper.id, visual.id, payload.kind, payload.id, context));
+}
+
+function setPrimaryAsset(payload: { id: string; role: string }): void {
+  const workspace = controller.workspace.value;
+  const visual = controller.selectedVisualObject.value;
+  const context = mutationContext();
+  if (!workspace || !visual || !context) return;
+  void runMutation(() => updateVisualObjectAssetBinding(workspace.paper.id, visual.id, payload.id, {
+    ...context, role: payload.role, is_primary: true,
+  }));
+}
+
+function locateSource(regionId: string): void {
+  controller.selectedView.value = "pdf";
+  selectRegion(regionId);
+}
+
 function updateMediaQuery(event: MediaQueryListEvent | MediaQueryList): void {
   mobilePrecision.value = event.matches;
 }
@@ -122,7 +323,10 @@ watch(() => props.changesetId, (changesetId) => {
 }, { immediate: true });
 
 watch(controller.state, (state) => {
-  if (state === "ready") emit("ready");
+  if (state === "ready") {
+    emit("ready");
+    if (controller.workspace.value) emit("workspace-updated", controller.workspace.value.workspace_version);
+  }
   if (state === "not-found" || state === "error") emit("unavailable");
 });
 
@@ -197,9 +401,9 @@ onBeforeUnmount(() => {
           :desktop-required="mobilePrecision"
           @select-page="selectPage"
           @select-region="selectRegion"
-          @create-region="emit('create-region', $event)"
-          @move-region="emit('move-region', $event)"
-          @resize-region="emit('resize-region', $event)"
+          @create-region="createDrawnRegion($event); emit('create-region', $event)"
+          @move-region="updateRegionGeometry($event); emit('move-region', $event)"
+          @resize-region="updateRegionGeometry($event); emit('resize-region', $event)"
         />
 
         <slot v-else-if="controller.selectedView.value === 'scientific'" name="scientific">
@@ -214,6 +418,10 @@ onBeforeUnmount(() => {
       </main>
 
       <aside class="workspace-inspector panel" data-workspace-inspector aria-label="专用编辑器">
+        <div v-if="mutationError" :data-workspace-conflict="mutationError.conflict ? '' : undefined" class="operation-alert" role="alert">
+          {{ mutationError.message }}
+          <button v-if="mutationError.conflict" class="button-secondary" data-refresh-conflict type="button" @click="refreshConflict">刷新服务端版本</button>
+        </div>
         <slot
           name="inspector"
           :workspace="controller.workspace.value"
@@ -222,6 +430,36 @@ onBeforeUnmount(() => {
           :proposal="controller.selectedProposal.value"
           :editable="mutable && !mobilePrecision"
         >
+          <RegionInspector
+            v-if="controller.selectedView.value === 'pdf' && controller.selectedRegion.value"
+            :region="controller.selectedRegion.value"
+            :editable="mutable && !mobilePrecision"
+            :busy="mutationBusy"
+            :linked-object-count="controller.workspace.value.visual_objects.filter((visual) => visual.region_id === controller.selectedRegion.value?.id).length"
+            :source-locator-count="controller.workspace.value.source_locators.filter((locator) => locator.region_id === controller.selectedRegion.value?.id).length"
+            @save="saveRegion"
+            @duplicate="duplicateSelectedRegion"
+            @split="splitSelectedRegion"
+            @tombstone="toggleSelectedRegion('tombstone')"
+            @restore="toggleSelectedRegion('restore')"
+          />
+          <VisualObjectInspector
+            v-else-if="controller.selectedView.value === 'molecules' && controller.selectedVisualObject.value"
+            :visual="controller.selectedVisualObject.value"
+            :regions="controller.workspace.value.regions.map((region) => ({ id: region.id, label: region.region_key }))"
+            :assets="controller.workspace.value.assets.map((asset) => ({ id: asset.id, filename: asset.original_filename }))"
+            :editable="mutable && !mobilePrecision"
+            :busy="mutationBusy"
+            :has-source-locator="controller.workspace.value.source_locators.some((locator) => locator.visual_object_id === controller.selectedVisualObject.value?.id)"
+            @save="saveVisualObject"
+            @bind-region="bindRegion"
+            @bind-asset="bindAsset"
+            @bind-compound="bindCompound"
+            @remove-binding="removeBinding"
+            @set-primary-asset="setPrimaryAsset"
+            @locate-source="locateSource"
+          />
+          <template v-else>
           <header>
             <p class="eyebrow">TYPED INSPECTOR</p>
             <h2>专用编辑器</h2>
@@ -232,6 +470,7 @@ onBeforeUnmount(() => {
             <div data-selected-proposal><dt>Proposal</dt><dd>{{ controller.selectedProposal.value?.proposal_key ?? "未选择" }}</dd></div>
           </dl>
           <p>Region、Visual Object、OCSR 与 Structure 的类型化字段会按当前选择显示在此处。</p>
+          </template>
         </slot>
       </aside>
     </div>

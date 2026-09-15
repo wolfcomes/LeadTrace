@@ -1,4 +1,5 @@
 import { apiRequest } from "../api/client";
+import { z } from "zod";
 import {
   changesetItemSchema,
   changesetMutationSchema,
@@ -28,6 +29,153 @@ import {
 
 function csrfToken(): string | null {
   return useAuthStore().csrfToken;
+}
+
+const visualObjectMutationSchema = z.object({
+  id: z.string(),
+  paper_id: z.string(),
+  object_key: z.string(),
+  object_type: z.string(),
+  revision_id: z.string(),
+  revision_number: z.number().int().positive(),
+  changeset_id: z.string().nullable(),
+  changeset_version: z.number().int().positive(),
+  snapshot: z.record(z.string(), z.unknown()),
+  workflow_state: z.string(),
+}).strict();
+
+const bindingMutationSchema = z.object({
+  id: z.string(),
+  region_id: z.string().optional(),
+  asset_id: z.string().optional(),
+  compound_id: z.string().optional(),
+  label: z.string().optional(),
+  operation: z.string().optional(),
+}).strict();
+
+const regionIdentitySchema = z.object({ id: z.string(), region_key: z.string() }).strict();
+const regionRevisionSchema = z.object({
+  revision_id: z.string(),
+  revision_number: z.number().int().positive().optional(),
+  is_tombstone: z.boolean().optional(),
+}).strict();
+const regionSplitSchema = z.object({ regions: regionIdentitySchema.array().length(2) }).strict();
+
+export interface DraftMutationContext {
+  changeset_id: string;
+  expected_version: number;
+}
+
+export function createRegion(paperId: string, input: DraftMutationContext & {
+  region_key: string;
+  page_number: number;
+  bounds: { x0: number; y0: number; x1: number; y1: number };
+  rotation: number;
+}) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/regions`, regionIdentitySchema, {
+    method: "POST", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function updateRegion(paperId: string, regionId: string, input: DraftMutationContext & {
+  page_number?: number;
+  bounds?: { x0: number; y0: number; x1: number; y1: number };
+  rotation?: number;
+}) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/regions/${encodeURIComponent(regionId)}`, regionRevisionSchema, {
+    method: "PATCH", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function duplicateRegion(paperId: string, regionId: string, input: DraftMutationContext & { region_key: string }) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/regions/${encodeURIComponent(regionId)}/duplicate`, regionIdentitySchema, {
+    method: "POST", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function splitRegion(paperId: string, regionId: string, input: DraftMutationContext & {
+  first_key: string;
+  second_key: string;
+  first_bounds: { x0: number; y0: number; x1: number; y1: number };
+  second_bounds: { x0: number; y0: number; x1: number; y1: number };
+}) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/regions/${encodeURIComponent(regionId)}/split`, regionSplitSchema, {
+    method: "POST", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function setRegionTombstone(
+  paperId: string,
+  regionId: string,
+  action: "tombstone" | "restore",
+  input: DraftMutationContext,
+) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/regions/${encodeURIComponent(regionId)}/${action}`, regionRevisionSchema, {
+    method: "POST", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function updateVisualObject(paperId: string, objectId: string, input: DraftMutationContext & {
+  object_type: MoleculeObjectType;
+  label?: string | null;
+}) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/visual-objects/${encodeURIComponent(objectId)}`, visualObjectMutationSchema, {
+    method: "PATCH", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function bindVisualObjectRegion(paperId: string, objectId: string, input: DraftMutationContext & {
+  region_id: string;
+  role?: string;
+  note?: string | null;
+}) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/visual-objects/${encodeURIComponent(objectId)}/regions`, bindingMutationSchema, {
+    method: "POST", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function bindVisualObjectAsset(paperId: string, objectId: string, input: DraftMutationContext & {
+  asset_id: string;
+  role?: string;
+  is_primary?: boolean;
+}) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/visual-objects/${encodeURIComponent(objectId)}/assets`, bindingMutationSchema, {
+    method: "POST", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function bindVisualObjectCompound(paperId: string, objectId: string, input: DraftMutationContext & {
+  compound_id: string;
+  label: string;
+  role?: string;
+  confidence?: number | null;
+  note?: string | null;
+  is_primary?: boolean;
+}) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/visual-objects/${encodeURIComponent(objectId)}/compounds`, bindingMutationSchema, {
+    method: "POST", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function updateVisualObjectAssetBinding(paperId: string, objectId: string, bindingId: string, input: DraftMutationContext & {
+  role: string;
+  is_primary: boolean;
+}) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/visual-objects/${encodeURIComponent(objectId)}/assets/${encodeURIComponent(bindingId)}`, bindingMutationSchema, {
+    method: "PATCH", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function removeVisualObjectBinding(
+  paperId: string,
+  objectId: string,
+  kind: "regions" | "assets" | "compounds",
+  bindingId: string,
+  input: DraftMutationContext,
+) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/visual-objects/${encodeURIComponent(objectId)}/${kind}/${encodeURIComponent(bindingId)}`, bindingMutationSchema, {
+    method: "DELETE", csrfToken: csrfToken(), body: input,
+  });
 }
 
 export function fetchReviewTasks(): Promise<ReviewTask[]> {

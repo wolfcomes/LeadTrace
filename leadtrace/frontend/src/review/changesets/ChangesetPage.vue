@@ -581,6 +581,12 @@ function discardRecovery(): void {
   void useServerVersion();
 }
 
+function syncWorkspaceVersion(version: number): void {
+  if (!changeset.value || version <= changeset.value.version) return;
+  changeset.value = { ...changeset.value, version };
+  if (activeSaveContext) activeSaveContext.changeset = changeset.value;
+}
+
 watch(() => route.params.changesetId, load, { immediate: true });
 onBeforeUnmount(() => {
   loadGeneration += 1;
@@ -641,7 +647,7 @@ onBeforeUnmount(() => {
 
       <div v-if="operationError" class="operation-alert" role="alert">{{ operationError }}</div>
 
-      <PaperWorkspace :changeset-id="changeset.id" :save-state="autosaveState">
+      <PaperWorkspace :changeset-id="changeset.id" :save-state="autosaveState" @workspace-updated="syncWorkspaceVersion">
         <template #scientific>
       <section class="editor-view" data-editor-view>
         <section class="metadata-editor panel" aria-labelledby="metadata-title">

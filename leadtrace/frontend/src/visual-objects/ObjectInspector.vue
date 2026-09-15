@@ -35,6 +35,7 @@ const objectTypes = [
       对象类型
       <select
         class="form-control"
+        data-object-type
         :value="props.object.objectType"
         :disabled="!props.editable"
         @change="emit('update-type', ($event.target as HTMLSelectElement).value)"
@@ -46,6 +47,7 @@ const objectTypes = [
       显示标签
       <input
         class="form-control"
+        data-object-label
         :value="props.object.label ?? ''"
         :disabled="!props.editable"
         @input="emit('update-label', ($event.target as HTMLInputElement).value)"

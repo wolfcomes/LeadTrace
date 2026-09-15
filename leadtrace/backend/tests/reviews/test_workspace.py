@@ -190,6 +190,7 @@ def test_workspace_returns_one_safe_version_consistent_scientific_projection(
             }
         ]
         assert payload["regions"][0]["id"] == str(region_id)
+        assert payload["regions"][0]["is_tombstone"] is False
         assert payload["regions"][0]["bounds"] == {
             "x0": 0.25,
             "y0": 0.3125,
