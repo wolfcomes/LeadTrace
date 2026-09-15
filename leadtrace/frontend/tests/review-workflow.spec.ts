@@ -486,11 +486,15 @@ describe("Reviewer task and changeset workflow", () => {
     expect(wrapper.get("#changeset-title").element).toHaveProperty("value", draft.title);
     expect(wrapper.get("#changeset-reason").element).toHaveProperty("value", draft.reason);
     expect(wrapper.get("[data-changeset-version]").text()).toContain("版本 3");
-    expect(wrapper.get("[data-item-editor] textarea").element).toHaveProperty(
+    expect(wrapper.get("#paper-title-field").element).toHaveProperty(
       "value",
-      expect.stringContaining("修订后的标题"),
+      "修订后的标题",
     );
-    expect(wrapper.get("[data-item-editor] textarea").attributes("readonly")).toBeDefined();
+    expect(wrapper.get("[data-evidence-editor] textarea").element).toHaveProperty(
+      "value",
+      "Potency improved in the follow-up assay.",
+    );
+    expect(wrapper.find("[data-item-editor]").exists()).toBe(false);
     await wrapper.get("[aria-label='修改集视图'] button:nth-child(2)").trigger("click");
     expect(wrapper.get("[data-diff-summary]").text()).toContain("标题");
     expect(wrapper.get("[data-diff-summary]").text()).toContain("原始标题");
@@ -759,6 +763,8 @@ describe("Reviewer task and changeset workflow", () => {
     );
     expect(wrapper.get("[data-paper-editor]").text()).toContain("文献元数据");
     expect(wrapper.get("[data-evidence-editor]").text()).toContain("证据文本");
+    expect(wrapper.find(".advanced-snapshots").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("系统快照");
   });
 
   it("autosaves focused field edits through the versioned item endpoint", async () => {
@@ -1177,7 +1183,18 @@ describe("Reviewer task and changeset workflow", () => {
     expect(wrapper.get(".submit-button").attributes("disabled")).toBeDefined();
   });
 
-  it("blocks submission while a full snapshot contains invalid JSON", async () => {
+  it("blocks submission when recovered internal snapshot data is invalid", async () => {
+    localStorage.setItem(reviewerAutosaveKey, JSON.stringify({
+      baseVersion: draft.version,
+      base: {
+        title: draft.title,
+        reason: draft.reason,
+        itemJson: { [itemId]: JSON.stringify(item.proposed_snapshot, null, 2) },
+      },
+      title: draft.title,
+      reason: draft.reason,
+      itemJson: { [itemId]: "{" },
+    }));
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), "http://leadtrace.test").pathname;
       if (path === `/api/v1/review/changesets/${changesetId}`) return jsonResponse(200, draft);
@@ -1196,7 +1213,6 @@ describe("Reviewer task and changeset workflow", () => {
 
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
-    await wrapper.get("[data-item-editor] textarea").setValue("{");
     await wrapper.get("[aria-label='修改集视图'] button:nth-child(3)").trigger("click");
 
     expect(wrapper.get("[data-submission-page]").text()).toContain("请先修正编辑器中的格式错误");

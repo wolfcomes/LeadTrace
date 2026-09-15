@@ -788,7 +788,10 @@ onBeforeUnmount(() => {
             </article>
           </div>
 
-          <details v-if="items.length" class="advanced-snapshots">
+          <details
+            v-if="auth.user?.role === 'admin' && items.length"
+            class="advanced-snapshots"
+          >
             <summary>系统快照 · 只读</summary>
             <p>完整快照仅用于审计核对。Reviewer 必须使用上方专用字段工作台，系统不会接受通过 JSON 直接编辑。</p>
             <div class="item-editors">
