@@ -175,7 +175,10 @@ describe("published Paper detail", () => {
         { id: "50000000-0000-4000-8000-000000000002", revision_id: "51000000-0000-4000-8000-000000000002", lineage_id: "40000000-0000-4000-8000-000000000001", parent_compound_id: null, derived_compound_id: "30000000-0000-4000-8000-000000000003", relation_type: null, relation_status: "unresolved", pair_ready: false },
       ],
       structures: [
-        { id: "60000000-0000-4000-8000-000000000000", revision_id: "61000000-0000-4000-8000-000000000000", compound_id: "30000000-0000-4000-8000-000000000001", state: "structure_confirmed", canonical_smiles: "CCO" },
+        {
+          id: "60000000-0000-4000-8000-000000000000", revision_id: "61000000-0000-4000-8000-000000000000", compound_id: "30000000-0000-4000-8000-000000000001", state: "structure_confirmed", canonical_smiles: "CCO",
+          drawing_asset: { id: "62000000-0000-4000-8000-000000000000", url: "/api/v1/assets/62000000-0000-4000-8000-000000000000/content", original_filename: "structure.png", sha256: "d".repeat(64), byte_size: 1024, mime_type: "image/png", width: 320, height: 180, page_count: null, category: "rdkit_structure", access_level: "visitor" },
+        },
         { id: "60000000-0000-4000-8000-000000000001", revision_id: "61000000-0000-4000-8000-000000000001", compound_id: "30000000-0000-4000-8000-000000000002", state: "structure_confirmed", canonical_smiles: "CCN" },
         { id: "60000000-0000-4000-8000-000000000002", revision_id: "61000000-0000-4000-8000-000000000002", compound_id: "30000000-0000-4000-8000-000000000003", state: "source_mismatch", canonical_smiles: "FAKE-SCREENSHOT-SMILES" },
       ],
@@ -187,6 +190,16 @@ describe("published Paper detail", () => {
         pair_ready: { eligible: 1, total: 2 },
         human_review: { reviewed: 0, total: 12 },
       },
+      regions: [{ id: "63000000-0000-4000-8000-000000000000", region_key: "Fig. 2 / 26a", revision_id: "64000000-0000-4000-8000-000000000000", page_number: 2, bounds: { x0: 0.1, y0: 0.2, x1: 0.7, y1: 0.8 }, rotation: 0, asset: null }],
+      visual_objects: [],
+      molecule_proposals: [{
+        id: "65000000-0000-4000-8000-000000000000", visual_object_id: "66000000-0000-4000-8000-000000000000", proposal_key: "ocsr-26a", model_run_key: "ocsr-v1", revision_id: "67000000-0000-4000-8000-000000000000", disposition: "accepted",
+        machine: { raw_values: { raw_smiles: "CCO" }, normalized_values: { canonical_smiles: "CCO" } }, review: { reviewed_smiles: "CCO" }, source_region_id: "63000000-0000-4000-8000-000000000000",
+        crop_asset: { id: "68000000-0000-4000-8000-000000000000", url: "/api/v1/assets/68000000-0000-4000-8000-000000000000/content", original_filename: "crop.png", sha256: "e".repeat(64), byte_size: 512, mime_type: "image/png", width: 200, height: 120, page_count: null, category: "reviewed_crop", access_level: "visitor" },
+      }],
+      source_locators: [{ proposal_id: "65000000-0000-4000-8000-000000000000", visual_object_id: "66000000-0000-4000-8000-000000000000", region: { id: "63000000-0000-4000-8000-000000000000", page_number: 2, bounds: { x0: 0.1, y0: 0.2, x1: 0.7, y1: 0.8 }, rotation: 0 }, crop_asset: null, source_asset: null }],
+      verification: { ai_baseline: "published", human_verified: false, release_status: "unverified" },
+      review_entry: null,
     })));
     const router = createRouter({
       history: createMemoryHistory(),
@@ -218,6 +231,10 @@ describe("published Paper detail", () => {
     expect(wrapper.get(".evidence-card").classes()).toContain("panel");
     expect(wrapper.get(".evidence-card .evidence-meta span").classes()).toContain("status-chip");
     expect(wrapper.text()).toContain("Potency improved.");
+    expect(wrapper.get("[data-paper-verification]").text()).toContain("尚未人工核验");
+    expect(wrapper.get("[data-source-evidence]").text()).toContain("ocsr-26a");
+    expect(wrapper.get("[data-ocsr-proposal] [data-published-crop]").attributes("src")).toContain("68000000-0000-4000-8000-000000000000");
+    expect(wrapper.get("[data-confirmed-structure] [data-rdkit-drawing]").attributes("src")).toContain("62000000-0000-4000-8000-000000000000");
     expect(wrapper.text()).toContain("IC50");
     expect(wrapper.text()).toContain("1 / 2");
   });

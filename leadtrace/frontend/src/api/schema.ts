@@ -102,7 +102,79 @@ export const structureSchema = z.object({
   compound_id: z.string().uuid(),
   state: z.string().nullable(),
   canonical_smiles: z.string().nullable(),
-});
+  drawing_asset: z.object({
+    id: z.string().uuid(),
+    url: z.string().startsWith("/api/v1/assets/").endsWith("/content"),
+    original_filename: z.string(),
+    sha256: z.string().length(64),
+    byte_size: z.number().int().nonnegative(),
+    mime_type: z.string(),
+    width: z.number().int().positive().nullable(),
+    height: z.number().int().positive().nullable(),
+    page_count: z.number().int().positive().nullable(),
+    category: z.string(),
+    access_level: z.literal("visitor"),
+  }).strict().nullable().optional(),
+}).strict();
+
+const publishedAssetSchema = z.object({
+  id: z.string().uuid(),
+  url: z.string().startsWith("/api/v1/assets/").endsWith("/content"),
+  original_filename: z.string(),
+  sha256: z.string().length(64),
+  byte_size: z.number().int().nonnegative(),
+  mime_type: z.string(),
+  width: z.number().int().positive().nullable(),
+  height: z.number().int().positive().nullable(),
+  page_count: z.number().int().positive().nullable(),
+  category: z.string(),
+  access_level: z.literal("visitor"),
+}).strict();
+
+const publishedRegionSchema = z.object({
+  id: z.string().uuid(),
+  region_key: z.string(),
+  revision_id: z.string().uuid(),
+  page_number: z.number().int().positive(),
+  bounds: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }).strict(),
+  rotation: z.number(),
+  asset: publishedAssetSchema.nullable(),
+}).strict();
+
+const publishedVisualObjectSchema = z.object({
+  id: z.string().uuid(),
+  object_key: z.string(),
+  object_type: z.string(),
+  revision_id: z.string().uuid(),
+  snapshot: z.record(z.string(), z.unknown()),
+  region_id: z.string().uuid().nullable(),
+}).strict();
+
+const publishedProposalSchema = z.object({
+  id: z.string().uuid(),
+  visual_object_id: z.string().uuid(),
+  proposal_key: z.string(),
+  model_run_key: z.string(),
+  revision_id: z.string().uuid(),
+  disposition: z.string(),
+  machine: z.object({ raw_values: z.record(z.string(), z.unknown()), normalized_values: z.record(z.string(), z.unknown()) }).strict(),
+  review: z.record(z.string(), z.unknown()),
+  crop_asset: publishedAssetSchema.nullable(),
+  source_region_id: z.string().uuid().nullable(),
+}).strict();
+
+const publishedSourceLocatorSchema = z.object({
+  proposal_id: z.string().uuid(),
+  visual_object_id: z.string().uuid(),
+  region: z.object({
+    id: z.string().uuid(),
+    page_number: z.number().int().positive(),
+    bounds: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }).strict(),
+    rotation: z.number(),
+  }).strict(),
+  crop_asset: publishedAssetSchema.nullable(),
+  source_asset: publishedAssetSchema.nullable(),
+}).strict();
 
 export const evidenceSchema = z.object({
   id: z.string().uuid(),
@@ -242,7 +314,17 @@ export const paperDetailSchema = z.object({
   evidence: z.array(evidenceSchema),
   activities: z.array(activitySchema),
   quality_summary: qualitySummarySchema,
-});
+  regions: publishedRegionSchema.array().optional(),
+  visual_objects: publishedVisualObjectSchema.array().optional(),
+  molecule_proposals: publishedProposalSchema.array().optional(),
+  source_locators: publishedSourceLocatorSchema.array().optional(),
+  verification: z.object({
+    ai_baseline: z.string(),
+    human_verified: z.boolean(),
+    release_status: z.enum(["unverified", "partially_verified", "human_verified"]),
+  }).strict().optional(),
+  review_entry: z.object({ href: z.string(), label: z.string() }).strict().nullable().optional(),
+}).strict();
 
 export type UserRole = z.infer<typeof roleSchema>;
 export type AuthUser = z.infer<typeof authUserSchema>;
