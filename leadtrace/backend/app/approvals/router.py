@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -65,13 +65,18 @@ def create_approvals_router(session_secret: str) -> APIRouter:
     @declare_route_access(RouteAccess.AUTHENTICATED)
     def scientific_evidence(
         changeset_id: UUID,
+        changed_only: bool = Query(default=True),
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
     ) -> dict[str, object]:
         admin(principal)
         try:
             with session.begin():
-                return service.scientific_evidence(session, changeset_id)
+                return service.scientific_evidence(
+                    session,
+                    changeset_id,
+                    changed_only=changed_only,
+                )
         except ReviewNotFound as error:
             raise HTTPException(status_code=404, detail="Resource not found") from error
         except ApprovalConflict as error:

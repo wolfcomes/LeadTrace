@@ -1979,6 +1979,12 @@ def test_scientific_approval_evidence_uses_frozen_submission_and_base_release(
                     "after": region_revision.snapshot,
                 }
             ],
+            "visual_objects": [],
+            "molecule_proposals": [],
+            "source_context": [],
+            "scope": None,
+            "attestation": None,
+            "progress": None,
         }
 
 

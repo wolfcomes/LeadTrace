@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -31,9 +31,11 @@ from app.reviews.schemas import (
     ChangesetSubmitRequest,
     ChangesetTransitionRequest,
     ChangesetUpdateRequest,
+    MoleculeObjectQueueResponse,
     ReviewTaskCreateRequest,
     ReviewTaskReassignRequest,
     ReviewTaskResponse,
+    WorkspaceResponse,
 )
 from app.reviews.comments import (
     CommentAction,
@@ -64,10 +66,18 @@ from app.reviews.attestations import (
     PaperAttestationResponse,
     PaperReviewScopeService,
 )
+from app.reviews.workspace import (
+    WorkspaceConflict,
+    WorkspaceNotFound,
+    WorkspaceQueryError,
+    build_workspace,
+    list_molecule_object_queue,
+)
 from app.releases.models import ReleaseItem
 from app.reviews.models import ChangesetItem, ReviewTask
 from app.revisions.diff import build_revision_diff
 from app.revisions.models import ObjectKind, ObjectRevision
+from app.reviews.completeness import QueueState
 from app.security.permissions import (
     RouteAccess,
     declare_route_access,
@@ -76,6 +86,7 @@ from app.security.permissions import (
 )
 from app.security.policies import Principal, WorkflowState
 from app.users.models import UserRole
+from app.visual_objects.models import MoleculeObjectType
 
 
 def _region_fields_for_revision(
@@ -438,6 +449,70 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                 None if principal.role is UserRole.ADMIN else principal.user_id,
             )
         return [ReviewTaskResponse.from_model(task) for task in tasks]
+
+    @router.get(
+        "/tasks/first-page-molecule-objects",
+        response_model=MoleculeObjectQueueResponse,
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def molecule_object_queue(
+        status: QueueState | None = Query(default=None),
+        paper_id: UUID | None = Query(default=None),
+        page: int | None = Query(default=None, ge=1),
+        object_type: MoleculeObjectType | None = Query(default=None),
+        has_blocker: bool | None = Query(default=None),
+        cursor: str | None = Query(default=None),
+        limit: int = Query(default=20, ge=1, le=100),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> MoleculeObjectQueueResponse:
+        require_reviewer_or_admin(principal)
+        try:
+            with session.begin():
+                return list_molecule_object_queue(
+                    session,
+                    actor_id=principal.user_id,
+                    is_admin=principal.role is UserRole.ADMIN,
+                    status=status.value if status is not None else None,
+                    paper_id=paper_id,
+                    page=page,
+                    object_type=(
+                        object_type.value if object_type is not None else None
+                    ),
+                    has_blocker=has_blocker,
+                    cursor=cursor,
+                    limit=limit,
+                )
+        except (WorkspaceNotFound, ReviewNotFound) as error:
+            raise HTTPException(status_code=404, detail="Resource not found") from error
+        except WorkspaceConflict as error:
+            raise APIError(409, "WORKSPACE_CONFLICT", str(error)) from error
+        except WorkspaceQueryError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @router.get(
+        "/changesets/{changeset_id}/workspace",
+        response_model=WorkspaceResponse,
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def changeset_workspace(
+        changeset_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> WorkspaceResponse:
+        require_reviewer_or_admin(principal)
+        try:
+            with session.begin():
+                return build_workspace(
+                    session,
+                    changeset_id=changeset_id,
+                    actor_id=principal.user_id,
+                    is_admin=principal.role is UserRole.ADMIN,
+                )
+        except WorkspaceNotFound as error:
+            raise HTTPException(status_code=404, detail="Resource not found") from error
+        except WorkspaceConflict as error:
+            raise APIError(409, "WORKSPACE_CONFLICT", str(error)) from error
 
     @router.post("/tasks", response_model=ReviewTaskResponse, status_code=201)
     @declare_route_access(RouteAccess.AUTHENTICATED)

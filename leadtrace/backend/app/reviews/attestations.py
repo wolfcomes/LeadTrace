@@ -11,7 +11,14 @@ from sqlalchemy.orm import Session
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.assets.models import Asset
 from app.audit.service import canonical_content_hash
+from app.molecule_proposals.models import MoleculeProposal
+from app.releases.manifest import (
+    draft_binding_delta_for_changeset,
+    get_release_artifact_manifest,
+    merge_binding_snapshots,
+)
 from app.releases.models import ReleaseItem
 from app.revisions.models import ObjectKind, ObjectRevision, RevisionedObject
 from app.revisions.service import RevisionService
@@ -25,7 +32,9 @@ from app.reviews.service import (
     ReviewService,
 )
 from app.security.policies import WorkflowState
+from app.structures.models import Structure
 from app.users.models import User, UserRole
+from app.visual_objects.models import VisualObject, VisualRegion
 
 
 class PaperAttestationRequest(BaseModel):
@@ -271,11 +280,66 @@ class PaperReviewScopeService:
         return session.get(ObjectRevision, base_revision_id)
 
     @classmethod
-    def progress(cls, session: Session, *, changeset: Changeset, scope: PaperReviewScope) -> ReviewProgress:
+    def progress(
+        cls,
+        session: Session,
+        *,
+        changeset: Changeset,
+        scope: PaperReviewScope,
+    ) -> ReviewProgress:
         states: list[ObjectCompleteness] = []
         scope_items = scope.snapshot.get("items")
         if not isinstance(scope_items, list):
             raise AttestationValidationError("Review scope items are invalid")
+        scope_object_ids: set[UUID] = set()
+        for row in scope_items:
+            if not isinstance(row, Mapping):
+                continue
+            try:
+                scope_object_ids.add(UUID(str(row["object_id"])))
+            except (KeyError, TypeError, ValueError) as error:
+                raise AttestationValidationError(
+                    "Review scope object reference is invalid"
+                ) from error
+
+        manifest = get_release_artifact_manifest(session, changeset.base_release_id)
+        frozen_bindings = (
+            manifest.snapshot.get("bindings") if manifest is not None else None
+        )
+        try:
+            bindings = merge_binding_snapshots(
+                frozen_bindings if isinstance(frozen_bindings, Mapping) else {},
+                draft_binding_delta_for_changeset(session, changeset.id),
+            )
+        except ValueError as error:
+            raise AttestationValidationError(
+                f"Review scope binding delta is invalid: {error}"
+            ) from error
+
+        bound_region_ids: dict[UUID, set[UUID]] = {}
+        for binding in bindings.get("visual_object_regions", []):
+            if not isinstance(binding, Mapping):
+                continue
+            try:
+                visual_object_id = UUID(str(binding["visual_object_id"]))
+                region_id = UUID(str(binding["region_id"]))
+            except (KeyError, TypeError, ValueError) as error:
+                raise AttestationValidationError(
+                    "Review scope Region binding is invalid"
+                ) from error
+            visual = session.get(VisualObject, visual_object_id)
+            region = session.get(VisualRegion, region_id)
+            if (
+                visual is None
+                or region is None
+                or visual.paper_id != changeset.paper_id
+                or region.paper_id != changeset.paper_id
+            ):
+                raise AttestationValidationError(
+                    "Review scope Region binding crosses Paper scope"
+                )
+            bound_region_ids.setdefault(visual_object_id, set()).add(region_id)
+
         for row in scope_items:
             if not isinstance(row, Mapping):
                 continue
@@ -283,7 +347,9 @@ class PaperReviewScopeService:
                 object_id = UUID(str(row["object_id"]))
                 revision_id = UUID(str(row["revision_id"]))
             except (KeyError, TypeError, ValueError) as error:
-                raise AttestationValidationError("Review scope object reference is invalid") from error
+                raise AttestationValidationError(
+                    "Review scope object reference is invalid"
+                ) from error
             revision = cls._item_revision(
                 session,
                 changeset=changeset,
@@ -299,21 +365,109 @@ class PaperReviewScopeService:
             kind = str(row.get("object_kind") or "")
             disposition = revision.proposal_disposition if revision is not None else None
             if kind == ObjectKind.MOLECULE_PROPOSAL.value:
+                proposal = session.get(MoleculeProposal, object_id)
                 review = snapshot.get("review") if isinstance(snapshot, Mapping) else {}
                 review = review if isinstance(review, Mapping) else {}
                 resulting_structure_id = review.get("resulting_structure_id") or normalized.get(
                     "resulting_structure_id"
+                )
+                structure = None
+                if resulting_structure_id:
+                    try:
+                        structure = session.get(
+                            Structure,
+                            UUID(str(resulting_structure_id)),
+                        )
+                    except (TypeError, ValueError):
+                        structure = None
+                visual = (
+                    session.get(VisualObject, proposal.visual_object_id)
+                    if proposal is not None
+                    else None
+                )
+                source_region = (
+                    session.get(VisualRegion, proposal.source_region_id)
+                    if proposal is not None and proposal.source_region_id is not None
+                    else None
+                )
+                crop_asset = (
+                    session.get(Asset, proposal.crop_asset_id)
+                    if proposal is not None and proposal.crop_asset_id is not None
+                    else None
+                )
+                source_asset = (
+                    session.get(Asset, source_region.asset_id)
+                    if source_region is not None and source_region.asset_id is not None
+                    else None
+                )
+                source_ready = bool(
+                    proposal is not None
+                    and proposal.paper_id == changeset.paper_id
+                    and visual is not None
+                    and visual.paper_id == changeset.paper_id
+                    and source_region is not None
+                    and source_region.paper_id == changeset.paper_id
+                    and crop_asset is not None
+                    and source_asset is not None
+                    and proposal.source_region_id
+                    in bound_region_ids.get(proposal.visual_object_id, set())
+                )
+                structure_ready = bool(
+                    disposition in {"rejected", "not_applicable"}
+                    or (
+                        structure is not None
+                        and structure.paper_id == changeset.paper_id
+                        and structure.id in scope_object_ids
+                    )
                 )
                 state = assess_object(
                     object_kind=kind,
                     review_blockers=blockers,
                     requires_ocsr=True,
                     proposal_dispositions=[disposition or "pending"],
+                    source_ready=source_ready,
+                    structure_ready=structure_ready,
+                )
+            elif kind == ObjectKind.VISUAL_OBJECT.value:
+                visual = session.get(VisualObject, object_id)
+                localization_blockers = list(blockers)
+                if (
+                    visual is None
+                    or visual.paper_id != changeset.paper_id
+                    or not bound_region_ids.get(object_id)
+                ):
+                    localization_blockers.append("region_binding_missing")
+                state = assess_object(
+                    object_kind=kind,
+                    review_blockers=localization_blockers,
+                    requires_ocsr=False,
+                    proposal_dispositions=[],
                     source_ready=True,
-                    structure_ready=(
-                        disposition in {"rejected", "not_applicable"}
-                        or bool(resulting_structure_id)
+                    structure_ready=True,
+                )
+            elif kind == ObjectKind.VISUAL_REGION.value:
+                region = session.get(VisualRegion, object_id)
+                source_asset = (
+                    session.get(Asset, region.asset_id)
+                    if region is not None and region.asset_id is not None
+                    else None
+                )
+                state = assess_object(
+                    object_kind=kind,
+                    review_blockers=blockers,
+                    requires_ocsr=False,
+                    proposal_dispositions=[],
+                    source_ready=bool(
+                        region is not None
+                        and region.paper_id == changeset.paper_id
+                        and source_asset is not None
+                        and revision is not None
+                        and revision.region_x0 is not None
+                        and revision.region_y0 is not None
+                        and revision.region_x1 is not None
+                        and revision.region_y1 is not None
                     ),
+                    structure_ready=True,
                 )
             else:
                 state = assess_object(
@@ -394,10 +548,21 @@ class PaperReviewScopeService:
             session.flush()
         attestation_id = uuid4()
         paper_snapshot = dict(paper_item.proposed_snapshot)
-        paper_normalized = dict(paper_snapshot.get("normalized_values", {})) if isinstance(paper_snapshot.get("normalized_values"), Mapping) else {}
+        existing_normalized = paper_snapshot.get("normalized_values")
+        paper_normalized = (
+            dict(existing_normalized)
+            if isinstance(existing_normalized, Mapping)
+            else {}
+        )
         paper_normalized["review_status"] = "reviewed"
         paper_snapshot["normalized_values"] = paper_normalized
-        predecessor = session.get(ObjectRevision, paper_item.proposed_revision_id or paper_item.base_revision_id) or base_paper
+        predecessor = (
+            session.get(
+                ObjectRevision,
+                paper_item.proposed_revision_id or paper_item.base_revision_id,
+            )
+            or base_paper
+        )
         paper_revision = RevisionService().create_revision(
             session,
             object_identity=session.get(RevisionedObject, changeset.paper_id),

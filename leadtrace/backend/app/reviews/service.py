@@ -206,6 +206,7 @@ def _revision_column_values(
         values["search_text"] = predecessor.search_text
         if object_kind is ObjectKind.MOLECULE_PROPOSAL:
             values["proposal_disposition"] = predecessor.proposal_disposition
+            values["canonical_smiles"] = predecessor.canonical_smiles
         if object_kind is ObjectKind.STRUCTURE:
             values.update(
                 structure_state=predecessor.structure_state,
@@ -230,6 +231,12 @@ def _revision_column_values(
             )
         elif object_kind is ObjectKind.VISUAL_REGION:
             values["region_rotation"] = predecessor.region_rotation
+
+    # Proposal machine fields are immutable through the generic changeset API.
+    # The typed proposal service has already validated and materialized the
+    # dedicated revision columns, so submission only carries those columns.
+    if object_kind is ObjectKind.MOLECULE_PROPOSAL:
+        return values
 
     for field in _EDITABLE_DEDICATED_FIELDS:
         candidate = _snapshot_field(snapshot, field)
