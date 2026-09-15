@@ -20,6 +20,7 @@ from app.papers.repository import (
     release_items_for_paper,
 )
 from app.releases.models import Release
+from app.releases.aggregate import paper_human_review_summary
 from app.releases.service import release_verification_status
 from app.revisions.models import (
     ActivityState,
@@ -168,15 +169,8 @@ def paper_detail_payload(
         and revision.structure_state is StructureState.STRUCTURE_CONFIRMED
         and bool(revision.canonical_smiles)
     }
-    reviewed = 0
     for item, revision in entries:
         normalized = revision.snapshot.get("normalized_values", {})
-        if isinstance(normalized, dict) and normalized.get("review_status") in {
-            "reviewed",
-            "approved",
-            "confirmed",
-        }:
-            reviewed += 1
         if item.object_kind is ObjectKind.COMPOUND:
             compound = compounds.get(item.object_id)
             if compound is None:
@@ -301,6 +295,9 @@ def paper_detail_payload(
         for structure in structure_payload
     )
     pair_ready = sum(bool(edge["pair_ready"]) for edge in edge_payload)
+    paper_release_item = next(
+        item for item, _ in entries if item.object_kind is ObjectKind.PAPER
+    )
     return {
         "request_id": request_id,
         "release": _release_metadata(release),
@@ -318,6 +315,10 @@ def paper_detail_payload(
                 "total": len(structure_payload),
             },
             "pair_ready": {"eligible": pair_ready, "total": len(edge_payload)},
-            "human_review": {"reviewed": reviewed, "total": len(entries)},
+            "human_review": paper_human_review_summary(
+                session,
+                release_id=release.id,
+                item=paper_release_item,
+            ),
         },
     }

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.activities.models import Activity
+from app.approvals.models import ApprovalDecision
 from app.assets.storage import LocalAssetStore
 from app.compounds.models import Compound
 from app.evidence.models import Evidence
@@ -19,7 +20,13 @@ from app.releases.manifest import canonical_hash, get_release_artifact_manifest
 from app.releases.models import Release, ReleaseItem
 from app.releases.validation import ReleaseValidationResult, validate_release
 from app.revisions.models import ObjectKind, ObjectRevision, StructureState
+from app.reviews.attestations import (
+    AttestationValidationError,
+    validate_frozen_attestation,
+)
+from app.reviews.models import Changeset
 from app.structures.models import Structure
+from app.users.models import User, UserRole
 from app.visual_objects.models import VisualObject, VisualRegion
 
 
@@ -105,6 +112,15 @@ class _Entry:
     record: object | None
 
 
+@dataclass(frozen=True, slots=True)
+class PaperVerificationEvidence:
+    paper_revision_id: UUID
+    attestation_id: UUID
+
+
+ReleaseItemInput = ReleaseItem | tuple[UUID, UUID, UUID, ObjectKind, int]
+
+
 _MODEL_BY_KIND = {
     ObjectKind.PAPER: Paper,
     ObjectKind.COMPOUND: Compound,
@@ -117,6 +133,109 @@ _MODEL_BY_KIND = {
     ObjectKind.VISUAL_OBJECT: VisualObject,
     ObjectKind.MOLECULE_PROPOSAL: MoleculeProposal,
 }
+
+
+def _release_item_values(
+    item: ReleaseItemInput,
+) -> tuple[UUID, UUID, UUID, ObjectKind]:
+    if isinstance(item, ReleaseItem):
+        return item.object_id, item.revision_id, item.paper_id, item.object_kind
+    object_id, revision_id, paper_id, object_kind, _ = item
+    return object_id, revision_id, paper_id, object_kind
+
+
+def paper_verification_evidence(
+    session: Session,
+    item: ReleaseItemInput,
+) -> PaperVerificationEvidence | None:
+    """Resolve the evidence chain that authorizes one verified Paper revision."""
+
+    object_id, revision_id, paper_id, object_kind = _release_item_values(item)
+    if object_kind is not ObjectKind.PAPER or object_id != paper_id:
+        return None
+    revision = session.get(ObjectRevision, revision_id)
+    if revision is None or revision.object_id != object_id:
+        return None
+    normalized = revision.snapshot.get("normalized_values")
+    if not isinstance(normalized, Mapping) or normalized.get("review_status") != "reviewed":
+        return None
+    if revision.changeset_id is None:
+        return None
+    changeset = session.get(Changeset, revision.changeset_id)
+    if changeset is None or changeset.paper_id != paper_id:
+        return None
+    try:
+        attestation = validate_frozen_attestation(session, changeset=changeset)
+    except AttestationValidationError:
+        return None
+    if attestation is None or attestation.paper_revision_id != revision.id:
+        return None
+    if changeset.submitted_content_hash is None:
+        return None
+    approval = session.scalar(
+        select(ApprovalDecision)
+        .where(
+            ApprovalDecision.changeset_id == changeset.id,
+            ApprovalDecision.decision == "approve",
+            ApprovalDecision.snapshot_hash == changeset.submitted_content_hash,
+        )
+        .order_by(ApprovalDecision.created_at.desc(), ApprovalDecision.id)
+        .limit(1)
+    )
+    if approval is None or approval.snapshot != changeset.submitted_snapshot:
+        return None
+    admin = session.get(User, approval.actor_id)
+    if (
+        admin is None
+        or not admin.is_enabled
+        or admin.role is not UserRole.ADMIN
+        or admin.id == changeset.owner_id
+    ):
+        return None
+    return PaperVerificationEvidence(
+        paper_revision_id=revision.id,
+        attestation_id=attestation.id,
+    )
+
+
+def human_review_metric(
+    session: Session,
+    release_items: Iterable[ReleaseItemInput],
+) -> dict[str, int | str]:
+    """Compute Paper-level human verification from immutable review evidence."""
+
+    papers = [
+        item
+        for item in release_items
+        if _release_item_values(item)[3] is ObjectKind.PAPER
+    ]
+    return {
+        "numerator": sum(
+            paper_verification_evidence(session, item) is not None for item in papers
+        ),
+        "denominator": len(papers),
+        "unit": "papers",
+    }
+
+
+def paper_human_review_summary(
+    session: Session,
+    *,
+    release_id: UUID,
+    item: ReleaseItem,
+) -> dict[str, object]:
+    evidence = paper_verification_evidence(session, item)
+    return {
+        "reviewed": int(evidence is not None),
+        "total": 1,
+        "status": "human_verified" if evidence is not None else "unverified",
+        "verified": evidence is not None,
+        "release_id": str(release_id),
+        "paper_revision_id": str(item.revision_id),
+        "attestation_id": (
+            str(evidence.attestation_id) if evidence is not None else None
+        ),
+    }
 
 
 def _snapshot_value(revision: ObjectRevision | None, *names: str) -> object | None:

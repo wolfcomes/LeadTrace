@@ -32,6 +32,7 @@ from app.molecule_proposals.models import MoleculeProposal
 from app.papers.models import Paper
 from app.releases.aggregate import (
     OVERVIEW_METRIC_KEYS,
+    human_review_metric,
     overview_metrics_from_counts,
     recompute_release_aggregate,
 )
@@ -682,6 +683,7 @@ def publish_approved_baseline(
         raise RuntimeError("Injected failure in final transaction")
 
     metrics: dict[str, object] = overview_metrics_from_counts(batch.counts)
+    metrics["human_review"] = human_review_metric(session, release_items)
     metrics["baseline"] = {
         "candidate_id": str(candidate.id),
         "batch_id": str(batch.id),
@@ -1001,18 +1003,20 @@ def publish_approved_changeset(
 
     if fail_stage == "final_transaction":
         raise RuntimeError("Injected failure in final transaction")
+    metrics = _metrics_with_operation(
+        current.metrics,
+        {
+            "type": "publish",
+            "changeset_id": str(changeset.id),
+            "item_count": len(release_items),
+        },
+    )
+    metrics["human_review"] = human_review_metric(session, release_items)
     new_release = Release(
         release_key=f"release-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}",
         title=title or f"Release for {changeset.title}",
         notes=notes,
-        metrics=_metrics_with_operation(
-            current.metrics,
-            {
-                "type": "publish",
-                "changeset_id": str(changeset.id),
-                "item_count": len(release_items),
-            },
-        ),
+        metrics=metrics,
         published_by_id=actor_id,
         published_at=datetime.now(UTC),
         is_current=False,
@@ -1333,20 +1337,22 @@ def rollback_release(
         )
     if fail_stage == "final_transaction":
         raise RuntimeError("Injected failure in final transaction")
+    metrics = _metrics_with_operation(
+        target.metrics,
+        {
+            "type": "rollback",
+            "rollback_of": str(target.id),
+            "replaced_release_id": str(current.id),
+            "item_count": len(cloned_items),
+            "tombstone_count": len(rollback_revisions) - len(cloned_items),
+        },
+    )
+    metrics["human_review"] = human_review_metric(session, target_items)
     new_release = Release(
         release_key=f"rollback-{target.release_key}-{uuid4().hex[:8]}",
         title=f"Rollback to {target.title}",
         notes=clean_reason,
-        metrics=_metrics_with_operation(
-            target.metrics,
-            {
-                "type": "rollback",
-                "rollback_of": str(target.id),
-                "replaced_release_id": str(current.id),
-                "item_count": len(cloned_items),
-                "tombstone_count": len(rollback_revisions) - len(cloned_items),
-            },
-        ),
+        metrics=metrics,
         published_by_id=actor_id,
         published_at=datetime.now(UTC),
         is_current=False,
