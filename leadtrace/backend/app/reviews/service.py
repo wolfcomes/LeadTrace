@@ -16,6 +16,8 @@ from app.reviews.models import (
     Changeset,
     ChangesetItem,
     ChangesetSubmission,
+    PaperReviewAttestation,
+    PaperReviewScope,
     ReviewTask,
     ReviewTaskStatus,
 )
@@ -135,6 +137,37 @@ def _snapshot_field(snapshot: Mapping[str, object], field: str) -> object:
     return _MISSING
 
 
+def _reject_scoped_paper_status_edit(
+    session: Session,
+    *,
+    changeset: Changeset,
+    object_kind: ObjectKind,
+    proposed_snapshot: Mapping[str, object],
+    base_snapshot: Mapping[str, object] | None,
+) -> None:
+    """Keep Paper review status server-owned once a scope is frozen."""
+
+    if object_kind is not ObjectKind.PAPER:
+        return
+    scoped = session.scalar(
+        select(PaperReviewScope.id).where(
+            PaperReviewScope.changeset_id == changeset.id
+        )
+    )
+    if scoped is None:
+        return
+    candidate = _snapshot_field(proposed_snapshot, "review_status")
+    baseline = (
+        _snapshot_field(base_snapshot, "review_status")
+        if base_snapshot is not None
+        else _MISSING
+    )
+    if candidate is not _MISSING and candidate != baseline:
+        raise InvalidReview(
+            "Paper review_status is controlled by the Paper attestation endpoint"
+        )
+
+
 def _evidence_search_text(
     snapshot: Mapping[str, object],
     evidence_text: object,
@@ -171,7 +204,8 @@ def _revision_column_values(
     values: dict[str, object] = {}
     if predecessor is not None:
         values["search_text"] = predecessor.search_text
-        values["proposal_disposition"] = predecessor.proposal_disposition
+        if object_kind is ObjectKind.MOLECULE_PROPOSAL:
+            values["proposal_disposition"] = predecessor.proposal_disposition
         if object_kind is ObjectKind.STRUCTURE:
             values.update(
                 structure_state=predecessor.structure_state,
@@ -487,6 +521,13 @@ class ReviewService:
             if base_revision_id is not None
             else None
         )
+        _reject_scoped_paper_status_edit(
+            session,
+            changeset=changeset,
+            object_kind=parsed_kind,
+            proposed_snapshot=proposed_snapshot,
+            base_snapshot=base_revision.snapshot if base_revision is not None else None,
+        )
         _revision_column_values(
             base_revision,
             proposed_snapshot,
@@ -569,6 +610,17 @@ class ReviewService:
             if item.proposed_revision_id is not None
             or item.base_revision_id is not None
             else None
+        )
+        _reject_scoped_paper_status_edit(
+            session,
+            changeset=changeset,
+            object_kind=ObjectKind(item.object_kind),
+            proposed_snapshot=proposed_snapshot,
+            base_snapshot=(
+                validation_predecessor.snapshot
+                if validation_predecessor is not None
+                else None
+            ),
         )
         _revision_column_values(
             validation_predecessor,
@@ -766,6 +818,31 @@ class ReviewService:
             paper_id=changeset.paper_id,
             lock=True,
         )
+        scope = session.scalar(
+            select(PaperReviewScope)
+            .where(PaperReviewScope.changeset_id == changeset.id)
+            .with_for_update()
+        )
+        attestation = None
+        if scope is not None:
+            attestation = session.scalar(
+                select(PaperReviewAttestation)
+                .where(
+                    PaperReviewAttestation.changeset_id == changeset.id,
+                    PaperReviewAttestation.scope_id == scope.id,
+                    PaperReviewAttestation.changeset_version == changeset.version,
+                    PaperReviewAttestation.scope_hash == scope.scope_hash,
+                    PaperReviewAttestation.blocker_count == 0,
+                    PaperReviewAttestation.resolved_count
+                    == PaperReviewAttestation.item_count,
+                )
+                .order_by(PaperReviewAttestation.created_at.desc())
+                .limit(1)
+            )
+            if attestation is None:
+                raise InvalidReview(
+                    "A current Paper review attestation is required before submission"
+                )
         transition_state(changeset.workflow_state, WorkflowState.SUBMITTED)
         items = list(
             session.scalars(

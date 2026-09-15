@@ -58,6 +58,12 @@ from app.reviews.service import (
     ReviewService,
     ReviewStateConflict,
 )
+from app.reviews.attestations import (
+    AttestationValidationError,
+    PaperAttestationRequest,
+    PaperAttestationResponse,
+    PaperReviewScopeService,
+)
 from app.releases.models import ReleaseItem
 from app.reviews.models import ChangesetItem, ReviewTask
 from app.revisions.diff import build_revision_diff
@@ -207,6 +213,8 @@ def create_reviews_router(session_secret: str) -> APIRouter:
                 details={"item_id": str(error.item_id)},
             )
         if isinstance(error, InvalidReview):
+            return HTTPException(status_code=422, detail=str(error))
+        if isinstance(error, AttestationValidationError):
             return HTTPException(status_code=422, detail=str(error))
         if isinstance(error, IntegrityError):
             return APIError(
@@ -776,6 +784,72 @@ def create_reviews_router(session_secret: str) -> APIRouter:
         except (ReviewNotFound, ReviewForbidden) as error:
             raise as_error(error) from error
         return result
+
+    @router.post(
+        "/changesets/{changeset_id}/attestation",
+        response_model=PaperAttestationResponse,
+    )
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def attest_changeset(
+        changeset_id: UUID,
+        payload: PaperAttestationRequest,
+        request: Request,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    ) -> PaperAttestationResponse:
+        require_reviewer_or_admin(principal)
+        verify_csrf(principal, csrf_token)
+        try:
+            with session.begin():
+                changeset = service.get_changeset(session, changeset_id, for_update=True)
+                if (
+                    principal.role is not UserRole.ADMIN
+                    and changeset.owner_id != principal.user_id
+                ):
+                    raise ReviewNotFound("Changeset not found")
+                scope, attestation, progress = PaperReviewScopeService.attest(
+                    session,
+                    changeset=changeset,
+                    actor_id=principal.user_id,
+                    expected_version=payload.expected_version,
+                    scope_hash=payload.scope_hash,
+                    statement=payload.statement,
+                )
+                response = PaperAttestationResponse(
+                    id=attestation.id,
+                    changeset_id=attestation.changeset_id,
+                    paper_id=attestation.paper_id,
+                    changeset_version=attestation.changeset_version,
+                    scope_hash=attestation.scope_hash,
+                    item_count=progress.item_count,
+                    resolved_count=progress.resolved_count,
+                    blocker_count=progress.blocker_count,
+                    statement=attestation.statement,
+                )
+                append_review_audit(
+                    session,
+                    request=request,
+                    actor_id=principal.user_id,
+                    action="review.paper_attested",
+                    target_type="paper_review_attestation",
+                    target_id=attestation.id,
+                    paper_id=attestation.paper_id,
+                    changeset_id=changeset.id,
+                    release_id=changeset.base_release_id,
+                    reason=attestation.statement,
+                    before=None,
+                    after=response.model_dump(mode="json"),
+                )
+                return response
+        except (
+            ReviewNotFound,
+            ReviewForbidden,
+            InvalidReview,
+            RevisionConflict,
+            AttestationValidationError,
+        ) as error:
+            raise as_error(error) from error
 
     @router.post(
         "/changesets/{changeset_id}/items",
