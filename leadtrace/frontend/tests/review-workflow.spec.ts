@@ -181,6 +181,136 @@ describe("Reviewer task and changeset workflow", () => {
     expect(resume.attributes("href")).toBe(`/review/changesets/${changesetId}`);
   });
 
+  it("reviews first-page molecule objects inside the existing task queue", async () => {
+    const visualId = "91000000-0000-4000-8000-000000000001";
+    const proposalId = "92000000-0000-4000-8000-000000000001";
+    const regionId = "93000000-0000-4000-8000-000000000001";
+    const assetId = "94000000-0000-4000-8000-000000000001";
+    const queuePayload = {
+      items: [
+        {
+          paper_id: tasks[1].paper_id,
+          paper_key: "paper-25",
+          base_release_id: releaseId,
+          review_task_id: activeTaskId,
+          changeset_id: changesetId,
+          changeset_version: 3,
+          visual_object: {
+            id: visualId,
+            object_key: "first-page-object-1",
+            object_type: "complete_molecule",
+            region_id: regionId,
+          },
+          proposal: {
+            id: proposalId,
+            proposal_key: "ocsr-1",
+            disposition: "pending",
+            revision_id: baseRevisionId,
+          },
+          crop_asset: {
+            id: assetId,
+            url: `/api/v1/assets/${assetId}/content`,
+            original_filename: "molecule-crop.png",
+            sha256: "c".repeat(64),
+            byte_size: 1024,
+            mime_type: "image/png",
+            width: 240,
+            height: 160,
+            page_count: null,
+            category: "ocsr_input",
+            access_level: "reviewer",
+          },
+          page: 1,
+          state: "proposal_review",
+          blocking: true,
+          reasons: ["proposal_pending"],
+          paper_progress: { scope_count: 12, resolved_count: 11, blocker_count: 1 },
+          deep_link: { view: "ocsr", page: 1, object: visualId, proposal: proposalId },
+          priority: 40,
+        },
+        {
+          paper_id: paperId,
+          paper_key: "paper-24",
+          base_release_id: releaseId,
+          review_task_id: openTaskId,
+          changeset_id: null,
+          changeset_version: null,
+          visual_object: {
+            id: "91000000-0000-4000-8000-000000000002",
+            object_key: "first-page-object-2",
+            object_type: "non_structure",
+            region_id: "93000000-0000-4000-8000-000000000002",
+          },
+          proposal: null,
+          crop_asset: null,
+          page: 1,
+          state: "complete",
+          blocking: false,
+          reasons: [],
+          paper_progress: { scope_count: 4, resolved_count: 4, blocker_count: 0 },
+          deep_link: {
+            view: "ocsr",
+            page: 1,
+            object: "91000000-0000-4000-8000-000000000002",
+            proposal: null,
+          },
+          priority: 90,
+        },
+      ],
+      next_cursor: null,
+      status_counts: {
+        localization_or_split: 0,
+        needs_ocsr: 0,
+        proposal_review: 1,
+        source_or_attachment: 0,
+        structure_assembly: 0,
+        complete: 1,
+      },
+      pagination: { limit: 50, returned: 2 },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/review/tasks") return jsonResponse(200, tasks);
+      if (path === "/api/v1/review/changesets") return jsonResponse(200, [draft]);
+      if (path === "/api/v1/review/tasks/first-page-molecule-objects") {
+        return jsonResponse(200, queuePayload);
+      }
+      return jsonResponse(404, {
+        code: "RESOURCE_NOT_FOUND",
+        message: "Resource not found",
+        details: {},
+        request_id: "review-ui-request",
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const router = createAppRouter(createMemoryHistory());
+    await router.push("/review/tasks?tab=molecules");
+    await router.isReady();
+
+    const wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.findAll("[role='tab']")).toHaveLength(2);
+    expect(wrapper.get("[role='tab'][aria-selected='true']").text()).toContain("分子对象");
+    expect(wrapper.get("[data-molecule-queue]").classes()).toContain("panel");
+    expect(wrapper.get("[data-queue-counts]").text()).toContain("待审核 1");
+    expect(wrapper.get("[data-molecule-row]").text()).toContain("paper-25");
+    expect(wrapper.get("[data-molecule-row]").text()).toContain("11 / 12");
+    expect(wrapper.get("[data-molecule-row] img").attributes("alt")).toContain(
+      "paper-25 的分子对象裁剪图",
+    );
+    expect(wrapper.get("[data-molecule-row] a").attributes("href")).toBe(
+      `/review/changesets/${changesetId}?view=ocsr&page=1&object=${visualId}&proposal=${proposalId}`,
+    );
+    expect(wrapper.get("[data-completed-group]").attributes("open")).toBeUndefined();
+    expect(wrapper.text()).not.toContain("对象已核验");
+    expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true);
+
+    await wrapper.get("select[name='queue-status']").setValue("complete");
+    await flushPromises();
+    expect(router.currentRoute.value.query.status).toBe("complete");
+  });
+
   it("lists accessible changesets when opened without a task query", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), "http://leadtrace.test").pathname;

@@ -120,6 +120,7 @@
 .review-workspace > .page-heading,
 .review-workspace > .review-heading { margin-bottom: 8px; padding-bottom: 26px; border-bottom: 1px solid var(--line); }
 .task-table-section { overflow: hidden; }
+.molecule-queue-heading { align-items: center; }
 .creation-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 30px; align-items: start; }
 .workspace-header { align-items: flex-end; }
 .editor-view { display: grid; gap: 38px; }
@@ -229,6 +230,8 @@
   .paper-field-grid .field-wide { grid-column: auto; }
   .recovery-banner { align-items: flex-start; flex-direction: column; }
   .queue-summary { align-items: flex-start; }
+  .molecule-queue-heading { align-items: flex-start; flex-direction: column; }
+  .molecule-queue-counts { justify-content: flex-start; }
   .table-heading { align-items: flex-start; flex-direction: column; gap: 7px; }
   .paper-facts { grid-template-columns: 1fr; }
   .form-heading { flex-direction: column; }

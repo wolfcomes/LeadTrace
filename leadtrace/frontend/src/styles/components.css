@@ -421,6 +421,33 @@
 .workspace-tabs button { min-width: 118px; padding: 12px 15px; border: 0; border-bottom: 3px solid transparent; color: var(--ink-muted); background: transparent; font-size: .73rem; font-weight: 700; cursor: pointer; }
 .workspace-tabs button:hover { color: var(--coral-deep); }
 .workspace-tabs button[aria-current="page"] { border-bottom-color: var(--coral); color: var(--ink); }
+.task-queue-tabs { align-items: stretch; }
+.task-queue-tabs button { flex: 0 0 auto; }
+.molecule-object-queue { overflow: hidden; }
+.molecule-queue-heading > div:first-child { max-width: 720px; }
+.molecule-queue-heading p:last-child { margin: 8px 0 0; color: var(--ink-muted); font-size: .74rem; line-height: 1.55; }
+.molecule-queue-counts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.molecule-queue-counts span { padding: 6px 8px; border-radius: var(--radius-sm); color: var(--ink-muted); background: var(--paper-deep); font: 600 .61rem/1 var(--font-mono); }
+.molecule-queue-filters { border-width: 0 0 1px; }
+.molecule-queue-filters .form-field { min-width: 180px; }
+.molecule-queue-table { min-width: 880px; }
+.molecule-queue-table th strong,
+.molecule-queue-table th code,
+.molecule-queue-table th small,
+.molecule-queue-table td small { display: block; }
+.molecule-queue-table th code { margin-top: 5px; color: var(--ink-muted); font-size: .61rem; }
+.molecule-queue-table th small,
+.molecule-queue-table td small { margin-top: 5px; color: var(--ink-muted); font-size: .63rem; font-weight: 500; }
+.molecule-crop-thumbnail,
+.crop-placeholder { width: 92px; height: 62px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper-deep); }
+.molecule-crop-thumbnail { display: block; object-fit: contain; }
+.crop-placeholder { display: grid; place-items: center; color: var(--ink-muted); font: 600 .57rem/1.2 var(--font-mono); text-align: center; }
+.queue-reason { max-width: 220px; overflow-wrap: anywhere; }
+.progress-ratio { color: var(--teal-deep); font: 650 .86rem/1 var(--font-mono); }
+.completed-object-group { border-top: 1px solid var(--line); }
+.completed-object-group summary { padding: 14px 18px; color: var(--ink-muted); background: var(--paper-deep); font: 650 .69rem/1.3 var(--font-mono); cursor: pointer; }
+.completed-object-group[open] summary { border-bottom: 1px solid var(--line); }
+.compact-state { min-height: 220px; border: 0; border-radius: 0; box-shadow: none; }
 .metadata-editor { max-width: 900px; padding: 0; overflow: hidden; }
 .metadata-fields { padding: 22px; border-top: 2px solid var(--coral); }
 .metadata-fields label,
