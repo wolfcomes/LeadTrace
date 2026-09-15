@@ -310,6 +310,73 @@ describe("Paper scientific workspace layout", () => {
     expect(wrapper.get("[data-rdkit-missing]").text()).toContain("没有可用的 RDKit 图");
   });
 
+  it("requires the exact Paper attestation before allowing submission", async () => {
+    const complete = {
+      ...workspace,
+      workspace_version: 3,
+      progress: {
+        ...workspace.progress,
+        resolved_count: workspace.progress.scope_count,
+        blocker_count: 0,
+      },
+    };
+    const attested = {
+      ...complete,
+      workspace_version: 4,
+      changeset: { ...complete.changeset, version: 4 },
+      attestation: {
+        id: ids.scope,
+        changeset_version: 4,
+        scope_hash: "b".repeat(64),
+        item_count: complete.scope.item_count,
+        resolved_count: complete.progress.scope_count,
+        blocker_count: 0,
+        statement: "我确认已核查该 Paper 冻结范围内的全部必需对象、来源和结构证据，且不存在未解决 blocker。",
+        stale: false,
+      },
+    };
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), "http://leadtrace.test");
+      calls.push({ url: url.pathname, init });
+      if (url.pathname.endsWith("/workspace")) {
+        return jsonResponse(calls.some((call) => call.init?.method === "POST") ? attested : complete);
+      }
+      if (url.pathname.endsWith("/attestation")) {
+        return jsonResponse({
+          id: ids.scope,
+          changeset_id: ids.changeset,
+          paper_id: ids.paper,
+          changeset_version: 4,
+          scope_hash: "b".repeat(64),
+          item_count: complete.scope.item_count,
+          resolved_count: complete.progress.scope_count,
+          blocker_count: 0,
+          statement: "我确认已核查该 Paper 冻结范围内的全部必需对象、来源和结构证据，且不存在未解决 blocker。",
+          stale: false,
+        });
+      }
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    }));
+    const { wrapper } = await mountWorkspace("?view=submit");
+    expect(wrapper.get("[data-paper-attestation]").text()).toContain("7 / 7");
+    const attest = wrapper.get("[data-attest-paper]");
+    expect(attest.attributes("disabled")).toBeDefined();
+    await wrapper.get("[data-attestation-confirm]").setValue(true);
+    expect(attest.attributes("disabled")).toBeUndefined();
+    await attest.trigger("click");
+    await flushPromises();
+    const request = calls.find((call) => call.init?.method === "POST");
+    expect(request).toBeTruthy();
+    expect(JSON.parse(String(request?.init?.body))).toEqual({
+      expected_version: 3,
+      scope_hash: "b".repeat(64),
+      statement: "我确认已核查该 Paper 冻结范围内的全部必需对象、来源和结构证据，且不存在未解决 blocker。",
+      confirmed: true,
+    });
+    expect(wrapper.get("[data-attestation-current]").text()).toContain("已确认");
+  });
+
   it("makes precision Region interaction read-only on mobile", async () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({
       matches: true,

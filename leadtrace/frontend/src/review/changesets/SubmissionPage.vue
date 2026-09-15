@@ -62,6 +62,7 @@ const objectLabels: Record<string, string> = {
   lineage_edge: "谱系关系",
   visual_region: "图像区域",
   visual_object: "图像对象",
+  molecule_proposal: "OCSR 提议",
 };
 
 const stateLabels: Record<Changeset["workflow_state"], string> = {

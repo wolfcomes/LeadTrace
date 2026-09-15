@@ -289,6 +289,7 @@ export const workspaceAttestationSchema = z.object({
   resolved_count: z.number().int().nonnegative(),
   blocker_count: z.number().int().nonnegative(),
   statement: z.string(),
+  stale: z.boolean(),
 }).strict();
 
 export const workspaceSchema = z.object({

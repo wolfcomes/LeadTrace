@@ -143,7 +143,9 @@ async function decide(action: ApprovalAction): Promise<void> {
       selected.value.version,
       reason.value.trim(),
     );
-    notice.value = result.idempotent ? "该决定已经记录。" : "审批决定已记录。";
+    notice.value = action === "approve"
+      ? "已批准，待发布；请在发布管理中创建并发布 successor Release。"
+      : result.idempotent ? "该决定已经记录。" : "审批决定已记录。";
     reason.value = "";
     await load();
   } catch (caught) {
@@ -171,7 +173,7 @@ onMounted(load);
     </header>
 
     <p v-if="error" class="message inline-feedback is-error" role="alert">{{ error }}</p>
-    <p v-if="notice" class="message inline-feedback is-success" role="status">{{ notice }}</p>
+    <p v-if="notice" class="message inline-feedback is-success" data-approval-notice role="status">{{ notice }}</p>
 
     <div class="approval-layout">
       <aside class="queue panel" aria-label="待审批修改集">

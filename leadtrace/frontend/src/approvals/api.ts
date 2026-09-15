@@ -26,6 +26,40 @@ const scientificEvidenceEntrySchema = z.object({
   after: z.record(z.string(), z.unknown()),
 });
 
+const evidenceAssetSchema = z.object({
+  id: z.string().uuid(),
+  url: z.string().startsWith("/api/v1/assets/").endsWith("/content"),
+  original_filename: z.string(),
+  sha256: z.string().length(64),
+  byte_size: z.number().int().nonnegative(),
+  mime_type: z.string(),
+  width: z.number().int().positive().nullable(),
+  height: z.number().int().positive().nullable(),
+  page_count: z.number().int().positive().nullable(),
+  category: z.string(),
+  access_level: z.enum(["visitor", "reviewer", "admin"]),
+}).strict();
+
+const proposalEvidenceSchema = scientificEvidenceEntrySchema.extend({
+  before_disposition: z.string(),
+  after_disposition: z.string(),
+}).strict();
+
+const sourceContextSchema = z.object({
+  proposal_id: z.string().uuid(),
+  visual_object_id: z.string().uuid(),
+  region: z.object({
+    id: z.string().uuid(),
+    page_number: z.number().int().positive(),
+    bounds: z.object({
+      x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number(),
+    }).strict(),
+    rotation: z.number(),
+  }).strict(),
+  crop_asset: evidenceAssetSchema.nullable(),
+  source_asset: evidenceAssetSchema.nullable(),
+}).strict();
+
 const scientificEvidenceSchema = z.object({
   changeset_id: z.string().uuid(),
   base_release_id: z.string().uuid(),
@@ -33,7 +67,13 @@ const scientificEvidenceSchema = z.object({
   snapshot_hash: z.string().length(64),
   structures: scientificEvidenceEntrySchema.array(),
   regions: scientificEvidenceEntrySchema.array(),
-});
+  visual_objects: scientificEvidenceEntrySchema.array().optional(),
+  molecule_proposals: proposalEvidenceSchema.array().optional(),
+  source_context: sourceContextSchema.array().optional(),
+  scope: z.record(z.string(), z.unknown()).nullable().optional(),
+  attestation: z.record(z.string(), z.unknown()).nullable().optional(),
+  progress: z.record(z.string(), z.unknown()).nullable().optional(),
+}).strict();
 
 export type ScientificEvidence = z.infer<typeof scientificEvidenceSchema>;
 

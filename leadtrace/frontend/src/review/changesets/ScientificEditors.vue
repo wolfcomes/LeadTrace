@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, watch } from "vue";
+import { computed, reactive, watch } from "vue";
 import type { ChangesetItem } from "../../api/schema";
 import ActivityEditor from "../../activities/ActivityEditor.vue";
 import CompoundEditor from "../../compounds/CompoundEditor.vue";
@@ -19,6 +19,13 @@ const emit = defineEmits<{
 type Snapshot = Record<string, unknown>;
 
 const localSnapshots = reactive<Record<string, Snapshot>>({});
+
+const specializedItems = computed(() => props.items.filter((item) => (
+  item.object_kind === "visual_region"
+  || item.object_kind === "visual_object"
+  || item.object_kind === "molecule_proposal"
+  || item.object_kind === "structure"
+)));
 
 watch(() => props.items, (items) => {
   for (const item of items) {
@@ -98,6 +105,23 @@ function readiness(item: ChangesetItem) {
     blockingCodes: codes.length ? codes : value.pair_ready === false ? ["PAIR_NOT_READY"] : [],
   };
 }
+
+function specializedWorkspaceLink(item: ChangesetItem): string {
+  const view = item.object_kind === "visual_region"
+    ? "pdf"
+    : item.object_kind === "visual_object"
+      ? "molecules"
+      : "ocsr";
+  const parameter = item.object_kind === "visual_region"
+    ? "region"
+    : item.object_kind === "visual_object"
+      ? "object"
+      : item.object_kind === "molecule_proposal"
+        ? "proposal"
+        : "object";
+  const suffix = item.object_kind === "structure" ? "" : `&${parameter}=${encodeURIComponent(item.object_id)}`;
+  return `/review/changesets/${encodeURIComponent(item.changeset_id)}?view=${view}${suffix}`;
+}
 </script>
 
 <template>
@@ -110,6 +134,15 @@ function readiness(item: ChangesetItem) {
       <span>{{ items.length }} 个专用编辑器</span>
     </header>
     <div class="scientific-grid">
+      <article v-for="item in specializedItems" :key="item.id" class="specialized-handoff panel" data-specialized-handoff>
+        <div>
+          <p class="eyebrow">SPECIALIZED WORKSPACE</p>
+          <h3>{{ item.object_kind === "visual_region" ? "PDF Region" : item.object_kind === "visual_object" ? "Visual Object" : item.object_kind === "molecule_proposal" ? "OCSR Proposal" : "Structure" }}</h3>
+          <code>{{ item.object_id }}</code>
+        </div>
+        <p>此对象必须在 Paper 科学工作台中通过类型化字段、来源 crop 和结构证据核查。</p>
+        <a class="button-secondary" :href="specializedWorkspaceLink(item)">打开专用工作台</a>
+      </article>
       <CompoundEditor
         v-for="item in items.filter((entry) => entry.object_kind === 'compound')"
         :key="item.id"

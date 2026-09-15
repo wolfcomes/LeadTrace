@@ -482,6 +482,13 @@
 .advanced-snapshots { margin-top: 22px; border-top: 1px solid var(--line); }
 .advanced-snapshots > summary { padding: 16px 0; color: var(--coral-deep); font-size: .72rem; font-weight: 740; cursor: pointer; }
 .advanced-snapshots > p { margin: -4px 0 15px; color: var(--ink-muted); font-size: .67rem; line-height: 1.55; }
+.system-owned-field { display: grid; gap: 4px; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); color: var(--ink-soft); background: var(--slate-pale); }
+.system-owned-field strong { font-size: .73rem; }
+.system-owned-field small { color: var(--ink-muted); font-size: .62rem; line-height: 1.45; }
+.specialized-handoff { display: grid; gap: 9px; padding: 16px; border: 1px solid var(--line); background: var(--paper-deep); }
+.specialized-handoff h3 { margin: 0; font: 600 1rem/1.25 var(--font-serif); }
+.specialized-handoff p { margin: 0; color: var(--ink-soft); font-size: .7rem; line-height: 1.5; }
+.specialized-handoff code { color: var(--ink-muted); font-size: .61rem; overflow-wrap: anywhere; }
 .item-editor { min-width: 0; padding: 19px; }
 .item-editor textarea { resize: vertical; font: .69rem/1.55 var(--font-mono); }
 

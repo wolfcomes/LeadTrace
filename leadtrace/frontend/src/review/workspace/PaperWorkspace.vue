@@ -7,6 +7,7 @@ import {
   bindVisualObjectAsset,
   bindVisualObjectCompound,
   bindVisualObjectRegion,
+  attestPaper,
   createRegion,
   createStructure,
   drawStructure,
@@ -27,6 +28,7 @@ import {
 } from "../api";
 import type { AutosaveState } from "../autosave";
 import MoleculeProposalInspector from "./MoleculeProposalInspector.vue";
+import PaperAttestationPanel from "./PaperAttestationPanel.vue";
 import RegionInspector from "./RegionInspector.vue";
 import StructureInspector, { type StructureEditorValue } from "./StructureInspector.vue";
 import VisualObjectInspector from "./VisualObjectInspector.vue";
@@ -34,6 +36,7 @@ import WorkspaceActionBar from "./WorkspaceActionBar.vue";
 import WorkspaceContextRail from "./WorkspaceContextRail.vue";
 import WorkspaceEvidenceCanvas from "./WorkspaceEvidenceCanvas.vue";
 import type { MoleculeObjectType } from "./types";
+import type { PaperAttestation } from "./types";
 import type { WorkspaceView } from "./useWorkspace";
 import { useWorkspace } from "./useWorkspace";
 
@@ -49,6 +52,7 @@ const emit = defineEmits<{
   "move-region": [payload: Record<string, unknown>];
   "resize-region": [payload: Record<string, unknown>];
   "workspace-updated": [version: number];
+  "attestation-updated": [attestation: PaperAttestation];
 }>();
 
 const route = useRoute();
@@ -346,6 +350,20 @@ function locateSource(regionId: string): void {
   selectRegion(regionId);
 }
 
+function attestPaperForWorkspace(payload: {
+  expected_version: number;
+  scope_hash: string;
+  statement: string;
+  confirmed: true;
+}): void {
+  const workspace = controller.workspace.value;
+  if (!workspace) return;
+  void runMutation(
+    () => attestPaper(workspace.changeset.id, payload),
+    (result) => emit("attestation-updated", result),
+  );
+}
+
 async function validateScientificStructure(payload: StructureValidationInput): Promise<void> {
   const workspace = controller.workspace.value;
   if (!workspace || scientificBusy.value) return;
@@ -516,6 +534,14 @@ onBeforeUnmount(() => {
           @create-region="createDrawnRegion($event); emit('create-region', $event)"
           @move-region="updateRegionGeometry($event); emit('move-region', $event)"
           @resize-region="updateRegionGeometry($event); emit('resize-region', $event)"
+        />
+
+        <PaperAttestationPanel
+          v-if="controller.selectedView.value === 'submit'"
+          :workspace="controller.workspace.value"
+          :editable="mutable && !mobilePrecision"
+          :busy="mutationBusy"
+          @attest="attestPaperForWorkspace"
         />
 
         <slot v-else-if="controller.selectedView.value === 'scientific'" name="scientific">

@@ -75,6 +75,20 @@ const structureComparisons = computed(() => (props.evidence?.structures ?? [])
     };
   }));
 
+const proposalComparisons = computed(() => (props.evidence?.molecule_proposals ?? []).map((entry) => ({
+  id: entry.object_id,
+  beforeDisposition: entry.before_disposition,
+  afterDisposition: entry.after_disposition,
+  beforeSmiles: snapshotValue(entry.before, "reviewed_smiles") ?? snapshotValue(entry.before, "canonical_smiles"),
+  afterSmiles: snapshotValue(entry.after, "reviewed_smiles") ?? snapshotValue(entry.after, "canonical_smiles"),
+})));
+
+const sourceContexts = computed(() => props.evidence?.source_context ?? []);
+
+function display(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value) : "—";
+}
+
 function regionFromSnapshot(objectId: string, snapshot: Snapshot): PdfRegion | null {
   const bounds = snapshot.bounds;
   const normalized = bounds && typeof bounds === "object" && !Array.isArray(bounds) ? bounds as Snapshot : snapshot;
@@ -186,6 +200,38 @@ const lineageComparisons = computed(() => props.diffs
       </div>
     </section>
 
+    <section v-if="proposalComparisons.length" class="review-section" data-proposal-comparison aria-label="OCSR Proposal 比较">
+      <h3>OCSR Proposal 前后比较</h3>
+      <div v-for="comparison in proposalComparisons" :key="comparison.id" class="proposal-comparison-row">
+        <code>{{ comparison.id }}</code>
+        <span><strong>提交前</strong> {{ comparison.beforeDisposition }} · <code>{{ display(comparison.beforeSmiles) }}</code></span>
+        <strong aria-hidden="true">→</strong>
+        <span><strong>提交后</strong> {{ comparison.afterDisposition }} · <code>{{ display(comparison.afterSmiles) }}</code></span>
+      </div>
+    </section>
+
+    <section v-if="sourceContexts.length" class="review-section" data-source-context-review aria-label="来源上下文">
+      <h3>来源定位与 crop</h3>
+      <article v-for="context in sourceContexts" :key="context.proposal_id" class="source-context-card">
+        <header><code>{{ context.proposal_id }}</code><span>第 {{ context.region.page_number }} 页 · Region {{ context.region.id }}</span></header>
+        <div class="source-context-grid">
+          <figure v-if="context.crop_asset" class="source-context-frame">
+            <img :src="context.crop_asset.url" alt="提交前后 OCSR 对照 crop">
+            <figcaption>来源 crop · {{ context.crop_asset.original_filename }}</figcaption>
+          </figure>
+          <figure v-if="context.source_asset" class="source-context-frame">
+            <img :src="context.source_asset.url" alt="来源页面或 PDF 证据">
+            <figcaption>来源页面 · {{ context.source_asset.original_filename }}</figcaption>
+          </figure>
+          <dl class="source-locator-summary">
+            <div><dt>page</dt><dd>{{ context.region.page_number }}</dd></div>
+            <div><dt>bounds</dt><dd><code>{{ context.region.bounds.x0.toFixed(3) }}, {{ context.region.bounds.y0.toFixed(3) }} → {{ context.region.bounds.x1.toFixed(3) }}, {{ context.region.bounds.y1.toFixed(3) }}</code></dd></div>
+            <div><dt>rotation</dt><dd>{{ context.region.rotation }}°</dd></div>
+          </dl>
+        </div>
+      </article>
+    </section>
+
     <section v-if="reviewRegions.length" class="review-section" aria-label="PDF Region overlay">
       <h3>PDF Region overlay</h3>
       <PdfReviewCanvas
@@ -250,5 +296,17 @@ const lineageComparisons = computed(() => props.diffs
 .lineage-row { display: grid; grid-template-columns: minmax(100px, .5fr) minmax(0, 1fr) 24px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); background: var(--surface); font-size: .67rem; }
 .lineage-row code { color: var(--ink-muted); overflow-wrap: anywhere; }
 .lineage-row strong { color: var(--coral-deep); text-align: center; }
+.proposal-comparison-row { display: grid; grid-template-columns: minmax(110px, .45fr) minmax(0, 1fr) 24px minmax(0, 1fr); gap: 10px; align-items: center; padding: 11px 12px; border: 1px solid var(--line); background: var(--surface); font-size: .68rem; }
+.proposal-comparison-row > code { color: var(--ink-muted); overflow-wrap: anywhere; }
+.source-context-card { display: grid; gap: 10px; padding: 13px; border: 1px solid var(--line); background: var(--surface); }
+.source-context-card > header { display: flex; justify-content: space-between; gap: 10px; color: var(--ink-muted); font-size: .65rem; }
+.source-context-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.source-context-frame { margin: 0; min-width: 0; border: 1px solid var(--line); background: var(--paper-deep); }
+.source-context-frame img { display: block; width: 100%; max-height: 220px; object-fit: contain; }
+.source-context-frame figcaption { padding: 6px 8px; color: var(--ink-muted); font-size: .61rem; overflow-wrap: anywhere; }
+.source-locator-summary { display: grid; gap: 7px; grid-column: 1 / -1; margin: 0; }
+.source-locator-summary div { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px; font-size: .66rem; }
+.source-locator-summary dt { color: var(--ink-muted); }
+.source-locator-summary dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 760px) { .binding-grid { grid-template-columns: 1fr; } .lineage-row { grid-template-columns: 1fr; } .lineage-row strong { transform: rotate(90deg); } }
 </style>

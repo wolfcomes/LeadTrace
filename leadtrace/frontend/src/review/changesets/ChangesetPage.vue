@@ -33,6 +33,7 @@ import ChangesetDiff from "./ChangesetDiff.vue";
 import SubmissionPage from "./SubmissionPage.vue";
 import ScientificEditors from "./ScientificEditors.vue";
 import PaperWorkspace from "../workspace/PaperWorkspace.vue";
+import type { PaperAttestation } from "../workspace/types";
 
 type ViewState = "loading" | "ready" | "not-found" | "error";
 
@@ -135,6 +136,7 @@ const objectLabels: Record<string, string> = {
   lineage_edge: "谱系关系",
   visual_region: "图像区域",
   visual_object: "图像对象",
+  molecule_proposal: "OCSR 提议",
 };
 
 function serverWorkspaceValues(): WorkspaceValues {
@@ -587,6 +589,29 @@ function syncWorkspaceVersion(version: number): void {
   if (activeSaveContext) activeSaveContext.changeset = changeset.value;
 }
 
+function syncPaperAttestation(attestation: PaperAttestation): void {
+  if (!changeset.value) return;
+  const current = changeset.value;
+  const summary = {
+    id: attestation.id,
+    scope_hash: attestation.scope_hash,
+    changeset_version: attestation.changeset_version,
+    item_count: attestation.item_count,
+    resolved_count: attestation.resolved_count,
+    blocker_count: attestation.blocker_count,
+    statement: attestation.statement,
+  };
+  changeset.value = {
+    ...current,
+    version: attestation.changeset_version,
+    validation_results: {
+      ...current.validation_results,
+      paper_attestation: summary,
+    },
+  };
+  if (activeSaveContext) activeSaveContext.changeset = changeset.value;
+}
+
 watch(() => route.params.changesetId, load, { immediate: true });
 onBeforeUnmount(() => {
   loadGeneration += 1;
@@ -647,7 +672,12 @@ onBeforeUnmount(() => {
 
       <div v-if="operationError" class="operation-alert" role="alert">{{ operationError }}</div>
 
-      <PaperWorkspace :changeset-id="changeset.id" :save-state="autosaveState" @workspace-updated="syncWorkspaceVersion">
+      <PaperWorkspace
+        :changeset-id="changeset.id"
+        :save-state="autosaveState"
+        @workspace-updated="syncWorkspaceVersion"
+        @attestation-updated="syncPaperAttestation"
+      >
         <template #scientific>
       <section class="editor-view" data-editor-view>
         <section class="metadata-editor panel" aria-labelledby="metadata-title">
@@ -721,15 +751,11 @@ onBeforeUnmount(() => {
                   >
                 </div>
                 <div>
-                  <label for="paper-review-status-field">人工核查状态</label>
-                  <input
-                    id="paper-review-status-field"
-                    class="form-control"
-                    :value="normalizedValue(paperItem, 'review_status')"
-                    type="text"
-                    :readonly="!mutable"
-                    @input="updateNormalizedValue(paperItem, 'review_status', $event)"
-                  >
+                  <label>Paper 核查状态</label>
+                  <div class="system-owned-field" data-paper-review-status>
+                    <strong>{{ normalizedValue(paperItem, "review_status") === "reviewed" ? "已完成 Paper attestation" : "等待 Paper attestation" }}</strong>
+                    <small>该状态由 Reviewer attestation 服务端写入，不能作为普通字段编辑。</small>
+                  </div>
                 </div>
               </div>
             </article>
@@ -763,8 +789,8 @@ onBeforeUnmount(() => {
           </div>
 
           <details v-if="items.length" class="advanced-snapshots">
-            <summary>高级检查 · 完整 JSON 快照</summary>
-            <p>用于核对尚未提供专用表单的字段。修改内容仍通过同一版本与自动保存流程提交。</p>
+            <summary>系统快照 · 只读</summary>
+            <p>完整快照仅用于审计核对。Reviewer 必须使用上方专用字段工作台，系统不会接受通过 JSON 直接编辑。</p>
             <div class="item-editors">
             <article v-for="item in items" :key="item.id" class="item-editor panel" data-item-editor>
               <header>
@@ -774,14 +800,14 @@ onBeforeUnmount(() => {
                 </div>
                 <span>#{{ item.sequence }}</span>
               </header>
-              <label :for="`snapshot-${item.id}`">提议快照</label>
+              <label :for="`snapshot-${item.id}`">提议快照（只读）</label>
               <textarea
                 :id="`snapshot-${item.id}`"
                 class="form-control"
                 v-model="itemJson[item.id]"
                 rows="14"
                 spellcheck="false"
-                :readonly="!mutable"
+                readonly
                 @input="validateItem(item.id); scheduleSave()"
               ></textarea>
               <p v-if="itemErrors[item.id]" class="field-error" role="alert">{{ itemErrors[item.id] }}</p>

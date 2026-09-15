@@ -490,6 +490,7 @@ describe("Reviewer task and changeset workflow", () => {
       "value",
       expect.stringContaining("修订后的标题"),
     );
+    expect(wrapper.get("[data-item-editor] textarea").attributes("readonly")).toBeDefined();
     await wrapper.get("[aria-label='修改集视图'] button:nth-child(2)").trigger("click");
     expect(wrapper.get("[data-diff-summary]").text()).toContain("标题");
     expect(wrapper.get("[data-diff-summary]").text()).toContain("原始标题");

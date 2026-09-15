@@ -323,6 +323,7 @@ class WorkspaceAttestationResponse(_ProjectionModel):
     resolved_count: int = Field(ge=0)
     blocker_count: int = Field(ge=0)
     statement: str
+    stale: bool = False
 
 
 class WorkspaceScopeResponse(_ProjectionModel):

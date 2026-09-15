@@ -735,7 +735,6 @@ def build_workspace(
         select(PaperReviewAttestation)
         .where(
             PaperReviewAttestation.changeset_id == changeset.id,
-            PaperReviewAttestation.changeset_version == changeset.version,
         )
         .order_by(PaperReviewAttestation.created_at.desc())
         .limit(1)
@@ -795,6 +794,10 @@ def build_workspace(
                 "resolved_count": attestation.resolved_count,
                 "blocker_count": attestation.blocker_count,
                 "statement": attestation.statement,
+                "stale": (
+                    attestation.changeset_version != changeset.version
+                    or attestation.scope_hash != scope.scope_hash
+                ),
             }
             if attestation is not None
             else None
