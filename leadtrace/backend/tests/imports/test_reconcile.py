@@ -126,7 +126,9 @@ def test_asset_reconciliation_detects_same_size_content_tampering(
     assert isinstance(paper_pdf, Path)
     assert isinstance(expected, dict)
     original = paper_pdf.read_bytes()
-    paper_pdf.write_bytes(original.replace(b"fixture", b"Fixture"))
+    tampered = bytearray(original)
+    tampered[len(tampered) // 2] ^= 1
+    paper_pdf.write_bytes(tampered)
     assert paper_pdf.stat().st_size == len(original)
 
     report = reconcile_baseline(
