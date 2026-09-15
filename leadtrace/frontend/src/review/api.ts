@@ -61,6 +61,145 @@ const regionRevisionSchema = z.object({
 }).strict();
 const regionSplitSchema = z.object({ regions: regionIdentitySchema.array().length(2) }).strict();
 
+const structureStateSchema = z.enum([
+  "proposal", "parseable_candidate", "source_bound_candidate", "structure_confirmed",
+  "constitution_confirmed", "non_unique_stereochemistry", "multicomponent_unresolved",
+  "source_structure_mismatch", "rejected",
+]);
+const experimentalMaterialSchema = z.enum(["unique", "non_unique_stereochemistry", "multicomponent", "constitution_only"]);
+const sourceComparisonSchema = z.enum(["match", "mismatch", "not_compared"]);
+const structureValidationResponseSchema = z.object({
+  input_smiles: z.string(),
+  parseable: z.boolean(),
+  canonical_smiles: z.string().nullable(),
+  canonical_isomeric_smiles: z.string().nullable(),
+  formula: z.string().nullable(),
+  molecular_weight: z.number().nullable(),
+  component_count: z.number().int().nonnegative(),
+  selected_component_smiles: z.string().nullable(),
+  has_dummy_atoms: z.boolean(),
+  has_radicals: z.boolean(),
+  has_stereochemistry: z.boolean(),
+  is_salt: z.boolean(),
+  experimental_material: experimentalMaterialSchema,
+  source_comparison: sourceComparisonSchema,
+  messages: z.string().array(),
+  eligible_states: structureStateSchema.array(),
+}).strict();
+const structureDrawingResponseSchema = z.object({
+  asset_id: z.string(),
+  drawing_key: z.string(),
+  sha256: z.string().length(64),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  reused: z.boolean(),
+}).strict();
+const structureMutationResponseSchema = z.object({
+  id: z.string(),
+  paper_id: z.string(),
+  compound_id: z.string(),
+  structure_key: z.string(),
+  revision_id: z.string(),
+  revision_number: z.number().int().positive(),
+  changeset_version: z.number().int().nonnegative(),
+  snapshot: z.record(z.string(), z.unknown()),
+  structure_state: structureStateSchema.nullable(),
+  workflow_state: z.string(),
+}).strict();
+
+export type StructureStateValue = z.infer<typeof structureStateSchema>;
+export type ExperimentalMaterialValue = z.infer<typeof experimentalMaterialSchema>;
+export type SourceComparisonValue = z.infer<typeof sourceComparisonSchema>;
+export interface StructureValidationResult {
+  inputSmiles: string;
+  parseable: boolean;
+  canonicalSmiles: string | null;
+  canonicalIsomericSmiles: string | null;
+  formula: string | null;
+  molecularWeight: number | null;
+  componentCount: number;
+  selectedComponentSmiles: string | null;
+  messages: string[];
+  eligibleStates: StructureStateValue[];
+}
+
+export interface StructureValidationInput {
+  smiles: string;
+  selected_component_smiles?: string | null;
+  experimental_material?: ExperimentalMaterialValue;
+  source_comparison?: SourceComparisonValue;
+  source_verified?: boolean;
+  human_confirmed?: boolean;
+}
+
+export interface StructureDraftInput extends DraftMutationContext, StructureValidationInput {
+  compound_id?: string | null;
+  structure_key?: string | null;
+  structure_state: StructureStateValue;
+  source: string;
+  reason: string;
+  drawing_asset_id?: string | null;
+}
+
+export async function validateStructure(
+  paperId: string,
+  input: StructureValidationInput,
+): Promise<StructureValidationResult> {
+  const payload = await apiRequest(
+    `/api/v1/papers/${encodeURIComponent(paperId)}/structures/validate`,
+    structureValidationResponseSchema,
+    {
+      method: "POST",
+      csrfToken: csrfToken(),
+      body: {
+        smiles: input.smiles,
+        selected_component_smiles: input.selected_component_smiles ?? null,
+        experimental_material: input.experimental_material ?? "unique",
+        source_comparison: input.source_comparison ?? "not_compared",
+        source_verified: input.source_verified ?? false,
+        human_confirmed: input.human_confirmed ?? false,
+      },
+    },
+  );
+  return {
+    inputSmiles: payload.input_smiles,
+    parseable: payload.parseable,
+    canonicalSmiles: payload.canonical_smiles,
+    canonicalIsomericSmiles: payload.canonical_isomeric_smiles,
+    formula: payload.formula,
+    molecularWeight: payload.molecular_weight,
+    componentCount: payload.component_count,
+    selectedComponentSmiles: payload.selected_component_smiles,
+    messages: payload.messages,
+    eligibleStates: payload.eligible_states,
+  };
+}
+
+export function drawStructure(paperId: string, input: {
+  smiles: string;
+  width?: number;
+  height?: number;
+  atom_indices?: boolean;
+  transparent_background?: boolean;
+  source_asset_id?: string | null;
+}) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/structures/drawings`, structureDrawingResponseSchema, {
+    method: "POST", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function createStructure(paperId: string, input: StructureDraftInput) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/structures`, structureMutationResponseSchema, {
+    method: "POST", csrfToken: csrfToken(), body: input,
+  });
+}
+
+export function updateStructure(paperId: string, structureId: string, input: StructureDraftInput) {
+  return apiRequest(`/api/v1/papers/${encodeURIComponent(paperId)}/structures/${encodeURIComponent(structureId)}`, structureMutationResponseSchema, {
+    method: "PATCH", csrfToken: csrfToken(), body: input,
+  });
+}
+
 export interface DraftMutationContext {
   changeset_id: string;
   expected_version: number;

@@ -460,4 +460,76 @@ describe("Paper scientific workspace layout", () => {
     expect(workspaceReads).toBe(2);
     expect(wrapper.get("select[data-object-type]").element).toHaveProperty("value", "shared_scaffold");
   });
+
+  it("validates and accepts an OCSR proposal in the same crop and Structure context", async () => {
+    const writes: Array<Record<string, unknown>> = [];
+    let workspaceReads = 0;
+    const updatedWorkspace = {
+      ...workspace,
+      workspace_version: 4,
+      changeset: { ...workspace.changeset, version: 4 },
+      molecule_proposals: workspace.molecule_proposals.map((proposal) => proposal.id === ids.firstProposal
+        ? { ...proposal, disposition: "accepted", review: { ...proposal.review, reviewed_smiles: "CCO" } }
+        : proposal),
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path.endsWith("/workspace")) {
+        workspaceReads += 1;
+        return jsonResponse(workspaceReads === 1 ? workspace : updatedWorkspace);
+      }
+      if (path.endsWith("/structures/validate") && init?.method === "POST") {
+        return jsonResponse({
+          input_smiles: "CCO", parseable: true, canonical_smiles: "CCO", canonical_isomeric_smiles: "CCO",
+          formula: "C2H6O", molecular_weight: 46.07, component_count: 1, selected_component_smiles: null,
+          has_dummy_atoms: false, has_radicals: false, has_stereochemistry: false, is_salt: false,
+          experimental_material: "unique", source_comparison: "not_compared", messages: [],
+          eligible_states: ["proposal", "parseable_candidate"],
+        });
+      }
+      if (path.endsWith(`/molecule-proposals/${ids.firstProposal}`) && init?.method === "PATCH") {
+        writes.push(JSON.parse(String(init.body)));
+        return jsonResponse({
+          ...updatedWorkspace.molecule_proposals[0],
+          revision_number: 2,
+          changeset_id: ids.changeset,
+          changeset_version: 4,
+          source_region_id: undefined,
+          source_region: null,
+        });
+      }
+      return errorResponse(404, { code: "RESOURCE_NOT_FOUND", message: "missing", details: {}, request_id: "workspace-request" });
+    }));
+    const { wrapper } = await mountWorkspace(
+      `?view=ocsr&page=1&object=${ids.firstVisual}&proposal=${ids.firstProposal}`,
+    );
+
+    expect(wrapper.get("[data-proposal-inspector]").text()).toContain("ocsr-1".replace("ocsr-1", "proposal-1"));
+    expect(wrapper.get("[data-structure-inspector]").text()).toContain("structure-1");
+    expect(wrapper.get("[data-crop-frame] img").attributes("src")).toBe(cropAsset.url);
+    expect(wrapper.get("[data-rdkit-frame] img").attributes("src")).toBe(drawingAsset.url);
+
+    await wrapper.get("[data-validate-proposal]").trigger("click");
+    await flushPromises();
+    expect(wrapper.get("[data-proposal-validation]").text()).toContain("RDKit 可解析");
+    expect(wrapper.get("[data-accept-proposal]").attributes("disabled")).toBeUndefined();
+    await wrapper.get("[data-accept-proposal]").trigger("click");
+    await flushPromises();
+
+    expect(writes).toEqual([{
+      changeset_id: ids.changeset,
+      expected_version: 3,
+      disposition: "accepted",
+      reviewed_smiles: "CCO",
+      selected_component_smiles: null,
+      compound_id: null,
+      resulting_structure_id: ids.structure,
+      rationale: null,
+      source_comparison: "not_compared",
+      source_verified: false,
+    }]);
+    expect(workspaceReads).toBe(2);
+    expect(wrapper.get("[data-proposal-inspector]").text()).toContain("accepted");
+    expect(wrapper.text()).not.toContain("对象已核验");
+  });
 });

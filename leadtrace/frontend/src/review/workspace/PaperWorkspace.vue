@@ -8,17 +8,27 @@ import {
   bindVisualObjectCompound,
   bindVisualObjectRegion,
   createRegion,
+  createStructure,
+  drawStructure,
   duplicateRegion,
   removeVisualObjectBinding,
   setRegionTombstone,
   splitRegion,
+  validateStructure,
+  updateMoleculeProposal,
   updateRegion,
+  updateStructure,
   updateVisualObject,
   updateVisualObjectAssetBinding,
   type DraftMutationContext,
+  type MoleculeProposalUpdate,
+  type StructureValidationInput,
+  type StructureValidationResult,
 } from "../api";
 import type { AutosaveState } from "../autosave";
+import MoleculeProposalInspector from "./MoleculeProposalInspector.vue";
 import RegionInspector from "./RegionInspector.vue";
+import StructureInspector, { type StructureEditorValue } from "./StructureInspector.vue";
 import VisualObjectInspector from "./VisualObjectInspector.vue";
 import WorkspaceActionBar from "./WorkspaceActionBar.vue";
 import WorkspaceContextRail from "./WorkspaceContextRail.vue";
@@ -48,6 +58,10 @@ const mobilePrecision = ref(false);
 const fallbackView = ref<"scientific" | "diff" | "submit">("scientific");
 const mutationBusy = ref(false);
 const mutationError = ref<{ conflict: boolean; message: string }>();
+const scientificBusy = ref(false);
+const structureValidation = ref<StructureValidationResult | null>(null);
+const drawingAssetId = ref<string>();
+const generatedDrawingUrl = ref<string>();
 let mediaQuery: MediaQueryList | undefined;
 
 const tabs: Array<[WorkspaceView, string]> = [
@@ -64,6 +78,24 @@ const mutable = computed(() => (
   controller.workspace.value !== undefined
   && ["draft", "revised_draft"].includes(controller.workspace.value.changeset.workflow_state)
 ));
+
+const selectedStructure = computed(() => {
+  const workspace = controller.workspace.value;
+  const structureId = controller.selectedProposal.value?.review.resulting_structure_id;
+  if (!workspace || typeof structureId !== "string") return undefined;
+  return workspace.structures.find((structure) => structure.id === structureId);
+});
+
+const selectedDrawingUrl = computed(() => {
+  if (generatedDrawingUrl.value) return generatedDrawingUrl.value;
+  const workspace = controller.workspace.value;
+  const structure = selectedStructure.value;
+  if (!workspace || !structure) return null;
+  const assetId = structure.snapshot.drawing_asset_id ?? structure.snapshot.rdkit_drawing_asset_id;
+  return typeof assetId === "string"
+    ? workspace.assets.find((asset) => asset.id === assetId)?.url ?? null
+    : null;
+});
 
 function queryValue(value: unknown): string | string[] | null | undefined {
   if (typeof value === "string" || value === null || value === undefined) return value;
@@ -314,6 +346,80 @@ function locateSource(regionId: string): void {
   selectRegion(regionId);
 }
 
+async function validateScientificStructure(payload: StructureValidationInput): Promise<void> {
+  const workspace = controller.workspace.value;
+  if (!workspace || scientificBusy.value) return;
+  scientificBusy.value = true;
+  mutationError.value = undefined;
+  try {
+    structureValidation.value = await validateStructure(workspace.paper.id, payload);
+  } catch (error) {
+    structureValidation.value = null;
+    mutationError.value = {
+      conflict: false,
+      message: error instanceof ApiError && error.status === 422
+        ? "RDKit 校验未通过，请检查 SMILES 与组分选择。"
+        : "暂时无法完成 RDKit 校验。",
+    };
+  } finally {
+    scientificBusy.value = false;
+  }
+}
+
+function decideProposal(payload: Omit<MoleculeProposalUpdate, "changeset_id" | "expected_version">): void {
+  const workspace = controller.workspace.value;
+  const proposal = controller.selectedProposal.value;
+  const context = mutationContext();
+  if (!workspace || !proposal || !context) return;
+  void runMutation(() => updateMoleculeProposal(workspace.paper.id, proposal.id, {
+    ...context,
+    ...payload,
+  }));
+}
+
+async function drawScientificStructure(smiles: string): Promise<void> {
+  const workspace = controller.workspace.value;
+  if (!workspace || scientificBusy.value) return;
+  scientificBusy.value = true;
+  mutationError.value = undefined;
+  try {
+    const drawing = await drawStructure(workspace.paper.id, { smiles, width: 600, height: 420 });
+    drawingAssetId.value = drawing.asset_id;
+    generatedDrawingUrl.value = `/api/v1/assets/${drawing.asset_id}/content`;
+  } catch {
+    mutationError.value = { conflict: false, message: "RDKit 图生成失败；SMILES 和校验结果仍会保留。" };
+  } finally {
+    scientificBusy.value = false;
+  }
+}
+
+function saveScientificStructure(payload: StructureEditorValue & { compound_id: string; structure_key: string }): void {
+  const workspace = controller.workspace.value;
+  const context = mutationContext();
+  if (!workspace || !context) return;
+  const input = {
+    ...context,
+    compound_id: payload.compound_id,
+    structure_key: payload.structure_key,
+    smiles: payload.smiles ?? "",
+    selected_component_smiles: payload.selectedComponentSmiles,
+    experimental_material: payload.experimentalMaterial,
+    source_comparison: payload.sourceComparison,
+    source_verified: payload.sourceVerified,
+    human_confirmed: payload.humanConfirmed,
+    structure_state: payload.structureState,
+    source: payload.source,
+    reason: payload.reason,
+    drawing_asset_id: drawingAssetId.value
+      ?? (typeof selectedStructure.value?.snapshot.drawing_asset_id === "string"
+        ? selectedStructure.value.snapshot.drawing_asset_id
+        : null),
+  };
+  void runMutation(() => selectedStructure.value
+    ? updateStructure(workspace.paper.id, selectedStructure.value.id, input)
+    : createStructure(workspace.paper.id, input));
+}
+
 function updateMediaQuery(event: MediaQueryListEvent | MediaQueryList): void {
   mobilePrecision.value = event.matches;
 }
@@ -333,6 +439,12 @@ watch(controller.state, (state) => {
 watch(() => route.query, () => {
   if (controller.state.value === "ready") controller.applyDeepLink(currentDeepLink());
 }, { deep: true });
+
+watch(() => controller.selectedProposalId.value, () => {
+  structureValidation.value = null;
+  drawingAssetId.value = undefined;
+  generatedDrawingUrl.value = undefined;
+});
 
 onMounted(() => {
   if (typeof window.matchMedia !== "function") return;
@@ -459,6 +571,33 @@ onBeforeUnmount(() => {
             @set-primary-asset="setPrimaryAsset"
             @locate-source="locateSource"
           />
+          <div v-else-if="controller.selectedView.value === 'ocsr' && controller.selectedProposal.value" class="ocsr-inspector-stack">
+            <dl class="selection-summary workspace-selection-summary" aria-label="当前 OCSR 选择">
+              <div data-selected-region><dt>Region</dt><dd>{{ controller.selectedRegion.value?.region_key ?? "未选择" }}</dd></div>
+              <div data-selected-proposal><dt>Proposal</dt><dd>{{ controller.selectedProposal.value.proposal_key }}</dd></div>
+            </dl>
+            <MoleculeProposalInspector
+              :proposal="controller.selectedProposal.value"
+              :structures="controller.workspace.value.structures"
+              :editable="mutable && !mobilePrecision"
+              :busy="mutationBusy || scientificBusy"
+              :validation="structureValidation"
+              @validate="validateScientificStructure"
+              @decision="decideProposal"
+              @locate-source="locateSource"
+            />
+            <StructureInspector
+              :structure="selectedStructure"
+              :compound-id="typeof controller.selectedProposal.value.review.compound_id === 'string' ? controller.selectedProposal.value.review.compound_id : undefined"
+              :editable="mutable && !mobilePrecision"
+              :busy="mutationBusy || scientificBusy"
+              :validation="structureValidation"
+              :drawing-url="selectedDrawingUrl"
+              @validate="validateScientificStructure"
+              @draw="drawScientificStructure"
+              @save="saveScientificStructure"
+            />
+          </div>
           <template v-else>
           <header>
             <p class="eyebrow">TYPED INSPECTOR</p>

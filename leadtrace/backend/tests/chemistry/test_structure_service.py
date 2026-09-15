@@ -112,6 +112,8 @@ def test_structure_draft_creates_append_only_revision_and_detects_stale_writes(
 
         assert structure.paper_id == paper.id
         assert revision.snapshot["canonical_isomeric_smiles"] == "C[C@H](O)Cl"
+        assert revision.snapshot["source_verified"] is True
+        assert revision.snapshot["human_confirmed"] is False
         assert revision.structure_state is StructureState.SOURCE_BOUND_CANDIDATE
         assert revision.canonical_smiles == "C[C@H](O)Cl"
         assert changeset.version == 2

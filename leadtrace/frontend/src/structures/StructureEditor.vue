@@ -7,11 +7,15 @@ type StructureDraft = {
   reason: string;
   structureState: string;
   selectedComponentSmiles?: string | null;
+  experimentalMaterial?: "unique" | "non_unique_stereochemistry" | "multicomponent" | "constitution_only";
+  sourceComparison?: "match" | "mismatch" | "not_compared";
+  sourceVerified?: boolean;
+  humanConfirmed?: boolean;
 };
 
 const props = defineProps<{
   modelValue: StructureDraft;
-  validation?: { parseable: boolean; messages: string[]; componentCount: number } | null;
+  validation?: { parseable: boolean; messages: string[]; componentCount: number; eligibleStates?: string[] } | null;
   editable?: boolean;
 }>();
 
@@ -21,8 +25,20 @@ const emit = defineEmits<{
   save: [value: StructureDraft];
 }>();
 
-const draft = reactive<StructureDraft>({ ...props.modelValue });
-watch(() => props.modelValue, (value) => Object.assign(draft, value), { deep: true });
+const draft = reactive<StructureDraft>({
+  experimentalMaterial: "unique",
+  sourceComparison: "not_compared",
+  sourceVerified: false,
+  humanConfirmed: false,
+  ...props.modelValue,
+});
+watch(() => props.modelValue, (value) => Object.assign(draft, {
+  experimentalMaterial: "unique",
+  sourceComparison: "not_compared",
+  sourceVerified: false,
+  humanConfirmed: false,
+  ...value,
+}), { deep: true });
 watch(draft, () => emit("update:modelValue", { ...draft }), { deep: true });
 
 const canSave = computed(() => Boolean(
@@ -82,6 +98,28 @@ const states = [
         选定组分
         <input v-model="draft.selectedComponentSmiles" name="selected-component" :disabled="!props.editable">
       </label>
+      <label class="form-field">
+        实验材料
+        <select v-model="draft.experimentalMaterial" name="experimental-material" :disabled="!props.editable">
+          <option value="unique">唯一结构</option>
+          <option value="non_unique_stereochemistry">非唯一立体化学</option>
+          <option value="multicomponent">多组分</option>
+          <option value="constitution_only">仅构造</option>
+        </select>
+      </label>
+      <label class="form-field">
+        来源对照
+        <select v-model="draft.sourceComparison" name="source-comparison" :disabled="!props.editable">
+          <option value="not_compared">尚未对照</option>
+          <option value="match">与来源一致</option>
+          <option value="mismatch">与来源不一致</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="confirmation-grid">
+      <label><input v-model="draft.sourceVerified" name="source-verified" type="checkbox" :disabled="!props.editable"> 已核对来源位置</label>
+      <label><input v-model="draft.humanConfirmed" name="human-confirmed" type="checkbox" :disabled="!props.editable"> 人工确认结构解释</label>
     </div>
 
     <label class="form-field">
@@ -94,8 +132,12 @@ const states = [
     </label>
 
     <footer class="editor-actions">
-      <span v-if="props.validation?.messages.length">{{ props.validation.messages.join(" · ") }}</span>
+      <span v-if="props.validation?.messages.length" data-validation-messages>{{ props.validation.messages.join(" · ") }}</span>
       <button class="button-primary" type="submit" :disabled="!canSave">保存草稿</button>
     </footer>
   </form>
 </template>
+
+<style scoped>
+.confirmation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; color: var(--ink-soft); font-size: .75rem; }
+</style>

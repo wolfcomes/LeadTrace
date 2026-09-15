@@ -78,6 +78,8 @@ def _snapshot(
     validation: StructureValidation,
     structure_state: StructureState,
     source: str,
+    source_verified: bool,
+    human_confirmed: bool,
     drawing_asset_id: UUID | None,
 ) -> dict[str, object]:
     return {
@@ -96,6 +98,8 @@ def _snapshot(
         "is_salt": validation.is_salt,
         "experimental_material": validation.experimental_material.value,
         "source_comparison": validation.source_comparison.value,
+        "source_verified": source_verified,
+        "human_confirmed": human_confirmed,
         "source": source,
         "drawing_asset_id": str(drawing_asset_id) if drawing_asset_id else None,
         "validation_messages": list(validation.messages),
@@ -223,6 +227,8 @@ class StructureReviewService:
                 validation=validation,
                 structure_state=requested_state,
                 source=clean_source,
+                source_verified=source_verified,
+                human_confirmed=human_confirmed,
                 drawing_asset_id=drawing_asset_id,
             ),
             requested_state,
