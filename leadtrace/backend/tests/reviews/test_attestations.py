@@ -17,7 +17,7 @@ from app.reviews.attestations import (
     PaperReviewScopeService,
 )
 from app.reviews.models import PaperReviewAttestation
-from app.reviews.service import InvalidReview, ReviewService
+from app.reviews.service import InvalidReview, ReviewForbidden, ReviewService
 from app.security.policies import WorkflowState
 from app.users.models import UserRole
 from app.users.service import UserService
@@ -104,4 +104,24 @@ def test_frozen_scope_makes_paper_review_status_server_owned(auth_session_factor
                 object_kind=ObjectKind.PAPER.value,
                 base_revision_id=paper_revision.id,
                 proposed_snapshot={"paper_key": paper.paper_key, "review_status": "reviewed"},
+            )
+
+
+def test_only_assigned_enabled_reviewer_can_attest(auth_session_factory) -> None:
+    with auth_session_factory.begin() as session:
+        reviewer, admin, changeset, _, _ = _seed_review(session)
+        scope = PaperReviewScopeService.ensure_scope(
+            session,
+            changeset=changeset,
+            actor_id=reviewer.id,
+        )
+
+        with pytest.raises(ReviewForbidden, match="assigned Reviewer"):
+            PaperReviewScopeService.attest(
+                session,
+                changeset=changeset,
+                actor_id=admin.id,
+                expected_version=1,
+                scope_hash=scope.scope_hash,
+                statement="An Admin must not sign the Reviewer attestation.",
             )

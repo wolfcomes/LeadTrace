@@ -13,6 +13,10 @@ from app.releases.manifest import validate_changeset_binding_delta
 from app.releases.models import ReleaseItem
 from app.revisions.models import ObjectKind, ObjectRevision
 from app.reviews.models import Changeset, ChangesetSubmission
+from app.reviews.attestations import (
+    AttestationValidationError,
+    validate_frozen_attestation,
+)
 from app.reviews.service import ReviewNotFound, ReviewService
 from app.security.policies import WorkflowState
 from app.users.models import User, UserRole
@@ -99,6 +103,12 @@ class ApprovalService:
         snapshot = dict(changeset.submitted_snapshot or {})
         snapshot_hash = changeset.submitted_content_hash or ""
         if action == "approve":
+            try:
+                validate_frozen_attestation(session, changeset=changeset)
+            except AttestationValidationError as error:
+                raise ApprovalConflict(
+                    f"Paper attestation is invalid: {error}"
+                ) from error
             binding_delta = snapshot.get("binding_delta")
             if not isinstance(binding_delta, Mapping):
                 raise ApprovalConflict("Binding delta is absent from the submitted snapshot")

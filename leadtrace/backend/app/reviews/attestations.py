@@ -17,8 +17,15 @@ from app.revisions.models import ObjectKind, ObjectRevision, RevisionedObject
 from app.revisions.service import RevisionService
 from app.reviews.completeness import ObjectCompleteness, QueueState, assess_object
 from app.reviews.models import Changeset, ChangesetItem, PaperReviewAttestation, PaperReviewScope
-from app.reviews.service import InvalidReview, ReviewNotFound, RevisionConflict, ReviewService
+from app.reviews.service import (
+    InvalidReview,
+    ReviewForbidden,
+    ReviewNotFound,
+    RevisionConflict,
+    ReviewService,
+)
 from app.security.policies import WorkflowState
+from app.users.models import User, UserRole
 
 
 class PaperAttestationRequest(BaseModel):
@@ -68,6 +75,108 @@ class AttestationValidationError(ValueError):
 def _snapshot_hash(session: Session, snapshot: Mapping[str, object]) -> str:
     value = session.scalar(select(func.leadtrace_jsonb_sha256(cast(dict(snapshot), JSONB))))
     return str(value or canonical_content_hash(snapshot))
+
+
+def _uuid(value: object, *, field: str) -> UUID:
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError, AttributeError) as error:
+        raise AttestationValidationError(
+            f"Frozen Paper attestation {field} is invalid"
+        ) from error
+
+
+def validate_frozen_attestation(
+    session: Session,
+    *,
+    changeset: Changeset,
+) -> PaperReviewAttestation | None:
+    """Return the attestation bound to the exact frozen submission, if scoped."""
+
+    scope = session.scalar(
+        select(PaperReviewScope).where(
+            PaperReviewScope.changeset_id == changeset.id
+        )
+    )
+    if scope is None:
+        return None
+    submitted = changeset.submitted_snapshot
+    if not isinstance(submitted, Mapping):
+        raise AttestationValidationError(
+            "Frozen Paper attestation submission is missing"
+        )
+    validation_results = submitted.get("validation_results")
+    summary = (
+        validation_results.get("paper_attestation")
+        if isinstance(validation_results, Mapping)
+        else None
+    )
+    if not isinstance(summary, Mapping):
+        raise AttestationValidationError(
+            "Frozen Paper attestation summary is missing"
+        )
+    attestation = session.get(
+        PaperReviewAttestation,
+        _uuid(summary.get("id"), field="id"),
+    )
+    if attestation is None:
+        raise AttestationValidationError("Frozen Paper attestation is missing")
+
+    paper_items = [
+        row
+        for row in submitted.get("items", [])
+        if isinstance(row, Mapping)
+        and row.get("object_kind") == ObjectKind.PAPER.value
+        and row.get("object_id") == str(changeset.paper_id)
+    ]
+    if len(paper_items) != 1:
+        raise AttestationValidationError(
+            "Frozen Paper attestation does not identify one Paper revision"
+        )
+    paper_item = paper_items[0]
+    proposed_snapshot = paper_item.get("proposed_snapshot")
+    normalized = (
+        proposed_snapshot.get("normalized_values")
+        if isinstance(proposed_snapshot, Mapping)
+        else None
+    )
+    if not isinstance(normalized, Mapping) or normalized.get("review_status") != "reviewed":
+        raise AttestationValidationError(
+            "Frozen Paper attestation revision is not marked reviewed"
+        )
+
+    reviewer = session.get(User, attestation.reviewer_id)
+    expected = {
+        "changeset_id": attestation.changeset_id == changeset.id,
+        "paper_id": attestation.paper_id == changeset.paper_id,
+        "scope_id": attestation.scope_id == scope.id,
+        "scope_hash": attestation.scope_hash == scope.scope_hash,
+        "reviewer_id": attestation.reviewer_id == changeset.owner_id,
+        "paper_revision_id": str(attestation.paper_revision_id)
+        == paper_item.get("proposed_revision_id"),
+        "item_count": attestation.item_count == scope.item_count,
+        "resolved_count": attestation.resolved_count == attestation.item_count,
+        "blocker_count": attestation.blocker_count == 0,
+        "summary_scope_id": summary.get("scope_id") == str(scope.id),
+        "summary_scope_hash": summary.get("scope_hash") == scope.scope_hash,
+        "summary_version": summary.get("changeset_version")
+        == attestation.changeset_version,
+        "summary_item_count": summary.get("item_count") == attestation.item_count,
+        "summary_resolved_count": summary.get("resolved_count")
+        == attestation.resolved_count,
+        "summary_blocker_count": summary.get("blocker_count")
+        == attestation.blocker_count,
+        "summary_statement": summary.get("statement") == attestation.statement,
+        "reviewer_enabled": reviewer is not None and reviewer.is_enabled,
+        "reviewer_role": reviewer is not None
+        and reviewer.role is UserRole.REVIEWER,
+    }
+    invalid = [name for name, valid in expected.items() if not valid]
+    if invalid:
+        raise AttestationValidationError(
+            "Frozen Paper attestation is inconsistent: " + ", ".join(invalid)
+        )
+    return attestation
 
 
 class PaperReviewScopeService:
@@ -236,6 +345,16 @@ class PaperReviewScopeService:
     ) -> tuple[PaperReviewScope, PaperReviewAttestation, ReviewProgress]:
         if changeset.version != expected_version:
             raise RevisionConflict(expected_version, changeset.version)
+        actor = session.get(User, actor_id)
+        if (
+            actor_id != changeset.owner_id
+            or actor is None
+            or not actor.is_enabled
+            or actor.role is not UserRole.REVIEWER
+        ):
+            raise ReviewForbidden(
+                "Only the assigned Reviewer with an enabled account can attest this Paper"
+            )
         scope = cls.ensure_scope(session, changeset=changeset, actor_id=actor_id)
         if scope.scope_hash.casefold() != scope_hash.casefold():
             raise AttestationValidationError("scope_hash does not match the frozen Paper scope")
