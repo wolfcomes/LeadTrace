@@ -138,6 +138,7 @@ def test_admin_review_workflow_migration_contract(
             for item in schema.get_check_constraints("release_operations")
         )
         assert "baseline_publish" in release_operation_checks
+        assert "machine_evidence" in release_operation_checks
 
         audit_columns = {
             column["name"]: column
@@ -252,6 +253,88 @@ def test_reviewer_scientific_workspace_migration_contract(
             "not_applicable",
         ):
             assert disposition in revision_checks
+    finally:
+        engine.dispose()
+
+
+def test_reviewer_workspace_downgrade_rejects_machine_evidence_operation(
+    empty_postgresql_database_url: str,
+) -> None:
+    config = _alembic_config(empty_postgresql_database_url)
+    command.upgrade(config, "head")
+    engine = create_database_engine(empty_postgresql_database_url)
+    actor_id = uuid4()
+    release_id = uuid4()
+    created_at = datetime(2026, 9, 15, 8, 0, tzinfo=UTC)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO users (
+                        id, username, normalized_username, display_name, role,
+                        is_enabled, password_hash, must_change_password,
+                        password_changed_at, created_at, updated_at
+                    ) VALUES (
+                        :actor_id, 'workspace-admin', 'workspace-admin',
+                        'Workspace Admin', 'admin', true, :password_hash, false,
+                        :created_at, :created_at, :created_at
+                    )
+                    """
+                ),
+                {
+                    "actor_id": actor_id,
+                    "password_hash": hash_password("Migration test password 2026!"),
+                    "created_at": created_at,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO releases (
+                        id, release_key, title, notes, metrics, published_by_id,
+                        published_at, is_current, manifest_finalized
+                    ) VALUES (
+                        :release_id, 'machine-evidence-release',
+                        'Machine evidence', '', '{}'::jsonb, :actor_id,
+                        :created_at, true, true
+                    )
+                    """
+                ),
+                {
+                    "actor_id": actor_id,
+                    "release_id": release_id,
+                    "created_at": created_at,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO release_operations (
+                        id, operation_type, actor_id, idempotency_key,
+                        request_hash, target_release_id, replaced_release_id,
+                        result_release_id, reason, delta
+                    ) VALUES (
+                        :operation_id, 'machine_evidence', :actor_id,
+                        'migration-machine-evidence', :request_hash, NULL, NULL,
+                        :release_id, 'Downgrade guard', '{}'::jsonb
+                    )
+                    """
+                ),
+                {
+                    "actor_id": actor_id,
+                    "release_id": release_id,
+                    "operation_id": uuid4(),
+                    "request_hash": "f" * 64,
+                },
+            )
+
+        with pytest.raises(RuntimeError, match="cannot be downgraded after use"):
+            command.downgrade(config, "0017_unique_active_review_task")
+
+        assert _database_revision(empty_postgresql_database_url) == (
+            "0018_reviewer_scientific_workspace"
+        )
     finally:
         engine.dispose()
 

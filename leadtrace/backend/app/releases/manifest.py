@@ -224,8 +224,7 @@ def _binding_rows_for_visual_objects(
         filters,
         strict=True,
     ):
-        if changeset_id is not None:
-            statement = statement.where(attribution_filter)
+        statement = statement.where(attribution_filter)
         records = session.scalars(statement.order_by(model.id))
         rows[collection] = [row_snapshot(record) for record in records]
     return rows

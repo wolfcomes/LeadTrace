@@ -208,6 +208,19 @@ def upgrade() -> None:
         type_=sa.String(length=64),
         existing_nullable=False,
     )
+    # Evidence-only backfills are explicit successor Release operations. Keep
+    # the operation type in the same append-only audit table so idempotency and
+    # historical Release provenance remain queryable.
+    op.drop_constraint(
+        "ck_release_operations_type",
+        "release_operations",
+        type_="check",
+    )
+    op.create_check_constraint(
+        "ck_release_operations_type",
+        "release_operations",
+        "operation_type IN ('baseline_publish', 'publish', 'rollback', 'machine_evidence')",
+    )
     op.add_column(
         "object_revisions",
         sa.Column("proposal_disposition", sa.String(length=24), nullable=True),
@@ -416,6 +429,10 @@ def downgrade() -> None:
                     SELECT 1 FROM object_revisions
                     WHERE proposal_disposition IS NOT NULL LIMIT 1
                 )
+                OR EXISTS (
+                    SELECT 1 FROM release_operations
+                    WHERE operation_type = 'machine_evidence' LIMIT 1
+                )
             """
         )
     ).scalar_one()
@@ -423,6 +440,17 @@ def downgrade() -> None:
         raise RuntimeError(
             "reviewer scientific workspace cannot be downgraded after use"
         )
+
+    op.drop_constraint(
+        "ck_release_operations_type",
+        "release_operations",
+        type_="check",
+    )
+    op.create_check_constraint(
+        "ck_release_operations_type",
+        "release_operations",
+        "operation_type IN ('baseline_publish', 'publish', 'rollback')",
+    )
 
     op.execute(_changeset_item_validation_function(include_proposal=False))
     op.execute(_release_item_validation_function(include_proposal=False))

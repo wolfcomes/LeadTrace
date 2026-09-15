@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 import hashlib
 import json
@@ -252,6 +253,15 @@ def _source_fingerprint(
         record.source_file: record.source_hash
         for record in data.fingerprint_records
     }
+    return source_fingerprint_from_files(source_files, source_manifest_path)
+
+
+def source_fingerprint_from_files(
+    source_files: Mapping[str, str],
+    source_manifest_path: Path,
+) -> str:
+    """Calculate the canonical fingerprint for a set of staged source files."""
+
     manifest_hash = hashlib.sha256(source_manifest_path.read_bytes()).hexdigest()
     payload = {
         "fact_files": sorted(source_files.items()),

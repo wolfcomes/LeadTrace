@@ -154,7 +154,9 @@ class ReleaseOperationResult:
     operation_id: UUID | None = None
 
 
-def _advisory_lock(session: Session) -> None:
+def lock_release_pointer(session: Session) -> None:
+    """Serialize every transaction that can replace the current Release."""
+
     session.execute(
         text("SELECT pg_advisory_xact_lock(hashtext('leadtrace.release.pointer'))")
     )
@@ -622,7 +624,7 @@ def publish_approved_baseline(
         }
     )
 
-    _advisory_lock(session)
+    lock_release_pointer(session)
     _require_admin(session, actor_id)
     existing_operation = session.scalar(
         select(ReleaseOperation)
@@ -863,7 +865,7 @@ def publish_approved_changeset(
         if fail_stage == "after_asset_preparation":
             raise RuntimeError("Injected failure after asset preparation")
 
-    _advisory_lock(session)
+    lock_release_pointer(session)
     _require_admin(session, actor_id)
     changeset = session.scalar(
         select(Changeset)
@@ -1173,7 +1175,7 @@ def rollback_release(
         }
     )
 
-    _advisory_lock(session)
+    lock_release_pointer(session)
     _require_admin(session, actor_id)
     existing_operation = session.scalar(
         select(ReleaseOperation)

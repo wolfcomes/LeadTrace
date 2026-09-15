@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -23,11 +24,15 @@ from app.releases.service import (
     publish_approved_changeset,
     rollback_release,
 )
+from app.imports.proposal_backfill import (
+    backfill_machine_evidence,
+)
 from app.releases.validation import validate_release
 from app.security.permissions import (
     RouteAccess,
     declare_route_access,
     get_authenticated_principal,
+    require_recent_reauthentication,
     require_published_data,
     require_request_csrf,
 )
@@ -50,6 +55,16 @@ class BaselinePublishRequest(BaseModel):
 class RollbackRequest(BaseModel):
     target_release_id: UUID
     reason: str = Field(min_length=1, max_length=4000)
+
+
+class MachineEvidenceBackfillRequest(BaseModel):
+    source_fingerprint: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-fA-F]{64}$",
+    )
+    title: str | None = Field(default=None, max_length=255)
+    notes: str = Field(default="", max_length=4000)
 
 
 def create_releases_router() -> APIRouter:
@@ -252,6 +267,76 @@ def create_releases_router() -> APIRouter:
             "validation": result.validation.as_dict(),
             "idempotent": result.idempotent,
             "operation_id": str(result.operation_id) if result.operation_id else None,
+            "request_id": request_id_for(request),
+        }
+
+    @admin_router.post("/backfill-machine-evidence")
+    @declare_route_access(RouteAccess.AUTHENTICATED)
+    def backfill_machine_evidence_route(
+        payload: MachineEvidenceBackfillRequest,
+        request: Request,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict[str, object]:
+        require_admin(principal)
+        require_request_csrf(
+            principal,
+            csrf_token,
+            request.app.state.settings.session_secret.get_secret_value(),
+        )
+        require_recent_reauthentication(
+            principal,
+            maximum_age=timedelta(
+                minutes=request.app.state.settings.admin_reauthentication_minutes
+            ),
+        )
+        operation_key = require_idempotency_key(idempotency_key)
+        settings = request.app.state.settings
+        source_root = settings.baseline_import_root
+        source_manifest_path = settings.baseline_source_manifest
+        expected_path = settings.baseline_expected_aggregate
+        if None in (source_root, source_manifest_path, expected_path):
+            raise APIError(
+                503,
+                "SOURCE_ROOT_UNAVAILABLE",
+                "Baseline backfill sources are not configured",
+            )
+        try:
+            with session.begin():
+                result = backfill_machine_evidence(
+                    session,
+                    source_root=source_root,
+                    managed_asset_root=settings.asset_root,
+                    source_manifest_path=source_manifest_path,
+                    expected_path=expected_path,
+                    actor_id=principal.user_id,
+                    source_fingerprint=payload.source_fingerprint,
+                    idempotency_key=operation_key,
+                    title=payload.title,
+                    notes=payload.notes,
+                    asset_store=asset_store(request),
+                    audit_ip_address=resolve_remote_address(
+                        request,
+                        settings,
+                    ),
+                    audit_request_id=request_id_for(request),
+                )
+        except (OSError, ValueError) as error:
+            raise APIError(
+                422,
+                "MACHINE_EVIDENCE_BACKFILL_FAILED",
+                "Machine evidence backfill failed",
+            ) from error
+        return {
+            "release_id": str(result.release.id),
+            "release_key": result.release.release_key,
+            "idempotent": result.idempotent,
+            "operation_id": str(result.operation_id) if result.operation_id else None,
+            "added_proposals": result.added_proposals,
+            "added_regions": result.added_regions,
+            "validation": result.validation.as_dict(),
             "request_id": request_id_for(request),
         }
 

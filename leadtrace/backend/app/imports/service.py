@@ -111,7 +111,7 @@ def _optional(record: StagedSourceRecord, field_name: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _safe_snapshot(
+def safe_import_snapshot(
     record: StagedSourceRecord,
     domain_object: RevisionedObject,
 ) -> dict[str, object]:
@@ -153,7 +153,7 @@ def _snapshot_hash(snapshot: dict[str, object]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _search_text(record: StagedSourceRecord) -> str:
+def import_search_text(record: StagedSourceRecord) -> str:
     return " ".join(
         value
         for value in record.normalized_values.values()
@@ -243,8 +243,8 @@ class BaselineImporter:
         session.add(batch)
         session.flush()
         self._stage_records(session, batch.id, data)
-        actor = self._system_actor(session)
-        assets = self._register_assets(session, batch.id, report)
+        actor = self.system_actor(session)
+        assets = self.register_assets(session, batch.id, report)
         self._link_assets(session, batch.id, report, assets)
         objects, regions, localization_blockers = self._create_domain_objects(
             session, batch.id, data
@@ -317,7 +317,7 @@ class BaselineImporter:
         session.flush()
 
     @staticmethod
-    def _system_actor(session: Session) -> User:
+    def system_actor(session: Session) -> User:
         actor = session.scalar(
             select(User).where(User.normalized_username == SYSTEM_IMPORT_USERNAME)
         )
@@ -520,7 +520,7 @@ class BaselineImporter:
                 ).where(ImportAssetLink.import_batch_id == batch_id)
             )
         }
-        workspace_root = self._manifest_workspace_root()
+        workspace_root = self.manifest_workspace_root()
         source_store = LocalAssetStore(
             self.managed_asset_root,
             source_roots={"baseline": workspace_root},
@@ -544,7 +544,7 @@ class BaselineImporter:
             try:
                 if source_asset is None:
                     raise RegionValidationError("Source PDF asset is missing")
-                page_number, bounds = self._source_region_bounds(
+                page_number, bounds = self.source_region_bounds(
                     record,
                     source_asset=source_asset,
                     source_store=source_store,
@@ -667,7 +667,7 @@ class BaselineImporter:
         )
         return objects, regions, localization_blockers
 
-    def _manifest_workspace_root(self) -> Path:
+    def manifest_workspace_root(self) -> Path:
         manifest_payload = json.loads(
             self.source_manifest_path.read_text(encoding="utf-8")
         )
@@ -687,7 +687,7 @@ class BaselineImporter:
             return MoleculeObjectType.UNCERTAIN
 
     @staticmethod
-    def _source_region_bounds(
+    def source_region_bounds(
         record: StagedSourceRecord,
         *,
         source_asset: Asset,
@@ -761,7 +761,7 @@ class BaselineImporter:
                     f"No stable identity was created for {record.record_type} "
                     f"{record.original_id!r}"
                 )
-            snapshot = _safe_snapshot(record, domain_object)
+            snapshot = safe_import_snapshot(record, domain_object)
             if record.record_type == "visual_object":
                 raw_values = snapshot["raw_values"]
                 normalized_values = snapshot["normalized_values"]
@@ -799,7 +799,7 @@ class BaselineImporter:
                 actor_id=actor_id,
                 reason="Authoritative baseline import",
                 content_hash=_snapshot_hash(snapshot),
-                search_text=_search_text(record),
+                search_text=import_search_text(record),
                 snapshot=snapshot,
                 workflow_state=WorkflowState.APPROVED,
                 is_current_published=False,
@@ -871,13 +871,13 @@ class BaselineImporter:
             )
         return revisions
 
-    def _register_assets(
+    def register_assets(
         self,
         session: Session,
         batch_id: UUID,
         report: ReconciliationReport,
     ) -> dict[str, Asset]:
-        workspace_root = self._manifest_workspace_root()
+        workspace_root = self.manifest_workspace_root()
         store = LocalAssetStore(
             self.managed_asset_root,
             source_roots={"baseline": workspace_root},

@@ -163,7 +163,7 @@ class ReleaseOperation(UUIDPrimaryKeyMixin, Base):
             name="uq_release_operations_actor_key",
         ),
         CheckConstraint(
-            "operation_type IN ('baseline_publish', 'publish', 'rollback')",
+            "operation_type IN ('baseline_publish', 'publish', 'rollback', 'machine_evidence')",
             name="ck_release_operations_type",
         ),
         CheckConstraint(

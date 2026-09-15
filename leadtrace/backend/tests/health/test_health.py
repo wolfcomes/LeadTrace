@@ -145,6 +145,23 @@ def test_production_configuration_accepts_explicit_safe_values(tmp_path: Path) -
 
 
 @pytest.mark.parametrize(
+    "field",
+    [
+        "baseline_import_root",
+        "baseline_source_manifest",
+        "baseline_expected_aggregate",
+    ],
+)
+def test_blank_optional_baseline_path_is_treated_as_unconfigured(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    settings = _settings(tmp_path, **{field: ""})
+
+    assert getattr(settings, field) is None
+
+
+@pytest.mark.parametrize(
     "value",
     [None, "", "short", "replace-with-a-protected-local-default"],
 )

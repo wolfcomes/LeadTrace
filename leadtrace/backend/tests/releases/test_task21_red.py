@@ -3390,7 +3390,7 @@ def test_physical_asset_preparation_occurs_before_publication_lock(
         events.append("publication_lock")
 
     monkeypatch.setattr(release_service, "validate_release", track_validate)
-    monkeypatch.setattr(release_service, "_advisory_lock", track_lock)
+    monkeypatch.setattr(release_service, "lock_release_pointer", track_lock)
 
     with auth_session_factory.begin() as session:
         _, admin, _, _, changeset, _ = _approved_changeset(session)
