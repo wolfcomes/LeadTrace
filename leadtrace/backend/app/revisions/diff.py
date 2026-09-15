@@ -78,6 +78,8 @@ def _category(object_kind: str, path: str, before: Any, after: Any) -> str:
         return "binding"
     if leaf.endswith("_smiles") or leaf == "smiles":
         return "smiles"
+    if leaf in {"disposition", "proposal_disposition", "review_status"}:
+        return "proposal"
     if leaf in {
         "parent_compound_id",
         "derived_compound_id",

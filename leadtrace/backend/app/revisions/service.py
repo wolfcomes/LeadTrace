@@ -53,6 +53,7 @@ class RevisionService:
         activity_unit: str | None = None,
         relation_type: str | None = None,
         relation_status: str | None = None,
+        proposal_disposition: str | None = None,
         region_bounds: tuple[float, float, float, float] | None = None,
         region_rotation: int | None = None,
     ) -> ObjectRevision:
@@ -152,6 +153,7 @@ class RevisionService:
             activity_unit=activity_unit,
             relation_type=relation_type,
             relation_status=relation_status,
+            proposal_disposition=proposal_disposition,
             region_x0=x0,
             region_y0=y0,
             region_x1=x1,

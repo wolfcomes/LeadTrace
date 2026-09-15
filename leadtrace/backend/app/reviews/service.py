@@ -171,6 +171,7 @@ def _revision_column_values(
     values: dict[str, object] = {}
     if predecessor is not None:
         values["search_text"] = predecessor.search_text
+        values["proposal_disposition"] = predecessor.proposal_disposition
         if object_kind is ObjectKind.STRUCTURE:
             values.update(
                 structure_state=predecessor.structure_state,
@@ -459,6 +460,10 @@ class ReviewService:
             parsed_kind = ObjectKind(object_kind.strip())
         except ValueError as error:
             raise InvalidReview("object_kind is not supported") from error
+        if parsed_kind is ObjectKind.MOLECULE_PROPOSAL:
+            raise InvalidReview(
+                "Molecule proposals must be edited through the typed proposal endpoint"
+            )
         object_identity = session.get(RevisionedObject, object_id)
         if object_identity is None:
             raise ReviewNotFound("Revisioned object not found")
@@ -570,6 +575,10 @@ class ReviewService:
             proposed_snapshot,
             object_kind=ObjectKind(item.object_kind),
         )
+        if ObjectKind(item.object_kind) is ObjectKind.MOLECULE_PROPOSAL:
+            raise InvalidReview(
+                "Molecule proposals must be edited through the typed proposal endpoint"
+            )
         proposed_content_hash = _snapshot_hash(session, proposed_snapshot)
         content_changed = (
             item.proposed_snapshot != proposed_snapshot
@@ -1047,6 +1056,7 @@ class ReviewService:
         from app.evidence.models import Evidence
         from app.lineages.models import Lineage, LineageEdge
         from app.structures.models import Structure
+        from app.molecule_proposals.models import MoleculeProposal
         from app.visual_objects.models import VisualObject, VisualRegion
 
         model_by_kind = {
@@ -1058,6 +1068,7 @@ class ReviewService:
             ObjectKind.STRUCTURE: Structure,
             ObjectKind.VISUAL_OBJECT: VisualObject,
             ObjectKind.VISUAL_REGION: VisualRegion,
+            ObjectKind.MOLECULE_PROPOSAL: MoleculeProposal,
         }
         model = model_by_kind.get(object_kind)
         record = session.get(model, object_id) if model is not None else None

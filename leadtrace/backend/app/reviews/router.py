@@ -99,6 +99,7 @@ def _dedicated_fields_for_revision(
         "evidence_text": revision.evidence_text,
         "relation_status": revision.relation_status,
         "relation_type": revision.relation_type,
+        "proposal_disposition": revision.proposal_disposition,
     }
 
 
@@ -111,6 +112,7 @@ _DEDICATED_FIELD_NAMES = (
     "evidence_text",
     "relation_status",
     "relation_type",
+    "proposal_disposition",
 )
 
 
