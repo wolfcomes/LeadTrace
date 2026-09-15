@@ -32,9 +32,9 @@ import {
 import ChangesetDiff from "./ChangesetDiff.vue";
 import SubmissionPage from "./SubmissionPage.vue";
 import ScientificEditors from "./ScientificEditors.vue";
+import PaperWorkspace from "../workspace/PaperWorkspace.vue";
 
 type ViewState = "loading" | "ready" | "not-found" | "error";
-type WorkspaceTab = "edit" | "diff" | "submit";
 
 type WorkspaceDraft = WorkspaceRecovery;
 
@@ -64,7 +64,6 @@ const reason = ref("");
 const itemJson = ref<Record<string, string>>({});
 const itemErrors = ref<Record<string, string>>({});
 const requestId = ref<string>();
-const activeTab = ref<WorkspaceTab>("edit");
 const operationBusy = ref(false);
 const operationError = ref<string>();
 const recoveryRestored = ref(false);
@@ -380,7 +379,6 @@ async function load(): Promise<void> {
   activeSaveContext = undefined;
   autosaveState.value = "idle";
   state.value = "loading";
-  activeTab.value = "edit";
   operationBusy.value = false;
   operationError.value = undefined;
   conflict.value = null;
@@ -497,7 +495,6 @@ async function submit(): Promise<void> {
     const updated = await submitChangeset(targetId, changeset.value.version);
     if (generation !== loadGeneration || changeset.value?.id !== targetId) return;
     changeset.value = updated;
-    activeTab.value = "submit";
     autosave?.clearRecovery();
   } catch (error) {
     if (generation === loadGeneration && changeset.value?.id === targetId) {
@@ -644,13 +641,9 @@ onBeforeUnmount(() => {
 
       <div v-if="operationError" class="operation-alert" role="alert">{{ operationError }}</div>
 
-      <nav class="workspace-tabs workspace-toolbar" aria-label="修改集视图">
-        <button type="button" :aria-current="activeTab === 'edit' ? 'page' : undefined" @click="activeTab = 'edit'">编辑</button>
-        <button type="button" :aria-current="activeTab === 'diff' ? 'page' : undefined" @click="activeTab = 'diff'">变更对比</button>
-        <button type="button" :aria-current="activeTab === 'submit' ? 'page' : undefined" @click="activeTab = 'submit'">提交与审批</button>
-      </nav>
-
-      <section v-if="activeTab === 'edit'" class="editor-view" data-editor-view>
+      <PaperWorkspace :changeset-id="changeset.id" :save-state="autosaveState">
+        <template #scientific>
+      <section class="editor-view" data-editor-view>
         <section class="metadata-editor panel" aria-labelledby="metadata-title">
           <div class="section-heading">
             <div>
@@ -800,22 +793,27 @@ onBeforeUnmount(() => {
           @update="updateScientificSnapshot"
         />
       </section>
+        </template>
 
-      <ChangesetDiff v-else-if="activeTab === 'diff'" :diffs="diffs" />
+        <template #diff>
+          <ChangesetDiff :diffs="diffs" />
+        </template>
 
-      <SubmissionPage
-        v-else
-        :changeset="changeset"
-        :items="items"
-        :diffs="diffs"
-        :role="auth.user?.role ?? 'reviewer'"
-        :busy="operationBusy"
-        :has-invalid-editor="hasInvalidEditor"
-        :save-pending="savePending"
-        @submit="submit"
-        @revise="revise"
-        @decision="decide"
-      />
+        <template #submit>
+          <SubmissionPage
+            :changeset="changeset"
+            :items="items"
+            :diffs="diffs"
+            :role="auth.user?.role ?? 'reviewer'"
+            :busy="operationBusy"
+            :has-invalid-editor="hasInvalidEditor"
+            :save-pending="savePending"
+            @submit="submit"
+            @revise="revise"
+            @decision="decide"
+          />
+        </template>
+      </PaperWorkspace>
     </template>
 
     <ConflictResolver

@@ -8,18 +8,24 @@ const props = withDefaults(defineProps<{
   pageCount: number;
   regions: PdfRegion[];
   readOnly?: boolean;
+  page?: number;
+  selectedRegionId?: string;
 }>(), { pageCount: 1 });
+
+type RegionGeometry = { id: string; x0: number; y0: number; x1: number; y1: number };
 
 const emit = defineEmits<{
   "create-region": [payload: { pageNumber: number; x0: number; y0: number; x1: number; y1: number; rotation: number }];
   select: [id: string];
   duplicate: [id: string];
+  "move-region": [payload: RegionGeometry & { pageNumber: number; rotation: number }];
+  "resize-region": [payload: RegionGeometry & { pageNumber: number; rotation: number }];
   "page-change": [page: number];
   "zoom-change": [zoom: number];
   "rotation-change": [rotation: number];
 }>();
 
-const currentPage = ref(1);
+const currentPage = ref(Math.min(props.pageCount, Math.max(1, props.page ?? 1)));
 const zoom = ref(1);
 const rotation = ref(0);
 const search = ref("");
@@ -80,6 +86,17 @@ function changePage(page: number): void {
   emit("page-change", currentPage.value);
 }
 
+function regionGeometry(kind: "move-region" | "resize-region", payload: RegionGeometry): void {
+  const region = props.regions.find((item) => item.id === payload.id);
+  const geometry = {
+    ...payload,
+    pageNumber: region?.pageNumber ?? currentPage.value,
+    rotation: region?.rotation ?? rotation.value,
+  };
+  if (kind === "move-region") emit("move-region", geometry);
+  else emit("resize-region", geometry);
+}
+
 function setZoom(value: number): void {
   zoom.value = Math.min(3, Math.max(.5, value));
   emit("zoom-change", zoom.value);
@@ -121,6 +138,14 @@ watch(() => props.pdfUrl, () => {
   pdfDocument = null;
   void renderPdfPage();
 });
+watch(() => props.page, (page) => {
+  if (page !== undefined && page !== currentPage.value) {
+    currentPage.value = Math.min(props.pageCount, Math.max(1, page));
+  }
+});
+watch(() => props.selectedRegionId, (regionId) => {
+  if (regionId) selectedId.value = regionId;
+}, { immediate: true });
 watch([currentPage, zoom], () => { void renderPdfPage(); });
 onMounted(() => { void renderPdfPage(); });
 </script>
@@ -164,9 +189,12 @@ onMounted(() => { void renderPdfPage(); });
           v-for="region in pageRegions"
           :key="region.id"
           :region="region"
-          :selected="selectedId === region.id"
+          :selected="(selectedRegionId ?? selectedId) === region.id"
+          :read-only="readOnly"
           @select="(id) => { selectedId = id; emit('select', id); }"
           @duplicate="(id) => emit('duplicate', id)"
+          @move="regionGeometry('move-region', $event)"
+          @resize="regionGeometry('resize-region', $event)"
         />
         <div v-if="draft" class="draft-region" :style="{ left: `${draft.x0 * 100}%`, top: `${draft.y0 * 100}%`, width: `${(draft.x1 - draft.x0) * 100}%`, height: `${(draft.y1 - draft.y0) * 100}%` }" />
       </div>

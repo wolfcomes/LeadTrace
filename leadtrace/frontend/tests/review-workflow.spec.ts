@@ -128,6 +128,51 @@ const diff = [{
   ],
 }];
 
+const scientificWorkspace = {
+  workspace_version: draft.version,
+  changeset: {
+    id: draft.id,
+    review_task_id: draft.review_task_id,
+    paper_id: draft.paper_id,
+    owner_id: draft.owner_id,
+    base_release_id: draft.base_release_id,
+    workflow_state: draft.workflow_state,
+    version: draft.version,
+    title: draft.title,
+    reason: draft.reason,
+  },
+  paper: {
+    id: draft.paper_id,
+    paper_key: "paper-25",
+    title: "Scientific workspace Paper",
+    base_release_id: draft.base_release_id,
+  },
+  progress: {
+    scope_count: 1,
+    resolved_count: 1,
+    blocker_count: 0,
+    by_kind: { paper: { total: 1, resolved: 1, blockers: 0 } },
+  },
+  document: {
+    url: `/api/v1/papers/${draft.paper_id}/source-pdf?kind=article&release_id=${draft.base_release_id}`,
+    release_id: draft.base_release_id,
+  },
+  pages: [],
+  regions: [],
+  visual_objects: [],
+  molecule_proposals: [],
+  structures: [],
+  evidence: [],
+  assets: [],
+  source_locators: [],
+  attestation: null,
+  scope: {
+    id: "90000000-0000-4000-8000-000000000001",
+    scope_hash: "d".repeat(64),
+    item_count: 1,
+  },
+};
+
 describe("Reviewer task and changeset workflow", () => {
   beforeEach(() => {
     const pinia = createPinia();
@@ -449,6 +494,35 @@ describe("Reviewer task and changeset workflow", () => {
     expect(wrapper.get("[data-diff-summary]").text()).toContain("标题");
     expect(wrapper.get("[data-diff-summary]").text()).toContain("原始标题");
     expect(wrapper.get("[data-diff-summary]").text()).toContain("修订后的标题");
+  });
+
+  it("integrates the scientific Paper workspace at the existing changeset route", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === `/api/v1/review/changesets/${changesetId}`) return jsonResponse(200, draft);
+      if (path === `/api/v1/review/changesets/${changesetId}/items`) return jsonResponse(200, [item]);
+      if (path === `/api/v1/review/changesets/${changesetId}/diff`) return jsonResponse(200, diff);
+      if (path === `/api/v1/review/changesets/${changesetId}/workspace`) {
+        return jsonResponse(200, scientificWorkspace);
+      }
+      return jsonResponse(404, {
+        code: "RESOURCE_NOT_FOUND",
+        message: "Resource not found",
+        details: {},
+        request_id: "review-ui-request",
+      });
+    }));
+    const router = createAppRouter(createMemoryHistory());
+    await router.push(`/review/changesets/${changesetId}?view=overview`);
+    await router.isReady();
+
+    const wrapper = mount(App, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.find("[data-paper-workspace]").exists()).toBe(true);
+    expect(wrapper.find("[data-legacy-workspace]").exists()).toBe(false);
+    expect(wrapper.findAll("[data-workspace-tabs] button")).toHaveLength(7);
+    expect(wrapper.get("[data-paper-workspace]").text()).toContain("Scientific workspace Paper");
   });
 
   it("keeps the newest workspace when an earlier route load finishes late", async () => {
