@@ -7,6 +7,7 @@ from typing import BinaryIO
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.assets.models import Asset, AssetIntegrityState
@@ -229,24 +230,38 @@ class StructureSourceImageService:
             source_image.crop_status = CropStatus.FAILED
             source_image.crop_asset_id = None
             return
-        result = CropService(
-            self.managed_root,
-            source_roots=self.source_roots,
-        ).materialize_persisted(
-            session,
-            request,
-            renderer=lambda _: content,
-            source_asset_id=source_asset.id,
-            created_by_id=actor_id,
-            preferred_asset_id=source_image.crop_asset_id,
-        )
-        crop_asset = session.get(Asset, result.asset_id)
-        if crop_asset is None:
-            raise CropValidationError("Materialized crop asset is unavailable")
-        crop_asset.derivation_metadata = {
-            **crop_asset.derivation_metadata,
-            "visibility_scope": "structure_source_image",
-        }
+        try:
+            with session.begin_nested():
+                result = CropService(
+                    self.managed_root,
+                    source_roots=self.source_roots,
+                ).materialize_persisted(
+                    session,
+                    request,
+                    renderer=lambda _: content,
+                    source_asset_id=source_asset.id,
+                    created_by_id=actor_id,
+                    preferred_asset_id=source_image.crop_asset_id,
+                )
+                crop_asset = session.get(Asset, result.asset_id)
+                if crop_asset is None:
+                    raise CropValidationError(
+                        "Materialized crop asset is unavailable"
+                    )
+                crop_asset.derivation_metadata = {
+                    **crop_asset.derivation_metadata,
+                    "visibility_scope": "structure_source_image",
+                }
+        except (
+            AssetMimeMismatchError,
+            AssetPathError,
+            CropValidationError,
+            OSError,
+            SQLAlchemyError,
+        ):
+            source_image.crop_status = CropStatus.FAILED
+            source_image.crop_asset_id = None
+            return
         source_image.crop_status = CropStatus.READY
         source_image.crop_asset_id = result.asset_id
 

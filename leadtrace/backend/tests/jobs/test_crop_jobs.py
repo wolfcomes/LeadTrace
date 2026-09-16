@@ -5,6 +5,8 @@ from pathlib import Path
 
 from PIL import Image
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.assets.models import (
@@ -13,6 +15,7 @@ from app.assets.models import (
     AssetCategory,
     AssetIntegrityState,
 )
+from app.assets.service import AssetService
 from app.jobs.service import CropRequest, CropService, CropValidationError
 from app.users.models import UserRole
 from app.users.service import UserService
@@ -78,6 +81,86 @@ def test_crop_service_reuses_registered_asset_for_same_request(tmp_path: Path) -
     assert first.reused is False
     assert second.reused is True
     assert first.path.read_bytes() == b"PNG"
+
+
+def test_failed_cached_registration_does_not_delete_registered_crop(
+    tmp_path: Path,
+    auth_session_factory: sessionmaker[Session],
+    monkeypatch,
+) -> None:
+    service = CropService(tmp_path)
+    request = CropRequest(
+        source_pdf_sha256="7" * 64,
+        page_number=1,
+        x0=0.1,
+        y0=0.1,
+        x1=0.4,
+        y1=0.4,
+        rotation=0,
+        padding=0,
+        dpi=144,
+        renderer_version="test-renderer",
+    )
+    content = _png_bytes()
+    with auth_session_factory.begin() as session:
+        registered = service.materialize_persisted(
+            session,
+            request,
+            renderer=lambda _: content,
+        )
+    assert registered.path.is_file()
+
+    def fail_registration(*args, **kwargs):
+        raise SQLAlchemyError("simulated cached registration failure")
+
+    monkeypatch.setattr(AssetService, "register_inspected", fail_registration)
+    with auth_session_factory.begin() as session:
+        with pytest.raises(SQLAlchemyError, match="cached registration"):
+            service.materialize_persisted(
+                session,
+                request,
+                renderer=lambda _: content,
+            )
+
+    assert registered.path.is_file()
+    assert registered.path.read_bytes() == content
+
+
+def test_persisted_crop_holds_request_scoped_advisory_lock(
+    tmp_path: Path,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    service = CropService(tmp_path)
+    request = CropRequest(
+        source_pdf_sha256="6" * 64,
+        page_number=1,
+        x0=0.1,
+        y0=0.1,
+        x1=0.4,
+        y1=0.4,
+        rotation=0,
+        padding=0,
+        dpi=144,
+        renderer_version="test-renderer",
+    )
+
+    with auth_session_factory.begin() as session:
+        service.materialize_persisted(
+            session,
+            request,
+            renderer=lambda _: _png_bytes(),
+        )
+        lock_id = int(request.input_hash()[:16], 16)
+        if lock_id >= 2**63:
+            lock_id -= 2**64
+        with auth_session_factory() as contender:
+            acquired = contender.scalar(
+                text("SELECT pg_try_advisory_xact_lock(:lock_id)"),
+                {"lock_id": lock_id},
+            )
+            contender.rollback()
+
+    assert acquired is False
 
 
 def test_failed_crop_does_not_leave_registered_asset(tmp_path: Path) -> None:

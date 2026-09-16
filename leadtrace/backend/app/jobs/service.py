@@ -10,7 +10,7 @@ from typing import Callable
 from uuid import UUID
 
 import pymupdf
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -84,6 +84,7 @@ class CropResult:
     reused: bool
     asset_id: UUID | None = None
     input_hash: str = ""
+    created_file: bool = False
 
 
 Renderer = Callable[[CropRequest], bytes]
@@ -119,8 +120,15 @@ class CropService:
     ) -> CropResult | None:
         result = self._memory.get((request.input_hash(), source_asset_id))
         if result is not None and result.path.is_file():
-            return result
+            return replace(result, reused=True, created_file=False)
         return None
+
+    @staticmethod
+    def _lock_materialization(session: Session, request: CropRequest) -> None:
+        lock_id = int(request.input_hash()[:16], 16)
+        if lock_id >= 2**63:
+            lock_id -= 2**64
+        session.execute(select(func.pg_advisory_xact_lock(lock_id)))
 
     def run(
         self,
@@ -149,6 +157,7 @@ class CropService:
             path=stored.path,
             reused=False,
             input_hash=input_hash,
+            created_file=stored.created,
         )
         self._memory[(input_hash, source_asset_id)] = result
         return result
@@ -288,6 +297,7 @@ class CropService:
         """Render and register a crop without owning the job state machine."""
 
         MaintenanceService().require_writes_enabled(session)
+        self._lock_materialization(session, request)
         preferred_asset = (
             session.get(Asset, preferred_asset_id)
             if preferred_asset_id is not None
@@ -335,33 +345,41 @@ class CropService:
             renderer=renderer,
             source_asset_id=source_asset_id,
         )
-        inspected = self.store.inspect(result.asset_key)
-        asset, _ = AssetService().register_inspected(
-            session,
-            storage_key=result.asset_key,
-            inspected=inspected,
-            category=AssetCategory.EVIDENCE_CROP,
-            access_level=AssetAccessLevel.REVIEWER,
-            integrity_state=AssetIntegrityState.VERIFIED,
-            source_asset_id=source_asset_id,
-            created_by_id=created_by_id,
-            derivation_metadata={
+        try:
+            inspected = self.store.inspect(result.asset_key)
+            asset, _ = AssetService().register_inspected(
+                session,
+                storage_key=result.asset_key,
+                inspected=inspected,
+                category=AssetCategory.EVIDENCE_CROP,
+                access_level=AssetAccessLevel.REVIEWER,
+                integrity_state=AssetIntegrityState.VERIFIED,
+                source_asset_id=source_asset_id,
+                created_by_id=created_by_id,
+                derivation_metadata={
+                    "crop_input_hash": request.input_hash(),
+                    "request": _request_metadata(request),
+                },
+            )
+            asset.byte_size = inspected.byte_size
+            asset.mime_type = inspected.mime_type
+            asset.width = inspected.width
+            asset.height = inspected.height
+            asset.page_count = inspected.page_count
+            asset.category = AssetCategory.EVIDENCE_CROP
+            asset.access_level = AssetAccessLevel.REVIEWER
+            asset.integrity_state = AssetIntegrityState.VERIFIED
+            asset.source_asset_id = source_asset_id
+            asset.derivation_metadata = {
                 "crop_input_hash": request.input_hash(),
                 "request": _request_metadata(request),
-            },
-        )
-        asset.byte_size = inspected.byte_size
-        asset.mime_type = inspected.mime_type
-        asset.width = inspected.width
-        asset.height = inspected.height
-        asset.page_count = inspected.page_count
-        asset.category = AssetCategory.EVIDENCE_CROP
-        asset.access_level = AssetAccessLevel.REVIEWER
-        asset.integrity_state = AssetIntegrityState.VERIFIED
-        asset.source_asset_id = source_asset_id
-        asset.derivation_metadata = {
-            "crop_input_hash": request.input_hash(),
-            "request": _request_metadata(request),
-        }
-        asset.verified_at = datetime.now(UTC)
-        return replace(result, asset_id=asset.id)
+            }
+            asset.verified_at = datetime.now(UTC)
+            return replace(result, asset_id=asset.id)
+        except BaseException:
+            if result.created_file:
+                try:
+                    result.path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise

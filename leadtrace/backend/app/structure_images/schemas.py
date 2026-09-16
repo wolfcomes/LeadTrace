@@ -12,10 +12,15 @@ from app.structure_images.models import CropStatus
 class NormalizedBBox(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    x0: Decimal = Field(ge=0, le=1)
-    y0: Decimal = Field(ge=0, le=1)
-    x1: Decimal = Field(ge=0, le=1)
-    y1: Decimal = Field(ge=0, le=1)
+    x0: Decimal = Field(ge=0, le=1, decimal_places=10)
+    y0: Decimal = Field(ge=0, le=1, decimal_places=10)
+    x1: Decimal = Field(ge=0, le=1, decimal_places=10)
+    y1: Decimal = Field(ge=0, le=1, decimal_places=10)
+
+    @field_validator("x0", "y0", "x1", "y1")
+    @classmethod
+    def canonicalize_signed_zero(cls, value: Decimal) -> Decimal:
+        return Decimal(0) if value.is_zero() else value
 
     @model_validator(mode="after")
     def positive_area(self) -> Self:

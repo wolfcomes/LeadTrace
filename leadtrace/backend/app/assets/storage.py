@@ -36,6 +36,7 @@ class StoredFile:
     path: Path
     sha256: str
     byte_size: int
+    created: bool = False
 
 
 _MIME_BY_SUFFIX = {
@@ -309,6 +310,7 @@ class LocalAssetStore:
         storage_key = PurePosixPath("managed", relative).as_posix()
         target = self.path_for(storage_key)
         target.parent.mkdir(parents=True, exist_ok=True)
+        target_existed = target.exists()
         existing_matches = False
         try:
             with target.open("rb") as handle:
@@ -325,6 +327,7 @@ class LocalAssetStore:
             path=target,
             sha256=sha256,
             byte_size=len(content),
+            created=not target_existed,
         )
 
     def restore_managed_bytes(
@@ -342,10 +345,12 @@ class LocalAssetStore:
             raise AssetPathError("Restored content does not match the registered SHA-256")
         target = self.path_for(storage_key)
         target.parent.mkdir(parents=True, exist_ok=True)
+        target_existed = target.exists()
         self._write_atomically(target, content, sha256)
         return StoredFile(
             storage_key=storage_key,
             path=target,
             sha256=sha256,
             byte_size=len(content),
+            created=not target_existed,
         )

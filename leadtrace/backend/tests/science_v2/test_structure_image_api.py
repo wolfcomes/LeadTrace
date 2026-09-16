@@ -8,7 +8,9 @@ from uuid import UUID, uuid4
 
 import pymupdf
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.requests import ClientDisconnect
 
 from app.assets.models import (
@@ -17,14 +19,16 @@ from app.assets.models import (
     AssetCategory,
     AssetIntegrityState,
 )
+from app.assets.service import AssetService
 from app.assets.storage import LocalAssetStore
 from app.catalog.models import PaperSource
 from app.compounds.models import Compound
 from app.jobs.execution import render_pdf_crop
-from app.jobs.service import PDF_RENDERER_VERSION, CropRequest
+from app.jobs.service import PDF_RENDERER_VERSION, CropRequest, CropService
 from app.papers.models import Paper
 from app.security.policies import Principal
 from app.structure_images.models import StructureSourceImage
+from app.structure_images.schemas import NormalizedBBox
 from app.users.models import UserRole
 from app.workspaces.models import (
     ChangeEvent,
@@ -341,6 +345,174 @@ def test_failed_crop_keeps_retryable_locator_with_null_asset(
     assert retry.json()["source_image"]["crop_status"] == "failed"
     assert retry.json()["source_image"]["crop_asset_id"] is None
     assert retry.json()["workspace_version"] == 3
+
+
+def test_bbox_precision_is_rejected_before_create_or_update_persistence(
+    science_api_context,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+
+    rejected_create = _create_image(
+        context,
+        csrf,
+        compound["id"],
+        version=2,
+        bbox={
+            "x0": "0.123456789012",
+            "y0": "0.25",
+            "x1": "0.7",
+            "y1": "0.8",
+        },
+    )
+    assert rejected_create.status_code == 422
+
+    created = _create_image(context, csrf, compound["id"], version=2)
+    assert created.status_code == 201
+    image = created.json()["source_image"]
+    rejected_update = context.client.patch(
+        f"/api/v2/structure-source-images/{image['id']}",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "expected_workspace_version": 3,
+            "bbox": {
+                "x0": "0.2",
+                "y0": "0.250000000001",
+                "x1": "0.7",
+                "y1": "0.8",
+            },
+        },
+    )
+    assert rejected_update.status_code == 422
+
+    with context.session_factory() as session:
+        workspace = session.get(PaperWorkspace, context.first.workspace_id)
+        source_image = session.get(StructureSourceImage, image["id"])
+        event_count = session.scalar(
+            select(func.count())
+            .select_from(ChangeEvent)
+            .where(ChangeEvent.workspace_id == context.first.workspace_id)
+        )
+        assert workspace is not None and workspace.version == 3
+        assert source_image is not None
+        assert float(source_image.y0) == 0.25
+        assert event_count == 2
+    assert context.client.get(
+        f"/api/v2/structure-source-images/{image['id']}/content"
+    ).status_code == 200
+
+
+def test_bbox_rejects_positive_area_that_collapses_at_database_scale() -> None:
+    with pytest.raises(ValidationError, match="decimal places"):
+        NormalizedBBox.model_validate(
+            {
+                "x0": "0.200000000001",
+                "y0": "0.25",
+                "x1": "0.200000000002",
+                "y1": "0.8",
+            }
+        )
+
+
+def test_signed_zero_bbox_is_canonicalized_for_crop_identity(
+    science_api_context,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+
+    created = _create_image(
+        context,
+        csrf,
+        compound["id"],
+        version=2,
+        bbox={
+            "x0": "-0.0000000000",
+            "y0": "0.25",
+            "x1": "0.7",
+            "y1": "0.8",
+        },
+    )
+
+    assert created.status_code == 201
+    image = created.json()["source_image"]
+    assert image["bbox"]["x0"] == 0
+    assert context.client.get(
+        f"/api/v2/structure-source-images/{image['id']}/content"
+    ).status_code == 200
+    bbox = NormalizedBBox.model_validate(
+        {"x0": "-0.0000000000", "y0": "0.25", "x1": "0.7", "y1": "0.8"}
+    )
+    assert bbox.x0.is_zero() and not bbox.x0.is_signed()
+
+
+def test_post_render_materialization_failure_keeps_retryable_locator(
+    science_api_context,
+    monkeypatch,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+
+    def fail_materialization(*args, **kwargs):
+        raise OSError("simulated managed storage failure")
+
+    monkeypatch.setattr(CropService, "materialize_persisted", fail_materialization)
+    try:
+        response = _create_image(context, csrf, compound["id"], version=2)
+    except OSError:
+        pytest.fail("post-render storage failure escaped the locator mutation")
+
+    assert response.status_code == 201
+    image = response.json()["source_image"]
+    assert response.json()["workspace_version"] == 3
+    assert image["crop_status"] == "failed"
+    assert image["crop_asset_id"] is None
+    with context.session_factory() as session:
+        source_image = session.get(StructureSourceImage, image["id"])
+        assert source_image is not None
+        assert source_image.crop_status.value == "failed"
+        assert source_image.crop_asset_id is None
+
+    monkeypatch.undo()
+    retried = context.client.post(
+        f"/api/v2/structure-source-images/{image['id']}/retry",
+        headers={"X-CSRF-Token": csrf},
+        json={"expected_workspace_version": 3},
+    )
+    assert retried.status_code == 200
+    assert retried.json()["workspace_version"] == 4
+    assert retried.json()["source_image"]["crop_status"] == "ready"
+    assert retried.json()["source_image"]["crop_asset_id"] is not None
+
+
+def test_asset_registration_failure_removes_unregistered_crop_file(
+    science_api_context,
+    monkeypatch,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+    files_before = set(context.asset_root.rglob("*.png"))
+
+    def fail_registration(*args, **kwargs):
+        raise SQLAlchemyError("simulated Asset registration failure")
+
+    monkeypatch.setattr(AssetService, "register_inspected", fail_registration)
+    response = _create_image(context, csrf, compound["id"], version=2)
+
+    assert response.status_code == 201
+    image = response.json()["source_image"]
+    assert image["crop_status"] == "failed"
+    assert image["crop_asset_id"] is None
+    assert set(context.asset_root.rglob("*.png")) == files_before
+    with context.session_factory() as session:
+        assert session.scalar(
+            select(func.count())
+            .select_from(Asset)
+            .where(Asset.category == AssetCategory.EVIDENCE_CROP)
+        ) == 0
 
 
 def test_compound_delete_event_snapshots_every_cascaded_source_image(
