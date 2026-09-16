@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from uuid import UUID
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.assets.models import (
@@ -13,10 +16,19 @@ from app.assets.models import (
     AssetIntegrityState,
 )
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
+from app.config import Settings
+from app.database import DatabaseResources
+from app.main import create_app
 from app.papers.models import Paper, PaperCatalogState
 from app.users.models import User, UserRole
 from app.users.service import UserService
-from app.workspaces.models import PaperWorkspace, ReviewTask, WorkspaceState
+from app.workspaces.models import (
+    PaperSection,
+    PaperSectionReview,
+    PaperWorkspace,
+    ReviewTask,
+    WorkspaceState,
+)
 
 
 PASSWORD = "Science model password 2026!"
@@ -35,6 +47,28 @@ class ScienceContext:
     session_factory: sessionmaker[Session]
     first: ScienceAggregate
     second: ScienceAggregate
+
+
+@dataclass(frozen=True, slots=True)
+class ScienceApiContext:
+    client: TestClient
+    session_factory: sessionmaker[Session]
+    first: ScienceAggregate
+    second: ScienceAggregate
+    reviewer_id: UUID
+    other_reviewer_id: UUID
+    admin_id: UUID
+    visitor_id: UUID
+    asset_root: Path
+
+    def login(self, username: str) -> str:
+        self.client.cookies.clear()
+        response = self.client.post(
+            "/api/v1/auth/login",
+            json={"username": username, "password": PASSWORD},
+        )
+        assert response.status_code == 200
+        return str(response.json()["csrf_token"])
 
 
 def _create_aggregate(
@@ -98,6 +132,16 @@ def _create_aggregate(
     )
     session.add(workspace)
     session.flush()
+    session.add_all(
+        [
+            PaperSectionReview(
+                paper_id=paper.id,
+                workspace_id=workspace.id,
+                section_key=section,
+            )
+            for section in PaperSection
+        ]
+    )
     return ScienceAggregate(
         paper_id=paper.id,
         workspace_id=workspace.id,
@@ -142,3 +186,87 @@ def science_context(
         first=first,
         second=second,
     )
+
+
+@pytest.fixture
+def science_api_context(
+    tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> Iterator[ScienceApiContext]:
+    with auth_session_factory.begin() as session:
+        admin = UserService().create_user(
+            session,
+            username="science.api.admin",
+            display_name="Science API Admin",
+            role=UserRole.ADMIN,
+            initial_password=PASSWORD,
+        )
+        reviewer = UserService().create_user(
+            session,
+            username="science.api.reviewer",
+            display_name="Science API Reviewer",
+            role=UserRole.REVIEWER,
+            initial_password=PASSWORD,
+        )
+        other_reviewer = UserService().create_user(
+            session,
+            username="science.api.other",
+            display_name="Other Science API Reviewer",
+            role=UserRole.REVIEWER,
+            initial_password=PASSWORD,
+        )
+        visitor = UserService().create_user(
+            session,
+            username="science.api.visitor",
+            display_name="Science API Visitor",
+            role=UserRole.VISITOR,
+            initial_password=PASSWORD,
+        )
+        first = _create_aggregate(
+            session,
+            ordinal=11,
+            admin=admin,
+            reviewer=reviewer,
+        )
+        second = _create_aggregate(
+            session,
+            ordinal=12,
+            admin=admin,
+            reviewer=other_reviewer,
+        )
+        ids = {
+            "reviewer_id": reviewer.id,
+            "other_reviewer_id": other_reviewer.id,
+            "admin_id": admin.id,
+            "visitor_id": visitor.id,
+        }
+
+    asset_root = tmp_path / "managed"
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        database_url=empty_postgresql_database_url,
+        redis_url="redis://127.0.0.1:6379/0",
+        session_secret="science-api-session-secret-more-than-thirty-two-characters",
+        allowed_hosts=["testserver"],
+        asset_root=asset_root,
+    )
+    resources = DatabaseResources(
+        engine=auth_session_factory.kw["bind"],
+        session_factory=auth_session_factory,
+    )
+    application = create_app(
+        settings=settings,
+        database_probe=lambda _: True,
+        database_bootstrap=lambda _: resources,
+    )
+    with TestClient(application) as client:
+        yield ScienceApiContext(
+            client=client,
+            session_factory=auth_session_factory,
+            first=first,
+            second=second,
+            asset_root=asset_root,
+            **ids,
+        )

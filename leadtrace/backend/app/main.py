@@ -12,12 +12,14 @@ from app.audit.router import create_audit_router
 from app.api.errors import install_api_error_handling
 from app.auth.router import create_auth_router
 from app.catalog.router import create_catalog_router
+from app.compounds.router import create_compounds_router
 from app.config import Settings, get_settings
 from app.database import DatabaseResources, bootstrap_database
 from app.health.router import DatabaseProbe, create_health_router, probe_database
 from app.maintenance.service import enforce_maintenance_mode
 from app.observability.logging import install_request_observability
 from app.observability.metrics import MetricsRegistry, create_metrics_router
+from app.structures.router import create_structures_router
 from app.users.router import create_users_router
 from app.workspaces.router import create_workspaces_router
 
@@ -74,6 +76,8 @@ def create_app(
     application.include_router(create_audit_router())
     application.include_router(create_catalog_router(runtime_settings))
     application.include_router(create_workspaces_router(runtime_settings))
+    application.include_router(create_compounds_router(runtime_settings))
+    application.include_router(create_structures_router(runtime_settings))
     return application
 
 

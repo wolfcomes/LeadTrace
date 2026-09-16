@@ -196,6 +196,10 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v2/workspaces/{workspace_id}",
         "/api/v2/workspaces/{workspace_id}/bibliography",
         "/api/v2/workspaces/{workspace_id}/sections/{section}",
+        "/api/v2/workspaces/{workspace_id}/compounds",
+        "/api/v2/workspaces/{workspace_id}/compounds/order",
+        "/api/v2/compounds/{compound_id}",
+        "/api/v2/compounds/{compound_id}/structure",
     } <= paths
     assert not any(
         path.startswith(prefix)
@@ -238,7 +242,7 @@ def test_retired_scientific_v1_routes_are_not_registered(
             or route.path.startswith("/api/v2/workspaces/")
         )
     ]
-    assert len(workspace_routes) == 4
+    assert len(workspace_routes) == 7
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION
@@ -261,4 +265,31 @@ def test_retired_scientific_v1_routes_are_not_registered(
             "PUT",
             "/api/v2/workspaces/{workspace_id}/sections/{section}",
         ): Action.EDIT_DRAFT,
+        (
+            "GET",
+            "/api/v2/workspaces/{workspace_id}/compounds",
+        ): Action.READ_DRAFT,
+        (
+            "POST",
+            "/api/v2/workspaces/{workspace_id}/compounds",
+        ): Action.EDIT_DRAFT,
+        (
+            "PUT",
+            "/api/v2/workspaces/{workspace_id}/compounds/order",
+        ): Action.EDIT_DRAFT,
     }
+
+    compound_routes = [
+        route
+        for route in client.app.routes
+        if isinstance(route, APIRoute)
+        and route.path.startswith("/api/v2/compounds/")
+    ]
+    assert len(compound_routes) == 3
+    assert all(
+        getattr(route.endpoint, "__leadtrace_route_access__", None)
+        is RouteAccess.PERMISSION
+        and getattr(route.endpoint, "__leadtrace_action__", None)
+        is Action.EDIT_DRAFT
+        for route in compound_routes
+    )
