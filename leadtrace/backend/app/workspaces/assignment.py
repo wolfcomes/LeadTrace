@@ -6,7 +6,12 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.assets.models import Asset, AssetCategory, AssetIntegrityState
+from app.assets.models import (
+    Asset,
+    AssetAccessLevel,
+    AssetCategory,
+    AssetIntegrityState,
+)
 from app.audit.service import AuditService, canonical_content_hash
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
 from app.papers.models import Paper, PaperCatalogState
@@ -68,13 +73,18 @@ class AssignmentService:
         asset = session.scalar(
             select(Asset).where(Asset.id == source.asset_id).with_for_update()
         )
+        expected_storage_key = (
+            f"source/{source.source_root_key}/{source.source_key}"
+        )
         if (
             paper.catalog_state is PaperCatalogState.SOURCE_ERROR
             or source.integrity_state is not PaperSourceIntegrityState.VERIFIED
             or asset is None
             or asset.integrity_state is not AssetIntegrityState.VERIFIED
             or asset.category is not AssetCategory.ARTICLE_PDF
+            or asset.access_level is not AssetAccessLevel.REVIEWER
             or asset.mime_type != "application/pdf"
+            or asset.storage_key != expected_storage_key
             or asset.sha256 != source.sha256
             or asset.byte_size != source.byte_size
             or asset.page_count != source.page_count

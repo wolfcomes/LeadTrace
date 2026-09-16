@@ -334,7 +334,10 @@ def test_duplicate_active_assignment_returns_conflict_and_keeps_one_aggregate(
         ) == 1
 
 
-@pytest.mark.parametrize("error_kind", ["paper", "source", "asset"])
+@pytest.mark.parametrize(
+    "error_kind",
+    ["paper", "source", "asset", "asset_access", "asset_storage_key"],
+)
 def test_source_or_catalog_integrity_errors_make_paper_unassignable(
     assignment_client: AssignmentFixture,
     error_kind: str,
@@ -349,9 +352,17 @@ def test_source_or_catalog_integrity_errors_make_paper_unassignable(
             session.get(PaperSource, assignment_client.source_id).integrity_state = (
                 PaperSourceIntegrityState.MISSING
             )
-        else:
+        elif error_kind == "asset":
             session.get(Asset, assignment_client.asset_id).integrity_state = (
                 AssetIntegrityState.CORRUPT
+            )
+        elif error_kind == "asset_access":
+            session.get(Asset, assignment_client.asset_id).access_level = (
+                AssetAccessLevel.ADMIN
+            )
+        else:
+            session.get(Asset, assignment_client.asset_id).storage_key = (
+                "source/source_pdfs/volume67 issue5/other-paper.pdf"
             )
 
     response = _assign(assignment_client, csrf_token=csrf_token)
