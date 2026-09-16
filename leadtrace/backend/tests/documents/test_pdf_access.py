@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import select
+from starlette.requests import ClientDisconnect, Request
 
 from app.assets.models import Asset, AssetIntegrityState
+from app.assets.storage import LocalAssetStore
 from app.audit.models import AuditEvent
+from app.audit.service import AuditService
+from app.security.policies import Principal
+from app.users.models import UserRole
+from app.workspaces.models import PaperWorkspace, ReviewTask, ReviewTaskState, WorkspaceState
 
 
 def _login(client, username: str) -> None:
@@ -16,6 +24,31 @@ def _login(client, username: str) -> None:
         json={"username": username, "password": "Document test password 2026!"},
     )
     assert response.status_code == 200
+
+
+async def _disconnect_during_response_body(response) -> None:
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        if message["type"] == "http.response.body":
+            raise OSError("client disconnected")
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.4"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "headers": [],
+        "client": ("127.0.0.1", 1234),
+        "server": ("testserver", 80),
+        "root_path": "",
+    }
+    await response(scope, receive, send)
 
 
 def test_assigned_reviewer_and_admin_read_v2_source_pdf(document_fixture) -> None:
@@ -38,6 +71,28 @@ def test_assigned_reviewer_and_admin_read_v2_source_pdf(document_fixture) -> Non
         assert str(document_fixture.source_path) not in str([event.details for event in events])
 
 
+def test_assigned_reviewer_reads_source_pdf_after_approval(document_fixture) -> None:
+    with document_fixture.session_factory.begin() as session:
+        task = session.scalar(
+            select(ReviewTask).where(ReviewTask.paper_id == document_fixture.paper_id)
+        )
+        assert task is not None
+        workspace = session.scalar(
+            select(PaperWorkspace).where(PaperWorkspace.review_task_id == task.id)
+        )
+        assert workspace is not None
+        task.status = ReviewTaskState.APPROVED
+        workspace.state = WorkspaceState.APPROVED
+
+    _login(document_fixture.client, "document.reviewer")
+    response = document_fixture.client.get(
+        f"/api/v2/papers/{document_fixture.paper_id}/source-pdf"
+    )
+
+    assert response.status_code == 200
+    assert response.content == document_fixture.payload
+
+
 def test_other_roles_and_unknown_paper_receive_hidden_404(document_fixture) -> None:
     for username in ("document.other", "document.visitor"):
         _login(document_fixture.client, username)
@@ -47,6 +102,19 @@ def test_other_roles_and_unknown_paper_receive_hidden_404(document_fixture) -> N
         assert b"%PDF" not in response.content
     _login(document_fixture.client, "document.admin")
     assert document_fixture.client.get(f"/api/v2/papers/{uuid4()}/source-pdf").status_code == 404
+
+
+def test_unassigned_reviewer_cannot_bypass_source_pdf_scope_via_asset_route(
+    document_fixture,
+) -> None:
+    _login(document_fixture.client, "document.other")
+
+    response = document_fixture.client.get(
+        f"/api/v1/assets/{document_fixture.asset_id}/content"
+    )
+
+    assert response.status_code == 404
+    assert response.content != document_fixture.payload
 
 
 def test_integrity_mismatch_fails_closed_without_path_leakage(document_fixture) -> None:
@@ -91,3 +159,80 @@ def test_source_pdf_streams_the_snapshot_that_passed_integrity_check(
     assert response.status_code == 206
     assert response.content == document_fixture.payload[9:49]
     assert response.content != replacement_payload[9:49]
+
+
+def test_source_pdf_closes_verified_snapshot_when_audit_append_fails(
+    document_fixture,
+    monkeypatch,
+) -> None:
+    _login(document_fixture.client, "document.reviewer")
+    snapshots = []
+    real_open_snapshot = LocalAssetStore.open_snapshot
+
+    def track_snapshot(store, *args, **kwargs):
+        inspected, snapshot = real_open_snapshot(store, *args, **kwargs)
+        snapshots.append(snapshot)
+        return inspected, snapshot
+
+    def fail_audit(*args, **kwargs):
+        raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr(LocalAssetStore, "open_snapshot", track_snapshot)
+    monkeypatch.setattr(AuditService, "append_event", fail_audit)
+
+    with pytest.raises(RuntimeError, match="audit unavailable"):
+        document_fixture.client.get(
+            f"/api/v2/papers/{document_fixture.paper_id}/source-pdf"
+        )
+
+    assert len(snapshots) == 1
+    assert snapshots[0].closed is True
+
+
+def test_source_pdf_closes_verified_snapshot_on_client_disconnect(
+    document_fixture,
+    monkeypatch,
+) -> None:
+    snapshots = []
+    real_open_snapshot = LocalAssetStore.open_snapshot
+
+    def track_snapshot(store, *args, **kwargs):
+        inspected, snapshot = real_open_snapshot(store, *args, **kwargs)
+        snapshots.append(snapshot)
+        return inspected, snapshot
+
+    monkeypatch.setattr(LocalAssetStore, "open_snapshot", track_snapshot)
+    endpoint = next(
+        route.endpoint
+        for route in document_fixture.client.app.routes
+        if getattr(route, "path", None) == "/api/v2/papers/{paper_id}/source-pdf"
+    )
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": f"/api/v2/papers/{document_fixture.paper_id}/source-pdf",
+            "headers": [],
+            "client": ("127.0.0.1", 1234),
+            "app": document_fixture.client.app,
+        }
+    )
+    with document_fixture.session_factory() as session:
+        response = endpoint(
+            paper_id=document_fixture.paper_id,
+            request=request,
+            range_header=None,
+            session=session,
+            principal=Principal(
+                user_id=document_fixture.reviewer_id,
+                role=UserRole.REVIEWER,
+            ),
+        )
+
+    async def assert_disconnect_closes_snapshot() -> None:
+        with pytest.raises(ClientDisconnect):
+            await _disconnect_during_response_body(response)
+        assert snapshots[0].closed is True
+
+    assert len(snapshots) == 1
+    asyncio.run(assert_disconnect_closes_snapshot())

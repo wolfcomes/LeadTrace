@@ -87,6 +87,23 @@ def _clean_optional(value: str | None) -> str | None:
     return value.strip() or None
 
 
+def crop_request_for_source_image(
+    source_image: StructureSourceImage,
+) -> CropRequest:
+    return CropRequest(
+        source_pdf_sha256=source_image.source_sha256,
+        page_number=source_image.page_number,
+        x0=float(source_image.x0),
+        y0=float(source_image.y0),
+        x1=float(source_image.x1),
+        y1=float(source_image.y1),
+        rotation=0,
+        padding=0,
+        dpi=144,
+        renderer_version=PDF_RENDERER_VERSION,
+    )
+
+
 class StructureSourceImageService:
     def __init__(
         self,
@@ -205,18 +222,7 @@ class StructureSourceImageService:
         source_snapshot: BinaryIO,
         actor_id: UUID,
     ) -> None:
-        request = CropRequest(
-            source_pdf_sha256=source_image.source_sha256,
-            page_number=source_image.page_number,
-            x0=float(source_image.x0),
-            y0=float(source_image.y0),
-            x1=float(source_image.x1),
-            y1=float(source_image.y1),
-            rotation=0,
-            padding=0,
-            dpi=144,
-            renderer_version=PDF_RENDERER_VERSION,
-        )
+        request = crop_request_for_source_image(source_image)
         try:
             content = render_pdf_crop(source_snapshot, request)
         except CropValidationError:
@@ -232,6 +238,7 @@ class StructureSourceImageService:
             renderer=lambda _: content,
             source_asset_id=source_asset.id,
             created_by_id=actor_id,
+            preferred_asset_id=source_image.crop_asset_id,
         )
         crop_asset = session.get(Asset, result.asset_id)
         if crop_asset is None:
@@ -316,27 +323,27 @@ class StructureSourceImageService:
                 source_sha256=source_sha256,
                 page_number=page_number,
             )
-            source_image = StructureSourceImage(
-                paper_id=compound.paper_id,
-                workspace_id=compound.workspace_id,
-                compound_id=compound.id,
-                source_sha256=source_sha256,
-                page_number=page_number,
-                x0=bbox.x0,
-                y0=bbox.y0,
-                x1=bbox.x1,
-                y1=bbox.y1,
-                source_context=_clean_optional(source_context),
-                label=_clean_optional(label),
-                reviewer_note=_clean_optional(reviewer_note),
-                crop_status=CropStatus.PENDING,
-                crop_asset_id=None,
-            )
-            if self._duplicate_exists(session, source_image):
-                raise StructureSourceImageDuplicateError
-            session.add(source_image)
-            session.flush()  # The authoritative locator exists before rendering starts.
             with source_snapshot:
+                source_image = StructureSourceImage(
+                    paper_id=compound.paper_id,
+                    workspace_id=compound.workspace_id,
+                    compound_id=compound.id,
+                    source_sha256=source_sha256,
+                    page_number=page_number,
+                    x0=bbox.x0,
+                    y0=bbox.y0,
+                    x1=bbox.x1,
+                    y1=bbox.y1,
+                    source_context=_clean_optional(source_context),
+                    label=_clean_optional(label),
+                    reviewer_note=_clean_optional(reviewer_note),
+                    crop_status=CropStatus.PENDING,
+                    crop_asset_id=None,
+                )
+                if self._duplicate_exists(session, source_image):
+                    raise StructureSourceImageDuplicateError
+                session.add(source_image)
+                session.flush()  # Persist the authoritative locator before rendering.
                 self._render(
                     session,
                     source_image=source_image,
@@ -413,10 +420,10 @@ class StructureSourceImageService:
                     source_sha256=source_image.source_sha256,
                     page_number=source_image.page_number,
                 )
-                source_image.crop_status = CropStatus.PENDING
-                source_image.crop_asset_id = None
-                session.flush()
                 with source_snapshot:
+                    source_image.crop_status = CropStatus.PENDING
+                    source_image.crop_asset_id = None
+                    session.flush()
                     self._render(
                         session,
                         source_image=source_image,

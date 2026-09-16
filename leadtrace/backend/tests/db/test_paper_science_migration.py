@@ -64,9 +64,9 @@ def test_paper_science_migration_installs_tables_and_query_indexes(
         engine.dispose()
 
     assert ScriptDirectory.from_config(config).get_current_head() == (
-        "0021_structure_source_image_occurrence_unique"
+        "0022_crop_job_source_provenance"
     )
-    assert revision == "0021_structure_source_image_occurrence_unique"
+    assert revision == "0022_crop_job_source_provenance"
     assert "structure_proposals" not in tables
     assert "confidence" not in structure_columns
     assert "confidence_score" not in structure_columns

@@ -109,30 +109,48 @@ class CropService:
 
     def __init__(self, managed_root: Path, *, source_roots: dict[str, Path] | None = None) -> None:
         self.store = LocalAssetStore(managed_root, source_roots=source_roots)
-        self._memory: dict[str, CropResult] = {}
+        self._memory: dict[tuple[str, UUID | None], CropResult] = {}
 
-    def find(self, request: CropRequest) -> CropResult | None:
-        result = self._memory.get(request.input_hash())
+    def find(
+        self,
+        request: CropRequest,
+        *,
+        source_asset_id: UUID | None = None,
+    ) -> CropResult | None:
+        result = self._memory.get((request.input_hash(), source_asset_id))
         if result is not None and result.path.is_file():
             return result
         return None
 
-    def run(self, request: CropRequest, *, renderer: Renderer) -> CropResult:
+    def run(
+        self,
+        request: CropRequest,
+        *,
+        renderer: Renderer,
+        source_asset_id: UUID | None = None,
+    ) -> CropResult:
         input_hash = request.input_hash()
-        existing = self.find(request)
+        existing = self.find(request, source_asset_id=source_asset_id)
         if existing is not None:
             return replace(existing, reused=True)
         content = renderer(request)
         if not isinstance(content, bytes) or not content:
             raise CropValidationError("renderer must return non-empty bytes")
-        stored: StoredFile = self.store.put_bytes(content, suffix=".png")
+        namespace = f"crop/{input_hash}"
+        if source_asset_id is not None:
+            namespace = f"crop/{source_asset_id}/{input_hash}"
+        stored: StoredFile = self.store.put_bytes(
+            content,
+            suffix=".png",
+            namespace=namespace,
+        )
         result = CropResult(
             asset_key=stored.storage_key,
             path=stored.path,
             reused=False,
             input_hash=input_hash,
         )
-        self._memory[input_hash] = result
+        self._memory[(input_hash, source_asset_id)] = result
         return result
 
     def enqueue(
@@ -165,7 +183,9 @@ class CropService:
                 status=CropJobStatus.PENDING,
                 created_by_id=created_by_id,
             )
-            .on_conflict_do_nothing(index_elements=[CropJob.input_hash])
+            .on_conflict_do_nothing(
+                index_elements=[CropJob.input_hash, CropJob.source_asset_id]
+            )
             .returning(CropJob.id)
         )
         if created_id is not None:
@@ -174,7 +194,10 @@ class CropService:
         else:
             job = session.scalar(
                 select(CropJob)
-                .where(CropJob.input_hash == input_hash)
+                .where(
+                    CropJob.input_hash == input_hash,
+                    CropJob.source_asset_id == source_asset_id,
+                )
                 .with_for_update()
             )
             if job is None:
@@ -194,11 +217,22 @@ class CropService:
     ) -> CropResult:
         input_hash = request.input_hash()
         MaintenanceService().require_writes_enabled(session)
-        job = session.scalar(select(CropJob).where(CropJob.input_hash == input_hash).with_for_update())
+        job = session.scalar(
+            select(CropJob)
+            .where(
+                CropJob.input_hash == input_hash,
+                CropJob.source_asset_id == source_asset_id,
+            )
+            .with_for_update()
+        )
         if job is not None and job.status is CropJobStatus.SUPERSEDED:
             raise CropValidationError("Crop job was superseded by newer work")
         if job is not None and job.status is CropJobStatus.COMPLETED and job.asset_id is not None:
             asset = session.get(Asset, job.asset_id)
+            if asset is not None and asset.source_asset_id != source_asset_id:
+                raise CropValidationError(
+                    "Completed crop asset provenance does not match its source"
+                )
             if asset is not None and self.store.path_for(asset.storage_key).is_file():
                 return CropResult(asset.storage_key, self.store.path_for(asset.storage_key), True, asset.id, input_hash)
         now = datetime.now(UTC)
@@ -249,11 +283,58 @@ class CropService:
         renderer: Renderer,
         source_asset_id: UUID | None = None,
         created_by_id: UUID | None = None,
+        preferred_asset_id: UUID | None = None,
     ) -> CropResult:
         """Render and register a crop without owning the job state machine."""
 
         MaintenanceService().require_writes_enabled(session)
-        result = self.run(request, renderer=renderer)
+        preferred_asset = (
+            session.get(Asset, preferred_asset_id)
+            if preferred_asset_id is not None
+            else None
+        )
+        if (
+            preferred_asset is not None
+            and preferred_asset.category is AssetCategory.EVIDENCE_CROP
+            and preferred_asset.source_asset_id == source_asset_id
+            and preferred_asset.derivation_metadata.get("crop_input_hash")
+            == request.input_hash()
+        ):
+            content = renderer(request)
+            if not isinstance(content, bytes) or not content:
+                raise CropValidationError("renderer must return non-empty bytes")
+            if hashlib.sha256(content).hexdigest() == preferred_asset.sha256:
+                stored = self.store.restore_managed_bytes(
+                    preferred_asset.storage_key,
+                    content,
+                    expected_sha256=preferred_asset.sha256,
+                )
+                inspected = self.store.inspect(stored.storage_key)
+                preferred_asset.byte_size = inspected.byte_size
+                preferred_asset.mime_type = inspected.mime_type
+                preferred_asset.width = inspected.width
+                preferred_asset.height = inspected.height
+                preferred_asset.page_count = inspected.page_count
+                preferred_asset.access_level = AssetAccessLevel.REVIEWER
+                preferred_asset.integrity_state = AssetIntegrityState.VERIFIED
+                preferred_asset.derivation_metadata = {
+                    **preferred_asset.derivation_metadata,
+                    "crop_input_hash": request.input_hash(),
+                    "request": _request_metadata(request),
+                }
+                preferred_asset.verified_at = datetime.now(UTC)
+                return CropResult(
+                    asset_key=stored.storage_key,
+                    path=stored.path,
+                    reused=True,
+                    asset_id=preferred_asset.id,
+                    input_hash=request.input_hash(),
+                )
+        result = self.run(
+            request,
+            renderer=renderer,
+            source_asset_id=source_asset_id,
+        )
         inspected = self.store.inspect(result.asset_key)
         asset, _ = AssetService().register_inspected(
             session,

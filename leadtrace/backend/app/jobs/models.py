@@ -32,7 +32,12 @@ CropJobState = CropJobStatus
 class CropJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "crop_jobs"
     __table_args__ = (
-        UniqueConstraint("input_hash", name="uq_crop_jobs_input_hash"),
+        UniqueConstraint(
+            "input_hash",
+            "source_asset_id",
+            name="uq_crop_jobs_input_source_asset",
+            postgresql_nulls_not_distinct=True,
+        ),
         Index("ix_crop_jobs_status_created", "status", "created_at"),
         Index("ix_crop_jobs_status_dispatch", "status", "dispatched_at"),
         Index("ix_crop_jobs_status_heartbeat", "status", "heartbeat_at"),

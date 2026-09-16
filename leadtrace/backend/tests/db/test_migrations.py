@@ -89,7 +89,7 @@ def test_legacy_admin_review_workflow_revision_contract(
     script = ScriptDirectory.from_config(config)
 
     assert script.get_current_head() == (
-        "0021_structure_source_image_occurrence_unique"
+        "0022_crop_job_source_provenance"
     )
     reviewer_revision = script.get_revision("0018_reviewer_scientific_workspace")
     assert reviewer_revision is not None

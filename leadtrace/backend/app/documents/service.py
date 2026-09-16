@@ -13,7 +13,7 @@ from app.catalog.models import PaperSource, PaperSourceIntegrityState
 from app.papers.models import Paper
 from app.security.permissions import enforce_permission
 from app.security.policies import Action, Principal, ResourceScope
-from app.workspaces.models import ReviewTask, ReviewTaskState
+from app.workspaces.models import ReviewTask
 
 
 class DocumentNotFound(LookupError):
@@ -87,7 +87,13 @@ class DocumentService:
         if row is None:
             raise DocumentNotFound
         paper, source, asset = row
-        assigned_reviewer_ids = frozenset(session.scalars(select(ReviewTask.assigned_reviewer_id).where(ReviewTask.paper_id == paper.id, ReviewTask.status != ReviewTaskState.APPROVED)))
+        assigned_reviewer_ids = frozenset(
+            session.scalars(
+                select(ReviewTask.assigned_reviewer_id).where(
+                    ReviewTask.paper_id == paper.id
+                )
+            )
+        )
         enforce_permission(principal, Action.READ_FULL_PDF, ResourceScope(assigned_reviewer_ids=assigned_reviewer_ids))
         if (
             source.integrity_state is not PaperSourceIntegrityState.VERIFIED

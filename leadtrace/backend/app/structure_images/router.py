@@ -7,16 +7,24 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.assets.models import Asset, AssetIntegrityState
+from app.assets.models import (
+    Asset,
+    AssetAccessLevel,
+    AssetCategory,
+    AssetIntegrityState,
+)
+from app.assets.responses import SnapshotStreamingResponse
 from app.assets.service import AssetService
 from app.assets.storage import LocalAssetStore
 from app.api.errors import APIError
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
 from app.config import Settings
 from app.database import get_db_session
+from app.papers.models import Paper
 from app.security.permissions import RouteAccess, declare_route_access, get_authenticated_principal, require_request_csrf
 from app.security.policies import Action, Principal
 from app.structure_images.models import StructureSourceImage
@@ -34,6 +42,7 @@ from app.structure_images.service import (
     StructureSourceImageDuplicateError,
     StructureSourceImageService,
     StructureSourceImageValidationError,
+    crop_request_for_source_image,
 )
 from app.workspaces.service import WorkspaceForbiddenError, WorkspaceNotFoundError, WorkspaceReadOnlyError, WorkspaceVersionConflictError
 
@@ -162,9 +171,23 @@ def create_structure_images_router(settings: Settings) -> APIRouter:
                     if result.source_image.crop_asset_id is not None
                     else None
                 )
+                expected_source_asset_id = session.scalar(
+                    select(PaperSource.asset_id)
+                    .join(Paper, Paper.source_id == PaperSource.id)
+                    .where(Paper.id == result.source_image.paper_id)
+                )
+                expected_crop_input_hash = crop_request_for_source_image(
+                    result.source_image
+                ).input_hash()
                 if (
                     asset is not None
+                    and asset.category is AssetCategory.EVIDENCE_CROP
+                    and asset.access_level is AssetAccessLevel.REVIEWER
                     and asset.integrity_state is AssetIntegrityState.VERIFIED
+                    and asset.mime_type == "image/png"
+                    and asset.source_asset_id == expected_source_asset_id
+                    and asset.derivation_metadata.get("crop_input_hash")
+                    == expected_crop_input_hash
                 ):
                     snapshot = AssetService.open_verified_content(
                         asset,
@@ -192,8 +215,9 @@ def create_structure_images_router(settings: Settings) -> APIRouter:
             if encoded_filename == filename
             else f"inline; filename*=utf-8''{encoded_filename}"
         )
-        return StreamingResponse(
-            _stream_snapshot(snapshot),
+        return SnapshotStreamingResponse(
+            snapshot=snapshot,
+            content=_stream_snapshot(snapshot),
             media_type=media_type,
             headers={
                 "Cache-Control": "private, no-store",

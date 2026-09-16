@@ -7,11 +7,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.assets.models import AssetCategory, AssetIntegrityState
 from app.assets.repository import AssetRepository
+from app.assets.responses import SnapshotStreamingResponse
 from app.assets.schemas import AssetResponse
 from app.assets.service import AssetService
 from app.assets.storage import LocalAssetStore
@@ -24,6 +25,15 @@ from app.security.permissions import (
 )
 from app.security.policies import Action, Principal
 from app.structure_images.models import StructureSourceImage
+
+
+_RESOURCE_SCOPED_CATEGORIES = frozenset(
+    {
+        AssetCategory.ARTICLE_PDF,
+        AssetCategory.SI_PDF,
+        AssetCategory.EVIDENCE_CROP,
+    }
+)
 
 
 def _stream_snapshot(snapshot: BinaryIO) -> Iterator[bytes]:
@@ -56,6 +66,8 @@ def create_assets_router() -> APIRouter:
                     asset is None
                     or asset.integrity_state is not AssetIntegrityState.VERIFIED
                 ):
+                    raise HTTPException(status_code=404, detail="Asset not found")
+                if asset.category in _RESOURCE_SCOPED_CATEGORIES:
                     raise HTTPException(status_code=404, detail="Asset not found")
                 if (
                     asset.derivation_metadata.get("visibility_scope")
@@ -102,7 +114,8 @@ def create_assets_router() -> APIRouter:
             content_disposition = f'attachment; filename="{filename}"'
         else:
             content_disposition = f"attachment; filename*=utf-8''{encoded_filename}"
-        return StreamingResponse(
+        return SnapshotStreamingResponse(
+            snapshot=snapshot,
             content=_stream_snapshot(snapshot),
             media_type=media_type,
             headers={

@@ -326,3 +326,26 @@ class LocalAssetStore:
             sha256=sha256,
             byte_size=len(content),
         )
+
+    def restore_managed_bytes(
+        self,
+        storage_key: str,
+        content: bytes,
+        *,
+        expected_sha256: str,
+    ) -> StoredFile:
+        parts = self._validated_parts(storage_key)
+        if parts[0] != "managed":
+            raise AssetPathError("Only managed assets can be restored")
+        sha256 = hashlib.sha256(content).hexdigest()
+        if sha256 != expected_sha256:
+            raise AssetPathError("Restored content does not match the registered SHA-256")
+        target = self.path_for(storage_key)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        self._write_atomically(target, content, sha256)
+        return StoredFile(
+            storage_key=storage_key,
+            path=target,
+            sha256=sha256,
+            byte_size=len(content),
+        )

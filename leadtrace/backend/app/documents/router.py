@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.assets.responses import SnapshotStreamingResponse
 from app.assets.storage import LocalAssetStore
 from app.api.errors import APIError, request_id_for
 from app.audit.service import AuditService, canonical_content_hash
@@ -125,8 +126,29 @@ def create_documents_router() -> APIRouter:
                             "bytes_served": document.byte_range.length,
                         },
                     )
-        except DocumentNotFound:
-            raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found") from None
+            if document is None:
+                raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+
+            partial = status_code == 206
+            headers = _headers(
+                document.asset,
+                partial=partial,
+                start=document.byte_range.start,
+                end=document.byte_range.end,
+                full_size=document.full_size,
+            )
+            if partial:
+                headers["Content-Range"] = (
+                    f"bytes {document.byte_range.start}-{document.byte_range.end}/"
+                    f"{document.full_size}"
+                )
+            return SnapshotStreamingResponse(
+                snapshot=document.snapshot,
+                content=iter_snapshot_range(document.snapshot, document.byte_range),
+                status_code=status_code,
+                headers=headers,
+                media_type="application/pdf",
+            )
         except RangeNotSatisfiable as error:
             return Response(
                 status_code=416,
@@ -137,27 +159,9 @@ def create_documents_router() -> APIRouter:
                     "X-Content-Type-Options": "nosniff",
                 },
             )
-        if document is None:
-            raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
-
-        partial = status_code == 206
-        headers = _headers(
-            document.asset,
-            partial=partial,
-            start=document.byte_range.start,
-            end=document.byte_range.end,
-            full_size=document.full_size,
-        )
-        if partial:
-            headers["Content-Range"] = (
-                f"bytes {document.byte_range.start}-{document.byte_range.end}/"
-                f"{document.full_size}"
-            )
-        return StreamingResponse(
-            iter_snapshot_range(document.snapshot, document.byte_range),
-            status_code=status_code,
-            headers=headers,
-            media_type="application/pdf",
-        )
+        except BaseException:
+            if document is not None:
+                document.snapshot.close()
+            raise
 
     return router

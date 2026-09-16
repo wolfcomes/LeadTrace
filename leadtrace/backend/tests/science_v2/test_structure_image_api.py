@@ -1,23 +1,38 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pymupdf
 import pytest
 from sqlalchemy import func, select
+from starlette.requests import ClientDisconnect
 
-from app.assets.models import Asset, AssetIntegrityState
+from app.assets.models import (
+    Asset,
+    AssetAccessLevel,
+    AssetCategory,
+    AssetIntegrityState,
+)
 from app.assets.storage import LocalAssetStore
 from app.catalog.models import PaperSource
 from app.compounds.models import Compound
 from app.jobs.execution import render_pdf_crop
 from app.jobs.service import PDF_RENDERER_VERSION, CropRequest
 from app.papers.models import Paper
+from app.security.policies import Principal
 from app.structure_images.models import StructureSourceImage
-from app.workspaces.models import ChangeEvent, PaperWorkspace
+from app.users.models import UserRole
+from app.workspaces.models import (
+    ChangeEvent,
+    PaperWorkspace,
+    ReviewTask,
+    ReviewTaskState,
+    WorkspaceState,
+)
 
 
 def _create_compound(context, csrf: str, *, aggregate=None, version: int = 1):
@@ -61,6 +76,31 @@ def _create_image(context, csrf: str, compound_id: str, *, version: int, **chang
         headers={"X-CSRF-Token": csrf},
         json=payload,
     )
+
+
+async def _disconnect_during_response_body(response) -> None:
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        if message["type"] == "http.response.body":
+            raise OSError("client disconnected")
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.4"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "headers": [],
+        "client": ("127.0.0.1", 1234),
+        "server": ("testserver", 80),
+        "root_path": "",
+    }
+    await response(scope, receive, send)
 
 
 def test_create_read_list_update_retry_and_delete_source_image(science_api_context):
@@ -196,6 +236,31 @@ def test_locator_validation_rejects_page_bbox_hash_and_duplicate_occurrence(
         assert workspace is not None and workspace.version == 3
         assert count == 1
         assert events == 2
+
+
+def test_duplicate_locator_closes_the_verified_source_snapshot(
+    science_api_context,
+    monkeypatch,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+    created = _create_image(context, csrf, compound["id"], version=2)
+    assert created.status_code == 201
+    snapshots = []
+    real_open_snapshot = LocalAssetStore.open_snapshot
+
+    def track_snapshot(store, *args, **kwargs):
+        inspected, snapshot = real_open_snapshot(store, *args, **kwargs)
+        snapshots.append(snapshot)
+        return inspected, snapshot
+
+    monkeypatch.setattr(LocalAssetStore, "open_snapshot", track_snapshot)
+    duplicate = _create_image(context, csrf, compound["id"], version=3)
+
+    assert duplicate.status_code == 409
+    assert len(snapshots) == 1
+    assert snapshots[0].closed is True
 
 
 def test_source_image_hides_unassigned_and_cross_paper_compounds(
@@ -356,6 +421,15 @@ def test_crop_content_is_scoped_to_exact_workspace_assignment(
     assert str(context.asset_root) not in unknown.text
 
     csrf = context.login("science.api.reviewer")
+    with context.session_factory.begin() as session:
+        legacy_asset = session.get(Asset, image["crop_asset_id"])
+        assert legacy_asset is not None
+        legacy_asset.derivation_metadata = {
+            key: value
+            for key, value in legacy_asset.derivation_metadata.items()
+            if key != "visibility_scope"
+        }
+        legacy_asset.access_level = AssetAccessLevel.ADMIN
     deleted = context.client.request(
         "DELETE",
         f"/api/v2/structure-source-images/{image['id']}",
@@ -363,7 +437,183 @@ def test_crop_content_is_scoped_to_exact_workspace_assignment(
         json={"expected_workspace_version": 3},
     )
     assert deleted.status_code == 200
+    context.login("science.api.admin")
     assert context.client.get(generic_url).status_code == 404
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    ["category", "access_level", "source_asset_id", "crop_input_hash"],
+)
+def test_crop_content_rejects_asset_with_mismatched_provenance(
+    science_api_context,
+    tamper: str,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+    created = _create_image(context, csrf, compound["id"], version=2)
+    assert created.status_code == 201
+    image = created.json()["source_image"]
+
+    with context.session_factory.begin() as session:
+        asset = session.get(Asset, image["crop_asset_id"])
+        assert asset is not None
+        if tamper == "category":
+            asset.category = AssetCategory.RDKIT_STRUCTURE
+        elif tamper == "access_level":
+            asset.access_level = AssetAccessLevel.ADMIN
+        elif tamper == "source_asset_id":
+            asset.source_asset_id = context.second.asset_id
+        else:
+            asset.derivation_metadata = {
+                **asset.derivation_metadata,
+                "crop_input_hash": "0" * 64,
+            }
+
+    response = context.client.get(
+        f"/api/v2/structure-source-images/{image['id']}/content"
+    )
+
+    assert response.status_code == 404
+
+
+def test_approved_workspace_crop_remains_readable_to_assigned_reviewer(
+    science_api_context,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+    created = _create_image(context, csrf, compound["id"], version=2)
+    assert created.status_code == 201
+    image = created.json()["source_image"]
+    scoped_url = f"/api/v2/structure-source-images/{image['id']}/content"
+
+    with context.session_factory.begin() as session:
+        workspace = session.get(PaperWorkspace, context.first.workspace_id)
+        assert workspace is not None
+        task = session.get(ReviewTask, workspace.review_task_id)
+        assert task is not None
+        workspace.state = WorkspaceState.APPROVED
+        task.status = ReviewTaskState.APPROVED
+
+    reviewer_response = context.client.get(scoped_url)
+    context.login("science.api.admin")
+    admin_response = context.client.get(scoped_url)
+
+    assert reviewer_response.status_code == 200
+    assert admin_response.status_code == 200
+
+
+def test_crop_content_closes_verified_snapshot_on_client_disconnect(
+    science_api_context,
+    monkeypatch,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+    created = _create_image(context, csrf, compound["id"], version=2)
+    assert created.status_code == 201
+    image = created.json()["source_image"]
+    snapshots = []
+    real_open_snapshot = LocalAssetStore.open_snapshot
+
+    def track_snapshot(store, *args, **kwargs):
+        inspected, snapshot = real_open_snapshot(store, *args, **kwargs)
+        snapshots.append(snapshot)
+        return inspected, snapshot
+
+    monkeypatch.setattr(LocalAssetStore, "open_snapshot", track_snapshot)
+    endpoint = next(
+        route.endpoint
+        for route in context.client.app.routes
+        if getattr(route, "path", None)
+        == "/api/v2/structure-source-images/{source_image_id}/content"
+    )
+    with context.session_factory() as session:
+        response = endpoint(
+            source_image_id=UUID(image["id"]),
+            session=session,
+            principal=Principal(
+                user_id=context.reviewer_id,
+                role=UserRole.REVIEWER,
+            ),
+        )
+
+    async def assert_disconnect_closes_snapshot() -> None:
+        with pytest.raises(ClientDisconnect):
+            await _disconnect_during_response_body(response)
+        assert snapshots[0].closed is True
+
+    assert len(snapshots) == 1
+    asyncio.run(assert_disconnect_closes_snapshot())
+
+
+def test_retry_restores_legacy_crop_asset_without_workspace_mutation(
+    science_api_context,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+    created = _create_image(context, csrf, compound["id"], version=2)
+    assert created.status_code == 201
+    image = created.json()["source_image"]
+    store = LocalAssetStore(context.asset_root)
+
+    with context.session_factory.begin() as session:
+        source_image = session.get(StructureSourceImage, image["id"])
+        current_asset = session.get(Asset, image["crop_asset_id"])
+        assert source_image is not None and current_asset is not None
+        content = store.path_for(current_asset.storage_key).read_bytes()
+        legacy_stored = store.put_bytes(content, suffix=".png")
+        assert legacy_stored.storage_key.startswith("managed/objects/")
+        legacy_asset = Asset(
+            storage_key=legacy_stored.storage_key,
+            original_filename=Path(legacy_stored.storage_key).name,
+            sha256=legacy_stored.sha256,
+            byte_size=legacy_stored.byte_size,
+            mime_type="image/png",
+            width=current_asset.width,
+            height=current_asset.height,
+            category=AssetCategory.EVIDENCE_CROP,
+            access_level=AssetAccessLevel.REVIEWER,
+            integrity_state=AssetIntegrityState.MISSING,
+            source_asset_id=current_asset.source_asset_id,
+            derivation_metadata=dict(current_asset.derivation_metadata),
+            source_metadata={},
+            created_by_id=current_asset.created_by_id,
+        )
+        session.add(legacy_asset)
+        session.flush()
+        source_image.crop_asset_id = legacy_asset.id
+        session.delete(current_asset)
+        legacy_asset_id = legacy_asset.id
+        legacy_path = legacy_stored.path
+    legacy_path.unlink()
+
+    retried = context.client.post(
+        f"/api/v2/structure-source-images/{image['id']}/retry",
+        headers={"X-CSRF-Token": csrf},
+        json={"expected_workspace_version": 3},
+    )
+
+    assert retried.status_code == 200
+    assert retried.json()["source_image"]["crop_asset_id"] == str(legacy_asset_id)
+    assert retried.json()["workspace_version"] == 3
+    assert legacy_path.is_file()
+    assert legacy_path.read_bytes() == content
+    with context.session_factory() as session:
+        asset = session.get(Asset, legacy_asset_id)
+        workspace = session.get(PaperWorkspace, context.first.workspace_id)
+        event_count = session.scalar(
+            select(func.count())
+            .select_from(ChangeEvent)
+            .where(ChangeEvent.workspace_id == context.first.workspace_id)
+        )
+        assert asset is not None
+        assert asset.integrity_state is AssetIntegrityState.VERIFIED
+        assert workspace is not None and workspace.version == 3
+        assert event_count == 2
 
 
 @pytest.mark.parametrize(
