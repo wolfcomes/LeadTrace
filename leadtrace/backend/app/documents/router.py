@@ -4,7 +4,7 @@ import unicodedata
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,6 @@ from app.audit.service import AuditService, canonical_content_hash
 from app.auth.router import resolve_remote_address
 from app.database import get_db_session
 from app.documents.service import (
-    DocumentKind,
     DocumentNotFound,
     DocumentService,
     RangeNotSatisfiable,
@@ -25,7 +24,7 @@ from app.security.permissions import (
     declare_route_access,
     get_authenticated_principal,
 )
-from app.security.policies import Principal
+from app.security.policies import Action, Principal
 
 
 def _safe_filename(filename: str) -> str:
@@ -71,18 +70,15 @@ def _internal_transfer_path(storage_key: str) -> str | None:
 
 
 def create_documents_router() -> APIRouter:
-    router = APIRouter(prefix="/api/v1/papers", tags=["protected documents"])
+    router = APIRouter(prefix="/api/v2/papers", tags=["protected documents"])
     service = DocumentService()
     audit_service = AuditService()
 
     @router.get("/{paper_id}/source-pdf")
-    @declare_route_access(RouteAccess.AUTHENTICATED)
+    @declare_route_access(RouteAccess.PERMISSION, Action.READ_FULL_PDF)
     def source_pdf(
         paper_id: UUID,
         request: Request,
-        kind: DocumentKind = Query(default=DocumentKind.ARTICLE),
-        candidate_id: UUID | None = Query(default=None),
-        release_id: UUID | None = Query(default=None),
         range_header: str | None = Header(default=None, alias="Range"),
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
@@ -92,48 +88,50 @@ def create_documents_router() -> APIRouter:
             settings.asset_root,
             source_roots=settings.source_roots,
         )
+        document = None
         try:
             with session.begin():
-                document = service.resolve(
-                    session,
-                    paper_id=paper_id,
-                    kind=kind,
-                    principal=principal,
-                    store=store,
-                    range_header=range_header,
-                    candidate_id=candidate_id,
-                    release_id=release_id,
-                )
-                status_code = 206 if range_header is not None else 200
-                audit_service.append_event(
-                    session,
-                    actor_id=principal.user_id,
-                    action="document.pdf.viewed",
-                    target_type="asset",
-                    target_id=document.asset.id,
-                    paper_id=document.paper.id,
-                    changeset_id=None,
-                    release_id=None,
-                    ip_address=resolve_remote_address(request, settings),
-                    request_id=request_id_for(request),
-                    result="success",
-                    reason="Viewed protected source PDF",
-                    before_hash=canonical_content_hash(None),
-                    after_hash=document.asset.sha256,
-                    details={
-                        "asset_id": str(document.asset.id),
-                        "document_kind": kind.value,
-                        "range": (
-                            {
-                                "start": document.byte_range.start,
-                                "end": document.byte_range.end,
-                            }
-                            if status_code == 206
-                            else None
-                        ),
-                        "bytes_served": document.byte_range.length,
-                    },
-                )
+                try:
+                    document = service.resolve(
+                        session,
+                        paper_id=paper_id,
+                        principal=principal,
+                        store=store,
+                        range_header=range_header,
+                    )
+                except DocumentNotFound:
+                    pass
+                if document is not None:
+                    status_code = 206 if range_header is not None else 200
+                    audit_service.append_event(
+                        session,
+                        actor_id=principal.user_id,
+                        action="document.pdf.viewed",
+                        target_type="asset",
+                        target_id=document.asset.id,
+                        paper_id=document.paper.id,
+                        changeset_id=None,
+                        release_id=None,
+                        ip_address=resolve_remote_address(request, settings),
+                        request_id=request_id_for(request),
+                        result="success",
+                        reason="Viewed protected source PDF",
+                        before_hash=canonical_content_hash(None),
+                        after_hash=document.asset.sha256,
+                        details={
+                            "asset_id": str(document.asset.id),
+                            "document_kind": "source_pdf",
+                            "range": (
+                                {
+                                    "start": document.byte_range.start,
+                                    "end": document.byte_range.end,
+                                }
+                                if status_code == 206
+                                else None
+                            ),
+                            "bytes_served": document.byte_range.length,
+                        },
+                    )
         except DocumentNotFound:
             raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found") from None
         except RangeNotSatisfiable as error:
@@ -146,6 +144,8 @@ def create_documents_router() -> APIRouter:
                     "X-Content-Type-Options": "nosniff",
                 },
             )
+        if document is None:
+            raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
 
         partial = status_code == 206
         headers = _headers(

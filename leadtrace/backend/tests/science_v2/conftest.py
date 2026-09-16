@@ -6,7 +6,9 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+import pymupdf
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.assets.models import (
@@ -15,6 +17,7 @@ from app.assets.models import (
     AssetCategory,
     AssetIntegrityState,
 )
+from app.assets.storage import LocalAssetStore
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
 from app.config import Settings
 from app.database import DatabaseResources
@@ -243,6 +246,35 @@ def science_api_context(
         }
 
     asset_root = tmp_path / "managed"
+    source_root = tmp_path / "source_pdfs"
+    for aggregate, ordinal in ((first, 11), (second, 12)):
+        source_path = source_root / "volume67 issue5" / f"science-{ordinal}.pdf"
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        document = pymupdf.open()
+        for page_number in range(1, 4):
+            page = document.new_page(width=320, height=240)
+            page.insert_text((36, 48), f"Science paper {ordinal}, page {page_number}")
+            page.draw_rect(pymupdf.Rect(70, 80, 210, 180), color=(0, 0, 0))
+        document.save(source_path)
+        document.close()
+        inspected = LocalAssetStore(
+            asset_root,
+            source_roots={"source_pdfs": source_root},
+        ).inspect(
+            f"source/source_pdfs/volume67 issue5/science-{ordinal}.pdf"
+        )
+        with auth_session_factory.begin() as session:
+            asset = session.get(Asset, aggregate.asset_id)
+            source = session.scalar(
+                select(PaperSource).where(PaperSource.asset_id == aggregate.asset_id)
+            )
+            assert asset is not None and source is not None
+            asset.sha256 = inspected.sha256
+            asset.byte_size = inspected.byte_size
+            asset.page_count = inspected.page_count
+            source.sha256 = inspected.sha256
+            source.byte_size = inspected.byte_size
+            source.page_count = inspected.page_count or 3
     settings = Settings(
         _env_file=None,
         environment="test",
@@ -251,6 +283,7 @@ def science_api_context(
         session_secret="science-api-session-secret-more-than-thirty-two-characters",
         allowed_hosts=["testserver"],
         asset_root=asset_root,
+        source_roots={"source_pdfs": source_root},
     )
     resources = DatabaseResources(
         engine=auth_session_factory.kw["bind"],

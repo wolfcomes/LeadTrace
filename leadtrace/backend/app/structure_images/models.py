@@ -14,6 +14,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -39,6 +40,16 @@ class StructureSourceImage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "source_sha256 ~ '^[0-9a-f]{64}$'",
             name="ck_structure_source_images_source_sha256",
+        ),
+        UniqueConstraint(
+            "compound_id",
+            "source_sha256",
+            "page_number",
+            "x0",
+            "y0",
+            "x1",
+            "y1",
+            name="uq_structure_source_images_compound_occurrence",
         ),
         CheckConstraint(
             "page_number > 0", name="ck_structure_source_images_positive_page"

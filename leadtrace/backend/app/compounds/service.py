@@ -11,6 +11,7 @@ from app.compounds.models import Compound
 from app.lineages.models import LineageMember
 from app.security.policies import Principal
 from app.structures.models import Structure
+from app.structure_images.models import StructureSourceImage
 from app.workspaces.history import LockedWorkspace, MutationChange
 from app.workspaces.models import ChangeActorKind, PaperWorkspace
 from app.workspaces.service import WorkspaceNotFoundError, WorkspaceService
@@ -76,6 +77,32 @@ def structure_snapshot(structure: Structure) -> dict[str, object]:
         ),
         "status": structure.status.value,
         "input_method": structure.input_method.value,
+    }
+
+
+def structure_source_image_snapshot(
+    source_image: StructureSourceImage,
+) -> dict[str, object]:
+    return {
+        "id": str(source_image.id),
+        "paper_id": str(source_image.paper_id),
+        "workspace_id": str(source_image.workspace_id),
+        "compound_id": str(source_image.compound_id),
+        "source_sha256": source_image.source_sha256,
+        "page_number": source_image.page_number,
+        "bbox": {
+            "x0": float(source_image.x0),
+            "y0": float(source_image.y0),
+            "x1": float(source_image.x1),
+            "y1": float(source_image.y1),
+        },
+        "source_context": source_image.source_context,
+        "label": source_image.label,
+        "reviewer_note": source_image.reviewer_note,
+        "crop_status": source_image.crop_status.value,
+        "crop_asset_id": (
+            str(source_image.crop_asset_id) if source_image.crop_asset_id else None
+        ),
     }
 
 
@@ -350,9 +377,25 @@ class CompoundService:
             structure = session.scalar(
                 select(Structure).where(Structure.compound_id == compound.id)
             )
+            source_images = list(
+                session.scalars(
+                    select(StructureSourceImage)
+                    .where(StructureSourceImage.compound_id == compound.id)
+                    .order_by(
+                        StructureSourceImage.page_number,
+                        StructureSourceImage.y0,
+                        StructureSourceImage.x0,
+                        StructureSourceImage.id,
+                    )
+                )
+            )
             before = {
                 "compound": compound_snapshot(compound),
                 "structure": structure_snapshot(structure) if structure else None,
+                "structure_source_images": [
+                    structure_source_image_snapshot(source_image)
+                    for source_image in source_images
+                ],
             }
             session.delete(compound)
             return MutationChange(

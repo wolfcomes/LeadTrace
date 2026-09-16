@@ -201,6 +201,10 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v2/compounds/{compound_id}",
         "/api/v2/compounds/{compound_id}/structure",
         "/api/v2/compounds/{compound_id}/structure/depiction",
+        "/api/v2/compounds/{compound_id}/source-images",
+        "/api/v2/structure-source-images/{source_image_id}",
+        "/api/v2/structure-source-images/{source_image_id}/retry",
+        "/api/v2/papers/{paper_id}/source-pdf",
     } <= paths
     assert not any(
         path.startswith(prefix)
@@ -285,6 +289,7 @@ def test_retired_scientific_v1_routes_are_not_registered(
         for route in client.app.routes
         if isinstance(route, APIRoute)
         and route.path.startswith("/api/v2/compounds/")
+        and not route.path.endswith("/source-images")
     ]
     assert len(compound_routes) == 5
     assert all(
@@ -313,3 +318,46 @@ def test_retired_scientific_v1_routes_are_not_registered(
             "/api/v2/compounds/{compound_id}/structure/depiction",
         ): Action.READ_DRAFT,
     }
+
+    source_image_routes = [
+        route
+        for route in client.app.routes
+        if isinstance(route, APIRoute)
+        and (
+            route.path.endswith("/source-images")
+            or route.path.startswith("/api/v2/structure-source-images/")
+        )
+    ]
+    assert len(source_image_routes) == 6
+    assert all(
+        getattr(route.endpoint, "__leadtrace_route_access__", None)
+        is RouteAccess.PERMISSION
+        for route in source_image_routes
+    )
+    assert {
+        (next(iter(route.methods)), route.path): getattr(
+            route.endpoint, "__leadtrace_action__", None
+        )
+        for route in source_image_routes
+    } == {
+        ("GET", "/api/v2/compounds/{compound_id}/source-images"): Action.READ_DRAFT,
+        ("POST", "/api/v2/compounds/{compound_id}/source-images"): Action.EDIT_DRAFT,
+        ("GET", "/api/v2/structure-source-images/{source_image_id}"): Action.READ_DRAFT,
+        ("PATCH", "/api/v2/structure-source-images/{source_image_id}"): Action.EDIT_DRAFT,
+        ("DELETE", "/api/v2/structure-source-images/{source_image_id}"): Action.EDIT_DRAFT,
+        ("POST", "/api/v2/structure-source-images/{source_image_id}/retry"): Action.EDIT_DRAFT,
+    }
+
+    document_routes = [
+        route
+        for route in client.app.routes
+        if isinstance(route, APIRoute)
+        and route.path == "/api/v2/papers/{paper_id}/source-pdf"
+    ]
+    assert len(document_routes) == 1
+    assert getattr(
+        document_routes[0].endpoint, "__leadtrace_route_access__", None
+    ) is RouteAccess.PERMISSION
+    assert getattr(
+        document_routes[0].endpoint, "__leadtrace_action__", None
+    ) is Action.READ_FULL_PDF
