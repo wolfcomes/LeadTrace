@@ -21,6 +21,7 @@ class Action(StrEnum):
     ROLLBACK_RELEASE = "rollback_release"
     MANAGE_ACCOUNTS = "manage_accounts"
     MANAGE_FILES = "manage_files"
+    MANAGE_PAPER_CATALOG = "manage_paper_catalog"
     EXPORT_UNPUBLISHED = "export_unpublished"
     READ_AUDIT = "read_audit"
 

@@ -11,6 +11,7 @@ from app.assets.router import create_assets_router
 from app.audit.router import create_audit_router
 from app.api.errors import install_api_error_handling
 from app.auth.router import create_auth_router
+from app.catalog.router import create_catalog_router
 from app.config import Settings, get_settings
 from app.database import DatabaseResources, bootstrap_database
 from app.health.router import DatabaseProbe, create_health_router, probe_database
@@ -70,6 +71,7 @@ def create_app(
     application.include_router(create_users_router(runtime_settings))
     application.include_router(create_assets_router())
     application.include_router(create_audit_router())
+    application.include_router(create_catalog_router(runtime_settings))
     return application
 
 

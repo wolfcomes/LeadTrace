@@ -6,11 +6,14 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from fastapi.routing import APIRoute
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.database import DatabaseResources
 from app.main import create_app
+from app.security.permissions import RouteAccess
+from app.security.policies import Action
 from app.users.models import UserRole
 from app.users.service import UserService
 
@@ -186,6 +189,9 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v1/users",
         "/api/v1/assets/{asset_id}",
         "/api/v1/audit/events",
+        "/api/v2/admin/papers",
+        "/api/v2/admin/papers/{paper_id}",
+        "/api/v2/admin/papers/{paper_id}/assign",
     } <= paths
     assert not any(
         path.startswith(prefix)
@@ -199,4 +205,22 @@ def test_retired_scientific_v1_routes_are_not_registered(
             "/api/v1/releases",
             "/api/v1/review",
         )
+    )
+
+    catalog_routes = [
+        route
+        for route in client.app.routes
+        if isinstance(route, APIRoute)
+        and route.path.startswith("/api/v2/admin/papers")
+    ]
+    assert len(catalog_routes) == 3
+    assert all(
+        getattr(route.endpoint, "__leadtrace_route_access__", None)
+        is RouteAccess.PERMISSION
+        for route in catalog_routes
+    )
+    assert all(
+        getattr(route.endpoint, "__leadtrace_action__", None)
+        is Action.MANAGE_PAPER_CATALOG
+        for route in catalog_routes
     )
