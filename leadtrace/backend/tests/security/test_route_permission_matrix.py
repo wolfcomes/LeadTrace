@@ -198,10 +198,26 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v2/workspaces/{workspace_id}/sections/{section}",
         "/api/v2/workspaces/{workspace_id}/compounds",
         "/api/v2/workspaces/{workspace_id}/compounds/order",
+        "/api/v2/workspaces/{workspace_id}/lineages",
+        "/api/v2/workspaces/{workspace_id}/lineages/order",
+        "/api/v2/workspaces/{workspace_id}/evidence",
         "/api/v2/compounds/{compound_id}",
         "/api/v2/compounds/{compound_id}/structure",
         "/api/v2/compounds/{compound_id}/structure/depiction",
         "/api/v2/compounds/{compound_id}/source-images",
+        "/api/v2/compounds/{compound_id}/activities",
+        "/api/v2/compounds/{compound_id}/activities/order",
+        "/api/v2/lineages/{lineage_id}",
+        "/api/v2/lineages/{lineage_id}/members",
+        "/api/v2/lineages/{lineage_id}/members/order",
+        "/api/v2/lineages/{lineage_id}/edges",
+        "/api/v2/lineages/{lineage_id}/edges/order",
+        "/api/v2/lineage-members/{member_id}",
+        "/api/v2/lineage-edges/{edge_id}",
+        "/api/v2/lineage-edges/{edge_id}/evidence-links",
+        "/api/v2/evidence/{evidence_id}",
+        "/api/v2/edge-evidence-links/{link_id}",
+        "/api/v2/activities/{activity_id}",
         "/api/v2/structure-source-images/{source_image_id}",
         "/api/v2/structure-source-images/{source_image_id}/content",
         "/api/v2/structure-source-images/{source_image_id}/retry",
@@ -248,7 +264,7 @@ def test_retired_scientific_v1_routes_are_not_registered(
             or route.path.startswith("/api/v2/workspaces/")
         )
     ]
-    assert len(workspace_routes) == 7
+    assert len(workspace_routes) == 12
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION
@@ -283,6 +299,26 @@ def test_retired_scientific_v1_routes_are_not_registered(
             "PUT",
             "/api/v2/workspaces/{workspace_id}/compounds/order",
         ): Action.EDIT_DRAFT,
+        (
+            "GET",
+            "/api/v2/workspaces/{workspace_id}/lineages",
+        ): Action.READ_DRAFT,
+        (
+            "POST",
+            "/api/v2/workspaces/{workspace_id}/lineages",
+        ): Action.EDIT_DRAFT,
+        (
+            "PUT",
+            "/api/v2/workspaces/{workspace_id}/lineages/order",
+        ): Action.EDIT_DRAFT,
+        (
+            "GET",
+            "/api/v2/workspaces/{workspace_id}/evidence",
+        ): Action.READ_DRAFT,
+        (
+            "POST",
+            "/api/v2/workspaces/{workspace_id}/evidence",
+        ): Action.EDIT_DRAFT,
     }
 
     compound_routes = [
@@ -292,7 +328,7 @@ def test_retired_scientific_v1_routes_are_not_registered(
         and route.path.startswith("/api/v2/compounds/")
         and not route.path.endswith("/source-images")
     ]
-    assert len(compound_routes) == 5
+    assert len(compound_routes) == 8
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION
@@ -318,6 +354,85 @@ def test_retired_scientific_v1_routes_are_not_registered(
             "GET",
             "/api/v2/compounds/{compound_id}/structure/depiction",
         ): Action.READ_DRAFT,
+        (
+            "GET",
+            "/api/v2/compounds/{compound_id}/activities",
+        ): Action.READ_DRAFT,
+        (
+            "POST",
+            "/api/v2/compounds/{compound_id}/activities",
+        ): Action.EDIT_DRAFT,
+        (
+            "PUT",
+            "/api/v2/compounds/{compound_id}/activities/order",
+        ): Action.EDIT_DRAFT,
+    }
+
+    science_record_routes = [
+        route
+        for route in client.app.routes
+        if isinstance(route, APIRoute)
+        and route.path.startswith(
+            (
+                "/api/v2/lineages/",
+                "/api/v2/lineage-members/",
+                "/api/v2/lineage-edges/",
+                "/api/v2/evidence/",
+                "/api/v2/edge-evidence-links/",
+                "/api/v2/activities/",
+            )
+        )
+    ]
+    assert len(science_record_routes) == 20
+    assert all(
+        getattr(route.endpoint, "__leadtrace_route_access__", None)
+        is RouteAccess.PERMISSION
+        for route in science_record_routes
+    )
+    assert {
+        (next(iter(route.methods)), route.path): getattr(
+            route.endpoint, "__leadtrace_action__", None
+        )
+        for route in science_record_routes
+    } == {
+        ("PATCH", "/api/v2/lineages/{lineage_id}"): Action.EDIT_DRAFT,
+        ("DELETE", "/api/v2/lineages/{lineage_id}"): Action.EDIT_DRAFT,
+        ("GET", "/api/v2/lineages/{lineage_id}/members"): Action.READ_DRAFT,
+        ("POST", "/api/v2/lineages/{lineage_id}/members"): Action.EDIT_DRAFT,
+        (
+            "PUT",
+            "/api/v2/lineages/{lineage_id}/members/order",
+        ): Action.EDIT_DRAFT,
+        ("GET", "/api/v2/lineages/{lineage_id}/edges"): Action.READ_DRAFT,
+        ("POST", "/api/v2/lineages/{lineage_id}/edges"): Action.EDIT_DRAFT,
+        (
+            "PUT",
+            "/api/v2/lineages/{lineage_id}/edges/order",
+        ): Action.EDIT_DRAFT,
+        ("PATCH", "/api/v2/lineage-members/{member_id}"): Action.EDIT_DRAFT,
+        ("DELETE", "/api/v2/lineage-members/{member_id}"): Action.EDIT_DRAFT,
+        ("PATCH", "/api/v2/lineage-edges/{edge_id}"): Action.EDIT_DRAFT,
+        ("DELETE", "/api/v2/lineage-edges/{edge_id}"): Action.EDIT_DRAFT,
+        (
+            "GET",
+            "/api/v2/lineage-edges/{edge_id}/evidence-links",
+        ): Action.READ_DRAFT,
+        (
+            "POST",
+            "/api/v2/lineage-edges/{edge_id}/evidence-links",
+        ): Action.EDIT_DRAFT,
+        ("PATCH", "/api/v2/evidence/{evidence_id}"): Action.EDIT_DRAFT,
+        ("DELETE", "/api/v2/evidence/{evidence_id}"): Action.EDIT_DRAFT,
+        (
+            "PATCH",
+            "/api/v2/edge-evidence-links/{link_id}",
+        ): Action.EDIT_DRAFT,
+        (
+            "DELETE",
+            "/api/v2/edge-evidence-links/{link_id}",
+        ): Action.EDIT_DRAFT,
+        ("PATCH", "/api/v2/activities/{activity_id}"): Action.EDIT_DRAFT,
+        ("DELETE", "/api/v2/activities/{activity_id}"): Action.EDIT_DRAFT,
     }
 
     source_image_routes = [

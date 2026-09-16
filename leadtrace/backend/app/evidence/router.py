@@ -3,163 +3,390 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.errors import APIError
+from app.config import Settings
 from app.database import get_db_session
-from app.evidence.models import Evidence
-from app.evidence.service import EvidenceDraft, EvidenceReviewService, EvidenceValidationError, EvidenceVersionConflict
-from app.revisions.models import ObjectRevision
-from app.reviews.models import Changeset, ReviewTask
-from app.security.permissions import RouteAccess, declare_route_access, get_authenticated_principal, require_request_csrf
+from app.evidence.models import EdgeEvidenceLink, Evidence
+from app.evidence.schemas import (
+    DeletedResponse,
+    EvidenceCreateRequest,
+    EvidenceLinkCreateRequest,
+    EvidenceLinkListResponse,
+    EvidenceLinkMutationResponse,
+    EvidenceLinkResponse,
+    EvidenceLinkUpdateRequest,
+    EvidenceListResponse,
+    EvidenceMutationResponse,
+    EvidenceResponse,
+    EvidenceUpdateRequest,
+    WorkspaceVersionRequest,
+)
+from app.evidence.service import (
+    EvidenceConflictError,
+    EvidenceReferencedError,
+    EvidenceService,
+    EvidenceValidationError,
+)
+from app.security.permissions import (
+    RouteAccess,
+    declare_route_access,
+    get_authenticated_principal,
+    require_request_csrf,
+)
 from app.security.policies import Action, Principal
-from app.users.models import UserRole
+from app.structure_images.schemas import BBoxResponse
+from app.workspaces.service import (
+    WorkspaceForbiddenError,
+    WorkspaceNotFoundError,
+    WorkspaceReadOnlyError,
+    WorkspaceVersionConflictError,
+)
 
 
-class EvidenceRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    evidence_key: str = Field(min_length=1, max_length=255)
-    original_text: str = Field(min_length=1, max_length=20000)
-    source_locator: str = Field(min_length=1, max_length=2000)
-    compound_ids: list[UUID] = Field(default_factory=list, max_length=100)
-    reason: str = Field(min_length=1, max_length=500)
-    changeset_id: UUID
-    expected_version: int = Field(ge=1)
-
-
-class EvidenceDeleteRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    reason: str = Field(min_length=1, max_length=500)
-    changeset_id: UUID
-    expected_version: int = Field(ge=1)
-
-
-def _authorize_paper(session: Session, principal: Principal, paper_id: UUID) -> None:
-    if principal.role is UserRole.VISITOR:
-        raise HTTPException(status_code=403, detail="Permission denied")
-    if principal.role is not UserRole.ADMIN:
-        assigned = session.scalar(select(ReviewTask.id).where(ReviewTask.paper_id == paper_id, ReviewTask.assigned_reviewer_id == principal.user_id))
-        if assigned is None:
-            raise HTTPException(status_code=404, detail="Resource not found")
-    session.rollback()
+def _evidence_response(row: Evidence) -> EvidenceResponse:
+    bbox = None
+    if row.x0 is not None:
+        bbox = BBoxResponse(
+            x0=float(row.x0),
+            y0=float(row.y0),
+            x1=float(row.x1),
+            y1=float(row.y1),
+        )
+    return EvidenceResponse(
+        id=row.id,
+        paper_id=row.paper_id,
+        workspace_id=row.workspace_id,
+        kind=row.kind,
+        source_sha256=row.source_sha256,
+        page_number=row.page_number,
+        bbox=bbox,
+        quoted_text=row.quoted_text,
+        caption=row.caption,
+        crop_asset_id=row.crop_asset_id,
+        reviewer_note=row.reviewer_note,
+    )
 
 
-def _require_editor(principal: Principal = Depends(get_authenticated_principal)) -> Principal:
-    if principal.role is UserRole.VISITOR:
-        raise HTTPException(status_code=403, detail="Permission denied")
-    return principal
+def _link_response(row: EdgeEvidenceLink) -> EvidenceLinkResponse:
+    return EvidenceLinkResponse(
+        id=row.id,
+        paper_id=row.paper_id,
+        workspace_id=row.workspace_id,
+        edge_id=row.edge_id,
+        evidence_id=row.evidence_id,
+        role=row.role,
+    )
 
 
-setattr(_require_editor, "__leadtrace_action__", Action.EDIT_DRAFT)
+def _workspace_error(error: Exception) -> APIError | HTTPException:
+    if isinstance(error, WorkspaceNotFoundError):
+        return APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+    if isinstance(error, WorkspaceForbiddenError):
+        return HTTPException(status_code=403, detail="Permission denied")
+    if isinstance(error, WorkspaceVersionConflictError):
+        return APIError(
+            409,
+            "WORKSPACE_VERSION_CONFLICT",
+            "Workspace version changed",
+            details={
+                "expected_workspace_version": error.expected_version,
+                "current_workspace_version": error.current_version,
+            },
+        )
+    if isinstance(error, WorkspaceReadOnlyError):
+        return APIError(
+            409,
+            "WORKSPACE_READ_ONLY",
+            "Workspace is read-only",
+            details={
+                "workspace_state": error.state.value,
+                "current_workspace_version": error.current_version,
+            },
+        )
+    raise error
 
 
-def _error(error: Exception) -> HTTPException:
-    if isinstance(error, EvidenceVersionConflict):
-        return APIError(409, "REVISION_CONFLICT", "Evidence draft changed concurrently", details={"expected_version": error.expected_version, "current_version": error.current_version})
+def _domain_error(error: Exception) -> APIError:
     if isinstance(error, EvidenceValidationError):
-        if "not found" in str(error).casefold():
-            return HTTPException(status_code=404, detail="Resource not found")
-        return HTTPException(status_code=422, detail=str(error))
-    if isinstance(error, ValueError):
-        return HTTPException(status_code=422, detail=str(error))
-    if isinstance(error, IntegrityError):
-        return APIError(409, "SCIENCE_CONFLICT", "Evidence conflicts with an existing record")
-    return HTTPException(status_code=400, detail="The request could not be completed")
+        return APIError(422, "EVIDENCE_INVALID", str(error))
+    if isinstance(error, EvidenceReferencedError):
+        return APIError(
+            409,
+            "EVIDENCE_REFERENCED",
+            "Evidence is referenced by scientific records",
+            details={
+                "edge_references": error.edge_references,
+                "activity_references": error.activity_references,
+            },
+        )
+    if isinstance(error, (EvidenceConflictError, IntegrityError)):
+        return APIError(
+            409,
+            "EVIDENCE_CONFLICT",
+            "Evidence conflicts with an existing record",
+        )
+    raise error
 
 
-def _payload(evidence: Evidence, revision: ObjectRevision, changeset_version: int = 0) -> dict[str, object]:
-    return {
-        "id": str(evidence.id),
-        "paper_id": str(evidence.paper_id),
-        "evidence_key": evidence.evidence_key,
-        "revision_id": str(revision.id),
-        "revision_number": revision.revision_number,
-        "changeset_version": changeset_version,
-        "snapshot": revision.snapshot,
-        "evidence_state": revision.evidence_state.value if revision.evidence_state else None,
-        "workflow_state": revision.workflow_state.value,
-        "is_tombstone": revision.is_tombstone,
-    }
+_WORKSPACE_ERRORS = (
+    WorkspaceForbiddenError,
+    WorkspaceNotFoundError,
+    WorkspaceReadOnlyError,
+    WorkspaceVersionConflictError,
+)
+_DOMAIN_ERRORS = (
+    EvidenceValidationError,
+    EvidenceReferencedError,
+    EvidenceConflictError,
+    IntegrityError,
+)
 
 
-def _draft(payload: EvidenceRequest) -> EvidenceDraft:
-    return EvidenceDraft(payload.evidence_key, payload.original_text, payload.source_locator, tuple(payload.compound_ids))
+def create_evidence_router(settings: Settings) -> APIRouter:
+    router = APIRouter(tags=["evidence"])
+    service = EvidenceService()
+    secret = settings.session_secret.get_secret_value()
 
-
-def create_evidence_router(session_secret: str) -> APIRouter:
-    router = APIRouter(prefix="/api/v1/papers/{paper_id}/evidence", tags=["evidence"])
-    service = EvidenceReviewService()
-
-    @router.get("")
-    @declare_route_access(RouteAccess.AUTHENTICATED)
-    def list_evidence(paper_id: UUID, session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal)) -> list[dict[str, object]]:
-        _authorize_paper(session, principal, paper_id)
-        records = session.scalars(select(Evidence).where(Evidence.paper_id == paper_id).order_by(Evidence.evidence_key))
-        result = []
-        for evidence in records:
-            revision = session.scalar(select(ObjectRevision).where(ObjectRevision.object_id == evidence.id).order_by(ObjectRevision.revision_number.desc()).limit(1))
-            if revision is not None:
-                result.append(_payload(evidence, revision))
-        return result
-
-    @router.post("", status_code=201)
-    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
-    def create_evidence(paper_id: UUID, payload: EvidenceRequest, csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"), session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal), _permission: Principal = Depends(_require_editor)) -> dict[str, object]:
-        _authorize_paper(session, principal, paper_id)
-        require_request_csrf(principal, csrf_token, session_secret)
+    @router.get(
+        "/api/v2/workspaces/{workspace_id}/evidence",
+        response_model=EvidenceListResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.READ_DRAFT)
+    def list_evidence(
+        workspace_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> EvidenceListResponse:
         try:
             with session.begin():
-                evidence, revision = service.create_evidence(session, paper_id=paper_id, actor_id=principal.user_id, changeset_id=payload.changeset_id, expected_version=payload.expected_version, draft=_draft(payload), reason=payload.reason)
-                changeset = session.get(Changeset, payload.changeset_id)
-                if changeset is None:
-                    raise EvidenceValidationError("Changeset not found")
-                return _payload(evidence, revision, changeset.version)
-        except Exception as error:
-            raise _error(error) from error
+                result = service.list_evidence(
+                    session, workspace_id=workspace_id, actor=principal
+                )
+                items = [_evidence_response(row) for row in result.evidence]
+                return EvidenceListResponse(
+                    workspace_id=workspace_id,
+                    workspace_version=result.workspace.version,
+                    items=items,
+                    total=len(items),
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
 
-    @router.patch("/{evidence_id}")
+    @router.post(
+        "/api/v2/workspaces/{workspace_id}/evidence",
+        response_model=EvidenceMutationResponse,
+        status_code=201,
+    )
     @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
-    def update_evidence(paper_id: UUID, evidence_id: UUID, payload: EvidenceRequest, csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"), session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal), _permission: Principal = Depends(_require_editor)) -> dict[str, object]:
-        _authorize_paper(session, principal, paper_id)
-        require_request_csrf(principal, csrf_token, session_secret)
+    def create_evidence(
+        workspace_id: UUID,
+        payload: EvidenceCreateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> EvidenceMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
         try:
-            evidence = session.get(Evidence, evidence_id)
-            if evidence is None or evidence.paper_id != paper_id:
-                raise EvidenceValidationError("Evidence not found")
-            session.rollback()
             with session.begin():
-                revision = service.update_evidence(session, evidence_id=evidence_id, actor_id=principal.user_id, changeset_id=payload.changeset_id, expected_version=payload.expected_version, draft=_draft(payload), reason=payload.reason)
-                evidence = session.get(Evidence, evidence_id)
-                changeset = session.get(Changeset, payload.changeset_id)
-                if evidence is None or changeset is None:
-                    raise EvidenceValidationError("Evidence not found")
-                return _payload(evidence, revision, changeset.version)
-        except Exception as error:
-            raise _error(error) from error
+                result = service.create_evidence(
+                    session,
+                    workspace_id=workspace_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    kind=payload.kind,
+                    source_sha256=payload.source_sha256,
+                    page_number=payload.page_number,
+                    bbox=payload.bbox,
+                    quoted_text=payload.quoted_text,
+                    caption=payload.caption,
+                    reviewer_note=payload.reviewer_note,
+                )
+                return EvidenceMutationResponse(
+                    evidence=_evidence_response(result.evidence),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
 
-    @router.delete("/{evidence_id}")
+    @router.patch(
+        "/api/v2/evidence/{evidence_id}", response_model=EvidenceMutationResponse
+    )
     @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
-    def delete_evidence(paper_id: UUID, evidence_id: UUID, payload: EvidenceDeleteRequest, csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"), session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal), _permission: Principal = Depends(_require_editor)) -> dict[str, object]:
-        _authorize_paper(session, principal, paper_id)
-        require_request_csrf(principal, csrf_token, session_secret)
+    def update_evidence(
+        evidence_id: UUID,
+        payload: EvidenceUpdateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> EvidenceMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
         try:
-            evidence = session.get(Evidence, evidence_id)
-            if evidence is None or evidence.paper_id != paper_id:
-                raise EvidenceValidationError("Evidence not found")
-            session.rollback()
             with session.begin():
-                revision = service.delete_evidence(session, evidence_id=evidence_id, actor_id=principal.user_id, changeset_id=payload.changeset_id, expected_version=payload.expected_version, reason=payload.reason)
-                evidence = session.get(Evidence, evidence_id)
-                changeset = session.get(Changeset, payload.changeset_id)
-                if evidence is None or changeset is None:
-                    raise EvidenceValidationError("Evidence not found")
-                return _payload(evidence, revision, changeset.version)
-        except Exception as error:
-            raise _error(error) from error
+                result = service.update_evidence(
+                    session,
+                    evidence_id=evidence_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    updates=payload.updates(),
+                )
+                return EvidenceMutationResponse(
+                    evidence=_evidence_response(result.evidence),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.delete(
+        "/api/v2/evidence/{evidence_id}", response_model=DeletedResponse
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def delete_evidence(
+        evidence_id: UUID,
+        payload: WorkspaceVersionRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> DeletedResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                workspace = service.delete_evidence(
+                    session,
+                    evidence_id=evidence_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                )
+                return DeletedResponse(
+                    deleted_id=evidence_id, workspace_version=workspace.version
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.get(
+        "/api/v2/lineage-edges/{edge_id}/evidence-links",
+        response_model=EvidenceLinkListResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.READ_DRAFT)
+    def list_links(
+        edge_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> EvidenceLinkListResponse:
+        try:
+            with session.begin():
+                result = service.list_links(session, edge_id=edge_id, actor=principal)
+                items = [_link_response(row) for row in result.links]
+                return EvidenceLinkListResponse(
+                    edge_id=edge_id,
+                    workspace_version=result.workspace.version,
+                    items=items,
+                    total=len(items),
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+
+    @router.post(
+        "/api/v2/lineage-edges/{edge_id}/evidence-links",
+        response_model=EvidenceLinkMutationResponse,
+        status_code=201,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def create_link(
+        edge_id: UUID,
+        payload: EvidenceLinkCreateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> EvidenceLinkMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                result = service.create_link(
+                    session,
+                    edge_id=edge_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    evidence_id=payload.evidence_id,
+                    role=payload.role,
+                )
+                return EvidenceLinkMutationResponse(
+                    link=_link_response(result.link),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.patch(
+        "/api/v2/edge-evidence-links/{link_id}",
+        response_model=EvidenceLinkMutationResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def update_link(
+        link_id: UUID,
+        payload: EvidenceLinkUpdateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> EvidenceLinkMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                result = service.update_link(
+                    session,
+                    link_id=link_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    role=payload.role,
+                )
+                return EvidenceLinkMutationResponse(
+                    link=_link_response(result.link),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.delete(
+        "/api/v2/edge-evidence-links/{link_id}", response_model=DeletedResponse
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def delete_link(
+        link_id: UUID,
+        payload: WorkspaceVersionRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> DeletedResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                workspace = service.delete_link(
+                    session,
+                    link_id=link_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                )
+                return DeletedResponse(
+                    deleted_id=link_id, workspace_version=workspace.version
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
 
     return router
+
+
+__all__ = ["create_evidence_router"]

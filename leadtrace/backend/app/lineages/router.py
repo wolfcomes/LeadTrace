@@ -3,220 +3,623 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.errors import APIError
+from app.config import Settings
 from app.database import get_db_session
-from app.lineages.models import Lineage, LineageEdge
-from app.lineages.service import LineageReviewService, LineageValidationError, LineageVersionConflict, PairReadinessService
-from app.revisions.models import ObjectRevision
-from app.reviews.models import Changeset, ReviewTask
-from app.security.permissions import RouteAccess, declare_route_access, get_authenticated_principal, require_request_csrf
+from app.lineages.models import Lineage, LineageEdge, LineageMember
+from app.lineages.schemas import (
+    DeletedResponse,
+    LineageCreateRequest,
+    LineageEdgeCreateRequest,
+    LineageEdgeListResponse,
+    LineageEdgeMutationResponse,
+    LineageEdgeReorderRequest,
+    LineageEdgeResponse,
+    LineageEdgeUpdateRequest,
+    LineageListResponse,
+    LineageMemberCreateRequest,
+    LineageMemberListResponse,
+    LineageMemberMutationResponse,
+    LineageMemberReorderRequest,
+    LineageMemberResponse,
+    LineageMemberUpdateRequest,
+    LineageMutationResponse,
+    LineageReorderRequest,
+    LineageResponse,
+    LineageUpdateRequest,
+    WorkspaceVersionRequest,
+)
+from app.lineages.service import (
+    LineageConflictError,
+    LineageMemberReferencedError,
+    LineageOrderError,
+    LineageRecord,
+    LineageService,
+    LineageValidationError,
+)
+from app.security.permissions import (
+    RouteAccess,
+    declare_route_access,
+    get_authenticated_principal,
+    require_request_csrf,
+)
 from app.security.policies import Action, Principal
-from app.users.models import UserRole
+from app.workspaces.service import (
+    WorkspaceForbiddenError,
+    WorkspaceNotFoundError,
+    WorkspaceReadOnlyError,
+    WorkspaceVersionConflictError,
+)
 
 
-class LineageRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    lineage_key: str = Field(min_length=1, max_length=255)
-    reason: str = Field(min_length=1, max_length=500)
-    changeset_id: UUID
-    expected_version: int = Field(ge=1)
-
-
-class EdgeRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    edge_key: str = Field(min_length=1, max_length=255)
-    parent_compound_id: UUID | None = None
-    derived_compound_id: UUID
-    relation_type: str = Field(min_length=1, max_length=120)
-    relation_status: str = Field(min_length=1, max_length=80)
-    evidence_ids: list[UUID] = Field(default_factory=list, max_length=100)
-    reason: str = Field(min_length=1, max_length=500)
-    changeset_id: UUID
-    expected_version: int = Field(ge=1)
+def _member_response(row: LineageMember) -> LineageMemberResponse:
+    return LineageMemberResponse(
+        id=row.id,
+        paper_id=row.paper_id,
+        workspace_id=row.workspace_id,
+        lineage_id=row.lineage_id,
+        compound_id=row.compound_id,
+        role=row.role,
+        sort_order=row.sort_order,
+    )
 
 
-class EdgeUpdateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    parent_compound_id: UUID | None = None
-    derived_compound_id: UUID
-    relation_type: str = Field(min_length=1, max_length=120)
-    relation_status: str = Field(min_length=1, max_length=80)
-    evidence_ids: list[UUID] = Field(default_factory=list, max_length=100)
-    reason: str = Field(min_length=1, max_length=500)
-    changeset_id: UUID
-    expected_version: int = Field(ge=1)
-
-
-class DeleteRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    reason: str = Field(min_length=1, max_length=500)
-    changeset_id: UUID
-    expected_version: int = Field(ge=1)
+def _edge_response(row: LineageEdge) -> LineageEdgeResponse:
+    return LineageEdgeResponse(
+        id=row.id,
+        paper_id=row.paper_id,
+        workspace_id=row.workspace_id,
+        lineage_id=row.lineage_id,
+        parent_compound_id=row.parent_compound_id,
+        child_compound_id=row.child_compound_id,
+        relation_type=row.relation_type,
+        modification_summary=row.modification_summary,
+        review_status=row.review_status,
+        sort_order=row.sort_order,
+    )
 
 
-def _authorize_paper(session: Session, principal: Principal, paper_id: UUID) -> None:
-    if principal.role is UserRole.VISITOR:
-        raise HTTPException(status_code=403, detail="Permission denied")
-    if principal.role is not UserRole.ADMIN:
-        assigned = session.scalar(select(ReviewTask.id).where(ReviewTask.paper_id == paper_id, ReviewTask.assigned_reviewer_id == principal.user_id))
-        if assigned is None:
-            raise HTTPException(status_code=404, detail="Resource not found")
-    session.rollback()
+def _lineage_response(record: LineageRecord) -> LineageResponse:
+    row: Lineage = record.lineage
+    return LineageResponse(
+        id=row.id,
+        paper_id=row.paper_id,
+        workspace_id=row.workspace_id,
+        lineage_label=row.lineage_label,
+        description=row.description,
+        sort_order=row.sort_order,
+        members=[_member_response(member) for member in record.members],
+        edges=[_edge_response(edge) for edge in record.edges],
+    )
 
 
-def _require_editor(principal: Principal = Depends(get_authenticated_principal)) -> Principal:
-    if principal.role is UserRole.VISITOR:
-        raise HTTPException(status_code=403, detail="Permission denied")
-    return principal
+def _workspace_error(error: Exception) -> APIError | HTTPException:
+    if isinstance(error, WorkspaceNotFoundError):
+        return APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+    if isinstance(error, WorkspaceForbiddenError):
+        return HTTPException(status_code=403, detail="Permission denied")
+    if isinstance(error, WorkspaceVersionConflictError):
+        return APIError(
+            409,
+            "WORKSPACE_VERSION_CONFLICT",
+            "Workspace version changed",
+            details={
+                "expected_workspace_version": error.expected_version,
+                "current_workspace_version": error.current_version,
+            },
+        )
+    if isinstance(error, WorkspaceReadOnlyError):
+        return APIError(
+            409,
+            "WORKSPACE_READ_ONLY",
+            "Workspace is read-only",
+            details={
+                "workspace_state": error.state.value,
+                "current_workspace_version": error.current_version,
+            },
+        )
+    raise error
 
 
-setattr(_require_editor, "__leadtrace_action__", Action.EDIT_DRAFT)
-
-
-def _error(error: Exception) -> HTTPException:
-    if isinstance(error, LineageVersionConflict):
-        return APIError(409, "REVISION_CONFLICT", "Lineage draft changed concurrently", details={"expected_version": error.expected_version, "current_version": error.current_version})
+def _domain_error(error: Exception) -> APIError:
+    if isinstance(error, LineageOrderError):
+        return APIError(422, "LINEAGE_ORDER_INVALID", str(error))
     if isinstance(error, LineageValidationError):
-        if "not found" in str(error).casefold():
-            return HTTPException(status_code=404, detail="Resource not found")
-        return HTTPException(status_code=422, detail=str(error))
-    if isinstance(error, ValueError):
-        return HTTPException(status_code=422, detail=str(error))
-    if isinstance(error, IntegrityError):
-        return APIError(409, "SCIENCE_CONFLICT", "Lineage conflicts with an existing record")
-    return HTTPException(status_code=400, detail="The request could not be completed")
+        return APIError(422, "LINEAGE_INVALID", str(error))
+    if isinstance(error, LineageMemberReferencedError):
+        return APIError(
+            409,
+            "LINEAGE_MEMBER_REFERENCED",
+            "Lineage member is referenced by Edges",
+            details={"edge_references": error.edge_references},
+        )
+    if isinstance(error, (LineageConflictError, IntegrityError)):
+        return APIError(
+            409,
+            "LINEAGE_CONFLICT",
+            "Lineage record conflicts with an existing record",
+        )
+    raise error
 
 
-def _revision(session: Session, object_id: UUID) -> ObjectRevision | None:
-    return session.scalar(select(ObjectRevision).where(ObjectRevision.object_id == object_id).order_by(ObjectRevision.revision_number.desc()).limit(1))
+_WORKSPACE_ERRORS = (
+    WorkspaceForbiddenError,
+    WorkspaceNotFoundError,
+    WorkspaceReadOnlyError,
+    WorkspaceVersionConflictError,
+)
+_DOMAIN_ERRORS = (
+    LineageValidationError,
+    LineageConflictError,
+    LineageMemberReferencedError,
+    IntegrityError,
+)
 
 
-def _lineage_payload(lineage: Lineage, revision: ObjectRevision, changeset_version: int = 0) -> dict[str, object]:
-    return {"id": str(lineage.id), "paper_id": str(lineage.paper_id), "lineage_key": lineage.lineage_key, "revision_id": str(revision.id), "revision_number": revision.revision_number, "changeset_version": changeset_version, "snapshot": revision.snapshot, "workflow_state": revision.workflow_state.value, "is_tombstone": revision.is_tombstone}
+def create_lineages_router(settings: Settings) -> APIRouter:
+    router = APIRouter(tags=["lineages"])
+    service = LineageService()
+    secret = settings.session_secret.get_secret_value()
 
-
-def _edge_payload(edge: LineageEdge, revision: ObjectRevision, changeset_version: int = 0) -> dict[str, object]:
-    return {"id": str(edge.id), "paper_id": str(edge.paper_id), "lineage_id": str(edge.lineage_id), "edge_key": edge.edge_key, "parent_compound_id": str(edge.parent_compound_id) if edge.parent_compound_id else None, "derived_compound_id": str(edge.derived_compound_id), "revision_id": str(revision.id), "revision_number": revision.revision_number, "changeset_version": changeset_version, "snapshot": revision.snapshot, "relation_type": revision.relation_type, "relation_status": revision.relation_status, "workflow_state": revision.workflow_state.value, "is_tombstone": revision.is_tombstone}
-
-
-def create_lineages_router(session_secret: str) -> APIRouter:
-    router = APIRouter(prefix="/api/v1/papers/{paper_id}", tags=["lineages"])
-    service = LineageReviewService()
-
-    @router.get("/lineages")
-    @declare_route_access(RouteAccess.AUTHENTICATED)
-    def list_lineages(paper_id: UUID, session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal)) -> list[dict[str, object]]:
-        _authorize_paper(session, principal, paper_id)
-        lineages = session.scalars(select(Lineage).where(Lineage.paper_id == paper_id).order_by(Lineage.lineage_key))
-        result = []
-        for lineage in lineages:
-            revision = _revision(session, lineage.id)
-            if revision is not None:
-                result.append(_lineage_payload(lineage, revision))
-        return result
-
-    @router.post("/lineages", status_code=201)
-    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
-    def create_lineage(paper_id: UUID, payload: LineageRequest, csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"), session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal), _permission: Principal = Depends(_require_editor)) -> dict[str, object]:
-        _authorize_paper(session, principal, paper_id)
-        require_request_csrf(principal, csrf_token, session_secret)
+    @router.get(
+        "/api/v2/workspaces/{workspace_id}/lineages",
+        response_model=LineageListResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.READ_DRAFT)
+    def list_lineages(
+        workspace_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageListResponse:
         try:
             with session.begin():
-                lineage, revision = service.create_lineage(session, paper_id=paper_id, actor_id=principal.user_id, changeset_id=payload.changeset_id, expected_version=payload.expected_version, lineage_key=payload.lineage_key, reason=payload.reason)
-                changeset = session.get(Changeset, payload.changeset_id)
-                if changeset is None:
-                    raise LineageValidationError("Changeset not found")
-                return _lineage_payload(lineage, revision, changeset.version)
-        except Exception as error:
-            raise _error(error) from error
+                result = service.list_lineages(
+                    session, workspace_id=workspace_id, actor=principal
+                )
+                items = [_lineage_response(record) for record in result.records]
+                return LineageListResponse(
+                    workspace_id=workspace_id,
+                    workspace_version=result.workspace.version,
+                    items=items,
+                    total=len(items),
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
 
-    @router.get("/lineages/{lineage_id}/edges")
-    @declare_route_access(RouteAccess.AUTHENTICATED)
-    def list_edges(paper_id: UUID, lineage_id: UUID, session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal)) -> list[dict[str, object]]:
-        _authorize_paper(session, principal, paper_id)
-        lineage = session.get(Lineage, lineage_id)
-        if lineage is None or lineage.paper_id != paper_id:
-            raise HTTPException(status_code=404, detail="Resource not found")
-        edges = session.scalars(select(LineageEdge).where(LineageEdge.paper_id == paper_id, LineageEdge.lineage_id == lineage_id).order_by(LineageEdge.edge_key))
-        result = []
-        for edge in edges:
-            revision = _revision(session, edge.id)
-            if revision is not None:
-                result.append(_edge_payload(edge, revision))
-        return result
-
-    @router.post("/lineages/{lineage_id}/edges", status_code=201)
+    @router.post(
+        "/api/v2/workspaces/{workspace_id}/lineages",
+        response_model=LineageMutationResponse,
+        status_code=201,
+    )
     @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
-    def create_edge(paper_id: UUID, lineage_id: UUID, payload: EdgeRequest, csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"), session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal), _permission: Principal = Depends(_require_editor)) -> dict[str, object]:
-        _authorize_paper(session, principal, paper_id)
-        require_request_csrf(principal, csrf_token, session_secret)
+    def create_lineage(
+        workspace_id: UUID,
+        payload: LineageCreateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
         try:
             with session.begin():
-                edge, revision = service.create_edge(session, paper_id=paper_id, lineage_id=lineage_id, actor_id=principal.user_id, changeset_id=payload.changeset_id, expected_version=payload.expected_version, edge_key=payload.edge_key, parent_compound_id=payload.parent_compound_id, derived_compound_id=payload.derived_compound_id, relation_type=payload.relation_type, relation_status=payload.relation_status, evidence_ids=tuple(payload.evidence_ids), reason=payload.reason)
-                changeset = session.get(Changeset, payload.changeset_id)
-                if changeset is None:
-                    raise LineageValidationError("Changeset not found")
-                return _edge_payload(edge, revision, changeset.version)
-        except Exception as error:
-            raise _error(error) from error
+                result = service.create_lineage(
+                    session,
+                    workspace_id=workspace_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    lineage_label=payload.lineage_label,
+                    description=payload.description,
+                )
+                return LineageMutationResponse(
+                    lineage=_lineage_response(result.record),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
 
-    @router.patch("/lineage-edges/{edge_id}")
+    @router.patch(
+        "/api/v2/lineages/{lineage_id}", response_model=LineageMutationResponse
+    )
     @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
-    def update_edge(paper_id: UUID, edge_id: UUID, payload: EdgeUpdateRequest, csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"), session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal), _permission: Principal = Depends(_require_editor)) -> dict[str, object]:
-        _authorize_paper(session, principal, paper_id)
-        require_request_csrf(principal, csrf_token, session_secret)
+    def update_lineage(
+        lineage_id: UUID,
+        payload: LineageUpdateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
         try:
-            edge = session.get(LineageEdge, edge_id)
-            if edge is None or edge.paper_id != paper_id:
-                raise LineageValidationError("Lineage edge not found")
-            session.rollback()
             with session.begin():
-                revision = service.update_edge(session, edge_id=edge_id, actor_id=principal.user_id, changeset_id=payload.changeset_id, expected_version=payload.expected_version, parent_compound_id=payload.parent_compound_id, derived_compound_id=payload.derived_compound_id, relation_type=payload.relation_type, relation_status=payload.relation_status, evidence_ids=tuple(payload.evidence_ids), reason=payload.reason)
-                edge = session.get(LineageEdge, edge_id)
-                changeset = session.get(Changeset, payload.changeset_id)
-                if edge is None or changeset is None:
-                    raise LineageValidationError("Lineage edge not found")
-                return _edge_payload(edge, revision, changeset.version)
-        except Exception as error:
-            raise _error(error) from error
+                result = service.update_lineage(
+                    session,
+                    lineage_id=lineage_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    updates=payload.updates(),
+                )
+                return LineageMutationResponse(
+                    lineage=_lineage_response(result.record),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
 
-    @router.delete("/lineage-edges/{edge_id}")
+    @router.put(
+        "/api/v2/workspaces/{workspace_id}/lineages/order",
+        response_model=LineageListResponse,
+    )
     @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
-    def delete_edge(paper_id: UUID, edge_id: UUID, payload: DeleteRequest, csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"), session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal), _permission: Principal = Depends(_require_editor)) -> dict[str, object]:
-        _authorize_paper(session, principal, paper_id)
-        require_request_csrf(principal, csrf_token, session_secret)
+    def reorder_lineages(
+        workspace_id: UUID,
+        payload: LineageReorderRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageListResponse:
+        require_request_csrf(principal, csrf_token, secret)
         try:
-            edge = session.get(LineageEdge, edge_id)
-            if edge is None or edge.paper_id != paper_id:
-                raise LineageValidationError("Lineage edge not found")
-            session.rollback()
             with session.begin():
-                revision = service.delete_edge(session, edge_id=edge_id, actor_id=principal.user_id, changeset_id=payload.changeset_id, expected_version=payload.expected_version, reason=payload.reason)
-                edge = session.get(LineageEdge, edge_id)
-                changeset = session.get(Changeset, payload.changeset_id)
-                if edge is None or changeset is None:
-                    raise LineageValidationError("Lineage edge not found")
-                return _edge_payload(edge, revision, changeset.version)
-        except Exception as error:
-            raise _error(error) from error
+                result = service.reorder_lineages(
+                    session,
+                    workspace_id=workspace_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    lineage_ids=payload.lineage_ids,
+                )
+                items = [_lineage_response(record) for record in result.records]
+                return LineageListResponse(
+                    workspace_id=workspace_id,
+                    workspace_version=result.workspace.version,
+                    items=items,
+                    total=len(items),
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
 
-    @router.get("/lineage-edges/{edge_id}/pair-readiness")
-    @declare_route_access(RouteAccess.AUTHENTICATED)
-    def pair_readiness(paper_id: UUID, edge_id: UUID, session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal)) -> dict[str, object]:
-        _authorize_paper(session, principal, paper_id)
-        edge = session.get(LineageEdge, edge_id)
-        if edge is None or edge.paper_id != paper_id:
-            raise HTTPException(status_code=404, detail="Resource not found")
-        readiness = PairReadinessService.from_database(session, edge_id)
-        return {"edge_id": str(edge_id), "eligible": readiness.eligible, "blocking_codes": list(readiness.blocking_codes)}
+    @router.delete(
+        "/api/v2/lineages/{lineage_id}", response_model=DeletedResponse
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def delete_lineage(
+        lineage_id: UUID,
+        payload: WorkspaceVersionRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> DeletedResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                workspace = service.delete_lineage(
+                    session,
+                    lineage_id=lineage_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                )
+                return DeletedResponse(
+                    deleted_id=lineage_id, workspace_version=workspace.version
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.get(
+        "/api/v2/lineages/{lineage_id}/members",
+        response_model=LineageMemberListResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.READ_DRAFT)
+    def list_members(
+        lineage_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageMemberListResponse:
+        try:
+            with session.begin():
+                result = service.list_members(
+                    session, lineage_id=lineage_id, actor=principal
+                )
+                items = [_member_response(row) for row in result.members]
+                return LineageMemberListResponse(
+                    lineage_id=lineage_id,
+                    workspace_version=result.workspace.version,
+                    items=items,
+                    total=len(items),
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+
+    @router.post(
+        "/api/v2/lineages/{lineage_id}/members",
+        response_model=LineageMemberMutationResponse,
+        status_code=201,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def add_member(
+        lineage_id: UUID,
+        payload: LineageMemberCreateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageMemberMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                result = service.add_member(
+                    session,
+                    lineage_id=lineage_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    compound_id=payload.compound_id,
+                    role=payload.role,
+                )
+                return LineageMemberMutationResponse(
+                    member=_member_response(result.member),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.patch(
+        "/api/v2/lineage-members/{member_id}",
+        response_model=LineageMemberMutationResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def update_member(
+        member_id: UUID,
+        payload: LineageMemberUpdateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageMemberMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                result = service.update_member(
+                    session,
+                    member_id=member_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    role=payload.role,
+                )
+                return LineageMemberMutationResponse(
+                    member=_member_response(result.member),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.put(
+        "/api/v2/lineages/{lineage_id}/members/order",
+        response_model=LineageMemberListResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def reorder_members(
+        lineage_id: UUID,
+        payload: LineageMemberReorderRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageMemberListResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                result = service.reorder_members(
+                    session,
+                    lineage_id=lineage_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    member_ids=payload.member_ids,
+                )
+                items = [_member_response(row) for row in result.members]
+                return LineageMemberListResponse(
+                    lineage_id=lineage_id,
+                    workspace_version=result.workspace.version,
+                    items=items,
+                    total=len(items),
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.delete(
+        "/api/v2/lineage-members/{member_id}", response_model=DeletedResponse
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def delete_member(
+        member_id: UUID,
+        payload: WorkspaceVersionRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> DeletedResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                workspace = service.delete_member(
+                    session,
+                    member_id=member_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                )
+                return DeletedResponse(
+                    deleted_id=member_id, workspace_version=workspace.version
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.get(
+        "/api/v2/lineages/{lineage_id}/edges",
+        response_model=LineageEdgeListResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.READ_DRAFT)
+    def list_edges(
+        lineage_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageEdgeListResponse:
+        try:
+            with session.begin():
+                result = service.list_edges(
+                    session, lineage_id=lineage_id, actor=principal
+                )
+                items = [_edge_response(row) for row in result.edges]
+                return LineageEdgeListResponse(
+                    lineage_id=lineage_id,
+                    workspace_version=result.workspace.version,
+                    items=items,
+                    total=len(items),
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+
+    @router.post(
+        "/api/v2/lineages/{lineage_id}/edges",
+        response_model=LineageEdgeMutationResponse,
+        status_code=201,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def create_edge(
+        lineage_id: UUID,
+        payload: LineageEdgeCreateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageEdgeMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                result = service.create_edge(
+                    session,
+                    lineage_id=lineage_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    parent_compound_id=payload.parent_compound_id,
+                    child_compound_id=payload.child_compound_id,
+                    relation_type=payload.relation_type,
+                    modification_summary=payload.modification_summary,
+                    review_status=payload.review_status,
+                )
+                return LineageEdgeMutationResponse(
+                    edge=_edge_response(result.edge),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.patch(
+        "/api/v2/lineage-edges/{edge_id}",
+        response_model=LineageEdgeMutationResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def update_edge(
+        edge_id: UUID,
+        payload: LineageEdgeUpdateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageEdgeMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                result = service.update_edge(
+                    session,
+                    edge_id=edge_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    updates=payload.updates(),
+                )
+                return LineageEdgeMutationResponse(
+                    edge=_edge_response(result.edge),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.put(
+        "/api/v2/lineages/{lineage_id}/edges/order",
+        response_model=LineageEdgeListResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def reorder_edges(
+        lineage_id: UUID,
+        payload: LineageEdgeReorderRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageEdgeListResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                result = service.reorder_edges(
+                    session,
+                    lineage_id=lineage_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    edge_ids=payload.edge_ids,
+                )
+                items = [_edge_response(row) for row in result.edges]
+                return LineageEdgeListResponse(
+                    lineage_id=lineage_id,
+                    workspace_version=result.workspace.version,
+                    items=items,
+                    total=len(items),
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.delete(
+        "/api/v2/lineage-edges/{edge_id}", response_model=DeletedResponse
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def delete_edge(
+        edge_id: UUID,
+        payload: WorkspaceVersionRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> DeletedResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                workspace = service.delete_edge(
+                    session,
+                    edge_id=edge_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                )
+                return DeletedResponse(
+                    deleted_id=edge_id, workspace_version=workspace.version
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
 
     return router
+
+
+__all__ = ["create_lineages_router"]

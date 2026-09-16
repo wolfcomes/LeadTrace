@@ -3,169 +3,275 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.activities.models import Activity
-from app.activities.service import ActivityDraft, ActivityReviewService, ActivityValidationError, ActivityVersionConflict
+from app.activities.schemas import (
+    ActivityCreateRequest,
+    ActivityDeleteResponse,
+    ActivityListResponse,
+    ActivityMutationResponse,
+    ActivityReorderRequest,
+    ActivityResponse,
+    ActivityUpdateRequest,
+    WorkspaceVersionRequest,
+)
+from app.activities.service import (
+    ActivityOrderError,
+    ActivityService,
+    ActivityValidationError,
+)
 from app.api.errors import APIError
+from app.config import Settings
 from app.database import get_db_session
-from app.revisions.models import ObjectRevision
-from app.reviews.models import Changeset, ReviewTask
-from app.security.permissions import RouteAccess, declare_route_access, get_authenticated_principal, require_request_csrf
+from app.security.permissions import (
+    RouteAccess,
+    declare_route_access,
+    get_authenticated_principal,
+    require_request_csrf,
+)
 from app.security.policies import Action, Principal
-from app.users.models import UserRole
+from app.workspaces.service import (
+    WorkspaceForbiddenError,
+    WorkspaceNotFoundError,
+    WorkspaceReadOnlyError,
+    WorkspaceVersionConflictError,
+)
 
 
-class ActivityRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    activity_key: str = Field(min_length=1, max_length=255)
-    compound_id: UUID
-    assay: str = Field(min_length=1, max_length=500)
-    metric: str = Field(min_length=1, max_length=120)
-    value: str = Field(min_length=1, max_length=160)
-    unit: str = Field(min_length=1, max_length=80)
-    qualifier: str = Field(default="", max_length=40)
-    evidence_text: str = Field(min_length=1, max_length=20000)
-    evidence_ids: list[UUID] = Field(default_factory=list, max_length=100)
-    reason: str = Field(min_length=1, max_length=500)
-    changeset_id: UUID
-    expected_version: int = Field(ge=1)
-
-
-class ActivityDeleteRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    reason: str = Field(min_length=1, max_length=500)
-    changeset_id: UUID
-    expected_version: int = Field(ge=1)
+def _activity_response(row: Activity) -> ActivityResponse:
+    return ActivityResponse(
+        id=row.id,
+        paper_id=row.paper_id,
+        workspace_id=row.workspace_id,
+        compound_id=row.compound_id,
+        evidence_id=row.evidence_id,
+        assay_name=row.assay_name,
+        metric=row.metric,
+        operator=row.operator,
+        value=row.value,
+        unit=row.unit,
+        context=row.context,
+        sort_order=row.sort_order,
+    )
 
 
-def _authorize_paper(session: Session, principal: Principal, paper_id: UUID) -> None:
-    if principal.role is UserRole.VISITOR:
-        raise HTTPException(status_code=403, detail="Permission denied")
-    if principal.role is not UserRole.ADMIN:
-        assigned = session.scalar(select(ReviewTask.id).where(ReviewTask.paper_id == paper_id, ReviewTask.assigned_reviewer_id == principal.user_id))
-        if assigned is None:
-            raise HTTPException(status_code=404, detail="Resource not found")
-    session.rollback()
+def _workspace_error(error: Exception) -> APIError | HTTPException:
+    if isinstance(error, WorkspaceNotFoundError):
+        return APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+    if isinstance(error, WorkspaceForbiddenError):
+        return HTTPException(status_code=403, detail="Permission denied")
+    if isinstance(error, WorkspaceVersionConflictError):
+        return APIError(
+            409,
+            "WORKSPACE_VERSION_CONFLICT",
+            "Workspace version changed",
+            details={
+                "expected_workspace_version": error.expected_version,
+                "current_workspace_version": error.current_version,
+            },
+        )
+    if isinstance(error, WorkspaceReadOnlyError):
+        return APIError(
+            409,
+            "WORKSPACE_READ_ONLY",
+            "Workspace is read-only",
+            details={
+                "workspace_state": error.state.value,
+                "current_workspace_version": error.current_version,
+            },
+        )
+    raise error
 
 
-def _require_editor(principal: Principal = Depends(get_authenticated_principal)) -> Principal:
-    if principal.role is UserRole.VISITOR:
-        raise HTTPException(status_code=403, detail="Permission denied")
-    return principal
-
-
-setattr(_require_editor, "__leadtrace_action__", Action.EDIT_DRAFT)
-
-
-def _error(error: Exception) -> HTTPException:
-    if isinstance(error, ActivityVersionConflict):
-        return APIError(409, "REVISION_CONFLICT", "Activity draft changed concurrently", details={"expected_version": error.expected_version, "current_version": error.current_version})
+def _domain_error(error: Exception) -> APIError:
+    if isinstance(error, ActivityOrderError):
+        return APIError(422, "ACTIVITY_ORDER_INVALID", str(error))
     if isinstance(error, ActivityValidationError):
-        if "not found" in str(error).casefold():
-            return HTTPException(status_code=404, detail="Resource not found")
-        return HTTPException(status_code=422, detail=str(error))
-    if isinstance(error, ValueError):
-        return HTTPException(status_code=422, detail=str(error))
+        return APIError(422, "ACTIVITY_INVALID", str(error))
     if isinstance(error, IntegrityError):
-        return APIError(409, "SCIENCE_CONFLICT", "Activity conflicts with an existing record")
-    return HTTPException(status_code=400, detail="The request could not be completed")
+        return APIError(
+            409,
+            "ACTIVITY_CONFLICT",
+            "Activity conflicts with an existing record",
+        )
+    raise error
 
 
-def _payload(activity: Activity, revision: ObjectRevision, changeset_version: int = 0) -> dict[str, object]:
-    return {
-        "id": str(activity.id),
-        "paper_id": str(activity.paper_id),
-        "activity_key": activity.activity_key,
-        "compound_id": str(activity.compound_id),
-        "revision_id": str(revision.id),
-        "revision_number": revision.revision_number,
-        "changeset_version": changeset_version,
-        "snapshot": revision.snapshot,
-        "activity_state": revision.activity_state.value if revision.activity_state else None,
-        "workflow_state": revision.workflow_state.value,
-        "is_tombstone": revision.is_tombstone,
-    }
+_WORKSPACE_ERRORS = (
+    WorkspaceForbiddenError,
+    WorkspaceNotFoundError,
+    WorkspaceReadOnlyError,
+    WorkspaceVersionConflictError,
+)
+_DOMAIN_ERRORS = (ActivityValidationError, IntegrityError)
 
 
-def _draft(payload: ActivityRequest) -> ActivityDraft:
-    return ActivityDraft(payload.activity_key, payload.compound_id, payload.assay, payload.metric, payload.value, payload.unit, payload.qualifier, payload.evidence_text, tuple(payload.evidence_ids))
+def create_activities_router(settings: Settings) -> APIRouter:
+    router = APIRouter(tags=["activities"])
+    service = ActivityService()
+    secret = settings.session_secret.get_secret_value()
 
-
-def create_activities_router(session_secret: str) -> APIRouter:
-    router = APIRouter(prefix="/api/v1/papers/{paper_id}/activities", tags=["activities"])
-    service = ActivityReviewService()
-
-    @router.get("")
-    @declare_route_access(RouteAccess.AUTHENTICATED)
-    def list_activities(paper_id: UUID, session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal)) -> list[dict[str, object]]:
-        _authorize_paper(session, principal, paper_id)
-        activities = session.scalars(select(Activity).where(Activity.paper_id == paper_id).order_by(Activity.activity_key))
-        result = []
-        for activity in activities:
-            revision = session.scalar(select(ObjectRevision).where(ObjectRevision.object_id == activity.id).order_by(ObjectRevision.revision_number.desc()).limit(1))
-            if revision is not None:
-                result.append(_payload(activity, revision))
-        return result
-
-    @router.post("", status_code=201)
-    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
-    def create_activity(paper_id: UUID, payload: ActivityRequest, csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"), session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal), _permission: Principal = Depends(_require_editor)) -> dict[str, object]:
-        _authorize_paper(session, principal, paper_id)
-        require_request_csrf(principal, csrf_token, session_secret)
+    @router.get(
+        "/api/v2/compounds/{compound_id}/activities",
+        response_model=ActivityListResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.READ_DRAFT)
+    def list_activities(
+        compound_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> ActivityListResponse:
         try:
             with session.begin():
-                activity, revision = service.create_activity(session, paper_id=paper_id, actor_id=principal.user_id, changeset_id=payload.changeset_id, expected_version=payload.expected_version, draft=_draft(payload), reason=payload.reason)
-                changeset = session.get(Changeset, payload.changeset_id)
-                if changeset is None:
-                    raise ActivityValidationError("Changeset not found")
-                return _payload(activity, revision, changeset.version)
-        except Exception as error:
-            raise _error(error) from error
+                result = service.list_activities(
+                    session, compound_id=compound_id, actor=principal
+                )
+                items = [_activity_response(row) for row in result.activities]
+                return ActivityListResponse(
+                    compound_id=compound_id,
+                    workspace_version=result.workspace.version,
+                    items=items,
+                    total=len(items),
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
 
-    @router.patch("/{activity_id}")
+    @router.post(
+        "/api/v2/compounds/{compound_id}/activities",
+        response_model=ActivityMutationResponse,
+        status_code=201,
+    )
     @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
-    def update_activity(paper_id: UUID, activity_id: UUID, payload: ActivityRequest, csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"), session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal), _permission: Principal = Depends(_require_editor)) -> dict[str, object]:
-        _authorize_paper(session, principal, paper_id)
-        require_request_csrf(principal, csrf_token, session_secret)
+    def create_activity(
+        compound_id: UUID,
+        payload: ActivityCreateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> ActivityMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
         try:
-            activity = session.get(Activity, activity_id)
-            if activity is None or activity.paper_id != paper_id:
-                raise ActivityValidationError("Activity not found")
-            session.rollback()
             with session.begin():
-                revision = service.update_activity(session, activity_id=activity_id, actor_id=principal.user_id, changeset_id=payload.changeset_id, expected_version=payload.expected_version, draft=_draft(payload), reason=payload.reason)
-                activity = session.get(Activity, activity_id)
-                changeset = session.get(Changeset, payload.changeset_id)
-                if activity is None or changeset is None:
-                    raise ActivityValidationError("Activity not found")
-                return _payload(activity, revision, changeset.version)
-        except Exception as error:
-            raise _error(error) from error
+                result = service.create_activity(
+                    session,
+                    compound_id=compound_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    evidence_id=payload.evidence_id,
+                    assay_name=payload.assay_name,
+                    metric=payload.metric,
+                    operator=payload.operator,
+                    value=payload.value,
+                    unit=payload.unit,
+                    context_value=payload.context,
+                )
+                return ActivityMutationResponse(
+                    activity=_activity_response(result.activity),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
 
-    @router.delete("/{activity_id}")
+    @router.patch(
+        "/api/v2/activities/{activity_id}",
+        response_model=ActivityMutationResponse,
+    )
     @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
-    def delete_activity(paper_id: UUID, activity_id: UUID, payload: ActivityDeleteRequest, csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"), session: Session = Depends(get_db_session), principal: Principal = Depends(get_authenticated_principal), _permission: Principal = Depends(_require_editor)) -> dict[str, object]:
-        _authorize_paper(session, principal, paper_id)
-        require_request_csrf(principal, csrf_token, session_secret)
+    def update_activity(
+        activity_id: UUID,
+        payload: ActivityUpdateRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> ActivityMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
         try:
-            activity = session.get(Activity, activity_id)
-            if activity is None or activity.paper_id != paper_id:
-                raise ActivityValidationError("Activity not found")
-            session.rollback()
             with session.begin():
-                revision = service.delete_activity(session, activity_id=activity_id, actor_id=principal.user_id, changeset_id=payload.changeset_id, expected_version=payload.expected_version, reason=payload.reason)
-                activity = session.get(Activity, activity_id)
-                changeset = session.get(Changeset, payload.changeset_id)
-                if activity is None or changeset is None:
-                    raise ActivityValidationError("Activity not found")
-                return _payload(activity, revision, changeset.version)
-        except Exception as error:
-            raise _error(error) from error
+                result = service.update_activity(
+                    session,
+                    activity_id=activity_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    updates=payload.updates(),
+                )
+                return ActivityMutationResponse(
+                    activity=_activity_response(result.activity),
+                    workspace_version=result.workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.put(
+        "/api/v2/compounds/{compound_id}/activities/order",
+        response_model=ActivityListResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def reorder_activities(
+        compound_id: UUID,
+        payload: ActivityReorderRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> ActivityListResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                result = service.reorder_activities(
+                    session,
+                    compound_id=compound_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                    activity_ids=payload.activity_ids,
+                )
+                items = [_activity_response(row) for row in result.activities]
+                return ActivityListResponse(
+                    compound_id=compound_id,
+                    workspace_version=result.workspace.version,
+                    items=items,
+                    total=len(items),
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
+    @router.delete(
+        "/api/v2/activities/{activity_id}",
+        response_model=ActivityDeleteResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def delete_activity(
+        activity_id: UUID,
+        payload: WorkspaceVersionRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> ActivityDeleteResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                workspace = service.delete_activity(
+                    session,
+                    activity_id=activity_id,
+                    expected_version=payload.expected_workspace_version,
+                    actor=principal,
+                )
+                return ActivityDeleteResponse(
+                    deleted_activity_id=activity_id,
+                    workspace_version=workspace.version,
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
 
     return router
+
+
+__all__ = ["create_activities_router"]
