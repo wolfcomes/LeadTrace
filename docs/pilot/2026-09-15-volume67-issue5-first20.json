@@ -1,0 +1,154 @@
+{
+  "collection": {
+    "issue": "5",
+    "journal": "Journal of Medicinal Chemistry",
+    "publication_year": 2024,
+    "volume": "67"
+  },
+  "created_on": "2026-09-15",
+  "entries": [
+    {
+      "byte_size": 10048851,
+      "manifest_order": 1,
+      "original_filename": "ceccarelli-et-al-2024-discovery-and-structure-activity-relationships-of-novel-ssdaf-12-receptor-modulators.pdf",
+      "sha256": "f84e89812738eeed525f7ed6e41d518b953a3add65baeeaa83d210a6e9f586c0",
+      "source_key": "volume67 issue5/ceccarelli-et-al-2024-discovery-and-structure-activity-relationships-of-novel-ssdaf-12-receptor-modulators.pdf"
+    },
+    {
+      "byte_size": 6377260,
+      "manifest_order": 2,
+      "original_filename": "czestkowski-et-al-2024-structure-based-discovery-of-high-affinity-small-molecule-ligands-and-development-of-tool-probes.pdf",
+      "sha256": "3972f812c1a84e86612f2ea78bcf85237fc28c520cf85c085ba8639c1314cd46",
+      "source_key": "volume67 issue5/czestkowski-et-al-2024-structure-based-discovery-of-high-affinity-small-molecule-ligands-and-development-of-tool-probes.pdf"
+    },
+    {
+      "byte_size": 3429647,
+      "manifest_order": 3,
+      "original_filename": "dong-et-al-2024-structure-guided-discovery-of-novel-pan-metallo-β-lactamase-inhibitors-with-improved-gram-negative.pdf",
+      "sha256": "fa156acf9a45e15bc7fb7b227b8ac455eadf4a40823f776cb6f0eb25a4b60b72",
+      "source_key": "volume67 issue5/dong-et-al-2024-structure-guided-discovery-of-novel-pan-metallo-β-lactamase-inhibitors-with-improved-gram-negative.pdf"
+    },
+    {
+      "byte_size": 9471882,
+      "manifest_order": 4,
+      "original_filename": "gilleran-et-al-2024-structure-activity-relationship-of-a-pyrrole-based-series-of-pfpkg-inhibitors-as-anti-malarials.pdf",
+      "sha256": "c1664b69f81386283770d847dece35dd69b12674545d91bd97fa32a598c7a34e",
+      "source_key": "volume67 issue5/gilleran-et-al-2024-structure-activity-relationship-of-a-pyrrole-based-series-of-pfpkg-inhibitors-as-anti-malarials.pdf"
+    },
+    {
+      "byte_size": 7549810,
+      "manifest_order": 5,
+      "original_filename": "giovannuzzi-et-al-2024-dual-inhibitors-of-brain-carbonic-anhydrases-and-monoamine-oxidase-b-efficiently-protect-against.pdf",
+      "sha256": "e7be3330a872c4f96fb40aef9f72dc86b5694dee41d3f41e59061c06c571e7dd",
+      "source_key": "volume67 issue5/giovannuzzi-et-al-2024-dual-inhibitors-of-brain-carbonic-anhydrases-and-monoamine-oxidase-b-efficiently-protect-against.pdf"
+    },
+    {
+      "byte_size": 2566782,
+      "manifest_order": 6,
+      "original_filename": "heidtmann-et-al-2024-hit-to-lead-identification-and-validation-of-a-triaromatic-pleuromutilin-antibiotic-candidate.pdf",
+      "sha256": "994e256402bcae82340044c6aa2113419e47b1265ea53258d6be9f2c9ada9d71",
+      "source_key": "volume67 issue5/heidtmann-et-al-2024-hit-to-lead-identification-and-validation-of-a-triaromatic-pleuromutilin-antibiotic-candidate.pdf"
+    },
+    {
+      "byte_size": 2840266,
+      "manifest_order": 7,
+      "original_filename": "hubler-et-al-2024-discovery-and-characterization-of-a-new-class-of-c5ar1-antagonists-showing-in-vivo-activity.pdf",
+      "sha256": "c5547794e74eac154da29691aa12529b10745b6b20841fec658776431d8bf567",
+      "source_key": "volume67 issue5/hubler-et-al-2024-discovery-and-characterization-of-a-new-class-of-c5ar1-antagonists-showing-in-vivo-activity.pdf"
+    },
+    {
+      "byte_size": 4439795,
+      "manifest_order": 8,
+      "original_filename": "ieremias-et-al-2024-structure-activity-relationship-studies-and-optimization-of-4-hydroxypyridones-as-gpr84-agonists.pdf",
+      "sha256": "e2e4f2e8cd34e36eeb69bdc9407da491641697be658dae1dc8bc902aa0823daa",
+      "source_key": "volume67 issue5/ieremias-et-al-2024-structure-activity-relationship-studies-and-optimization-of-4-hydroxypyridones-as-gpr84-agonists.pdf"
+    },
+    {
+      "byte_size": 6921133,
+      "manifest_order": 9,
+      "original_filename": "juang-et-al-2024-discovery-of-5-hydroxy-1-4-naphthoquinone-(juglone)-derivatives-as-dual-effective-agents-targeting.pdf",
+      "sha256": "ad61adc0fdff986bcdca23208c453fa1b5a521fc7fce5fb77ab043485ff34a24",
+      "source_key": "volume67 issue5/juang-et-al-2024-discovery-of-5-hydroxy-1-4-naphthoquinone-(juglone)-derivatives-as-dual-effective-agents-targeting.pdf"
+    },
+    {
+      "byte_size": 2628525,
+      "manifest_order": 10,
+      "original_filename": "kesteleyn-et-al-2024-discovery-of-jnj-1802-a-first-in-class-pan-serotype-dengue-virus-ns4b-inhibitor.pdf",
+      "sha256": "edb6589ef806204f4a18d4317a83412243cff5a98b5dccd1d2b62985d86f5814",
+      "source_key": "volume67 issue5/kesteleyn-et-al-2024-discovery-of-jnj-1802-a-first-in-class-pan-serotype-dengue-virus-ns4b-inhibitor.pdf"
+    },
+    {
+      "byte_size": 4701126,
+      "manifest_order": 11,
+      "original_filename": "ledneczki-et-al-2024-discovery-of-novel-steroid-based-histamine-h3-receptor-antagonists-inverse-agonists.pdf",
+      "sha256": "6bf564e8a01a5f6dbaa0adc4bcb6bce0c1d971e83a2817479bd5610650e0fd38",
+      "source_key": "volume67 issue5/ledneczki-et-al-2024-discovery-of-novel-steroid-based-histamine-h3-receptor-antagonists-inverse-agonists.pdf"
+    },
+    {
+      "byte_size": 8548925,
+      "manifest_order": 12,
+      "original_filename": "li-et-al-2024-design-and-synthesis-of-dual-target-inhibitors-targeting-androgen-receptors-and-glucocorticoid-receptors.pdf",
+      "sha256": "97744fdc6a33a83f8fb1b1b48c4dca490a54504be65d9d412c3c0e95c5df11d3",
+      "source_key": "volume67 issue5/li-et-al-2024-design-and-synthesis-of-dual-target-inhibitors-targeting-androgen-receptors-and-glucocorticoid-receptors.pdf"
+    },
+    {
+      "byte_size": 8560396,
+      "manifest_order": 13,
+      "original_filename": "lin-et-al-2024-design-synthesis-and-biological-evaluation-of-pierardine-derivatives-as-novel-brain-penetrant-and-in.pdf",
+      "sha256": "2a063a8e705a966936f09b2f83ea0cfa1c68764f1ec387271e76d066a4402b8f",
+      "source_key": "volume67 issue5/lin-et-al-2024-design-synthesis-and-biological-evaluation-of-pierardine-derivatives-as-novel-brain-penetrant-and-in.pdf"
+    },
+    {
+      "byte_size": 12525144,
+      "manifest_order": 14,
+      "original_filename": "ma-et-al-2024-discovery-and-proof-of-concept-of-potent-dual-polθ-parp-inhibitors-for-efficient-treatment-of-homologous.pdf",
+      "sha256": "4be1e2ac0dfe2d91ffbdb03b7d8ce3584fcec9bf964ced491eac79bbf057ddf6",
+      "source_key": "volume67 issue5/ma-et-al-2024-discovery-and-proof-of-concept-of-potent-dual-polθ-parp-inhibitors-for-efficient-treatment-of-homologous.pdf"
+    },
+    {
+      "byte_size": 5118176,
+      "manifest_order": 15,
+      "original_filename": "maddirala-et-al-2024-discovery-of-orally-bioavailable-fmlh-lectin-antagonists-as-treatment-for-urinary-tract-infections.pdf",
+      "sha256": "6a0ff0207d70dbbce0b761cd690b906607af9740c8f51c0403070d26d24283cc",
+      "source_key": "volume67 issue5/maddirala-et-al-2024-discovery-of-orally-bioavailable-fmlh-lectin-antagonists-as-treatment-for-urinary-tract-infections.pdf"
+    },
+    {
+      "byte_size": 8996113,
+      "manifest_order": 16,
+      "original_filename": "otake-et-al-2024-optimization-efforts-for-identification-of-novel-highly-potent-keap1-nrf2-protein-protein-interaction.pdf",
+      "sha256": "7c741f4ab1800462b6b910bf9a8c57dd94ddec8a45462214a204d5e36379c8ca",
+      "source_key": "volume67 issue5/otake-et-al-2024-optimization-efforts-for-identification-of-novel-highly-potent-keap1-nrf2-protein-protein-interaction.pdf"
+    },
+    {
+      "byte_size": 8042898,
+      "manifest_order": 17,
+      "original_filename": "ou-et-al-2024-heterocyclic-modified-imidazoquinoline-derivatives-selective-tlr7-agonist-regulates-tumor.pdf",
+      "sha256": "8b78c23e400ad19507562018f5c456ac734b3b39a08ad51c63a53e2de3f3b0e6",
+      "source_key": "volume67 issue5/ou-et-al-2024-heterocyclic-modified-imidazoquinoline-derivatives-selective-tlr7-agonist-regulates-tumor.pdf"
+    },
+    {
+      "byte_size": 8134551,
+      "manifest_order": 18,
+      "original_filename": "rak-et-al-2024-development-of-selective-pyrido-2-3-d-pyrimidin-7(8h)-one-based-mammalian-ste20-like-(mst3-4)-kinase.pdf",
+      "sha256": "cbb0a332c4b4c353c64043468caa52628b1f81b3e52e0f5514e63057b73a6413",
+      "source_key": "volume67 issue5/rak-et-al-2024-development-of-selective-pyrido-2-3-d-pyrimidin-7(8h)-one-based-mammalian-ste20-like-(mst3-4)-kinase.pdf"
+    },
+    {
+      "byte_size": 4647086,
+      "manifest_order": 19,
+      "original_filename": "shurtleff-et-al-2024-invention-of-mk-7845-a-sars-cov-2-3cl-protease-inhibitor-employing-a-novel-difluorinated-glutamine.pdf",
+      "sha256": "a81254df7333a358eea7885c00b47e4f30b75d807f223d00994fc2eee58941ab",
+      "source_key": "volume67 issue5/shurtleff-et-al-2024-invention-of-mk-7845-a-sars-cov-2-3cl-protease-inhibitor-employing-a-novel-difluorinated-glutamine.pdf"
+    },
+    {
+      "byte_size": 3007654,
+      "manifest_order": 20,
+      "original_filename": "sun-et-al-2024-design-synthesis-and-antitumor-activity-evaluation-of-novel-vista-small-molecule-inhibitors.pdf",
+      "sha256": "f2d555b00603ed819f34684873febafbc40263e33ab4d9b5ff7ff5d8f1931439",
+      "source_key": "volume67 issue5/sun-et-al-2024-design-synthesis-and-antitumor-activity-evaluation-of-novel-vista-small-molecule-inhibitors.pdf"
+    }
+  ],
+  "schema_version": 1,
+  "source_directory": "volume67 issue5",
+  "source_root_key": "source_pdfs"
+}
