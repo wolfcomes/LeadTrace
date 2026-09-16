@@ -136,6 +136,45 @@ def workspace_fixture(
         )
         session.add(paper)
         session.flush()
+        other_asset = Asset(
+            storage_key="source/source_pdfs/volume67 issue5/paper-02.pdf",
+            original_filename="paper-02.pdf",
+            sha256="b" * 64,
+            byte_size=23456,
+            mime_type="application/pdf",
+            page_count=13,
+            category=AssetCategory.ARTICLE_PDF,
+            access_level=AssetAccessLevel.REVIEWER,
+            integrity_state=AssetIntegrityState.VERIFIED,
+            derivation_metadata={},
+            source_metadata={},
+        )
+        session.add(other_asset)
+        session.flush()
+        other_source = PaperSource(
+            asset_id=other_asset.id,
+            source_root_key="source_pdfs",
+            source_key="volume67 issue5/paper-02.pdf",
+            sha256=other_asset.sha256,
+            byte_size=other_asset.byte_size,
+            page_count=other_asset.page_count,
+            integrity_state=PaperSourceIntegrityState.VERIFIED,
+        )
+        session.add(other_source)
+        session.flush()
+        session.add(
+            Paper(
+                paper_key="LT-JMC-2024-67-05-002",
+                source_id=other_source.id,
+                title="Second extracted title",
+                journal="Journal of Medicinal Chemistry",
+                publication_year=2024,
+                volume="67",
+                issue="5",
+                doi="10.1021/acs.jmedchem.4c0002",
+                catalog_state=PaperCatalogState.EXTRACTED,
+            )
+        )
         task = ReviewTask(
             paper_id=paper.id,
             assigned_reviewer_id=reviewer.id,

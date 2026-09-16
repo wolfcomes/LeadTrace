@@ -98,3 +98,40 @@ def test_mutation_data_version_and_history_roll_back_together_on_flush_failure(
         assert paper.title == "Extracted title"
         assert workspace.version == 1
         assert event_count == 0
+
+
+def test_identical_mutation_is_a_noop_after_version_and_ownership_checks(
+    workspace_fixture,
+) -> None:
+    service = WorkspaceService()
+    with workspace_fixture.session_factory.begin() as session:
+        reviewer = session.get(User, workspace_fixture.reviewer_id)
+        assert reviewer is not None
+
+        def unchanged_title(context) -> MutationChange:
+            value = {"title": context.paper.title}
+            return MutationChange(
+                entity_type="paper",
+                entity_id=context.paper.id,
+                action="bibliography.update",
+                before_value=value,
+                after_value=value.copy(),
+            )
+
+        result = service.mutate(
+            session,
+            workspace_id=workspace_fixture.workspace_id,
+            expected_version=1,
+            actor=reviewer,
+            mutation=unchanged_title,
+        )
+
+        assert result.workspace.version == 1
+        assert result.event is None
+
+    with workspace_fixture.session_factory() as session:
+        workspace = session.get(PaperWorkspace, workspace_fixture.workspace_id)
+        event_count = session.scalar(select(func.count()).select_from(ChangeEvent))
+        assert workspace is not None
+        assert workspace.version == 1
+        assert event_count == 0

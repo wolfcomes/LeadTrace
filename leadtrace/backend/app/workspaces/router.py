@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.errors import APIError
@@ -111,6 +112,12 @@ def _translate_workspace_error(error: Exception) -> APIError | HTTPException:
     raise error
 
 
+def _integrity_constraint_name(error: IntegrityError) -> str | None:
+    diagnostics = getattr(error.orig, "diag", None)
+    constraint_name = getattr(diagnostics, "constraint_name", None)
+    return constraint_name if isinstance(constraint_name, str) else None
+
+
 def create_workspaces_router(settings: Settings) -> APIRouter:
     router = APIRouter(tags=["paper workspaces"])
     service = WorkspaceService()
@@ -201,6 +208,14 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
             WorkspaceVersionConflictError,
         ) as error:
             raise _translate_workspace_error(error) from error
+        except IntegrityError as error:
+            if _integrity_constraint_name(error) == "uq_papers_doi":
+                raise APIError(
+                    409,
+                    "BIBLIOGRAPHY_CONFLICT",
+                    "Bibliography conflicts with another Paper",
+                ) from error
+            raise
 
     @router.put(
         "/api/v2/workspaces/{workspace_id}/sections/{section}",

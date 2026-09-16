@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.papers.models import Paper
 from app.users.models import UserRole
-from app.workspaces.models import ChangeEvent, PaperSection, PaperSectionReview
+from app.workspaces.models import (
+    ChangeEvent,
+    PaperSection,
+    PaperSectionReview,
+    PaperWorkspace,
+)
 
 
 def test_reviewer_lists_only_their_tasks_and_reads_safe_workspace_aggregate(
@@ -186,3 +191,68 @@ def test_admin_can_read_workspace_but_visitor_cannot(workspace_fixture) -> None:
     )
     assert visitor_list.status_code == 403
     assert visitor_read.status_code == 403
+
+
+def test_identical_bibliography_and_section_writes_do_not_create_history(
+    workspace_fixture,
+) -> None:
+    csrf = workspace_fixture.login("workspace.reviewer")
+
+    bibliography = workspace_fixture.client.patch(
+        f"/api/v2/workspaces/{workspace_fixture.workspace_id}/bibliography",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "expected_workspace_version": 1,
+            "title": "Extracted title",
+            "doi": "10.1021/acs.jmedchem.4c0001",
+        },
+    )
+    section = workspace_fixture.client.put(
+        f"/api/v2/workspaces/{workspace_fixture.workspace_id}/sections/compounds",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "expected_workspace_version": 1,
+            "state": "pending",
+            "note": None,
+        },
+    )
+
+    assert bibliography.status_code == 200
+    assert bibliography.json()["version"] == 1
+    assert section.status_code == 200
+    assert section.json()["version"] == 1
+    with workspace_fixture.session_factory() as session:
+        event_count = session.scalar(select(func.count()).select_from(ChangeEvent))
+        assert event_count == 0
+
+
+def test_duplicate_doi_returns_safe_conflict_and_rolls_back_aggregate(
+    workspace_fixture,
+) -> None:
+    csrf = workspace_fixture.login("workspace.reviewer")
+
+    response = workspace_fixture.client.patch(
+        f"/api/v2/workspaces/{workspace_fixture.workspace_id}/bibliography",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "expected_workspace_version": 1,
+            "title": "Title that must roll back",
+            "doi": "10.1021/acs.jmedchem.4c0002",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "BIBLIOGRAPHY_CONFLICT"
+    assert response.json()["message"] == "Bibliography conflicts with another Paper"
+    assert "uq_papers_doi" not in response.text
+    assert "duplicate key" not in response.text.casefold()
+    with workspace_fixture.session_factory() as session:
+        paper = session.get(Paper, workspace_fixture.paper_id)
+        workspace = session.get(PaperWorkspace, workspace_fixture.workspace_id)
+        event_count = session.scalar(select(func.count()).select_from(ChangeEvent))
+        assert paper is not None
+        assert workspace is not None
+        assert paper.title == "Extracted title"
+        assert paper.doi == "10.1021/acs.jmedchem.4c0001"
+        assert workspace.version == 1
+        assert event_count == 0

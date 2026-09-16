@@ -47,7 +47,7 @@ class WorkspaceReadOnlyError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class MutationResult:
     workspace: PaperWorkspace
-    event: ChangeEvent
+    event: ChangeEvent | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +115,8 @@ class WorkspaceService:
             )
 
         change = mutation(context)
+        if change.before_value == change.after_value:
+            return MutationResult(workspace=context.workspace, event=None)
         event = ChangeEvent(
             paper_id=context.workspace.paper_id,
             workspace_id=context.workspace.id,
