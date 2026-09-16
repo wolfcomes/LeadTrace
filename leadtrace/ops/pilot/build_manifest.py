@@ -76,8 +76,18 @@ def build_manifest(
     except ValueError as error:
         raise ValueError("created_on must be an ISO date") from error
     directory = source_root / source_directory
+    current = source_root
+    for part in PurePosixPath(source_directory).parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError(f"source directory contains a symlink: {source_directory}")
     if not directory.is_dir():
         raise ValueError(f"source directory does not exist: {source_directory}")
+    resolved_directory = directory.resolve(strict=True)
+    try:
+        resolved_directory.relative_to(source_root)
+    except ValueError as error:
+        raise ValueError("source directory escapes source root") from error
 
     candidates = sorted(directory.iterdir(), key=lambda path: path.name)
     pdfs: list[Path] = []
@@ -95,7 +105,7 @@ def build_manifest(
 
     entries = []
     for order, (path, digest) in enumerate(zip(selected, hashes, strict=True), start=1):
-        source_key = (PurePosixPath(source_directory) / path.name).as_posix()
+        source_key = path.relative_to(source_root).as_posix()
         entries.append(
             {
                 "manifest_order": order,

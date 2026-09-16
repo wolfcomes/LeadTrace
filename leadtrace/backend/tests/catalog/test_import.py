@@ -8,7 +8,7 @@ from alembic import command
 from alembic.config import Config
 import fitz
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.assets.models import Asset
 from app.assets.storage import LocalAssetStore
@@ -139,6 +139,36 @@ def test_catalog_extraction_ignores_non_strict_doi(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    ("text", "metadata_subject", "field"),
+    [
+        ("Cite This: J. Med. Chem. 2025, 67, 100-120", None, "publication_year"),
+        ("Cite This: J. Med. Chem. 2024, 68, 100-120", None, "volume"),
+        ("", "J. Med. Chem. 2025.67:100-120", "publication_year"),
+        ("", "J. Med. Chem. 2024.68:100-120", "volume"),
+    ],
+)
+def test_catalog_extraction_rejects_acs_collection_contradictions(
+    tmp_path: Path,
+    text: str,
+    metadata_subject: str | None,
+    field: str,
+) -> None:
+    pdf = tmp_path / "article.pdf"
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((72, 72), text or "Paper title")
+    metadata = {"title": "ACS paper"}
+    if metadata_subject is not None:
+        metadata["subject"] = metadata_subject
+    document.set_metadata(metadata)
+    document.save(pdf)
+    document.close()
+
+    with pytest.raises(CatalogExtractionError, match=field):
+        extract_catalog_metadata(pdf, COLLECTION)
+
+
+@pytest.mark.parametrize(
     ("collection", "text", "field"),
     [
         (replace(COLLECTION, journal="Expected Journal"), "Journal: Other Journal", "journal"),
@@ -241,6 +271,170 @@ def test_catalog_import_verifies_all_hashes_before_writing(
     session_factory = create_session_factory(engine)
     try:
         with pytest.raises(CatalogImportError, match="SHA-256"):
+            with session_factory.begin() as session:
+                service.apply(session)
+        with session_factory() as session:
+            assert session.scalar(select(func.count()).select_from(Asset)) == 0
+            assert session.scalar(select(func.count()).select_from(PaperSource)) == 0
+            assert session.scalar(select(func.count()).select_from(Paper)) == 0
+    finally:
+        engine.dispose()
+
+
+def test_catalog_import_errors_never_expose_the_physical_source_root(
+    tmp_path: Path,
+) -> None:
+    source_root, manifest_path = _pilot_fixture(tmp_path)
+    missing = source_root / "volume67 issue5" / "paper-19.pdf"
+    missing.unlink()
+    service = CatalogImportService(
+        manifest_path,
+        LocalAssetStore(
+            tmp_path / "managed",
+            source_roots={"source_pdfs": source_root},
+        ),
+    )
+
+    with pytest.raises(CatalogImportError) as error:
+        service.preview()
+
+    assert str(source_root) not in str(error.value)
+    assert "volume67 issue5/paper-19.pdf" in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "partial_catalog",
+        "asset_storage_key",
+        "source_page_count",
+        "paper_title",
+    ],
+)
+def test_catalog_import_rejects_nonexact_existing_catalogs(
+    empty_postgresql_database_url: str,
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    command.upgrade(_alembic_config(empty_postgresql_database_url), "head")
+    source_root, manifest_path = _pilot_fixture(tmp_path)
+    service = CatalogImportService(
+        manifest_path,
+        LocalAssetStore(
+            tmp_path / "managed",
+            source_roots={"source_pdfs": source_root},
+        ),
+    )
+    engine = create_database_engine(empty_postgresql_database_url)
+    session_factory = create_session_factory(engine)
+    try:
+        with session_factory.begin() as session:
+            service.apply(session)
+        with session_factory.begin() as session:
+            if mutation == "partial_catalog":
+                papers = session.scalars(select(Paper).order_by(Paper.paper_key)).all()
+                paper_ids = [paper.id for paper in papers[1:]]
+                source_ids = [paper.source_id for paper in papers[1:]]
+                sources = session.scalars(
+                    select(PaperSource).where(PaperSource.id.in_(source_ids))
+                ).all()
+                asset_ids = [source.asset_id for source in sources]
+                session.execute(delete(Paper).where(Paper.id.in_(paper_ids)))
+                session.execute(delete(PaperSource).where(PaperSource.id.in_(source_ids)))
+                session.execute(delete(Asset).where(Asset.id.in_(asset_ids)))
+            elif mutation == "asset_storage_key":
+                asset = session.scalars(select(Asset).order_by(Asset.storage_key)).first()
+                asset.storage_key = "source/source_pdfs/other.pdf"
+            elif mutation == "source_page_count":
+                source = session.scalars(select(PaperSource)).first()
+                source.page_count += 1
+            else:
+                paper = session.scalars(select(Paper)).first()
+                paper.title = "Changed title"
+
+        with pytest.raises(CatalogImportError, match="exact replay"):
+            with session_factory.begin() as session:
+                service.apply(session)
+        with session_factory() as session:
+            expected = 1 if mutation == "partial_catalog" else 20
+            assert session.scalar(select(func.count()).select_from(Paper)) == expected
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "manifest_mutation",
+    ["outside_directory", "nested_pdf", "bad_order", "duplicate_order"],
+)
+def test_catalog_import_rejects_invalid_manifest_structure_before_writes(
+    empty_postgresql_database_url: str,
+    tmp_path: Path,
+    manifest_mutation: str,
+) -> None:
+    command.upgrade(_alembic_config(empty_postgresql_database_url), "head")
+    source_root, manifest_path = _pilot_fixture(tmp_path)
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entry = payload["entries"][0]
+    if manifest_mutation in {"outside_directory", "nested_pdf"}:
+        replacement = (
+            "other/article.pdf"
+            if manifest_mutation == "outside_directory"
+            else "volume67 issue5/nested/article.pdf"
+        )
+        source = source_root / entry["source_key"]
+        target = source_root / replacement
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source.read_bytes())
+        entry["source_key"] = replacement
+        entry["original_filename"] = "article.pdf"
+    elif manifest_mutation == "bad_order":
+        entry["manifest_order"] = 0
+    else:
+        payload["entries"][1]["manifest_order"] = 1
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    store = LocalAssetStore(
+        tmp_path / "managed",
+        source_roots={"source_pdfs": source_root},
+    )
+    with pytest.raises(CatalogImportError):
+        CatalogImportService(manifest_path, store)
+
+
+def test_catalog_import_rolls_back_when_a_late_insert_fails(
+    empty_postgresql_database_url: str,
+    tmp_path: Path,
+) -> None:
+    command.upgrade(_alembic_config(empty_postgresql_database_url), "head")
+    source_root, manifest_path = _pilot_fixture(tmp_path)
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    final_entry = payload["entries"][19]
+    final_pdf = source_root / final_entry["source_key"]
+    _write_pdf(
+        final_pdf,
+        title="Conflicting DOI paper",
+        text=(
+            "Conflicting DOI paper\n"
+            "Journal of Medicinal Chemistry\n"
+            "2024, Volume 67, Issue 5\n"
+            "DOI: 10.1021/acs.jmedchem.4c0000"
+        ),
+    )
+    extracted = extract_catalog_metadata(final_pdf, COLLECTION)
+    final_entry["sha256"] = extracted.sha256
+    final_entry["byte_size"] = extracted.byte_size
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    service = CatalogImportService(
+        manifest_path,
+        LocalAssetStore(
+            tmp_path / "managed",
+            source_roots={"source_pdfs": source_root},
+        ),
+    )
+    engine = create_database_engine(empty_postgresql_database_url)
+    session_factory = create_session_factory(engine)
+    try:
+        with pytest.raises(Exception):
             with session_factory.begin() as session:
                 service.apply(session)
         with session_factory() as session:

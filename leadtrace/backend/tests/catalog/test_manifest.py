@@ -84,6 +84,19 @@ def test_manifest_rejects_direct_pdf_symlinks(tmp_path: Path) -> None:
         _build(source_root, tmp_path / "manifest.json")
 
 
+def test_manifest_rejects_a_symlinked_source_directory(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    outside = tmp_path / "outside"
+    source_root.mkdir()
+    outside.mkdir()
+    for index in range(20):
+        _write_pdf(outside / f"paper-{index:02d}.pdf", str(index))
+    (source_root / "volume67 issue5").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlink"):
+        _build(source_root, tmp_path / "manifest.json")
+
+
 def test_manifest_rejects_duplicate_pdf_hashes(tmp_path: Path) -> None:
     source_root = tmp_path / "source"
     source_directory = source_root / "volume67 issue5"
