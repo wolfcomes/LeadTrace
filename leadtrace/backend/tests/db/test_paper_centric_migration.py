@@ -7,7 +7,6 @@ from uuid import UUID, uuid4
 from alembic import command
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from alembic.script import ScriptDirectory
 import pytest
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection, make_url
@@ -113,9 +112,9 @@ def test_paper_centric_foundation_is_installed(
 ) -> None:
     config = _alembic_config(empty_postgresql_database_url)
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0019_paper_centric_foundation")
 
-    assert ScriptDirectory.from_config(config).get_current_head() == (
+    assert _database_revision(empty_postgresql_database_url) == (
         "0019_paper_centric_foundation"
     )
     tables = _public_tables(empty_postgresql_database_url)
