@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
+from typing import BinaryIO
 from uuid import UUID
 
 from sqlalchemy import select
@@ -117,12 +118,12 @@ class AssetService:
         return valid
 
     @staticmethod
-    def read_verified_content(
+    def open_verified_content(
         asset: Asset,
         store: LocalAssetStore,
-    ) -> bytes | None:
+    ) -> BinaryIO | None:
         try:
-            inspected, content = store.read_snapshot(asset.storage_key)
+            inspected, snapshot = store.open_snapshot(asset.storage_key)
         except FileNotFoundError:
             asset.integrity_state = AssetIntegrityState.MISSING
             return None
@@ -137,4 +138,18 @@ class AssetService:
         asset.integrity_state = (
             AssetIntegrityState.VERIFIED if valid else AssetIntegrityState.CORRUPT
         )
-        return content if valid else None
+        if not valid:
+            snapshot.close()
+            return None
+        return snapshot
+
+    @staticmethod
+    def read_verified_content(
+        asset: Asset,
+        store: LocalAssetStore,
+    ) -> bytes | None:
+        snapshot = AssetService.open_verified_content(asset, store)
+        if snapshot is None:
+            return None
+        with snapshot:
+            return snapshot.read()

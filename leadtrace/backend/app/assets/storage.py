@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
-from io import BytesIO
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -54,6 +53,8 @@ _MIME_BY_SUFFIX = {
     ".md": "text/markdown",
     ".log": "text/plain",
 }
+
+_SNAPSHOT_MEMORY_LIMIT_BYTES = 1024 * 1024
 
 
 def _stream_sha256(handle: BinaryIO) -> tuple[str, int]:
@@ -186,6 +187,71 @@ class LocalAssetStore:
             page_count=page_count,
         )
 
+    def open_snapshot(
+        self,
+        storage_key: str,
+        *,
+        validate_extension: bool = True,
+        validate_content: bool = True,
+    ) -> tuple[InspectedFile, BinaryIO]:
+        path = self.path_for(storage_key)
+        snapshot = tempfile.SpooledTemporaryFile(
+            max_size=_SNAPSHOT_MEMORY_LIMIT_BYTES,
+            mode="w+b",
+        )
+        digest = hashlib.sha256()
+        byte_size = 0
+        header = b""
+        try:
+            with path.open("rb") as handle:
+                while chunk := handle.read(1024 * 1024):
+                    if not header:
+                        header = chunk[:8192]
+                    digest.update(chunk)
+                    byte_size += len(chunk)
+                    snapshot.write(chunk)
+            snapshot.flush()
+            snapshot.seek(0)
+
+            mime_type = _detected_mime(path, header)
+            expected_mime = _MIME_BY_SUFFIX.get(path.suffix.casefold())
+            if validate_extension and expected_mime and mime_type != expected_mime:
+                label = path.suffix.lstrip(".").upper()
+                raise AssetMimeMismatchError(
+                    f"{label} extension does not match detected content type"
+                )
+
+            width = height = None
+            if validate_content and mime_type.startswith("image/"):
+                try:
+                    with Image.open(snapshot) as image:
+                        width, height = image.size
+                        image.verify()
+                except (
+                    OSError,
+                    SyntaxError,
+                    UnidentifiedImageError,
+                    ValueError,
+                ) as error:
+                    raise AssetMimeMismatchError(
+                        "Image content is invalid"
+                    ) from error
+            snapshot.seek(0)
+            return (
+                InspectedFile(
+                    path=path,
+                    sha256=digest.hexdigest(),
+                    byte_size=byte_size,
+                    mime_type=mime_type,
+                    width=width,
+                    height=height,
+                ),
+                snapshot,
+            )
+        except BaseException:
+            snapshot.close()
+            raise
+
     def read_snapshot(
         self,
         storage_key: str,
@@ -193,42 +259,17 @@ class LocalAssetStore:
         validate_extension: bool = True,
         validate_content: bool = True,
     ) -> tuple[InspectedFile, bytes]:
-        path = self.path_for(storage_key)
-        with path.open("rb") as handle:
-            content = handle.read()
-
-        mime_type = _detected_mime(path, content[:8192])
-        expected_mime = _MIME_BY_SUFFIX.get(path.suffix.casefold())
-        if validate_extension and expected_mime and mime_type != expected_mime:
-            label = path.suffix.lstrip(".").upper()
-            raise AssetMimeMismatchError(
-                f"{label} extension does not match detected content type"
-            )
-
-        width = height = None
-        if validate_content and mime_type.startswith("image/"):
-            try:
-                with Image.open(BytesIO(content)) as image:
-                    width, height = image.size
-                    image.verify()
-            except (OSError, SyntaxError, UnidentifiedImageError, ValueError) as error:
-                raise AssetMimeMismatchError("Image content is invalid") from error
-        page_count = None
-        if mime_type == "application/pdf":
-            matches = re.findall(rb"/Type\s*/Page(?!s)\b", content)
-            page_count = len(matches) or None
-        return (
-            InspectedFile(
-                path=path,
-                sha256=hashlib.sha256(content).hexdigest(),
-                byte_size=len(content),
-                mime_type=mime_type,
-                width=width,
-                height=height,
-                page_count=page_count,
-            ),
-            content,
+        inspected, snapshot = self.open_snapshot(
+            storage_key,
+            validate_extension=validate_extension,
+            validate_content=validate_content,
         )
+        with snapshot:
+            content = snapshot.read()
+        if inspected.mime_type == "application/pdf":
+            matches = re.findall(rb"/Type\s*/Page(?!s)\b", content)
+            inspected = replace(inspected, page_count=len(matches) or None)
+        return inspected, content
 
     @staticmethod
     def _write_atomically(target: Path, content: bytes, sha256: str) -> None:

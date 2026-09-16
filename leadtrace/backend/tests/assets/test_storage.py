@@ -88,6 +88,14 @@ def test_managed_content_is_atomically_addressed_and_deduplicated(
 
     assert repaired.path == first.path
     assert repaired.path.read_bytes() == content
+
+    same_size_replacement = bytearray(content)
+    same_size_replacement[-1] ^= 1
+    assert len(same_size_replacement) == len(content)
+    first.path.write_bytes(same_size_replacement)
+    repaired = store.put_bytes(content, suffix=".png")
+
+    assert repaired.path.read_bytes() == content
     assert not list((tmp_path / "managed").rglob("*.tmp"))
 
 
@@ -134,3 +142,49 @@ def test_snapshot_rejects_invalid_image_content_after_a_valid_signature(
 
     with pytest.raises(AssetMimeMismatchError, match="Image content is invalid"):
         store.read_snapshot(stored.storage_key)
+
+
+def test_open_snapshot_spools_large_content_and_uses_bounded_source_reads(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    store = LocalAssetStore(tmp_path / "managed")
+    content = b"%PDF-1.4\n" + (b"x" * (2 * 1024 * 1024))
+    stored = store.put_bytes(content, suffix=".pdf")
+    real_open = Path.open
+    read_sizes: list[int] = []
+
+    class TrackingReader:
+        def __init__(self, handle) -> None:
+            self.handle = handle
+
+        def __enter__(self):
+            self.handle.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.handle.__exit__(*args)
+
+        def read(self, size: int = -1) -> bytes:
+            read_sizes.append(size)
+            return self.handle.read(size)
+
+    def tracked_open(file_path: Path, *args, **kwargs):
+        handle = real_open(file_path, *args, **kwargs)
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if file_path == stored.path and "r" in mode:
+            return TrackingReader(handle)
+        return handle
+
+    monkeypatch.setattr(Path, "open", tracked_open)
+    inspected, snapshot = store.open_snapshot(stored.storage_key)
+    try:
+        assert inspected.sha256 == stored.sha256
+        assert inspected.byte_size == len(content)
+        assert getattr(snapshot, "_rolled") is True
+        assert snapshot.read() == content
+    finally:
+        snapshot.close()
+
+    assert read_sizes
+    assert all(size > 0 for size in read_sizes)
