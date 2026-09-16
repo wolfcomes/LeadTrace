@@ -19,6 +19,7 @@ from app.maintenance.service import enforce_maintenance_mode
 from app.observability.logging import install_request_observability
 from app.observability.metrics import MetricsRegistry, create_metrics_router
 from app.users.router import create_users_router
+from app.workspaces.router import create_workspaces_router
 
 
 DatabaseBootstrap = Callable[[Settings], DatabaseResources | None]
@@ -72,6 +73,7 @@ def create_app(
     application.include_router(create_assets_router())
     application.include_router(create_audit_router())
     application.include_router(create_catalog_router(runtime_settings))
+    application.include_router(create_workspaces_router(runtime_settings))
     return application
 
 

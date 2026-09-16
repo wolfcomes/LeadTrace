@@ -192,6 +192,10 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v2/admin/papers",
         "/api/v2/admin/papers/{paper_id}",
         "/api/v2/admin/papers/{paper_id}/assign",
+        "/api/v2/review/tasks",
+        "/api/v2/workspaces/{workspace_id}",
+        "/api/v2/workspaces/{workspace_id}/bibliography",
+        "/api/v2/workspaces/{workspace_id}/sections/{section}",
     } <= paths
     assert not any(
         path.startswith(prefix)
@@ -224,3 +228,37 @@ def test_retired_scientific_v1_routes_are_not_registered(
         is Action.MANAGE_PAPER_CATALOG
         for route in catalog_routes
     )
+
+    workspace_routes = [
+        route
+        for route in client.app.routes
+        if isinstance(route, APIRoute)
+        and (
+            route.path == "/api/v2/review/tasks"
+            or route.path.startswith("/api/v2/workspaces/")
+        )
+    ]
+    assert len(workspace_routes) == 4
+    assert all(
+        getattr(route.endpoint, "__leadtrace_route_access__", None)
+        is RouteAccess.PERMISSION
+        for route in workspace_routes
+    )
+    actions = {
+        (next(iter(route.methods)), route.path): getattr(
+            route.endpoint, "__leadtrace_action__", None
+        )
+        for route in workspace_routes
+    }
+    assert actions == {
+        ("GET", "/api/v2/review/tasks"): Action.READ_DRAFT,
+        ("GET", "/api/v2/workspaces/{workspace_id}"): Action.READ_DRAFT,
+        (
+            "PATCH",
+            "/api/v2/workspaces/{workspace_id}/bibliography",
+        ): Action.EDIT_DRAFT,
+        (
+            "PUT",
+            "/api/v2/workspaces/{workspace_id}/sections/{section}",
+        ): Action.EDIT_DRAFT,
+    }
