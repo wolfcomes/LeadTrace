@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -39,7 +40,7 @@ _ROOT_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 def _required_string(payload: dict[str, Any], name: str) -> str:
     value = payload.get(name)
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str) or not value.strip():
         raise CatalogImportError(f"manifest {name} must be a nonempty string")
     return value
 
@@ -73,7 +74,8 @@ class CatalogImportService:
             raise CatalogImportError("manifest is not valid JSON") from error
         if not isinstance(self.manifest, dict):
             raise CatalogImportError("manifest must be an object")
-        if self.manifest.get("schema_version") != 1:
+        schema_version = self.manifest.get("schema_version")
+        if type(schema_version) is not int or schema_version != 1:
             raise CatalogImportError("unsupported manifest schema")
         self.root_key = _required_string(self.manifest, "source_root_key")
         if not _ROOT_KEY.fullmatch(self.root_key) or self.root_key in {".", ".."}:
@@ -82,6 +84,11 @@ class CatalogImportService:
             _required_string(self.manifest, "source_directory"),
             label="source_directory",
         )
+        created_on = _required_string(self.manifest, "created_on")
+        try:
+            self.created_on = date.fromisoformat(created_on)
+        except ValueError as error:
+            raise CatalogImportError("manifest created_on must be an ISO date") from error
         self.entries = self.manifest.get("entries")
         if not isinstance(self.entries, list) or len(self.entries) != 20:
             raise CatalogImportError("manifest must contain exactly 20 entries")
@@ -95,7 +102,7 @@ class CatalogImportService:
             issue = _required_string(collection, "issue")
         except (KeyError, TypeError) as error:
             raise CatalogImportError("manifest collection is incomplete") from error
-        if not isinstance(publication_year, int) or not 1000 <= publication_year <= 9999:
+        if type(publication_year) is not int or not 1000 <= publication_year <= 9999:
             raise CatalogImportError("manifest publication_year is invalid")
         self.collection = CatalogCollection(journal, publication_year, volume, issue)
         self._validate_entries()
@@ -108,7 +115,7 @@ class CatalogImportService:
             if not isinstance(raw_entry, dict):
                 raise CatalogImportError("manifest entry must be an object")
             order = raw_entry.get("manifest_order")
-            if not isinstance(order, int):
+            if type(order) is not int:
                 raise CatalogImportError("manifest_order must be an integer")
             orders.append(order)
             source_key = _required_string(raw_entry, "source_key")
@@ -195,10 +202,13 @@ class CatalogImportService:
             and asset.sha256 == extracted.sha256
             and asset.byte_size == extracted.byte_size
             and asset.mime_type == "application/pdf"
+            and asset.width is None
+            and asset.height is None
             and asset.page_count == extracted.page_count
             and asset.category == AssetCategory.ARTICLE_PDF
             and asset.access_level == AssetAccessLevel.REVIEWER
             and asset.integrity_state == AssetIntegrityState.VERIFIED
+            and asset.source_asset_id is None
             and asset.derivation_metadata == {}
             and asset.source_metadata
             == {"source_root_key": root_key, "source_key": source_key}

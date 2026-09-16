@@ -9,8 +9,14 @@ from alembic.config import Config
 import fitz
 import pytest
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 
-from app.assets.models import Asset
+from app.assets.models import (
+    Asset,
+    AssetAccessLevel,
+    AssetCategory,
+    AssetIntegrityState,
+)
 from app.assets.storage import LocalAssetStore
 from app.catalog.extraction import (
     CatalogCollection,
@@ -88,6 +94,21 @@ def _pilot_fixture(tmp_path: Path) -> tuple[Path, Path]:
         created_on="2026-09-15",
     )
     return source_root, manifest_path
+
+
+def _unreferenced_asset() -> Asset:
+    return Asset(
+        storage_key="unreferenced/review-note.txt",
+        original_filename="review-note.txt",
+        sha256="f" * 64,
+        byte_size=1,
+        mime_type="text/plain",
+        category=AssetCategory.QUARANTINE,
+        access_level=AssetAccessLevel.ADMIN,
+        integrity_state=AssetIntegrityState.REGISTERED,
+        derivation_metadata={},
+        source_metadata={},
+    )
 
 
 def test_catalog_extraction_prefers_metadata_and_extracts_strict_doi(
@@ -244,6 +265,9 @@ def test_catalog_import_is_transactional_safe_and_exactly_idempotent(
             )
 
         with session_factory.begin() as session:
+            session.add(_unreferenced_asset())
+
+        with session_factory.begin() as session:
             replay = service.apply(session)
         assert replay.verified_count == 20
         assert replay.created_count == 0
@@ -307,6 +331,9 @@ def test_catalog_import_errors_never_expose_the_physical_source_root(
     [
         "partial_catalog",
         "asset_storage_key",
+        "asset_source_asset_id",
+        "asset_width",
+        "asset_height",
         "source_page_count",
         "paper_title",
     ],
@@ -345,6 +372,22 @@ def test_catalog_import_rejects_nonexact_existing_catalogs(
             elif mutation == "asset_storage_key":
                 asset = session.scalars(select(Asset).order_by(Asset.storage_key)).first()
                 asset.storage_key = "source/source_pdfs/other.pdf"
+            elif mutation == "asset_source_asset_id":
+                unrelated = _unreferenced_asset()
+                session.add(unrelated)
+                session.flush()
+                asset = session.scalars(
+                    select(Asset)
+                    .where(Asset.id != unrelated.id)
+                    .order_by(Asset.storage_key)
+                ).first()
+                asset.source_asset_id = unrelated.id
+            elif mutation == "asset_width":
+                asset = session.scalars(select(Asset).order_by(Asset.storage_key)).first()
+                asset.width = 100
+            elif mutation == "asset_height":
+                asset = session.scalars(select(Asset).order_by(Asset.storage_key)).first()
+                asset.height = 100
             elif mutation == "source_page_count":
                 source = session.scalars(select(PaperSource)).first()
                 source.page_count += 1
@@ -401,6 +444,87 @@ def test_catalog_import_rejects_invalid_manifest_structure_before_writes(
         CatalogImportService(manifest_path, store)
 
 
+@pytest.mark.parametrize(
+    ("manifest_path_parts", "invalid_value"),
+    [
+        (("schema_version",), True),
+        (("entries", 0, "manifest_order"), True),
+        (("collection", "publication_year"), True),
+    ],
+)
+def test_catalog_import_requires_strict_manifest_integer_types(
+    tmp_path: Path,
+    manifest_path_parts: tuple[str | int, ...],
+    invalid_value: object,
+) -> None:
+    source_root, manifest_path = _pilot_fixture(tmp_path)
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    target = payload
+    for part in manifest_path_parts[:-1]:
+        target = target[part]
+    target[manifest_path_parts[-1]] = invalid_value
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(CatalogImportError):
+        CatalogImportService(
+            manifest_path,
+            LocalAssetStore(
+                tmp_path / "managed",
+                source_roots={"source_pdfs": source_root},
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    ("created_on_present", "created_on"),
+    [
+        (False, None),
+        (True, "not-a-date"),
+    ],
+)
+def test_catalog_import_requires_an_iso_created_on_date(
+    tmp_path: Path,
+    created_on_present: bool,
+    created_on: str | None,
+) -> None:
+    source_root, manifest_path = _pilot_fixture(tmp_path)
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if created_on_present:
+        payload["created_on"] = created_on
+    else:
+        del payload["created_on"]
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(CatalogImportError):
+        CatalogImportService(
+            manifest_path,
+            LocalAssetStore(
+                tmp_path / "managed",
+                source_roots={"source_pdfs": source_root},
+            ),
+        )
+
+
+@pytest.mark.parametrize("collection_field", ["journal", "volume", "issue"])
+def test_catalog_import_rejects_whitespace_only_required_strings(
+    tmp_path: Path,
+    collection_field: str,
+) -> None:
+    source_root, manifest_path = _pilot_fixture(tmp_path)
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["collection"][collection_field] = " \t "
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(CatalogImportError):
+        CatalogImportService(
+            manifest_path,
+            LocalAssetStore(
+                tmp_path / "managed",
+                source_roots={"source_pdfs": source_root},
+            ),
+        )
+
+
 def test_catalog_import_rolls_back_when_a_late_insert_fails(
     empty_postgresql_database_url: str,
     tmp_path: Path,
@@ -434,9 +558,12 @@ def test_catalog_import_rolls_back_when_a_late_insert_fails(
     engine = create_database_engine(empty_postgresql_database_url)
     session_factory = create_session_factory(engine)
     try:
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError) as error:
             with session_factory.begin() as session:
                 service.apply(session)
+        assert "INSERT INTO papers" in str(error.value.statement)
+        assert error.value.orig.sqlstate == "23505"
+        assert error.value.orig.diag.constraint_name == "uq_papers_doi"
         with session_factory() as session:
             assert session.scalar(select(func.count()).select_from(Asset)) == 0
             assert session.scalar(select(func.count()).select_from(PaperSource)) == 0
