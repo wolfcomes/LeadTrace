@@ -269,4 +269,18 @@ class CropService:
                 "request": _request_metadata(request),
             },
         )
+        asset.byte_size = inspected.byte_size
+        asset.mime_type = inspected.mime_type
+        asset.width = inspected.width
+        asset.height = inspected.height
+        asset.page_count = inspected.page_count
+        asset.category = AssetCategory.EVIDENCE_CROP
+        asset.access_level = AssetAccessLevel.REVIEWER
+        asset.integrity_state = AssetIntegrityState.VERIFIED
+        asset.source_asset_id = source_asset_id
+        asset.derivation_metadata = {
+            "crop_input_hash": request.input_hash(),
+            "request": _request_metadata(request),
+        }
+        asset.verified_at = datetime.now(UTC)
         return replace(result, asset_id=asset.id)

@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app.assets.models import AssetCategory, AssetIntegrityState
 from app.assets.repository import AssetRepository
@@ -22,6 +23,7 @@ from app.security.permissions import (
     require_permission,
 )
 from app.security.policies import Action, Principal
+from app.structure_images.models import StructureSourceImage
 
 
 def _stream_snapshot(snapshot: BinaryIO) -> Iterator[bytes]:
@@ -53,6 +55,17 @@ def create_assets_router() -> APIRouter:
                 if (
                     asset is None
                     or asset.integrity_state is not AssetIntegrityState.VERIFIED
+                ):
+                    raise HTTPException(status_code=404, detail="Asset not found")
+                if (
+                    asset.derivation_metadata.get("visibility_scope")
+                    == "structure_source_image"
+                    or session.scalar(
+                        select(StructureSourceImage.id)
+                        .where(StructureSourceImage.crop_asset_id == asset.id)
+                        .limit(1)
+                    )
+                    is not None
                 ):
                     raise HTTPException(status_code=404, detail="Asset not found")
                 if (

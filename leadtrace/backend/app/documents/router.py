@@ -17,7 +17,7 @@ from app.documents.service import (
     DocumentNotFound,
     DocumentService,
     RangeNotSatisfiable,
-    iter_file_range,
+    iter_snapshot_range,
 )
 from app.security.permissions import (
     RouteAccess,
@@ -60,13 +60,6 @@ def _headers(asset, *, partial: bool, start: int, end: int, full_size: int) -> d
         headers["Content-Range"] = f"bytes {start}-{end}/{full_size}"
     headers["Content-Length"] = str(end - start + 1)
     return headers
-
-
-def _internal_transfer_path(storage_key: str) -> str | None:
-    if not storage_key.startswith("managed/"):
-        return None
-    relative_key = storage_key.removeprefix("managed/")
-    return f"/_leadtrace_internal_assets/{quote(relative_key, safe='/')}"
 
 
 def create_documents_router() -> APIRouter:
@@ -160,16 +153,8 @@ def create_documents_router() -> APIRouter:
                 f"bytes {document.byte_range.start}-{document.byte_range.end}/"
                 f"{document.full_size}"
             )
-        transfer_path = (
-            _internal_transfer_path(document.asset.storage_key)
-            if settings.nginx_internal_transfer
-            else None
-        )
-        if transfer_path is not None:
-            headers["X-Accel-Redirect"] = transfer_path
-            return Response(status_code=status_code, headers=headers)
         return StreamingResponse(
-            iter_file_range(document.path, document.byte_range),
+            iter_snapshot_range(document.snapshot, document.byte_range),
             status_code=status_code,
             headers=headers,
             media_type="application/pdf",

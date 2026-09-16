@@ -203,6 +203,7 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v2/compounds/{compound_id}/structure/depiction",
         "/api/v2/compounds/{compound_id}/source-images",
         "/api/v2/structure-source-images/{source_image_id}",
+        "/api/v2/structure-source-images/{source_image_id}/content",
         "/api/v2/structure-source-images/{source_image_id}/retry",
         "/api/v2/papers/{paper_id}/source-pdf",
     } <= paths
@@ -328,7 +329,7 @@ def test_retired_scientific_v1_routes_are_not_registered(
             or route.path.startswith("/api/v2/structure-source-images/")
         )
     ]
-    assert len(source_image_routes) == 6
+    assert len(source_image_routes) == 7
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION
@@ -343,6 +344,7 @@ def test_retired_scientific_v1_routes_are_not_registered(
         ("GET", "/api/v2/compounds/{compound_id}/source-images"): Action.READ_DRAFT,
         ("POST", "/api/v2/compounds/{compound_id}/source-images"): Action.EDIT_DRAFT,
         ("GET", "/api/v2/structure-source-images/{source_image_id}"): Action.READ_DRAFT,
+        ("GET", "/api/v2/structure-source-images/{source_image_id}/content"): Action.READ_DRAFT,
         ("PATCH", "/api/v2/structure-source-images/{source_image_id}"): Action.EDIT_DRAFT,
         ("DELETE", "/api/v2/structure-source-images/{source_image_id}"): Action.EDIT_DRAFT,
         ("POST", "/api/v2/structure-source-images/{source_image_id}/retry"): Action.EDIT_DRAFT,

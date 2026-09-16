@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 from uuid import uuid4
 
+import pymupdf
+import pytest
 from sqlalchemy import func, select
 
-from app.assets.models import Asset
+from app.assets.models import Asset, AssetIntegrityState
+from app.assets.storage import LocalAssetStore
 from app.catalog.models import PaperSource
 from app.compounds.models import Compound
+from app.jobs.execution import render_pdf_crop
+from app.jobs.service import PDF_RENDERER_VERSION, CropRequest
 from app.papers.models import Paper
 from app.structure_images.models import StructureSourceImage
 from app.workspaces.models import ChangeEvent, PaperWorkspace
@@ -311,3 +317,186 @@ def test_compound_delete_event_snapshots_every_cascaded_source_image(
         assert session.scalar(
             select(func.count()).select_from(StructureSourceImage)
         ) == 0
+
+
+def test_crop_content_is_scoped_to_exact_workspace_assignment(
+    science_api_context,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+    created = _create_image(context, csrf, compound["id"], version=2)
+    assert created.status_code == 201
+    image = created.json()["source_image"]
+    scoped_url = f"/api/v2/structure-source-images/{image['id']}/content"
+    generic_url = f"/api/v1/assets/{image['crop_asset_id']}/content"
+
+    assigned = context.client.get(scoped_url)
+    assert assigned.status_code == 200
+    assert assigned.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert assigned.headers["Cache-Control"] == "private, no-store"
+    assert assigned.headers["X-Content-Type-Options"] == "nosniff"
+    assert str(context.asset_root) not in assigned.text
+    assert context.client.get(generic_url).status_code == 404
+
+    for username, expected in (
+        ("science.api.admin", 200),
+        ("science.api.other", 404),
+        ("science.api.visitor", 404),
+    ):
+        context.login(username)
+        response = context.client.get(scoped_url)
+        assert response.status_code == expected
+        assert str(context.asset_root) not in response.text
+        assert context.client.get(generic_url).status_code == 404
+
+    context.login("science.api.admin")
+    unknown = context.client.get(f"/api/v2/structure-source-images/{uuid4()}/content")
+    assert unknown.status_code == 404
+    assert str(context.asset_root) not in unknown.text
+
+    csrf = context.login("science.api.reviewer")
+    deleted = context.client.request(
+        "DELETE",
+        f"/api/v2/structure-source-images/{image['id']}",
+        headers={"X-CSRF-Token": csrf},
+        json={"expected_workspace_version": 3},
+    )
+    assert deleted.status_code == 200
+    assert context.client.get(generic_url).status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("tamper", "expected_state"),
+    [
+        ("missing", AssetIntegrityState.MISSING),
+        ("same_length_corrupt", AssetIntegrityState.CORRUPT),
+    ],
+)
+def test_crop_content_integrity_failure_is_hidden_persisted_and_recoverable(
+    science_api_context,
+    tamper: str,
+    expected_state: AssetIntegrityState,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+    created = _create_image(context, csrf, compound["id"], version=2)
+    assert created.status_code == 201
+    image = created.json()["source_image"]
+    asset_id = image["crop_asset_id"]
+    with context.session_factory() as session:
+        asset = session.get(Asset, asset_id)
+        assert asset is not None
+        crop_path = LocalAssetStore(context.asset_root).path_for(asset.storage_key)
+        original = crop_path.read_bytes()
+    if tamper == "missing":
+        crop_path.unlink()
+    else:
+        crop_path.write_bytes(bytes([original[0] ^ 0xFF]) + original[1:])
+        assert crop_path.stat().st_size == len(original)
+
+    hidden = context.client.get(
+        f"/api/v2/structure-source-images/{image['id']}/content"
+    )
+    assert hidden.status_code == 404
+    assert str(crop_path) not in hidden.text
+    with context.session_factory() as session:
+        asset = session.get(Asset, asset_id)
+        workspace = session.get(PaperWorkspace, context.first.workspace_id)
+        event_count = session.scalar(
+            select(func.count())
+            .select_from(ChangeEvent)
+            .where(ChangeEvent.workspace_id == context.first.workspace_id)
+        )
+        assert asset is not None and asset.integrity_state is expected_state
+        assert workspace is not None and workspace.version == 3
+        assert event_count == 2
+
+    retried = context.client.post(
+        f"/api/v2/structure-source-images/{image['id']}/retry",
+        headers={"X-CSRF-Token": csrf},
+        json={"expected_workspace_version": 3},
+    )
+    assert retried.status_code == 200
+    assert retried.json()["source_image"]["crop_status"] == "ready"
+    assert retried.json()["source_image"]["crop_asset_id"] == asset_id
+    assert retried.json()["workspace_version"] == 3
+    readable = context.client.get(
+        f"/api/v2/structure-source-images/{image['id']}/content"
+    )
+    assert readable.status_code == 200
+    assert readable.content == original
+    with context.session_factory() as session:
+        asset = session.get(Asset, asset_id)
+        workspace = session.get(PaperWorkspace, context.first.workspace_id)
+        event_count = session.scalar(
+            select(func.count())
+            .select_from(ChangeEvent)
+            .where(ChangeEvent.workspace_id == context.first.workspace_id)
+        )
+        assert asset is not None
+        assert asset.integrity_state is AssetIntegrityState.VERIFIED
+        assert asset.verified_at is not None
+        assert workspace is not None and workspace.version == 3
+        assert event_count == 2
+
+
+def test_crop_renders_from_the_snapshot_that_passed_integrity_check(
+    science_api_context,
+    monkeypatch,
+) -> None:
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    compound = _create_compound(context, csrf)
+    source_root = Path(context.client.app.state.settings.source_roots["source_pdfs"])
+    source_path = source_root / "volume67 issue5" / "science-11.pdf"
+    trusted_copy = source_path.with_name("trusted-original.pdf")
+    trusted_copy.write_bytes(source_path.read_bytes())
+    replacement = source_path.with_name("replacement.pdf")
+    document = pymupdf.open()
+    for page_number in range(1, 4):
+        page = document.new_page(width=320, height=240)
+        page.insert_text((36, 48), f"REPLACEMENT page {page_number}")
+        page.draw_rect(pymupdf.Rect(70, 80, 210, 180), color=(1, 0, 0), fill=(1, 0, 0))
+    document.save(replacement)
+    document.close()
+    crop_request = CropRequest(
+        source_pdf_sha256=_source_sha(context, context.first.paper_id),
+        page_number=2,
+        x0=0.2,
+        y0=0.25,
+        x1=0.7,
+        y1=0.8,
+        rotation=0,
+        padding=0,
+        dpi=144,
+        renderer_version=PDF_RENDERER_VERSION,
+    )
+    expected_crop = render_pdf_crop(trusted_copy, crop_request)
+    replacement_crop = render_pdf_crop(replacement, crop_request)
+    assert expected_crop != replacement_crop
+
+    real_open = Path.open
+    replaced = False
+
+    def replace_after_open(path: Path, *args, **kwargs):
+        nonlocal replaced
+        handle = real_open(path, *args, **kwargs)
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if path == source_path and not replaced and "r" in mode:
+            replaced = True
+            os.replace(replacement, source_path)
+        return handle
+
+    monkeypatch.setattr(Path, "open", replace_after_open)
+    created = _create_image(context, csrf, compound["id"], version=2)
+    assert replaced is True
+    assert created.status_code == 201
+    image = created.json()["source_image"]
+    crop = context.client.get(
+        f"/api/v2/structure-source-images/{image['id']}/content"
+    )
+    assert crop.status_code == 200
+    assert crop.content == expected_crop
+    assert crop.content != replacement_crop

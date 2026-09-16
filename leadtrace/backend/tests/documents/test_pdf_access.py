@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -57,3 +59,35 @@ def test_integrity_mismatch_fails_closed_without_path_leakage(document_fixture) 
     with document_fixture.session_factory() as session:
         asset = session.get(Asset, document_fixture.asset_id)
         assert asset is not None and asset.integrity_state is AssetIntegrityState.CORRUPT
+
+
+def test_source_pdf_streams_the_snapshot_that_passed_integrity_check(
+    document_fixture,
+    monkeypatch,
+) -> None:
+    replacement = document_fixture.source_path.with_name("replacement.pdf")
+    replacement_payload = b"R" * len(document_fixture.payload)
+    replacement.write_bytes(replacement_payload)
+    real_open = Path.open
+    replaced = False
+
+    def replace_after_open(path: Path, *args, **kwargs):
+        nonlocal replaced
+        handle = real_open(path, *args, **kwargs)
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if path == document_fixture.source_path and not replaced and "r" in mode:
+            replaced = True
+            os.replace(replacement, document_fixture.source_path)
+        return handle
+
+    monkeypatch.setattr(Path, "open", replace_after_open)
+    _login(document_fixture.client, "document.reviewer")
+    response = document_fixture.client.get(
+        f"/api/v2/papers/{document_fixture.paper_id}/source-pdf",
+        headers={"Range": "bytes=9-48"},
+    )
+
+    assert replaced is True
+    assert response.status_code == 206
+    assert response.content == document_fixture.payload[9:49]
+    assert response.content != replacement_payload[9:49]

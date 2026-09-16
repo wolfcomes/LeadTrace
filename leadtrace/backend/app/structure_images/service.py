@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID
 
 from sqlalchemy import select
@@ -29,7 +30,14 @@ from app.workspaces.service import WorkspaceNotFoundError, WorkspaceService
 
 
 class StructureSourceImageValidationError(ValueError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        integrity_failure: tuple[UUID, UUID, AssetIntegrityState] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.integrity_failure = integrity_failure
 
 
 class StructureSourceImageDuplicateError(RuntimeError):
@@ -121,7 +129,7 @@ class StructureSourceImageService:
         paper_id: UUID,
         source_sha256: str,
         page_number: int,
-    ) -> Asset:
+    ) -> tuple[Asset, BinaryIO]:
         row = session.execute(
             select(PaperSource, Asset)
             .join(Paper, Paper.source_id == PaperSource.id)
@@ -146,24 +154,27 @@ class StructureSourceImageService:
         ):
             raise StructureSourceImageValidationError("Paper Source is unavailable")
         try:
-            inspected = self._store().inspect(
+            inspected, snapshot = self._store().open_snapshot(
                 asset.storage_key,
                 validate_extension=False,
                 validate_content=False,
             )
         except (AssetPathError, AssetMimeMismatchError, FileNotFoundError, OSError):
-            asset.integrity_state = AssetIntegrityState.MISSING
-            source.integrity_state = PaperSourceIntegrityState.MISSING
-            raise StructureSourceImageValidationError("Paper Source is unavailable") from None
+            raise StructureSourceImageValidationError(
+                "Paper Source is unavailable",
+                integrity_failure=(asset.id, source.id, AssetIntegrityState.MISSING),
+            ) from None
         if (
             inspected.sha256 != source.sha256
             or inspected.byte_size != source.byte_size
             or inspected.mime_type != "application/pdf"
         ):
-            asset.integrity_state = AssetIntegrityState.CORRUPT
-            source.integrity_state = PaperSourceIntegrityState.CORRUPT
-            raise StructureSourceImageValidationError("Paper Source failed integrity verification")
-        return asset
+            snapshot.close()
+            raise StructureSourceImageValidationError(
+                "Paper Source failed integrity verification",
+                integrity_failure=(asset.id, source.id, AssetIntegrityState.CORRUPT),
+            )
+        return asset, snapshot
 
     @staticmethod
     def _duplicate_exists(
@@ -191,6 +202,7 @@ class StructureSourceImageService:
         *,
         source_image: StructureSourceImage,
         source_asset: Asset,
+        source_snapshot: BinaryIO,
         actor_id: UUID,
     ) -> None:
         request = CropRequest(
@@ -205,10 +217,8 @@ class StructureSourceImageService:
             dpi=144,
             renderer_version=PDF_RENDERER_VERSION,
         )
-        store = self._store()
-        source_path = store.path_for(source_asset.storage_key)
         try:
-            content = render_pdf_crop(source_path, request)
+            content = render_pdf_crop(source_snapshot, request)
         except CropValidationError:
             source_image.crop_status = CropStatus.FAILED
             source_image.crop_asset_id = None
@@ -223,6 +233,13 @@ class StructureSourceImageService:
             source_asset_id=source_asset.id,
             created_by_id=actor_id,
         )
+        crop_asset = session.get(Asset, result.asset_id)
+        if crop_asset is None:
+            raise CropValidationError("Materialized crop asset is unavailable")
+        crop_asset.derivation_metadata = {
+            **crop_asset.derivation_metadata,
+            "visibility_scope": "structure_source_image",
+        }
         source_image.crop_status = CropStatus.READY
         source_image.crop_asset_id = result.asset_id
 
@@ -293,7 +310,7 @@ class StructureSourceImageService:
             )
             if compound is None:
                 raise WorkspaceNotFoundError("Resource not found")
-            asset = self._source_asset(
+            asset, source_snapshot = self._source_asset(
                 session,
                 paper_id=compound.paper_id,
                 source_sha256=source_sha256,
@@ -319,12 +336,14 @@ class StructureSourceImageService:
                 raise StructureSourceImageDuplicateError
             session.add(source_image)
             session.flush()  # The authoritative locator exists before rendering starts.
-            self._render(
-                session,
-                source_image=source_image,
-                source_asset=asset,
-                actor_id=actor.user_id,
-            )
+            with source_snapshot:
+                self._render(
+                    session,
+                    source_image=source_image,
+                    source_asset=asset,
+                    source_snapshot=source_snapshot,
+                    actor_id=actor.user_id,
+                )
             created["source_image"] = source_image
             return MutationChange(
                 entity_type="structure_source_image",
@@ -388,7 +407,7 @@ class StructureSourceImageService:
             ):
                 raise StructureSourceImageDuplicateError
             if locator_changed:
-                asset = self._source_asset(
+                asset, source_snapshot = self._source_asset(
                     session,
                     paper_id=source_image.paper_id,
                     source_sha256=source_image.source_sha256,
@@ -397,12 +416,14 @@ class StructureSourceImageService:
                 source_image.crop_status = CropStatus.PENDING
                 source_image.crop_asset_id = None
                 session.flush()
-                self._render(
-                    session,
-                    source_image=source_image,
-                    source_asset=asset,
-                    actor_id=actor.user_id,
-                )
+                with source_snapshot:
+                    self._render(
+                        session,
+                        source_image=source_image,
+                        source_asset=asset,
+                        source_snapshot=source_snapshot,
+                        actor_id=actor.user_id,
+                    )
             after = source_image_snapshot(source_image)
             updated["source_image"] = source_image
             return MutationChange(
@@ -445,18 +466,20 @@ class StructureSourceImageService:
             if source_image is None:
                 raise WorkspaceNotFoundError("Resource not found")
             before = source_image_snapshot(source_image)
-            asset = self._source_asset(
+            asset, source_snapshot = self._source_asset(
                 session,
                 paper_id=source_image.paper_id,
                 source_sha256=source_image.source_sha256,
                 page_number=source_image.page_number,
             )
-            self._render(
-                session,
-                source_image=source_image,
-                source_asset=asset,
-                actor_id=actor.user_id,
-            )
+            with source_snapshot:
+                self._render(
+                    session,
+                    source_image=source_image,
+                    source_asset=asset,
+                    source_snapshot=source_snapshot,
+                    actor_id=actor.user_id,
+                )
             after = source_image_snapshot(source_image)
             retried["source_image"] = source_image
             return MutationChange(

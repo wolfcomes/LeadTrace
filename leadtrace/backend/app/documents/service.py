@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID
 
 from sqlalchemy import select
@@ -40,7 +40,7 @@ class ByteRange:
 class ProtectedDocument:
     paper: Paper
     asset: Asset
-    path: Path
+    snapshot: BinaryIO
     byte_range: ByteRange
     full_size: int
 
@@ -99,30 +99,41 @@ class DocumentService:
         ):
             raise DocumentNotFound
         try:
-            inspected = store.inspect(asset.storage_key, validate_extension=False, validate_content=False)
+            inspected, snapshot = store.open_snapshot(
+                asset.storage_key,
+                validate_extension=False,
+                validate_content=False,
+            )
         except (AssetPathError, AssetMimeMismatchError, FileNotFoundError, OSError):
             asset.integrity_state = AssetIntegrityState.MISSING
             source.integrity_state = PaperSourceIntegrityState.MISSING
             raise DocumentNotFound from None
         if not self._matches_registered_source(source, asset, inspected):
+            snapshot.close()
             asset.integrity_state = AssetIntegrityState.CORRUPT
             source.integrity_state = PaperSourceIntegrityState.CORRUPT
             raise DocumentNotFound
-        byte_range = parse_range_header(range_header, asset.byte_size)
-        return ProtectedDocument(paper, asset, inspected.path, byte_range, asset.byte_size)
+        try:
+            byte_range = parse_range_header(range_header, asset.byte_size)
+        except BaseException:
+            snapshot.close()
+            raise
+        return ProtectedDocument(paper, asset, snapshot, byte_range, asset.byte_size)
 
     @staticmethod
     def _matches_registered_source(source: PaperSource, asset: Asset, inspected: InspectedFile) -> bool:
         return inspected.sha256 == source.sha256 == asset.sha256 and inspected.byte_size == source.byte_size == asset.byte_size and inspected.mime_type == "application/pdf"
 
 
-def iter_file_range(path: Path, byte_range: ByteRange):
-    with path.open("rb") as handle:
-        handle.seek(byte_range.start)
+def iter_snapshot_range(snapshot: BinaryIO, byte_range: ByteRange):
+    try:
+        snapshot.seek(byte_range.start)
         remaining = byte_range.length
         while remaining > 0:
-            chunk = handle.read(min(1024 * 1024, remaining))
+            chunk = snapshot.read(min(1024 * 1024, remaining))
             if not chunk:
                 return
             remaining -= len(chunk)
             yield chunk
+    finally:
+        snapshot.close()

@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 import logging
+import os
 from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID
 
 import pymupdf
@@ -91,11 +93,18 @@ def _source_pdf_path(
     return inspected.path
 
 
-def render_pdf_crop(source_path: Path, request: CropRequest) -> bytes:
+def render_pdf_crop(source: Path | BinaryIO, request: CropRequest) -> bytes:
     """Render normalized crop coordinates against the rotated PDF page."""
 
     try:
-        with pymupdf.open(source_path) as document:
+        if isinstance(source, Path):
+            pdf_source = str(source)
+        else:
+            source.seek(0)
+            pdf_source = f"/proc/self/fd/{source.fileno()}"
+            if not os.path.exists(pdf_source):
+                raise CropValidationError("Verified PDF snapshot is unavailable")
+        with pymupdf.open(pdf_source) as document:
             if request.page_number > document.page_count:
                 raise CropValidationError("Crop page is outside the source PDF")
             page = document.load_page(request.page_number - 1)
