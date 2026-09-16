@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+import hashlib
+from io import BytesIO
 from pathlib import Path
 from uuid import UUID
 
+from PIL import Image, UnidentifiedImageError
 from rdkit import Chem, rdBase
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -40,6 +44,18 @@ class StructureValidationError(ValueError):
 class StructureMutation:
     workspace: PaperWorkspace
     structure: Structure
+
+
+@dataclass(frozen=True, slots=True)
+class StructureRead:
+    workspace: PaperWorkspace
+    structure: Structure | None
+
+
+@dataclass(frozen=True, slots=True)
+class StructureDepiction:
+    content: bytes
+    media_type: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +176,7 @@ class StructureDrawingService:
         if existing is not None:
             path = store.path_for(existing.storage_key)
             if path.is_file():
+                existing.access_level = AssetAccessLevel.ADMIN
                 return StructureDrawingResult(existing, path, key, True)
             existing.integrity_state = AssetIntegrityState.MISSING
 
@@ -170,14 +187,18 @@ class StructureDrawingService:
                 "A parseable SMILES is required for drawing"
             )
         content = render_structure_png(canonical_smiles, options=options)
-        stored = store.put_bytes(content, suffix=".png")
+        stored = store.put_bytes(
+            content,
+            suffix=".png",
+            namespace=f"rdkit-structure/{key}",
+        )
         inspected = store.inspect(stored.storage_key)
         asset, _ = AssetService().register_inspected(
             session,
             storage_key=stored.storage_key,
             inspected=inspected,
             category=AssetCategory.RDKIT_STRUCTURE,
-            access_level=AssetAccessLevel.REVIEWER,
+            access_level=AssetAccessLevel.ADMIN,
             integrity_state=AssetIntegrityState.VERIFIED,
             source_asset_id=source_asset_id,
             created_by_id=created_by_id,
@@ -189,6 +210,7 @@ class StructureDrawingService:
                 "render_version": render_version,
             },
         )
+        asset.access_level = AssetAccessLevel.ADMIN
         asset.integrity_state = AssetIntegrityState.VERIFIED
         asset.source_metadata = {"canonical_smiles": canonical_smiles}
         asset.derivation_metadata = {
@@ -206,8 +228,111 @@ class StructureService:
         managed_root: Path,
         workspace_service: WorkspaceService | None = None,
     ) -> None:
+        self.managed_root = managed_root
         self.workspace_service = workspace_service or WorkspaceService()
         self.drawing_service = StructureDrawingService(managed_root)
+
+    @staticmethod
+    def _harden_depiction_asset(
+        session: Session,
+        asset_id: UUID | None,
+    ) -> Asset | None:
+        if asset_id is None:
+            return None
+        asset = session.get(Asset, asset_id)
+        if asset is None or asset.category is not AssetCategory.RDKIT_STRUCTURE:
+            return None
+        asset.access_level = AssetAccessLevel.ADMIN
+        return asset
+
+    @staticmethod
+    def _read_verified_depiction(
+        asset: Asset,
+        store: LocalAssetStore,
+    ) -> bytes | None:
+        try:
+            path = store.path_for(asset.storage_key)
+            with path.open("rb") as handle:
+                content = handle.read()
+        except FileNotFoundError:
+            asset.integrity_state = AssetIntegrityState.MISSING
+            return None
+        except (OSError, ValueError):
+            asset.integrity_state = AssetIntegrityState.CORRUPT
+            return None
+
+        valid = (
+            len(content) == asset.byte_size
+            and hashlib.sha256(content).hexdigest() == asset.sha256
+        )
+        if valid:
+            try:
+                with Image.open(BytesIO(content)) as image:
+                    valid = image.format == "PNG"
+                    image.verify()
+            except (OSError, UnidentifiedImageError, ValueError):
+                valid = False
+        if not valid:
+            asset.integrity_state = AssetIntegrityState.CORRUPT
+            return None
+        asset.integrity_state = AssetIntegrityState.VERIFIED
+        asset.verified_at = datetime.now(UTC)
+        return content
+
+    def get_structure(
+        self,
+        session: Session,
+        *,
+        compound_id: UUID,
+        actor: Principal,
+    ) -> StructureRead:
+        workspace_id = session.scalar(
+            select(Compound.workspace_id).where(Compound.id == compound_id)
+        )
+        if workspace_id is None:
+            raise WorkspaceNotFoundError("Resource not found")
+        aggregate = self.workspace_service.get_workspace(
+            session,
+            workspace_id=workspace_id,
+            actor=actor,
+        )
+        structure = session.scalar(
+            select(Structure).where(
+                Structure.compound_id == compound_id,
+                Structure.workspace_id == aggregate.workspace.id,
+            )
+        )
+        return StructureRead(aggregate.workspace, structure)
+
+    def get_depiction(
+        self,
+        session: Session,
+        *,
+        compound_id: UUID,
+        actor: Principal,
+    ) -> StructureDepiction | None:
+        result = self.get_structure(
+            session,
+            compound_id=compound_id,
+            actor=actor,
+        )
+        if result.structure is None or result.structure.depiction_asset_id is None:
+            raise WorkspaceNotFoundError("Resource not found")
+        asset_store = LocalAssetStore(self.managed_root)
+        asset = self._harden_depiction_asset(
+            session,
+            result.structure.depiction_asset_id,
+        )
+        if (
+            asset is None
+            or asset.integrity_state is not AssetIntegrityState.VERIFIED
+            or asset.mime_type != "image/png"
+        ):
+            raise WorkspaceNotFoundError("Resource not found")
+        content = self._read_verified_depiction(asset, asset_store)
+        if content is None:
+            return None
+        return StructureDepiction(content=content, media_type=asset.mime_type)
 
     def upsert_structure(
         self,
@@ -249,7 +374,8 @@ class StructureService:
             if clear_status:
                 if clean_smiles is not None or clean_molfile is not None:
                     raise StructureValidationError(
-                        "unresolved and not_reported Structures cannot contain structure content"
+                        "unresolved and not_reported Structures cannot contain "
+                        "structure content"
                     )
                 parsed = ParsedStructure(False, None, None, None)
             else:
@@ -291,6 +417,10 @@ class StructureService:
             if structure is not None and all(
                 before[field] == value for field, value in comparable.items()
             ):
+                self._harden_depiction_asset(
+                    session,
+                    structure.depiction_asset_id,
+                )
                 result_row["structure"] = structure
                 return MutationChange(
                     entity_type="structure",
@@ -355,9 +485,11 @@ class StructureService:
 
 
 __all__ = [
+    "StructureDepiction",
     "StructureDrawingService",
     "StructureDrawingResult",
     "StructureMutation",
+    "StructureRead",
     "StructureService",
     "StructureValidationError",
 ]

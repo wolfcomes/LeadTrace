@@ -63,11 +63,23 @@ def test_managed_content_is_atomically_addressed_and_deduplicated(
 
     first = store.put_bytes(content, suffix=".png")
     second = store.put_bytes(content, suffix=".png")
+    namespaced = store.put_bytes(
+        content,
+        suffix=".png",
+        namespace="rdkit-structure/drawing-key",
+    )
 
     assert first.storage_key == second.storage_key
     assert first.sha256 == second.sha256
     assert first.path == second.path
     assert first.path.read_bytes() == content
+    assert namespaced.storage_key != first.storage_key
+    assert namespaced.storage_key.startswith(
+        "managed/rdkit-structure/drawing-key/objects/"
+    )
+    assert namespaced.path.read_bytes() == content
+    with pytest.raises(AssetPathError):
+        store.put_bytes(content, suffix=".png", namespace="../escape")
     assert not list((tmp_path / "managed").rglob("*.tmp"))
 
 

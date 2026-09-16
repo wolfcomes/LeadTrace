@@ -185,11 +185,23 @@ class LocalAssetStore:
             page_count=page_count,
         )
 
-    def put_bytes(self, content: bytes, *, suffix: str = "") -> StoredFile:
+    def put_bytes(
+        self,
+        content: bytes,
+        *,
+        suffix: str = "",
+        namespace: str | None = None,
+    ) -> StoredFile:
         if suffix and not re.fullmatch(r"\.[A-Za-z0-9]{1,12}", suffix):
             raise AssetPathError("Invalid managed-file suffix")
         sha256 = hashlib.sha256(content).hexdigest()
-        relative = PurePosixPath("objects", sha256[:2], f"{sha256}{suffix.casefold()}")
+        namespace_parts = self._validated_parts(namespace) if namespace else ()
+        relative = PurePosixPath(
+            *namespace_parts,
+            "objects",
+            sha256[:2],
+            f"{sha256}{suffix.casefold()}",
+        )
         storage_key = PurePosixPath("managed", relative).as_posix()
         target = self.path_for(storage_key)
         target.parent.mkdir(parents=True, exist_ok=True)

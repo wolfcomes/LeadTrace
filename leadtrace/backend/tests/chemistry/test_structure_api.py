@@ -26,11 +26,20 @@ def test_single_structure_route_replaces_retired_candidate_routes(tmp_path) -> N
     routes = [route for route in application.routes if isinstance(route, APIRoute)]
 
     assert not any(route.path.startswith("/api/v1/papers/") for route in routes)
-    route = next(
+    structure_routes = [
         route
         for route in routes
         if route.path == "/api/v2/compounds/{compound_id}/structure"
+    ]
+    assert all(
+        getattr(route.endpoint, "__leadtrace_route_access__")
+        is RouteAccess.PERMISSION
+        for route in structure_routes
     )
-    assert route.methods == {"PUT"}
-    assert getattr(route.endpoint, "__leadtrace_route_access__") is RouteAccess.PERMISSION
-    assert getattr(route.endpoint, "__leadtrace_action__") is Action.EDIT_DRAFT
+    assert {
+        next(iter(route.methods)): getattr(route.endpoint, "__leadtrace_action__")
+        for route in structure_routes
+    } == {
+        "GET": Action.READ_DRAFT,
+        "PUT": Action.EDIT_DRAFT,
+    }

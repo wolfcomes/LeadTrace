@@ -41,8 +41,16 @@ class StructureMutationResponse(BaseModel):
     workspace_version: int
 
 
+class StructureReadResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    structure: StructureResponse | None
+    workspace_version: int
+
+
 __all__ = [
     "StructureMutationResponse",
+    "StructureReadResponse",
     "StructureResponse",
     "StructureUpsertRequest",
 ]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.api.errors import APIError
@@ -18,6 +18,7 @@ from app.security.policies import Action, Principal
 from app.structures.models import Structure
 from app.structures.schemas import (
     StructureMutationResponse,
+    StructureReadResponse,
     StructureResponse,
     StructureUpsertRequest,
 )
@@ -80,6 +81,34 @@ def create_structures_router(settings: Settings) -> APIRouter:
     service = StructureService(settings.asset_root)
     session_secret = settings.session_secret.get_secret_value()
 
+    @router.get(
+        "/api/v2/compounds/{compound_id}/structure",
+        response_model=StructureReadResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.READ_DRAFT)
+    def get_structure(
+        compound_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> StructureReadResponse:
+        try:
+            with session.begin():
+                result = service.get_structure(
+                    session,
+                    compound_id=compound_id,
+                    actor=principal,
+                )
+                return StructureReadResponse(
+                    structure=(
+                        _structure_response(result.structure)
+                        if result.structure is not None
+                        else None
+                    ),
+                    workspace_version=result.workspace.version,
+                )
+        except (WorkspaceForbiddenError, WorkspaceNotFoundError) as error:
+            raise _workspace_error(error) from error
+
     @router.put(
         "/api/v2/compounds/{compound_id}/structure",
         response_model=StructureMutationResponse,
@@ -118,6 +147,37 @@ def create_structures_router(settings: Settings) -> APIRouter:
             raise _workspace_error(error) from error
         except StructureValidationError as error:
             raise APIError(422, "STRUCTURE_INVALID", str(error)) from error
+
+    @router.get(
+        "/api/v2/compounds/{compound_id}/structure/depiction",
+        response_class=Response,
+        responses={200: {"content": {"image/png": {}}}},
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.READ_DRAFT)
+    def get_structure_depiction(
+        compound_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> Response:
+        try:
+            with session.begin():
+                depiction = service.get_depiction(
+                    session,
+                    compound_id=compound_id,
+                    actor=principal,
+                )
+        except (WorkspaceForbiddenError, WorkspaceNotFoundError) as error:
+            raise _workspace_error(error) from error
+        if depiction is None:
+            raise APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+        return Response(
+            content=depiction.content,
+            media_type=depiction.media_type,
+            headers={
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     return router
 

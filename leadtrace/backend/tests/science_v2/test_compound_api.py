@@ -221,6 +221,64 @@ def test_reorder_requires_the_complete_unique_workspace_compound_set(
         assert event_count == 2
 
 
+def test_duplicate_compound_label_returns_safe_conflict_without_history(
+    science_api_context,
+) -> None:
+    csrf = science_api_context.login("science.api.reviewer")
+    workspace_id = science_api_context.first.workspace_id
+    first = _create_compound(
+        science_api_context, csrf, version=1, label="26a"
+    ).json()["compound"]
+    second = _create_compound(
+        science_api_context, csrf, version=2, label="26b"
+    ).json()["compound"]
+
+    duplicate = science_api_context.client.post(
+        f"/api/v2/workspaces/{workspace_id}/compounds",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "expected_workspace_version": 3,
+            "compound_label": "26a",
+        },
+    )
+    duplicate_update = science_api_context.client.patch(
+        f"/api/v2/compounds/{second['id']}",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "expected_workspace_version": 3,
+            "compound_label": "26a",
+        },
+    )
+
+    for response in (duplicate, duplicate_update):
+        assert response.status_code == 409
+        assert response.json()["code"] == "COMPOUND_LABEL_CONFLICT"
+        assert response.json()["message"] == (
+            "Compound label conflicts with another Compound"
+        )
+        assert "uq_compounds_workspace_label" not in response.text
+        assert "duplicate key" not in response.text.casefold()
+    with science_api_context.session_factory() as session:
+        workspace = session.get(PaperWorkspace, workspace_id)
+        second_row = session.get(Compound, second["id"])
+        compound_count = session.scalar(
+            select(func.count())
+            .select_from(Compound)
+            .where(Compound.workspace_id == workspace_id)
+        )
+        event_count = session.scalar(
+            select(func.count())
+            .select_from(ChangeEvent)
+            .where(ChangeEvent.workspace_id == workspace_id)
+        )
+        assert workspace is not None
+        assert second_row is not None
+        assert workspace.version == 3
+        assert second_row.compound_label == "26b"
+        assert compound_count == 2
+        assert event_count == 2
+
+
 def test_delete_referenced_compound_returns_only_safe_reference_counts(
     science_api_context,
 ) -> None:

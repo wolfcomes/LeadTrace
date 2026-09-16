@@ -5,7 +5,15 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.assets.models import Asset, AssetCategory, AssetIntegrityState
+from app.assets.models import (
+    Asset,
+    AssetAccessLevel,
+    AssetCategory,
+    AssetIntegrityState,
+)
+from app.assets.service import AssetService
+from app.assets.storage import LocalAssetStore
+from app.chemistry.drawing import DrawingOptions, render_structure_png
 from app.jobs.tasks.structures import run_structure_drawing_job
 from app.structures.service import StructureDrawingService
 from app.users.models import UserRole
@@ -31,24 +39,33 @@ def test_drawing_service_reuses_one_verified_immutable_asset(
             smiles="c1ccccc1",
             created_by_id=reviewer.id,
         )
-        second = service.draw(
+        canonical_equivalent = service.draw(
+            session,
+            smiles="C1=CC=CC=C1",
+            created_by_id=reviewer.id,
+        )
+        resized = service.draw(
             session,
             smiles="c1ccccc1",
+            options=DrawingOptions(width=601, height=420),
             created_by_id=reviewer.id,
         )
 
-        assert first.asset.id == second.asset.id
+        assert first.asset.id == canonical_equivalent.asset.id
+        assert resized.asset.id != first.asset.id
         assert first.reused is False
-        assert second.reused is True
+        assert canonical_equivalent.reused is True
+        assert resized.reused is False
         asset = session.get(Asset, first.asset.id)
         assert asset is not None
         assert asset.category is AssetCategory.RDKIT_STRUCTURE
         assert asset.integrity_state is AssetIntegrityState.VERIFIED
         assert asset.mime_type == "image/png"
         assert asset.derivation_metadata["drawing_key"]
-        assert (tmp_path / asset.storage_key.removeprefix("managed/")).read_bytes().startswith(
-            b"\x89PNG"
-        )
+        content = (
+            tmp_path / asset.storage_key.removeprefix("managed/")
+        ).read_bytes()
+        assert content.startswith(b"\x89PNG")
 
 
 def test_background_drawing_job_keeps_the_shared_drawing_contract(
@@ -66,3 +83,35 @@ def test_background_drawing_job_keeps_the_shared_drawing_contract(
         assert result.path.read_bytes().startswith(b"\x89PNG")
         assert result.drawing_key
         assert result.reused is False
+
+
+def test_drawing_does_not_reclassify_an_identical_non_structure_asset(
+    tmp_path: Path,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    content = render_structure_png("CCO")
+    store = LocalAssetStore(tmp_path)
+    stored = store.put_bytes(content, suffix=".png")
+    with auth_session_factory.begin() as session:
+        crop, created = AssetService().register_inspected(
+            session,
+            storage_key=stored.storage_key,
+            inspected=store.inspect(stored.storage_key),
+            category=AssetCategory.EVIDENCE_CROP,
+            access_level=AssetAccessLevel.REVIEWER,
+            integrity_state=AssetIntegrityState.VERIFIED,
+        )
+        assert created is True
+
+        result = StructureDrawingService(tmp_path).draw(
+            session,
+            smiles="CCO",
+        )
+
+        assert result.asset.id != crop.id
+        assert result.asset.category is AssetCategory.RDKIT_STRUCTURE
+        assert result.asset.access_level is AssetAccessLevel.ADMIN
+        assert result.asset.storage_key != crop.storage_key
+        assert crop.category is AssetCategory.EVIDENCE_CROP
+        assert crop.access_level is AssetAccessLevel.REVIEWER
+        assert crop.derivation_metadata == {}

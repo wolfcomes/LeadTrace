@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.assets.models import AssetIntegrityState
+from app.assets.models import AssetCategory, AssetIntegrityState
 from app.assets.repository import AssetRepository
 from app.assets.schemas import AssetResponse
 from app.assets.storage import LocalAssetStore
@@ -38,6 +38,17 @@ def create_assets_router() -> APIRouter:
             asset = repository.get(session, asset_id)
             if asset is None or asset.integrity_state is not AssetIntegrityState.VERIFIED:
                 raise HTTPException(status_code=404, detail="Asset not found")
+            if (
+                asset.category is AssetCategory.RDKIT_STRUCTURE
+                and principal.role.value != "admin"
+            ):
+                status_code = 403 if principal.role.value == "reviewer" else 404
+                detail = (
+                    "Permission denied"
+                    if principal.role.value == "reviewer"
+                    else "Asset not found"
+                )
+                raise HTTPException(status_code=status_code, detail=detail)
             if principal.role.value == "visitor" and asset.access_level.value != "visitor":
                 raise HTTPException(status_code=404, detail="Asset not found")
             if principal.role.value == "reviewer" and asset.access_level.value == "admin":

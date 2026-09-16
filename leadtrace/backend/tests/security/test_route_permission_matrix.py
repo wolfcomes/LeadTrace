@@ -200,6 +200,7 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v2/workspaces/{workspace_id}/compounds/order",
         "/api/v2/compounds/{compound_id}",
         "/api/v2/compounds/{compound_id}/structure",
+        "/api/v2/compounds/{compound_id}/structure/depiction",
     } <= paths
     assert not any(
         path.startswith(prefix)
@@ -285,11 +286,30 @@ def test_retired_scientific_v1_routes_are_not_registered(
         if isinstance(route, APIRoute)
         and route.path.startswith("/api/v2/compounds/")
     ]
-    assert len(compound_routes) == 3
+    assert len(compound_routes) == 5
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION
-        and getattr(route.endpoint, "__leadtrace_action__", None)
-        is Action.EDIT_DRAFT
         for route in compound_routes
     )
+    assert {
+        (next(iter(route.methods)), route.path): getattr(
+            route.endpoint, "__leadtrace_action__", None
+        )
+        for route in compound_routes
+    } == {
+        ("PATCH", "/api/v2/compounds/{compound_id}"): Action.EDIT_DRAFT,
+        ("DELETE", "/api/v2/compounds/{compound_id}"): Action.EDIT_DRAFT,
+        (
+            "GET",
+            "/api/v2/compounds/{compound_id}/structure",
+        ): Action.READ_DRAFT,
+        (
+            "PUT",
+            "/api/v2/compounds/{compound_id}/structure",
+        ): Action.EDIT_DRAFT,
+        (
+            "GET",
+            "/api/v2/compounds/{compound_id}/structure/depiction",
+        ): Action.READ_DRAFT,
+    }
