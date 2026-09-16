@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
-import hashlib
-from io import BytesIO
 from pathlib import Path
 from uuid import UUID
 
-from PIL import Image, UnidentifiedImageError
 from rdkit import Chem, rdBase
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -174,11 +170,15 @@ class StructureDrawingService:
             .with_for_update()
         )
         if existing is not None:
-            path = store.path_for(existing.storage_key)
-            if path.is_file():
+            content = AssetService.read_verified_content(existing, store)
+            if content is not None:
                 existing.access_level = AssetAccessLevel.ADMIN
-                return StructureDrawingResult(existing, path, key, True)
-            existing.integrity_state = AssetIntegrityState.MISSING
+                return StructureDrawingResult(
+                    existing,
+                    store.path_for(existing.storage_key),
+                    key,
+                    True,
+                )
 
         validation = validate_structure(smiles)
         canonical_smiles = validation.canonical_isomeric_smiles
@@ -250,34 +250,7 @@ class StructureService:
         asset: Asset,
         store: LocalAssetStore,
     ) -> bytes | None:
-        try:
-            path = store.path_for(asset.storage_key)
-            with path.open("rb") as handle:
-                content = handle.read()
-        except FileNotFoundError:
-            asset.integrity_state = AssetIntegrityState.MISSING
-            return None
-        except (OSError, ValueError):
-            asset.integrity_state = AssetIntegrityState.CORRUPT
-            return None
-
-        valid = (
-            len(content) == asset.byte_size
-            and hashlib.sha256(content).hexdigest() == asset.sha256
-        )
-        if valid:
-            try:
-                with Image.open(BytesIO(content)) as image:
-                    valid = image.format == "PNG"
-                    image.verify()
-            except (OSError, UnidentifiedImageError, ValueError):
-                valid = False
-        if not valid:
-            asset.integrity_state = AssetIntegrityState.CORRUPT
-            return None
-        asset.integrity_state = AssetIntegrityState.VERIFIED
-        asset.verified_at = datetime.now(UTC)
-        return content
+        return AssetService.read_verified_content(asset, store)
 
     def get_structure(
         self,

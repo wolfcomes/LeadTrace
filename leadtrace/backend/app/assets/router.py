@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.assets.models import AssetCategory, AssetIntegrityState
 from app.assets.repository import AssetRepository
 from app.assets.schemas import AssetResponse
+from app.assets.service import AssetService
 from app.assets.storage import LocalAssetStore
 from app.database import get_db_session
 from app.security.permissions import (
@@ -32,8 +33,9 @@ def create_assets_router() -> APIRouter:
         request: Request,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
-    ) -> FileResponse:
+    ) -> Response:
         settings = request.app.state.settings
+        content: bytes | None = None
         with session.begin():
             asset = repository.get(session, asset_id)
             if asset is None or asset.integrity_state is not AssetIntegrityState.VERIFIED:
@@ -42,13 +44,7 @@ def create_assets_router() -> APIRouter:
                 asset.category is AssetCategory.RDKIT_STRUCTURE
                 and principal.role.value != "admin"
             ):
-                status_code = 403 if principal.role.value == "reviewer" else 404
-                detail = (
-                    "Permission denied"
-                    if principal.role.value == "reviewer"
-                    else "Asset not found"
-                )
-                raise HTTPException(status_code=status_code, detail=detail)
+                raise HTTPException(status_code=404, detail="Asset not found")
             if principal.role.value == "visitor" and asset.access_level.value != "visitor":
                 raise HTTPException(status_code=404, detail="Asset not found")
             if principal.role.value == "reviewer" and asset.access_level.value == "admin":
@@ -57,21 +53,24 @@ def create_assets_router() -> APIRouter:
                 settings.asset_root,
                 source_roots=settings.source_roots,
             )
-            try:
-                inspected = store.inspect(asset.storage_key)
-            except (OSError, ValueError, FileNotFoundError):
-                asset.integrity_state = AssetIntegrityState.MISSING
-                raise HTTPException(status_code=404, detail="Asset not found") from None
-            if inspected.sha256 != asset.sha256 or inspected.byte_size != asset.byte_size:
-                asset.integrity_state = AssetIntegrityState.CORRUPT
-                raise HTTPException(status_code=404, detail="Asset not found")
-            path = inspected.path
+            content = AssetService.read_verified_content(asset, store)
+            media_type = asset.mime_type
             filename = asset.original_filename.replace("\r", "").replace("\n", "")
-        return FileResponse(
-            path,
-            media_type=asset.mime_type,
-            filename=filename,
-            headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+        if content is None:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        encoded_filename = quote(filename)
+        if encoded_filename == filename:
+            content_disposition = f'attachment; filename="{filename}"'
+        else:
+            content_disposition = f"attachment; filename*=utf-8''{encoded_filename}"
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+                "Content-Disposition": content_disposition,
+            },
         )
 
     @router.get("/{asset_id}", response_model=AssetResponse)

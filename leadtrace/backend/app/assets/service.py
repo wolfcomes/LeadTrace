@@ -115,3 +115,26 @@ class AssetService:
         if valid:
             asset.verified_at = _now()
         return valid
+
+    @staticmethod
+    def read_verified_content(
+        asset: Asset,
+        store: LocalAssetStore,
+    ) -> bytes | None:
+        try:
+            inspected, content = store.read_snapshot(asset.storage_key)
+        except FileNotFoundError:
+            asset.integrity_state = AssetIntegrityState.MISSING
+            return None
+        except (OSError, ValueError):
+            asset.integrity_state = AssetIntegrityState.CORRUPT
+            return None
+        valid = (
+            inspected.sha256 == asset.sha256
+            and inspected.byte_size == asset.byte_size
+            and inspected.mime_type == asset.mime_type
+        )
+        asset.integrity_state = (
+            AssetIntegrityState.VERIFIED if valid else AssetIntegrityState.CORRUPT
+        )
+        return content if valid else None

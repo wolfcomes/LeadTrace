@@ -80,6 +80,14 @@ def test_managed_content_is_atomically_addressed_and_deduplicated(
     assert namespaced.path.read_bytes() == content
     with pytest.raises(AssetPathError):
         store.put_bytes(content, suffix=".png", namespace="../escape")
+
+    replacement = _png_bytes((19, 11))
+    assert replacement != content
+    first.path.write_bytes(replacement)
+    repaired = store.put_bytes(content, suffix=".png")
+
+    assert repaired.path == first.path
+    assert repaired.path.read_bytes() == content
     assert not list((tmp_path / "managed").rglob("*.tmp"))
 
 
@@ -115,3 +123,14 @@ def test_extension_and_content_mismatch_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(AssetMimeMismatchError, match="PDF"):
         store.inspect("source/baseline/spoofed.pdf")
+
+
+def test_snapshot_rejects_invalid_image_content_after_a_valid_signature(
+    tmp_path: Path,
+) -> None:
+    store = LocalAssetStore(tmp_path / "managed")
+    invalid_png = _png_bytes()[:-8]
+    stored = store.put_bytes(invalid_png, suffix=".png")
+
+    with pytest.raises(AssetMimeMismatchError, match="Image content is invalid"):
+        store.read_snapshot(stored.storage_key)

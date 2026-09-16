@@ -115,3 +115,27 @@ def test_drawing_does_not_reclassify_an_identical_non_structure_asset(
         assert crop.category is AssetCategory.EVIDENCE_CROP
         assert crop.access_level is AssetAccessLevel.REVIEWER
         assert crop.derivation_metadata == {}
+
+
+def test_drawing_rejects_tampered_cached_png_and_restores_requested_structure(
+    tmp_path: Path,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    expected_content = render_structure_png("CCO")
+    replacement_content = render_structure_png("CCN")
+    assert replacement_content != expected_content
+
+    with auth_session_factory.begin() as session:
+        service = StructureDrawingService(tmp_path)
+        first = service.draw(session, smiles="CCO")
+        first.path.write_bytes(replacement_content)
+
+        redrawn = service.draw(session, smiles="CCO")
+
+        assert redrawn.reused is False
+        assert redrawn.path.read_bytes() == expected_content
+        assert redrawn.path.read_bytes() != replacement_content
+        assert redrawn.asset.integrity_state is AssetIntegrityState.VERIFIED
+        inspected = LocalAssetStore(tmp_path).inspect(redrawn.asset.storage_key)
+        assert inspected.sha256 == redrawn.asset.sha256
+        assert inspected.byte_size == redrawn.asset.byte_size

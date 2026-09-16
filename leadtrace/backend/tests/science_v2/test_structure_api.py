@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import os
 from pathlib import Path
 
@@ -309,6 +310,11 @@ def test_structure_depiction_is_scoped_and_generic_asset_route_is_admin_only(
     assert written.status_code == 200
     depiction_id = written.json()["structure"]["depiction_asset_id"]
     assert depiction_id is not None
+    verified_at = datetime(2020, 1, 2, 3, 4, tzinfo=UTC)
+    with science_api_context.session_factory.begin() as session:
+        asset = session.get(Asset, depiction_id)
+        assert asset is not None
+        asset.verified_at = verified_at
 
     generic_reviewer = science_api_context.client.get(
         f"/api/v1/assets/{depiction_id}/content"
@@ -316,13 +322,17 @@ def test_structure_depiction_is_scoped_and_generic_asset_route_is_admin_only(
     scoped_reviewer = science_api_context.client.get(
         f"/api/v2/compounds/{compound_id}/structure/depiction"
     )
-    assert generic_reviewer.status_code == 403
+    assert generic_reviewer.status_code == 404
     assert scoped_reviewer.status_code == 200
     assert scoped_reviewer.content.startswith(b"\x89PNG")
     assert scoped_reviewer.headers["content-type"].startswith("image/png")
     assert scoped_reviewer.headers["cache-control"] == "private, no-store"
     assert str(science_api_context.asset_root) not in scoped_reviewer.text
     assert "storage_key" not in scoped_reviewer.text
+    with science_api_context.session_factory() as session:
+        asset = session.get(Asset, depiction_id)
+        assert asset is not None
+        assert asset.verified_at == verified_at
 
     science_api_context.login("science.api.other")
     concealed = science_api_context.client.get(
@@ -368,7 +378,7 @@ def test_legacy_reviewer_depiction_is_hardened_on_noop_and_scoped_read(
     generic_other = science_api_context.client.get(
         f"/api/v1/assets/{depiction_id}/content"
     )
-    assert generic_other.status_code == 403
+    assert generic_other.status_code == 404
 
     csrf = science_api_context.login("science.api.reviewer")
     unchanged = _put_structure(
