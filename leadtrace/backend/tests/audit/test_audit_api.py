@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.assets.models import (
+    Asset,
+    AssetAccessLevel,
+    AssetCategory,
+    AssetIntegrityState,
+)
 from app.audit.service import AuditService, canonical_content_hash
+from app.catalog.models import PaperSource, PaperSourceIntegrityState
 from app.config import Settings
 from app.database import DatabaseResources
 from app.main import create_app
-from app.papers.models import Paper
-from app.releases.models import Release
+from app.papers.models import Paper, PaperCatalogState
 from app.users.models import UserRole
 from app.users.service import UserService
 
@@ -50,20 +55,45 @@ def test_audit_api_limits_reviewer_to_own_activity_and_admin_verifies_chain(
             )
             user.must_change_password = False
             identities[name] = user
-        paper = Paper(paper_key=f"audit-api-paper-{uuid4().hex[:8]}", doi=None)
-        session.add(paper)
-        session.flush()
-        release = Release(
-            release_key=f"audit-api-release-{uuid4().hex[:8]}",
-            title="Audit API release",
-            notes="",
-            metrics={},
-            published_by_id=identities["audit-admin"].id,
-            published_at=datetime.now(UTC),
-            is_current=False,
-            manifest_finalized=True,
+        source_suffix = uuid4().hex[:8]
+        asset = Asset(
+            storage_key=f"source/source_pdfs/audit/{source_suffix}.pdf",
+            original_filename=f"{source_suffix}.pdf",
+            sha256=source_suffix.ljust(64, "0"),
+            byte_size=1,
+            mime_type="application/pdf",
+            page_count=1,
+            category=AssetCategory.ARTICLE_PDF,
+            access_level=AssetAccessLevel.REVIEWER,
+            integrity_state=AssetIntegrityState.VERIFIED,
+            derivation_metadata={},
+            source_metadata={},
         )
-        session.add(release)
+        session.add(asset)
+        session.flush()
+        source = PaperSource(
+            asset_id=asset.id,
+            source_root_key="source_pdfs",
+            source_key=f"audit/{source_suffix}.pdf",
+            sha256=asset.sha256,
+            byte_size=asset.byte_size,
+            page_count=asset.page_count,
+            integrity_state=PaperSourceIntegrityState.VERIFIED,
+        )
+        session.add(source)
+        session.flush()
+        paper = Paper(
+            paper_key=f"audit-api-paper-{source_suffix}",
+            source_id=source.id,
+            title="Audit API paper",
+            journal="Journal of Medicinal Chemistry",
+            publication_year=2024,
+            volume="67",
+            issue="5",
+            doi=None,
+            catalog_state=PaperCatalogState.EXTRACTED,
+        )
+        session.add(paper)
         session.flush()
         for index, actor_name in enumerate(("audit-reviewer", "audit-admin"), 1):
             AuditService().append_event(
@@ -74,7 +104,7 @@ def test_audit_api_limits_reviewer_to_own_activity_and_admin_verifies_chain(
                 target_id=uuid4(),
                 paper_id=paper.id,
                 changeset_id=None,
-                release_id=release.id,
+                release_id=None,
                 ip_address="192.0.2.20",
                 request_id=f"audit-api-{index}",
                 result="success",
