@@ -3,7 +3,16 @@ from __future__ import annotations
 from enum import StrEnum
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    Enum,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,6 +48,14 @@ class Paper(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "catalog_state IN ('extracted', 'verified', 'source_error')",
             name="ck_papers_catalog_state",
         ),
+        ForeignKeyConstraint(
+            ["current_published_version_id", "id"],
+            ["published_paper_versions.id", "published_paper_versions.paper_id"],
+            name="fk_papers_current_published_version",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        Index("ix_papers_current_published_version", "current_published_version_id"),
     )
 
     paper_key: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -63,6 +80,9 @@ class Paper(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         nullable=False,
         default=PaperCatalogState.EXTRACTED,
+    )
+    current_published_version_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), nullable=True
     )
 
 

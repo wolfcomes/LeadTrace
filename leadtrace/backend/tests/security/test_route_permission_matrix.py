@@ -222,6 +222,12 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v2/structure-source-images/{source_image_id}",
         "/api/v2/structure-source-images/{source_image_id}/content",
         "/api/v2/structure-source-images/{source_image_id}/retry",
+        "/api/v2/admin/submissions",
+        "/api/v2/admin/submissions/{submission_id}",
+        "/api/v2/admin/submissions/{submission_id}/decisions",
+        "/api/v2/papers",
+        "/api/v2/papers/{paper_id}",
+        "/api/v2/papers/{paper_id}/assets/{asset_id}",
         "/api/v2/papers/{paper_id}/source-pdf",
     } <= paths
     assert not any(
@@ -480,3 +486,46 @@ def test_retired_scientific_v1_routes_are_not_registered(
     assert getattr(
         document_routes[0].endpoint, "__leadtrace_action__", None
     ) is Action.READ_FULL_PDF
+
+    publication_routes = [
+        route
+        for route in client.app.routes
+        if isinstance(route, APIRoute)
+        and (
+            route.path.startswith("/api/v2/admin/submissions")
+            or route.path
+            in {
+                "/api/v2/papers",
+                "/api/v2/papers/{paper_id}",
+                "/api/v2/papers/{paper_id}/assets/{asset_id}",
+            }
+        )
+    ]
+    assert len(publication_routes) == 6
+    assert all(
+        getattr(route.endpoint, "__leadtrace_route_access__", None)
+        is RouteAccess.PERMISSION
+        for route in publication_routes
+    )
+    assert {
+        (next(iter(route.methods)), route.path): getattr(
+            route.endpoint, "__leadtrace_action__", None
+        )
+        for route in publication_routes
+    } == {
+        ("GET", "/api/v2/admin/submissions"): Action.APPROVE_CHANGESET,
+        (
+            "GET",
+            "/api/v2/admin/submissions/{submission_id}",
+        ): Action.APPROVE_CHANGESET,
+        (
+            "POST",
+            "/api/v2/admin/submissions/{submission_id}/decisions",
+        ): Action.APPROVE_CHANGESET,
+        ("GET", "/api/v2/papers"): Action.READ_PUBLISHED_DATA,
+        ("GET", "/api/v2/papers/{paper_id}"): Action.READ_PUBLISHED_DATA,
+        (
+            "GET",
+            "/api/v2/papers/{paper_id}/assets/{asset_id}",
+        ): Action.READ_PUBLISHED_DATA,
+    }

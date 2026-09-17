@@ -19,6 +19,7 @@ from app.jobs import models as job_models  # noqa: F401
 from app.lineages import models as lineage_models  # noqa: F401
 from app.maintenance import models as maintenance_models  # noqa: F401
 from app.papers import models as paper_models  # noqa: F401
+from app.publications import models as publication_models  # noqa: F401
 from app.structure_images import models as structure_image_models  # noqa: F401
 from app.structures import models as structure_models  # noqa: F401
 from app.users import models as user_models  # noqa: F401

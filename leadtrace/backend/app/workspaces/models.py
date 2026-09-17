@@ -181,6 +181,12 @@ class PaperSubmission(UUIDPrimaryKeyMixin, Base):
             "idempotency_key",
             name="uq_paper_submissions_workspace_idempotency",
         ),
+        UniqueConstraint(
+            "id",
+            "paper_id",
+            "content_hash",
+            name="uq_paper_submissions_id_paper_hash",
+        ),
         CheckConstraint(
             "submission_number > 0",
             name="ck_paper_submissions_positive_number",

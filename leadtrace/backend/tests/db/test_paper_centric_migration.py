@@ -378,13 +378,20 @@ def test_paper_centric_schema_enforces_the_fixed_workflow_contract(
             "issue",
             "doi",
             "catalog_state",
+            "current_published_version_id",
             "created_at",
             "updated_at",
         }
         assert {
             (tuple(item["constrained_columns"]), item["referred_table"])
             for item in schema.get_foreign_keys("papers")
-        } == {(('source_id',), 'paper_sources')}
+        } == {
+            (("source_id",), "paper_sources"),
+            (
+                ("current_published_version_id", "id"),
+                "published_paper_versions",
+            ),
+        }
         paper_source_checks = {
             item["name"] for item in schema.get_check_constraints("paper_sources")
         }

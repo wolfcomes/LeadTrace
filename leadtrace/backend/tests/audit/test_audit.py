@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier, Event, Thread, current_thread
 from uuid import UUID, uuid4
@@ -9,6 +8,12 @@ import pytest
 from sqlalchemy import delete, event, select, update
 from sqlalchemy.exc import DBAPIError
 
+from app.assets.models import (
+    Asset,
+    AssetAccessLevel,
+    AssetCategory,
+    AssetIntegrityState,
+)
 from app.audit.models import AuditEvent
 from app.audit.service import (
     AuditImmutableError,
@@ -18,8 +23,8 @@ from app.audit.service import (
     persisted_json_value,
     redact_secrets,
 )
-from app.papers.models import Paper
-from app.releases.models import Release
+from app.catalog.models import PaperSource, PaperSourceIntegrityState
+from app.papers.models import Paper, PaperCatalogState
 from app.users.models import UserRole
 from app.users.service import UserService
 
@@ -36,22 +41,47 @@ def _setup_scope(session) -> tuple[UUID, UUID, UUID]:
         initial_password=PASSWORD,
     )
     actor.must_change_password = False
-    paper = Paper(paper_key=f"audit-paper-{uuid4().hex[:8]}", doi=None)
+    source_suffix = uuid4().hex[:8]
+    asset = Asset(
+        storage_key=f"source/source_pdfs/audit/{source_suffix}.pdf",
+        original_filename=f"{source_suffix}.pdf",
+        sha256=source_suffix.ljust(64, "0"),
+        byte_size=1,
+        mime_type="application/pdf",
+        page_count=1,
+        category=AssetCategory.ARTICLE_PDF,
+        access_level=AssetAccessLevel.REVIEWER,
+        integrity_state=AssetIntegrityState.VERIFIED,
+        derivation_metadata={},
+        source_metadata={},
+    )
+    session.add(asset)
+    session.flush()
+    source = PaperSource(
+        asset_id=asset.id,
+        source_root_key="source_pdfs",
+        source_key=f"audit/{source_suffix}.pdf",
+        sha256=asset.sha256,
+        byte_size=asset.byte_size,
+        page_count=asset.page_count,
+        integrity_state=PaperSourceIntegrityState.VERIFIED,
+    )
+    session.add(source)
+    session.flush()
+    paper = Paper(
+        paper_key=f"audit-paper-{source_suffix}",
+        source_id=source.id,
+        title="Audit paper",
+        journal="Journal of Medicinal Chemistry",
+        publication_year=2024,
+        volume="67",
+        issue="5",
+        doi=None,
+        catalog_state=PaperCatalogState.EXTRACTED,
+    )
     session.add(paper)
     session.flush()
-    release = Release(
-        release_key=f"audit-release-{uuid4().hex[:8]}",
-        title="Audit release",
-        notes="",
-        metrics={},
-        published_by_id=actor.id,
-        published_at=datetime.now(UTC),
-        is_current=False,
-        manifest_finalized=True,
-    )
-    session.add(release)
-    session.flush()
-    return actor.id, paper.id, release.id
+    return actor.id, paper.id, uuid4()
 
 
 def _append(
@@ -303,7 +333,9 @@ def test_concurrent_audit_appends_form_one_unbroken_sequence(
         assert AuditService().verify_chain(session).valid is True
 
 
-def test_audit_locks_release_before_global_chain_head(auth_session_factory) -> None:
+def test_audit_locks_global_chain_head_without_retired_release_lookup(
+    auth_session_factory,
+) -> None:
     with auth_session_factory.begin() as session:
         actor_id, paper_id, release_id = _setup_scope(session)
 
@@ -313,9 +345,7 @@ def test_audit_locks_release_before_global_chain_head(auth_session_factory) -> N
     def record_lock_statements(
         _connection, _cursor, statement, _parameters, _context, _many
     ) -> None:
-        if "FOR UPDATE" in statement and (
-            "audit_chain_head" in statement or "releases" in statement
-        ):
+        if "FOR UPDATE" in statement:
             statements.append(statement)
 
     event.listen(engine, "before_cursor_execute", record_lock_statements)
@@ -325,15 +355,8 @@ def test_audit_locks_release_before_global_chain_head(auth_session_factory) -> N
     finally:
         event.remove(engine, "before_cursor_execute", record_lock_statements)
 
-    release_index = next(
-        index for index, statement in enumerate(statements) if "releases" in statement
-    )
-    head_index = next(
-        index
-        for index, statement in enumerate(statements)
-        if "audit_chain_head" in statement
-    )
-    assert release_index < head_index
+    assert any("audit_chain_head" in statement for statement in statements)
+    assert all("releases" not in statement for statement in statements)
 
 
 def test_chain_verification_is_a_consistent_snapshot_during_append(

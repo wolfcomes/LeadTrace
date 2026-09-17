@@ -23,6 +23,8 @@ from app.lineages.router import create_lineages_router
 from app.maintenance.service import enforce_maintenance_mode
 from app.observability.logging import install_request_observability
 from app.observability.metrics import MetricsRegistry, create_metrics_router
+from app.publications.admin_router import create_admin_publications_router
+from app.publications.router import create_publications_router
 from app.structures.router import create_structures_router
 from app.structure_images.router import create_structure_images_router
 from app.users.router import create_users_router
@@ -87,6 +89,8 @@ def create_app(
     application.include_router(create_lineages_router(runtime_settings))
     application.include_router(create_evidence_router(runtime_settings))
     application.include_router(create_activities_router(runtime_settings))
+    application.include_router(create_admin_publications_router(runtime_settings))
+    application.include_router(create_publications_router())
     application.include_router(create_documents_router())
     return application
 

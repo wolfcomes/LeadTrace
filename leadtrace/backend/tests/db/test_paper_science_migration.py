@@ -64,9 +64,9 @@ def test_paper_science_migration_installs_tables_and_query_indexes(
         engine.dispose()
 
     assert ScriptDirectory.from_config(config).get_current_head() == (
-        "0023_paper_submissions"
+        "0024_paper_publications"
     )
-    assert revision == "0023_paper_submissions"
+    assert revision == "0024_paper_publications"
     assert "structure_proposals" not in tables
     assert "confidence" not in structure_columns
     assert "confidence_score" not in structure_columns
