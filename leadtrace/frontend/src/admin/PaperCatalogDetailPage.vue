@@ -138,7 +138,7 @@ watch(() => route.params.paperId, load, { immediate: true });
             <RouterLink
               v-if="paper.review.task_status !== 'approved'"
               class="button-primary full"
-              :to="`/review/papers/${paper.id}`"
+              :to="{ path: `/review/papers/${paper.id}`, query: { workspace: paper.review.workspace_id } }"
             >查看 Reviewer Workspace</RouterLink>
           </template>
           <p v-else>尚未分配。Reviewer 可从空白 Workspace 开始，不需要先运行 AI。</p>

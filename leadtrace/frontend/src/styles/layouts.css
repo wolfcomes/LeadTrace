@@ -142,6 +142,11 @@
 .catalog-detail-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, .65fr); gap: 24px; align-items: start; }
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(310px, .75fr); gap: 24px; }
 .paper-workspace-shell { display: grid; min-width: 0; gap: 0; }
+.paper-workspace-shell > .workspace-header { margin-bottom: 0; }
+.workspace-section-status { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-bottom: 0; background: var(--line); gap: 1px; }
+.workspace-editor-surface { min-height: 360px; padding: 24px; border-top: 0; box-shadow: none; }
+.workspace-bibliography { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 20px 0 0; background: var(--line); }
+.workspace-bibliography div { padding: 14px; background: var(--surface); }
 .paper-workspace-tabs { position: sticky; z-index: 8; top: var(--topbar-height); border-bottom: 0; overflow-x: auto; flex-wrap: nowrap; }
 .paper-workspace-tabs button { flex: 0 0 auto; }
 .paper-workspace-tabs button[aria-current="page"] { border-color: var(--teal); color: white; background: var(--teal); }
@@ -279,6 +284,7 @@
   .source-panel { align-items: flex-start; flex-direction: column; }
   .paper-header > aside { width: 100%; }
   .paper-workspace-grid { grid-template-columns: 1fr; }
+  .workspace-section-status { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace-inspector { border-width: 1px 0 0; }
   .evidence-comparison { grid-template-columns: 1fr 1fr; }
   .evidence-comparison > :last-child { grid-column: 1 / -1; }
@@ -310,6 +316,8 @@
   .split-section { grid-template-columns: 1fr; }
   .workspace-status { align-items: flex-start; }
   .paper-field-grid { grid-template-columns: 1fr; }
+  .workspace-section-status,
+  .workspace-bibliography { grid-template-columns: 1fr; }
   .paper-field-grid .field-wide { grid-column: auto; }
   .recovery-banner { align-items: flex-start; flex-direction: column; }
   .queue-summary { align-items: flex-start; }

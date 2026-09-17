@@ -15,6 +15,7 @@ import { zhCN } from "../i18n/zh-CN";
 import PaperDetailPage from "../papers/PaperDetailPage.vue";
 import PaperLibraryPage from "../papers/PaperLibraryPage.vue";
 import TaskListPage from "../review/tasks/TaskListPage.vue";
+import PaperWorkspacePage from "../review/paper/PaperWorkspacePage.vue";
 import UsersPage from "../admin/UsersPage.vue";
 import FilesPage from "../admin/FilesPage.vue";
 import AuditPage from "../admin/AuditPage.vue";
@@ -58,7 +59,7 @@ export function createAppRouter(
           { path: "papers", name: "papers", component: PaperLibraryPage, meta: { roles: publishedRoles } },
           { path: "papers/:paperId", name: "paper-detail", component: PaperDetailPage, meta: { roles: publishedRoles } },
           { path: "review/tasks", name: "review-tasks", component: TaskListPage, meta: { roles: reviewRoles } },
-          { path: "review/papers/:paperId", name: "review-paper", component: PlaceholderPage, meta: { roles: reviewRoles } },
+          { path: "review/papers/:paperId", name: "review-paper", component: PaperWorkspacePage, meta: { roles: reviewRoles } },
           { path: "admin/papers", name: "admin-papers", component: PaperCatalogPage, meta: { roles: adminRoles } },
           { path: "admin/papers/:paperId", name: "admin-paper-detail", component: PaperCatalogDetailPage, meta: { roles: adminRoles } },
           { path: "admin/submissions", name: "admin-submissions", component: PlaceholderPage, meta: { roles: adminRoles } },
