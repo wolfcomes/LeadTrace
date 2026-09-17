@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.workspaces.models import ChangeActorKind
 
 
 class EvidenceKind(StrEnum):
@@ -64,6 +65,10 @@ class Evidence(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "y0 >= 0 AND y0 < y1 AND y1 <= 1))",
             name="ck_evidence_normalized_bbox",
         ),
+        CheckConstraint(
+            "created_by_kind IN ('reviewer', 'admin', 'ai', 'system')",
+            name="ck_evidence_creator_kind",
+        ),
         Index("ix_evidence_workspace_page", "workspace_id", "page_number"),
     )
 
@@ -99,6 +104,17 @@ class Evidence(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
     reviewer_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_kind: Mapped[ChangeActorKind] = mapped_column(
+        Enum(
+            ChangeActorKind,
+            name="science_creator_kind",
+            native_enum=False,
+            length=16,
+            values_callable=lambda values: [value.value for value in values],
+        ),
+        nullable=False,
+        default=ChangeActorKind.REVIEWER,
+    )
 
 
 class EdgeEvidenceLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -124,6 +140,10 @@ class EdgeEvidenceLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "role IN ('supports', 'contradicts', 'contextual')",
             name="ck_edge_evidence_links_role",
+        ),
+        CheckConstraint(
+            "created_by_kind IN ('reviewer', 'admin', 'ai', 'system')",
+            name="ck_edge_evidence_links_creator_kind",
         ),
         Index("ix_edge_evidence_links_evidence", "evidence_id", "edge_id"),
     )
@@ -151,6 +171,17 @@ class EdgeEvidenceLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             values_callable=lambda values: [value.value for value in values],
         ),
         nullable=False,
+    )
+    created_by_kind: Mapped[ChangeActorKind] = mapped_column(
+        Enum(
+            ChangeActorKind,
+            name="science_creator_kind",
+            native_enum=False,
+            length=16,
+            values_callable=lambda values: [value.value for value in values],
+        ),
+        nullable=False,
+        default=ChangeActorKind.REVIEWER,
     )
 
 

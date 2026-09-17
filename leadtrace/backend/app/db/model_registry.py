@@ -5,6 +5,7 @@ import importlib
 
 _MODEL_MODULES = (
     "app.activities.models",
+    "app.ai_prefill.models",
     "app.assets.models",
     "app.audit.models",
     "app.auth.models",

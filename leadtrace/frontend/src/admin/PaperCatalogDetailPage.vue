@@ -4,7 +4,8 @@ import { useRoute } from "vue-router";
 
 import { ApiError } from "../api/client";
 import { getAdminPaper } from "../v2/api";
-import type { AssignmentResponse, PaperCatalogRow } from "../v2/types";
+import type { AiPrefillStatus as AiPrefillStatusValue, AssignmentResponse, PaperCatalogRow } from "../v2/types";
+import AiPrefillStatus from "./AiPrefillStatus.vue";
 import ReviewerAssignmentDialog from "./ReviewerAssignmentDialog.vue";
 
 
@@ -75,8 +76,18 @@ function onAssigned(result: AssignmentResponse, reviewerName: string): void {
       sections_total: result.sections.length,
       submission_state: "not_submitted",
     },
+    ai_prefill: {
+      run: null,
+      can_start: true,
+      blocked_reason: null,
+    },
   };
   showAssignment.value = false;
+}
+
+function onAiPrefillUpdate(status: AiPrefillStatusValue): void {
+  if (!paper.value) return;
+  paper.value = { ...paper.value, ai_prefill: status };
 }
 
 watch(() => route.params.paperId, load, { immediate: true });
@@ -124,6 +135,19 @@ watch(() => route.params.paperId, load, { immediate: true });
               <p>{{ paper.source.source_key }} · {{ paper.source.page_count }} 页 · {{ paper.source.byte_size.toLocaleString("zh-CN") }} bytes</p>
             </div>
             <a class="button-secondary" data-source-pdf :href="`/api/v2/papers/${paper.id}/source-pdf`" target="_blank" rel="noopener">打开 PDF ↗</a>
+          </section>
+
+          <section class="panel ai-prefill-panel" data-ai-prefill-panel>
+            <div class="section-heading">
+              <div><p class="eyebrow">OPTIONAL PREFILL</p><h2>AI 预填</h2></div>
+            </div>
+            <AiPrefillStatus
+              :paper-id="paper.id"
+              :status="paper.ai_prefill"
+              interactive
+              poll
+              @update="onAiPrefillUpdate"
+            />
           </section>
         </div>
 

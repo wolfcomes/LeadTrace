@@ -5,6 +5,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ApiError } from "../api/client";
 import { listAdminPapers } from "../v2/api";
 import type { AssignmentResponse, PaperCatalogPage, PaperCatalogRow } from "../v2/types";
+import AiPrefillStatus from "./AiPrefillStatus.vue";
 import ReviewerAssignmentDialog from "./ReviewerAssignmentDialog.vue";
 
 
@@ -132,6 +133,11 @@ function onAssigned(result: AssignmentResponse, reviewerName: string): void {
           sections_total: result.sections.length,
           submission_state: "not_submitted",
         },
+        ai_prefill: {
+          run: null,
+          can_start: true,
+          blocked_reason: null,
+        },
       }
       : paper),
   };
@@ -184,7 +190,7 @@ watch(() => route.fullPath, load, { immediate: true });
           <thead>
             <tr>
               <th>文章</th><th>期刊信息</th><th>Source PDF</th><th>Reviewer</th>
-              <th>区段进度</th><th>提交状态</th><th><span class="sr-only">操作</span></th>
+              <th>区段进度</th><th>提交状态</th><th>AI 预填</th><th><span class="sr-only">操作</span></th>
             </tr>
           </thead>
           <tbody>
@@ -215,6 +221,9 @@ watch(() => route.fullPath, load, { immediate: true });
               </td>
               <td data-label="提交状态">
                 <span class="status-chip" :data-status="paper.review?.submission_state ?? 'not_submitted'">{{ submissionLabel(paper) }}</span>
+              </td>
+              <td data-label="AI 预填">
+                <AiPrefillStatus :paper-id="paper.id" :status="paper.ai_prefill" compact />
               </td>
               <td class="actions table-actions" data-label="操作">
                 <button

@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.workspaces.models import ChangeActorKind
 
 
 class LineageMemberRole(StrEnum):
@@ -49,6 +50,10 @@ class Lineage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "btrim(lineage_label) <> ''", name="ck_lineages_label_required"
         ),
         CheckConstraint("sort_order >= 0", name="ck_lineages_nonnegative_order"),
+        CheckConstraint(
+            "created_by_kind IN ('reviewer', 'admin', 'ai', 'system')",
+            name="ck_lineages_creator_kind",
+        ),
         Index("ix_lineages_workspace_order", "workspace_id", "sort_order", "id"),
     )
 
@@ -63,6 +68,17 @@ class Lineage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     lineage_label: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by_kind: Mapped[ChangeActorKind] = mapped_column(
+        Enum(
+            ChangeActorKind,
+            name="science_creator_kind",
+            native_enum=False,
+            length=16,
+            values_callable=lambda values: [value.value for value in values],
+        ),
+        nullable=False,
+        default=ChangeActorKind.REVIEWER,
+    )
 
 
 class LineageMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -97,6 +113,10 @@ class LineageMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "sort_order >= 0", name="ck_lineage_members_nonnegative_order"
         ),
+        CheckConstraint(
+            "created_by_kind IN ('reviewer', 'admin', 'ai', 'system')",
+            name="ck_lineage_members_creator_kind",
+        ),
         Index("ix_lineage_members_lineage_order", "lineage_id", "sort_order"),
     )
 
@@ -125,6 +145,17 @@ class LineageMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by_kind: Mapped[ChangeActorKind] = mapped_column(
+        Enum(
+            ChangeActorKind,
+            name="science_creator_kind",
+            native_enum=False,
+            length=16,
+            values_callable=lambda values: [value.value for value in values],
+        ),
+        nullable=False,
+        default=ChangeActorKind.REVIEWER,
+    )
 
 
 class LineageEdge(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -185,6 +216,10 @@ class LineageEdge(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "sort_order >= 0", name="ck_lineage_edges_nonnegative_order"
         ),
+        CheckConstraint(
+            "created_by_kind IN ('reviewer', 'admin', 'ai', 'system')",
+            name="ck_lineage_edges_creator_kind",
+        ),
         Index(
             "ix_lineage_edges_endpoints",
             "lineage_id",
@@ -223,6 +258,17 @@ class LineageEdge(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by_kind: Mapped[ChangeActorKind] = mapped_column(
+        Enum(
+            ChangeActorKind,
+            name="science_creator_kind",
+            native_enum=False,
+            length=16,
+            values_callable=lambda values: [value.value for value in values],
+        ),
+        nullable=False,
+        default=ChangeActorKind.REVIEWER,
+    )
 
 
 __all__ = [

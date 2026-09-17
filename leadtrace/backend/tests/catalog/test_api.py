@@ -174,6 +174,7 @@ def test_admin_lists_all_papers_with_paginated_safe_source_metadata(
         "catalog_state",
         "source",
         "review",
+        "ai_prefill",
     }
     assert set(first["source"]) == {
         "id",
@@ -191,6 +192,11 @@ def test_admin_lists_all_papers_with_paginated_safe_source_metadata(
     assert "must-never-be-returned" not in response.text
     assert "credential" not in response.text.casefold()
     assert first["review"] is None
+    assert first["ai_prefill"] == {
+        "run": None,
+        "can_start": False,
+        "blocked_reason": "Assign a Reviewer before AI prefill",
+    }
 
 
 def test_admin_catalog_includes_review_progress_and_submission_state(
@@ -267,6 +273,11 @@ def test_admin_catalog_includes_review_progress_and_submission_state(
         "sections_resolved": 4,
         "sections_total": 6,
         "submission_state": "changes_requested",
+    }
+    assert first["ai_prefill"] == {
+        "run": None,
+        "can_start": False,
+        "blocked_reason": "Workspace has already been modified",
     }
 
 

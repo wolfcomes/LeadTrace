@@ -181,6 +181,11 @@ describe("paper-centric v2 response contracts", () => {
           integrity_state: "verified",
         },
         review: null,
+        ai_prefill: {
+          run: null,
+          can_start: false,
+          blocked_reason: "Assign a Reviewer before AI prefill",
+        },
       }],
       total: 1,
       limit: 20,
@@ -279,6 +284,11 @@ describe("paper-centric v2 response contracts", () => {
         byte_size: 1024,
         page_count: 12,
         integrity_state: "verified",
+      },
+      ai_prefill: {
+        run: null,
+        can_start: true,
+        blocked_reason: null,
       },
     };
 

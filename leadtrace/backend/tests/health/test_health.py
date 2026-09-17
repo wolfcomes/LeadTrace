@@ -150,6 +150,7 @@ def test_production_configuration_accepts_explicit_safe_values(tmp_path: Path) -
         "baseline_import_root",
         "baseline_source_manifest",
         "baseline_expected_aggregate",
+        "ai_prefill_legacy_root",
     ],
 )
 def test_blank_optional_baseline_path_is_treated_as_unconfigured(
@@ -159,6 +160,19 @@ def test_blank_optional_baseline_path_is_treated_as_unconfigured(
     settings = _settings(tmp_path, **{field: ""})
 
     assert getattr(settings, field) is None
+
+
+def test_production_configuration_rejects_relative_ai_prefill_root(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValidationError, match="ai_prefill_legacy_root"):
+        _settings(
+            tmp_path,
+            environment="production",
+            allowed_hosts=["leadtrace.lan"],
+            session_secret="Q7!vZ3#kL9@rT2$xN8%pC4&mW6*eS1^hB",
+            ai_prefill_legacy_root=Path("relative/legacy-output"),
+        )
 
 
 @pytest.mark.parametrize(

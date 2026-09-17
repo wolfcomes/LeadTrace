@@ -959,7 +959,8 @@ def test_compose_persists_redis_delivery_and_stops_worker_gracefully() -> None:
     )
     assert scheduler["depends_on"]["redis"]["condition"] == "service_healthy"
     assert worker["environment"]["LEADTRACE_SOURCE_ROOTS"] == (
-        "${LEADTRACE_SOURCE_ROOTS:-{}}"
+        '${LEADTRACE_SOURCE_ROOTS:-{"source_pdfs":'
+        '"/var/lib/leadtrace/source_pdfs"}}'
     )
     assert redis["command"] == [
         "redis-server",

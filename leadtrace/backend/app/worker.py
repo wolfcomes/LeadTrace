@@ -28,7 +28,12 @@ celery_app.conf.update(
             "task": "leadtrace.jobs.reconcile_crops",
             "schedule": 30.0,
         },
+        "reconcile-ai-prefill-runs": {
+            "task": "leadtrace.ai_prefill.reconcile",
+            "schedule": 30.0,
+        },
     },
 )
 
 importlib.import_module("app.jobs.celery_tasks")
+importlib.import_module("app.ai_prefill.celery_tasks")

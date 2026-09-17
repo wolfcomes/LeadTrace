@@ -704,14 +704,15 @@
 .admin-metric-grid small { color: var(--ink-muted); font-size: .65rem; line-height: 1.4; }
 .catalog-page .result-heading { display: flex; justify-content: space-between; color: var(--ink-muted); font: 500 .67rem/1.3 var(--font-mono); }
 .catalog-page .result-heading strong { color: var(--ink); }
-.catalog-page .data-table { min-width: 1180px; table-layout: fixed; }
-.catalog-page .data-table th:nth-child(1) { width: 27%; }
-.catalog-page .data-table th:nth-child(2) { width: 19%; }
+.catalog-page .data-table { min-width: 1260px; table-layout: fixed; }
+.catalog-page .data-table th:nth-child(1) { width: 24%; }
+.catalog-page .data-table th:nth-child(2) { width: 17%; }
 .catalog-page .data-table th:nth-child(3) { width: 11%; }
-.catalog-page .data-table th:nth-child(4) { width: 11%; }
-.catalog-page .data-table th:nth-child(5) { width: 9%; }
-.catalog-page .data-table th:nth-child(6) { width: 12%; }
-.catalog-page .data-table th:nth-child(7) { width: 11%; }
+.catalog-page .data-table th:nth-child(4) { width: 10%; }
+.catalog-page .data-table th:nth-child(5) { width: 8%; }
+.catalog-page .data-table th:nth-child(6) { width: 11%; }
+.catalog-page .data-table th:nth-child(7) { width: 9%; }
+.catalog-page .data-table th:nth-child(8) { width: 10%; }
 .catalog-page .data-table tbody th { max-width: 360px; }
 .catalog-page .data-table tbody th code,
 .catalog-page .data-table tbody th a,
@@ -780,6 +781,13 @@
 .quality-panel .quality-grid strong { color: var(--ink); font-size: 1.55rem; }
 .source-panel { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .source-panel p:last-child { margin: 8px 0 0; color: var(--ink-muted); font-size: .74rem; }
+.ai-prefill-panel { padding: 22px; }
+.ai-prefill-panel h2 { margin: 0; color: var(--ink); font: 600 1.26rem/1.3 var(--font-serif); }
+.ai-prefill-panel .ai-prefill-status { margin-top: 16px; }
+.ai-prefill-status { display: grid; justify-items: start; gap: 8px; }
+.ai-prefill-status.compact { display: block; }
+.ai-prefill-status > small { color: var(--ink-muted); font-size: .65rem; line-height: 1.45; }
+.ai-prefill-status .inline-feedback { width: 100%; }
 .review-panel { position: sticky; top: 96px; align-self: start; border-top: 3px solid var(--teal); }
 .review-panel > h2 { margin-bottom: 16px; }
 .review-panel p { color: var(--ink-muted); font-size: .72rem; line-height: 1.7; }

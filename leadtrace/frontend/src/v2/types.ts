@@ -83,6 +83,13 @@ export const evidenceKindSchema = z.enum(["text", "table", "scheme", "image"]);
 export const evidenceRoleSchema = z.enum(["supports", "contradicts", "contextual"]);
 export const activityOperatorSchema = z.enum(["=", "<", "<=", ">", ">=", "~"]);
 export const adminDecisionActionSchema = z.enum(["approve", "request_changes"]);
+export const aiExtractionRunStatusSchema = z.enum([
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "superseded",
+]);
 
 const sectionSchema = z.object({
   section_key: sectionKeySchema,
@@ -190,6 +197,26 @@ export const catalogReviewSchema = z.object({
   }
 });
 
+export const aiExtractionRunSchema = z.object({
+  id: uuidSchema,
+  paper_id: uuidSchema,
+  workspace_id: uuidSchema,
+  starting_workspace_version: z.number().int().positive(),
+  status: aiExtractionRunStatusSchema,
+  engine: z.string().min(1),
+  engine_version: z.string().min(1),
+  error_summary: z.string().min(1).nullable(),
+  queued_at: timestampSchema,
+  started_at: timestampSchema.nullable(),
+  completed_at: timestampSchema.nullable(),
+}).strict();
+
+export const aiPrefillStatusSchema = z.object({
+  run: aiExtractionRunSchema.nullable(),
+  can_start: z.boolean(),
+  blocked_reason: z.string().min(1).nullable(),
+}).strict();
+
 export const paperCatalogRowSchema = z.object({
   id: uuidSchema,
   paper_key: z.string().min(1),
@@ -202,6 +229,7 @@ export const paperCatalogRowSchema = z.object({
   catalog_state: paperCatalogStateSchema,
   source: paperSourceSchema,
   review: catalogReviewSchema.nullable(),
+  ai_prefill: aiPrefillStatusSchema,
 }).strict();
 
 export const paperCatalogPageSchema = z.object({
@@ -867,6 +895,8 @@ export const submissionValidationSchema = z.object({
 
 export type PaperCatalogRow = z.infer<typeof paperCatalogRowSchema>;
 export type PaperCatalogPage = z.infer<typeof paperCatalogPageSchema>;
+export type AiExtractionRun = z.infer<typeof aiExtractionRunSchema>;
+export type AiPrefillStatus = z.infer<typeof aiPrefillStatusSchema>;
 export type ReviewTask = z.infer<typeof reviewTaskSchema>;
 export type ReviewTaskList = z.infer<typeof reviewTaskListSchema>;
 export type PaperWorkspace = z.infer<typeof paperWorkspaceSchema>;

@@ -2,6 +2,7 @@ import { apiRequest } from "../api/client";
 import {
   adminSubmissionDetailSchema,
   adminSubmissionListSchema,
+  aiPrefillStatusSchema,
   activityDeleteSchema,
   activityListSchema,
   activityMutationSchema,
@@ -34,6 +35,7 @@ import {
   submissionValidationSchema,
   type AdminSubmissionDetail,
   type AdminSubmissionList,
+  type AiPrefillStatus,
   type ActivityDelete,
   type ActivityList,
   type ActivityMutation,
@@ -87,6 +89,24 @@ export function listAdminPapers(
 
 export function getAdminPaper(paperId: string): Promise<PaperCatalogRow> {
   return apiRequest(`/api/v2/admin/papers/${encodeURIComponent(paperId)}`, paperCatalogRowSchema);
+}
+
+export function getAiPrefillStatus(paperId: string): Promise<AiPrefillStatus> {
+  return apiRequest(
+    `/api/v2/admin/papers/${encodeURIComponent(paperId)}/ai-prefill`,
+    aiPrefillStatusSchema,
+  );
+}
+
+export function startAiPrefill(
+  paperId: string,
+  csrfToken: string | null,
+): Promise<AiPrefillStatus> {
+  return apiRequest(
+    `/api/v2/admin/papers/${encodeURIComponent(paperId)}/ai-prefill`,
+    aiPrefillStatusSchema,
+    { method: "POST", csrfToken },
+  );
 }
 
 export function assignPaper(

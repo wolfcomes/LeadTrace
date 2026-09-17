@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.ai_prefill.schemas import AiPrefillStatusResponse
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
 from app.papers.models import Paper, PaperCatalogState
 from app.workspaces.models import ReviewTaskState, WorkspaceState
@@ -67,6 +68,7 @@ class PaperCatalogResponse(CatalogProjection):
     catalog_state: PaperCatalogState
     source: PaperSourceResponse
     review: CatalogReviewResponse | None
+    ai_prefill: AiPrefillStatusResponse
 
     @classmethod
     def from_models(
@@ -74,6 +76,7 @@ class PaperCatalogResponse(CatalogProjection):
         paper: Paper,
         source: PaperSource,
         review: CatalogReviewResponse | None = None,
+        ai_prefill: AiPrefillStatusResponse | None = None,
     ) -> "PaperCatalogResponse":
         return cls(
             id=paper.id,
@@ -87,6 +90,11 @@ class PaperCatalogResponse(CatalogProjection):
             catalog_state=paper.catalog_state,
             source=PaperSourceResponse.from_source(source),
             review=review,
+            ai_prefill=ai_prefill or AiPrefillStatusResponse(
+                run=None,
+                can_start=False,
+                blocked_reason="Assign a Reviewer before AI prefill",
+            ),
         )
 
 

@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.workspaces.models import ChangeActorKind
 
 
 class StructureStatus(StrEnum):
@@ -48,6 +49,10 @@ class Structure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "input_method IN ('ai_prefill', 'manual_smiles', 'structure_editor')",
             name="ck_structures_input_method",
+        ),
+        CheckConstraint(
+            "created_by_kind IN ('reviewer', 'admin', 'ai', 'system')",
+            name="ck_structures_creator_kind",
         ),
     )
 
@@ -91,6 +96,17 @@ class Structure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             values_callable=lambda values: [value.value for value in values],
         ),
         nullable=False,
+    )
+    created_by_kind: Mapped[ChangeActorKind] = mapped_column(
+        Enum(
+            ChangeActorKind,
+            name="science_creator_kind",
+            native_enum=False,
+            length=16,
+            values_callable=lambda values: [value.value for value in values],
+        ),
+        nullable=False,
+        default=ChangeActorKind.REVIEWER,
     )
 
 

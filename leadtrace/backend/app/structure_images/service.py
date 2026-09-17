@@ -20,6 +20,8 @@ from app.jobs.service import (
     CropRequest,
     CropService,
     CropValidationError,
+    cleanup_transaction_created_files,
+    transaction_created_files,
 )
 from app.papers.models import Paper
 from app.security.policies import Principal
@@ -79,6 +81,7 @@ def source_image_snapshot(source_image: StructureSourceImage) -> dict[str, objec
         "crop_asset_id": (
             str(source_image.crop_asset_id) if source_image.crop_asset_id else None
         ),
+        "created_by_kind": source_image.created_by_kind.value,
     }
 
 
@@ -224,6 +227,7 @@ class StructureSourceImageService:
         actor_id: UUID,
     ) -> None:
         request = crop_request_for_source_image(source_image)
+        existing_created_files = transaction_created_files(session)
         try:
             content = render_pdf_crop(source_snapshot, request)
         except CropValidationError:
@@ -259,11 +263,42 @@ class StructureSourceImageService:
             OSError,
             SQLAlchemyError,
         ):
+            cleanup_transaction_created_files(
+                session,
+                transaction_created_files(session) - existing_created_files,
+            )
             source_image.crop_status = CropStatus.FAILED
             source_image.crop_asset_id = None
             return
         source_image.crop_status = CropStatus.READY
         source_image.crop_asset_id = result.asset_id
+
+    def render_source_image_crop(
+        self,
+        session: Session,
+        *,
+        source_image: StructureSourceImage,
+        actor_id: UUID,
+    ) -> StructureSourceImage:
+        """Materialize a crop for an already-persisted authoritative locator."""
+
+        asset, source_snapshot = self._source_asset(
+            session,
+            paper_id=source_image.paper_id,
+            source_sha256=source_image.source_sha256,
+            page_number=source_image.page_number,
+        )
+        with source_snapshot:
+            source_image.crop_status = CropStatus.PENDING
+            source_image.crop_asset_id = None
+            self._render(
+                session,
+                source_image=source_image,
+                source_asset=asset,
+                source_snapshot=source_snapshot,
+                actor_id=actor_id,
+            )
+        return source_image
 
     def list_source_images(
         self,

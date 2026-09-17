@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.workspaces.models import ChangeActorKind
 
 
 class ActivityOperator(StrEnum):
@@ -56,6 +57,10 @@ class Activity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="ck_activities_operator",
         ),
         CheckConstraint("sort_order >= 0", name="ck_activities_nonnegative_order"),
+        CheckConstraint(
+            "created_by_kind IN ('reviewer', 'admin', 'ai', 'system')",
+            name="ck_activities_creator_kind",
+        ),
         Index(
             "ix_activities_compound_order", "compound_id", "sort_order", "id"
         ),
@@ -91,6 +96,17 @@ class Activity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     unit: Mapped[str | None] = mapped_column(String(128), nullable=True)
     context: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by_kind: Mapped[ChangeActorKind] = mapped_column(
+        Enum(
+            ChangeActorKind,
+            name="science_creator_kind",
+            native_enum=False,
+            length=16,
+            values_callable=lambda values: [value.value for value in values],
+        ),
+        nullable=False,
+        default=ChangeActorKind.REVIEWER,
+    )
 
 
 __all__ = ["Activity", "ActivityOperator"]

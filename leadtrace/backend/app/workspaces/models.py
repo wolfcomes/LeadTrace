@@ -367,7 +367,9 @@ class ChangeEvent(UUIDPrimaryKeyMixin, Base):
         nullable=True,
     )
     ai_run_id: Mapped[UUID | None] = mapped_column(
-        PostgreSQLUUID(as_uuid=True), nullable=True
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("ai_extraction_runs.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

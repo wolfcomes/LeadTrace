@@ -53,6 +53,10 @@ def test_paper_science_migration_installs_tables_and_query_indexes(
         structure_columns = {
             column["name"] for column in inspector.get_columns("structures")
         }
+        ai_run_columns = {
+            column["name"]
+            for column in inspector.get_columns("ai_extraction_runs")
+        }
         indexes = {
             index["name"]
             for table in SCIENCE_TABLES
@@ -64,12 +68,13 @@ def test_paper_science_migration_installs_tables_and_query_indexes(
         engine.dispose()
 
     assert ScriptDirectory.from_config(config).get_current_head() == (
-        "0024_paper_publications"
+        "0025_ai_prefill_runs"
     )
-    assert revision == "0024_paper_publications"
+    assert revision == "0025_ai_prefill_runs"
     assert "structure_proposals" not in tables
     assert "confidence" not in structure_columns
     assert "confidence_score" not in structure_columns
+    assert {"dispatch_token", "dispatched_at", "heartbeat_at"} <= ai_run_columns
     assert {
         "ix_compounds_workspace_order",
         "ix_lineages_workspace_order",

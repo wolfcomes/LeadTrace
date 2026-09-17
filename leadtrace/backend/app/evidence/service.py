@@ -94,6 +94,7 @@ def evidence_snapshot(row: Evidence) -> dict[str, object]:
         "caption": row.caption,
         "crop_asset_id": str(row.crop_asset_id) if row.crop_asset_id else None,
         "reviewer_note": row.reviewer_note,
+        "created_by_kind": row.created_by_kind.value,
     }
 
 
@@ -105,6 +106,7 @@ def link_snapshot(row: EdgeEvidenceLink) -> dict[str, object]:
         "edge_id": str(row.edge_id),
         "evidence_id": str(row.evidence_id),
         "role": row.role.value,
+        "created_by_kind": row.created_by_kind.value,
     }
 
 

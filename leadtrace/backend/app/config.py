@@ -39,11 +39,15 @@ class Settings(BaseSettings):
     baseline_import_root: Path | None = None
     baseline_source_manifest: Path | None = None
     baseline_expected_aggregate: Path | None = None
+    ai_prefill_engine: str = "legacy_pipeline"
+    ai_prefill_engine_version: str = "pilot-v1"
+    ai_prefill_legacy_root: Path | None = None
 
     @field_validator(
         "baseline_import_root",
         "baseline_source_manifest",
         "baseline_expected_aggregate",
+        "ai_prefill_legacy_root",
         mode="before",
     )
     @classmethod
@@ -113,6 +117,7 @@ class Settings(BaseSettings):
             "baseline_import_root": self.baseline_import_root,
             "baseline_source_manifest": self.baseline_source_manifest,
             "baseline_expected_aggregate": self.baseline_expected_aggregate,
+            "ai_prefill_legacy_root": self.ai_prefill_legacy_root,
         }
         for name, path in optional_baseline_paths.items():
             if path is not None and (not path.is_absolute() or path == Path("/")):

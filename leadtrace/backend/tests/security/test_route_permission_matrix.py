@@ -192,6 +192,7 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v2/admin/papers",
         "/api/v2/admin/papers/{paper_id}",
         "/api/v2/admin/papers/{paper_id}/assign",
+        "/api/v2/admin/papers/{paper_id}/ai-prefill",
         "/api/v2/review/tasks",
         "/api/v2/workspaces/{workspace_id}",
         "/api/v2/workspaces/{workspace_id}/bibliography",
@@ -251,7 +252,7 @@ def test_retired_scientific_v1_routes_are_not_registered(
         if isinstance(route, APIRoute)
         and route.path.startswith("/api/v2/admin/papers")
     ]
-    assert len(catalog_routes) == 3
+    assert len(catalog_routes) == 5
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION

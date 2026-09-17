@@ -64,6 +64,7 @@ def activity_snapshot(row: Activity) -> dict[str, object]:
         "unit": row.unit,
         "context": row.context,
         "sort_order": row.sort_order,
+        "created_by_kind": row.created_by_kind.value,
     }
 
 

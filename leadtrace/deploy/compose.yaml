@@ -66,6 +66,8 @@ services:
       LEADTRACE_BASELINE_IMPORT_ROOT: '${LEADTRACE_BASELINE_IMPORT_ROOT:-}'
       LEADTRACE_BASELINE_SOURCE_MANIFEST: '${LEADTRACE_BASELINE_SOURCE_MANIFEST:-}'
       LEADTRACE_BASELINE_EXPECTED_AGGREGATE: '${LEADTRACE_BASELINE_EXPECTED_AGGREGATE:-}'
+      LEADTRACE_AI_PREFILL_ENGINE: ${LEADTRACE_AI_PREFILL_ENGINE:-legacy_pipeline}
+      LEADTRACE_AI_PREFILL_ENGINE_VERSION: ${LEADTRACE_AI_PREFILL_ENGINE_VERSION:-pilot-v1}
       LEADTRACE_NGINX_INTERNAL_TRANSFER: ${LEADTRACE_NGINX_INTERNAL_TRANSFER:-true}
     depends_on:
       migrate:
@@ -100,7 +102,10 @@ services:
       LEADTRACE_SESSION_SECRET: ${LEADTRACE_SESSION_SECRET:-development-only-not-for-production}
       LEADTRACE_ALLOWED_HOSTS: '${LEADTRACE_ALLOWED_HOSTS:-["localhost","127.0.0.1","leadtrace.lan"]}'
       LEADTRACE_ASSET_ROOT: /var/lib/leadtrace/assets
-      LEADTRACE_SOURCE_ROOTS: '${LEADTRACE_SOURCE_ROOTS:-{}}'
+      LEADTRACE_SOURCE_ROOTS: '${LEADTRACE_SOURCE_ROOTS:-{"source_pdfs":"/var/lib/leadtrace/source_pdfs"}}'
+      LEADTRACE_AI_PREFILL_ENGINE: ${LEADTRACE_AI_PREFILL_ENGINE:-legacy_pipeline}
+      LEADTRACE_AI_PREFILL_ENGINE_VERSION: ${LEADTRACE_AI_PREFILL_ENGINE_VERSION:-pilot-v1}
+      LEADTRACE_AI_PREFILL_LEGACY_ROOT: /var/lib/leadtrace/legacy
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -108,6 +113,8 @@ services:
         condition: service_healthy
     volumes:
       - leadtrace_assets:/var/lib/leadtrace/assets
+      - ${LEADTRACE_AI_PREFILL_LEGACY_HOST_ROOT:-../../source_pdfs/分子修改提取_2024_JMC}:/var/lib/leadtrace/legacy:ro
+      - ${LEADTRACE_SOURCE_PDFS_HOST_ROOT:-../../source_pdfs}:/var/lib/leadtrace/source_pdfs:ro
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout=5 | grep -q pong"]
       interval: 15s

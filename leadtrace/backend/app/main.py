@@ -8,6 +8,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.activities.router import create_activities_router
+from app.ai_prefill.router import AiPrefillDispatch, create_ai_prefill_router
 from app.assets.router import create_assets_router
 from app.audit.router import create_audit_router
 from app.api.errors import install_api_error_handling
@@ -39,6 +40,7 @@ def create_app(
     settings: Settings | None = None,
     database_probe: DatabaseProbe = probe_database,
     database_bootstrap: DatabaseBootstrap = bootstrap_database,
+    ai_prefill_dispatch: AiPrefillDispatch | None = None,
 ) -> FastAPI:
     runtime_settings = settings or get_settings()
 
@@ -82,6 +84,9 @@ def create_app(
     application.include_router(create_assets_router())
     application.include_router(create_audit_router())
     application.include_router(create_catalog_router(runtime_settings))
+    application.include_router(
+        create_ai_prefill_router(runtime_settings, ai_prefill_dispatch)
+    )
     application.include_router(create_workspaces_router(runtime_settings))
     application.include_router(create_compounds_router(runtime_settings))
     application.include_router(create_structures_router(runtime_settings))

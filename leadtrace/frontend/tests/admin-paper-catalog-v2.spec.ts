@@ -55,6 +55,11 @@ function catalogPaper(overrides: Record<string, unknown> = {}) {
       sections_total: 6,
       submission_state: "changes_requested",
     },
+    ai_prefill: {
+      run: null,
+      can_start: false,
+      blocked_reason: "Workspace has already been modified",
+    },
     ...overrides,
   };
 }
@@ -132,7 +137,9 @@ describe("paper-centric Admin catalog", () => {
     expect(wrapper.get("[data-paper-catalog]").text()).toContain("4 / 6");
     expect(wrapper.get("[data-paper-catalog]").text()).toContain("已退回修改");
     expect(wrapper.get("[data-paper-catalog]").text()).toContain("PDF 缺失");
-    expect(wrapper.find("[data-ai-action]").exists()).toBe(false);
+    expect(wrapper.get("[data-paper-catalog]").text()).toContain("AI 预填");
+    expect(wrapper.get(`[data-paper-id='${paperId}']`).text()).toContain("未运行");
+    expect(wrapper.find("[data-ai-prefill-start]").exists()).toBe(false);
     expect(wrapper.get(`[data-paper-id='${errorPaperId}'] [data-assign]`).attributes("disabled")).toBeDefined();
   });
 

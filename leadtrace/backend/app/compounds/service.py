@@ -77,6 +77,7 @@ def structure_snapshot(structure: Structure) -> dict[str, object]:
         ),
         "status": structure.status.value,
         "input_method": structure.input_method.value,
+        "created_by_kind": structure.created_by_kind.value,
     }
 
 
@@ -103,6 +104,7 @@ def structure_source_image_snapshot(
         "crop_asset_id": (
             str(source_image.crop_asset_id) if source_image.crop_asset_id else None
         ),
+        "created_by_kind": source_image.created_by_kind.value,
     }
 
 

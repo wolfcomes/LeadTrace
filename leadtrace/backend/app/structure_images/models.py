@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.workspaces.models import ChangeActorKind
 
 
 class CropStatus(StrEnum):
@@ -63,6 +64,10 @@ class StructureSourceImage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "crop_status IN ('pending', 'ready', 'failed')",
             name="ck_structure_source_images_crop_status",
         ),
+        CheckConstraint(
+            "created_by_kind IN ('reviewer', 'admin', 'ai', 'system')",
+            name="ck_structure_source_images_creator_kind",
+        ),
         Index(
             "ix_structure_source_images_compound_page",
             "compound_id",
@@ -105,6 +110,17 @@ class StructureSourceImage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         PostgreSQLUUID(as_uuid=True),
         ForeignKey("assets.id", ondelete="RESTRICT"),
         nullable=True,
+    )
+    created_by_kind: Mapped[ChangeActorKind] = mapped_column(
+        Enum(
+            ChangeActorKind,
+            name="science_creator_kind",
+            native_enum=False,
+            length=16,
+            values_callable=lambda values: [value.value for value in values],
+        ),
+        nullable=False,
+        default=ChangeActorKind.REVIEWER,
     )
 
 

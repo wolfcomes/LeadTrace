@@ -130,6 +130,17 @@ test("blank manual Paper flows from assignment through immutable publication", a
         sections_total: sections.length,
         submission_state: taskStatus === "assigned" ? "not_submitted" : taskStatus,
       } : null,
+      ai_prefill: {
+        run: null,
+        can_start: assigned && workspaceVersion === 1 && workspaceState === "editing",
+        blocked_reason: !assigned
+          ? "Assign a Reviewer before AI prefill"
+          : workspaceVersion !== 1
+            ? "Workspace has already been modified"
+            : workspaceState !== "editing"
+              ? "Workspace is not editable"
+              : null,
+      },
     };
   }
 

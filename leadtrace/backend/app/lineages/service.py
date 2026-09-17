@@ -105,6 +105,7 @@ def lineage_snapshot(lineage: Lineage) -> dict[str, object]:
         "lineage_label": lineage.lineage_label,
         "description": lineage.description,
         "sort_order": lineage.sort_order,
+        "created_by_kind": lineage.created_by_kind.value,
     }
 
 
@@ -117,6 +118,7 @@ def member_snapshot(member: LineageMember) -> dict[str, object]:
         "compound_id": str(member.compound_id),
         "role": member.role.value,
         "sort_order": member.sort_order,
+        "created_by_kind": member.created_by_kind.value,
     }
 
 
@@ -132,6 +134,7 @@ def edge_snapshot(edge: LineageEdge) -> dict[str, object]:
         "modification_summary": edge.modification_summary,
         "review_status": edge.review_status.value,
         "sort_order": edge.sort_order,
+        "created_by_kind": edge.created_by_kind.value,
     }
 
 

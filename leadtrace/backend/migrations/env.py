@@ -7,6 +7,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.activities import models as activity_models  # noqa: F401
+from app.ai_prefill import models as ai_prefill_models  # noqa: F401
 from app.audit import models as audit_models  # noqa: F401
 from app.assets import models as asset_models  # noqa: F401
 from app.auth import models as auth_models  # noqa: F401

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,7 +11,7 @@ from typing import Callable
 from uuid import UUID
 
 import pymupdf
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -88,6 +89,48 @@ class CropResult:
 
 
 Renderer = Callable[[CropRequest], bytes]
+
+_TRANSACTION_CREATED_FILES_KEY = "leadtrace_transaction_created_files"
+
+
+def transaction_created_files(session: Session) -> frozenset[Path]:
+    files = session.info.get(_TRANSACTION_CREATED_FILES_KEY, set())
+    return frozenset(files)
+
+
+def register_transaction_created_file(session: Session, path: Path) -> None:
+    files = session.info.setdefault(_TRANSACTION_CREATED_FILES_KEY, set())
+    files.add(path)
+
+
+def cleanup_transaction_created_files(
+    session: Session,
+    paths: Iterable[Path] | None = None,
+) -> None:
+    registered = session.info.get(_TRANSACTION_CREATED_FILES_KEY)
+    if not registered:
+        return
+    targets = set(registered) if paths is None else set(paths) & set(registered)
+    for path in targets:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            continue
+        registered.discard(path)
+    if not registered:
+        session.info.pop(_TRANSACTION_CREATED_FILES_KEY, None)
+
+
+@event.listens_for(Session, "after_rollback")
+def _cleanup_created_files_after_outer_rollback(session: Session) -> None:
+    if not session.in_nested_transaction():
+        cleanup_transaction_created_files(session)
+
+
+@event.listens_for(Session, "after_commit")
+def _release_created_files_after_outer_commit(session: Session) -> None:
+    if not session.in_nested_transaction():
+        session.info.pop(_TRANSACTION_CREATED_FILES_KEY, None)
 
 
 def _request_metadata(request: CropRequest) -> dict[str, object]:
@@ -333,13 +376,17 @@ class CropService:
                     "request": _request_metadata(request),
                 }
                 preferred_asset.verified_at = datetime.now(UTC)
-                return CropResult(
+                result = CropResult(
                     asset_key=stored.storage_key,
                     path=stored.path,
                     reused=True,
                     asset_id=preferred_asset.id,
                     input_hash=request.input_hash(),
+                    created_file=stored.created,
                 )
+                if result.created_file:
+                    register_transaction_created_file(session, result.path)
+                return result
         result = self.run(
             request,
             renderer=renderer,
@@ -375,7 +422,10 @@ class CropService:
                 "request": _request_metadata(request),
             }
             asset.verified_at = datetime.now(UTC)
-            return replace(result, asset_id=asset.id)
+            persisted = replace(result, asset_id=asset.id)
+            if persisted.created_file:
+                register_transaction_created_file(session, persisted.path)
+            return persisted
         except BaseException:
             if result.created_file:
                 try:
