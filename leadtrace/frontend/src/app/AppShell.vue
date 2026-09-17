@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import {
+  Activity,
+  BookOpenText,
+  ClipboardCheck,
+  FileSearch,
+  Files,
+  ScrollText,
+  Users,
+} from "lucide-vue-next";
+import { computed, type Component } from "vue";
 import { useRouter } from "vue-router";
 
 import type { UserRole } from "../api/schema";
@@ -11,22 +20,18 @@ interface NavigationItem {
   to: string;
   section: "published" | "review" | "admin";
   roles: readonly UserRole[];
-  symbol: string;
+  icon: Component;
 }
 
 const navigation: readonly NavigationItem[] = [
-  { label: zhCN.navigation.overview, to: "/overview", section: "published", roles: ["visitor", "reviewer", "admin"], symbol: "OV" },
-  { label: zhCN.navigation.papers, to: "/papers", section: "published", roles: ["visitor", "reviewer", "admin"], symbol: "PA" },
-  { label: zhCN.navigation.reviewTasks, to: "/review/tasks", section: "review", roles: ["reviewer", "admin"], symbol: "RT" },
-  { label: zhCN.navigation.changesets, to: "/review/changesets", section: "review", roles: ["reviewer", "admin"], symbol: "CS" },
-  { label: zhCN.navigation.approvals, to: "/admin/approvals", section: "admin", roles: ["admin"], symbol: "AP" },
-  { label: zhCN.navigation.articleCatalog, to: "/admin/papers", section: "admin", roles: ["admin"], symbol: "PC" },
-  { label: zhCN.navigation.files, to: "/admin/files", section: "admin", roles: ["admin"], symbol: "FI" },
-  { label: zhCN.navigation.imports, to: "/admin/imports", section: "admin", roles: ["admin"], symbol: "IM" },
-  { label: zhCN.navigation.releases, to: "/admin/releases", section: "admin", roles: ["admin"], symbol: "RL" },
-  { label: zhCN.navigation.users, to: "/admin/users", section: "admin", roles: ["admin"], symbol: "US" },
-  { label: zhCN.navigation.audit, to: "/admin/audit", section: "admin", roles: ["admin"], symbol: "AU" },
-  { label: zhCN.navigation.system, to: "/admin/system", section: "admin", roles: ["admin"], symbol: "SY" },
+  { label: zhCN.navigation.approvedArticles, to: "/papers", section: "published", roles: ["visitor", "reviewer", "admin"], icon: BookOpenText },
+  { label: zhCN.navigation.myTasks, to: "/review/tasks", section: "review", roles: ["reviewer"], icon: ClipboardCheck },
+  { label: zhCN.navigation.articleCatalog, to: "/admin/papers", section: "admin", roles: ["admin"], icon: FileSearch },
+  { label: zhCN.navigation.submissions, to: "/admin/submissions", section: "admin", roles: ["admin"], icon: ClipboardCheck },
+  { label: zhCN.navigation.files, to: "/admin/files", section: "admin", roles: ["admin"], icon: Files },
+  { label: zhCN.navigation.users, to: "/admin/users", section: "admin", roles: ["admin"], icon: Users },
+  { label: zhCN.navigation.audit, to: "/admin/audit", section: "admin", roles: ["admin"], icon: ScrollText },
+  { label: zhCN.navigation.system, to: "/admin/system", section: "admin", roles: ["admin"], icon: Activity },
 ];
 
 const auth = useAuthStore();
@@ -46,7 +51,7 @@ async function signOut(): Promise<void> {
   <div class="application-shell" data-app-shell>
     <a class="skip-link" href="#main-content">{{ zhCN.navigation.skip }}</a>
     <aside class="sidebar" data-app-sidebar :aria-label="zhCN.brand.name">
-      <RouterLink class="brand" to="/overview" aria-label="LeadTrace">
+      <RouterLink class="brand" to="/papers" aria-label="LeadTrace">
         <span class="brand-mark" aria-hidden="true">LT<i></i></span>
         <span class="brand-copy">
           <strong>{{ zhCN.brand.name }}</strong>
@@ -64,10 +69,9 @@ async function signOut(): Promise<void> {
             :key="item.to"
             :to="item.to"
             class="nav-link"
+            :title="item.label"
           >
-            <span class="nav-index" data-navigation-index aria-hidden="true">
-              {{ String(visibleNavigation.indexOf(item) + 1).padStart(2, "0") }}
-            </span>
+            <component :is="item.icon" class="nav-icon" data-navigation-icon :size="16" aria-hidden="true" />
             <span data-navigation-label>{{ item.label }}</span>
           </RouterLink>
         </template>
@@ -83,7 +87,7 @@ async function signOut(): Promise<void> {
       <header class="topbar" data-app-topbar>
         <div class="release-state">
           <span aria-hidden="true"></span>
-          {{ zhCN.shell.releasePending }}
+          {{ zhCN.shell.publicationState }}
         </div>
         <div v-if="auth.user" class="account" data-account>
           <span class="avatar" aria-hidden="true">{{ initials }}</span>

@@ -48,8 +48,8 @@
 }
 .nav-link:hover { color: white; background: rgba(255, 255, 255, .06); }
 .nav-link.router-link-active { border-left-color: var(--coral); color: white; background: rgba(255, 255, 255, .08); }
-.nav-index { min-width: 22px; color: #6f8a91; font: 500 .6rem/1 var(--font-mono); }
-.router-link-active .nav-index { color: var(--coral); }
+.nav-icon { flex: 0 0 auto; color: #6f8a91; stroke-width: 1.75; }
+.router-link-active .nav-icon { color: var(--coral); }
 
 .sidebar-footer { display: flex; align-items: flex-start; gap: 9px; padding: 18px 8px 0; border-top: 1px solid rgba(255, 255, 255, .14); color: #8fa7ad; font: 500 .61rem/1.55 var(--font-mono); }
 .secure-dot { width: 7px; height: 7px; flex: 0 0 7px; margin-top: 2px; border-radius: 50%; background: #67c7a7; box-shadow: 0 0 0 4px rgba(103, 199, 167, .12); }
