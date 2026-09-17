@@ -31,6 +31,7 @@ from app.workspaces.schemas import (
     SubmissionMutationResponse,
     SubmissionRequest,
     SubmissionResponse,
+    SubmissionValidationResponse,
     WorkspaceResponse,
     WorkspaceSourceResponse,
 )
@@ -408,6 +409,43 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
             ValueError,
         ) as error:
             raise _translate_submission_error(error) from error
+
+    @router.get(
+        "/api/v2/workspaces/{workspace_id}/submission-validation",
+        response_model=SubmissionValidationResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.READ_DRAFT)
+    def validate_workspace_submission(
+        workspace_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> SubmissionValidationResponse:
+        try:
+            with session.begin():
+                service.get_workspace(
+                    session,
+                    workspace_id=workspace_id,
+                    actor=principal,
+                )
+                validation = submission_service.validate(
+                    session,
+                    workspace_id=workspace_id,
+                )
+                return SubmissionValidationResponse(
+                    valid=validation.valid,
+                    blockers=[
+                        SubmissionBlockerResponse(
+                            code=blocker.code,
+                            message=blocker.message,
+                            entity_type=blocker.entity_type,
+                            entity_id=blocker.entity_id,
+                            section_key=blocker.section_key,
+                        )
+                        for blocker in validation.blockers
+                    ],
+                )
+        except (WorkspaceForbiddenError, WorkspaceNotFoundError) as error:
+            raise _translate_workspace_error(error) from error
 
     return router
 

@@ -351,7 +351,7 @@ const snapshotStructureSourceImageSchema = z.object({
   crop_asset_id: uuidSchema.nullable(),
 }).strict();
 
-const lineageSchema = z.object({
+export const lineageSchema = z.object({
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -360,7 +360,7 @@ const lineageSchema = z.object({
   sort_order: z.number().int(),
 }).strict();
 
-const lineageMemberSchema = z.object({
+export const lineageMemberSchema = z.object({
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -370,7 +370,7 @@ const lineageMemberSchema = z.object({
   sort_order: z.number().int(),
 }).strict();
 
-const lineageEdgeSchema = z.object({
+export const lineageEdgeSchema = z.object({
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -400,7 +400,7 @@ const evidenceSchema = z.object({
   reviewer_note: z.string().nullable(),
 }).strict();
 
-const edgeEvidenceLinkSchema = z.object({
+export const edgeEvidenceLinkSchema = z.object({
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -409,7 +409,7 @@ const edgeEvidenceLinkSchema = z.object({
   role: evidenceRoleSchema,
 }).strict();
 
-const activitySchema = z.object({
+export const activitySchema = z.object({
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -741,6 +741,130 @@ export const structureSourceImageDeleteSchema = z.object({
   workspace_version: z.number().int().positive(),
 }).strict();
 
+export const lineageRecordSchema = lineageSchema.extend({
+  members: z.array(lineageMemberSchema),
+  edges: z.array(lineageEdgeSchema),
+}).strict();
+
+export const lineageListSchema = z.object({
+  workspace_id: uuidSchema,
+  workspace_version: z.number().int().positive(),
+  items: z.array(lineageRecordSchema),
+  total: z.number().int().nonnegative(),
+}).strict().superRefine((value, context) => {
+  if (value.items.length !== value.total
+    || value.items.some((item) => item.workspace_id !== value.workspace_id)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Lineage list identity mismatch" });
+  }
+});
+
+export const lineageMutationSchema = z.object({
+  lineage: lineageRecordSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const lineageMemberMutationSchema = z.object({
+  member: lineageMemberSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const lineageEdgeMutationSchema = z.object({
+  edge: lineageEdgeSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const deletedRecordSchema = z.object({
+  deleted_id: uuidSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const evidenceRecordSchema = z.object({
+  id: uuidSchema,
+  paper_id: uuidSchema,
+  workspace_id: uuidSchema,
+  kind: evidenceKindSchema,
+  source_sha256: sha256Schema,
+  page_number: z.number().int().positive(),
+  bbox: normalizedBBoxSchema.nullable(),
+  quoted_text: z.string().nullable(),
+  caption: z.string().nullable(),
+  crop_asset_id: uuidSchema.nullable(),
+  reviewer_note: z.string().nullable(),
+}).strict();
+
+export const evidenceListSchema = z.object({
+  workspace_id: uuidSchema,
+  workspace_version: z.number().int().positive(),
+  items: z.array(evidenceRecordSchema),
+  total: z.number().int().nonnegative(),
+}).strict().superRefine((value, context) => {
+  if (value.items.length !== value.total
+    || value.items.some((item) => item.workspace_id !== value.workspace_id)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Evidence list identity mismatch" });
+  }
+});
+
+export const evidenceMutationSchema = z.object({
+  evidence: evidenceRecordSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const evidenceLinkListSchema = z.object({
+  edge_id: uuidSchema,
+  workspace_version: z.number().int().positive(),
+  items: z.array(edgeEvidenceLinkSchema),
+  total: z.number().int().nonnegative(),
+}).strict().superRefine((value, context) => {
+  if (value.items.length !== value.total
+    || value.items.some((item) => item.edge_id !== value.edge_id)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Evidence Link list identity mismatch" });
+  }
+});
+
+export const evidenceLinkMutationSchema = z.object({
+  link: edgeEvidenceLinkSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const activityListSchema = z.object({
+  compound_id: uuidSchema,
+  workspace_version: z.number().int().positive(),
+  items: z.array(activitySchema),
+  total: z.number().int().nonnegative(),
+}).strict().superRefine((value, context) => {
+  if (value.items.length !== value.total
+    || value.items.some((item) => item.compound_id !== value.compound_id)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Activity list identity mismatch" });
+  }
+});
+
+export const activityMutationSchema = z.object({
+  activity: activitySchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const activityDeleteSchema = z.object({
+  deleted_activity_id: uuidSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const submissionBlockerSchema = z.object({
+  code: z.string().min(1),
+  message: z.string().min(1),
+  entity_type: z.string().min(1),
+  entity_id: uuidSchema.nullable(),
+  section_key: sectionKeySchema.nullable(),
+}).strict();
+
+export const submissionValidationSchema = z.object({
+  valid: z.boolean(),
+  blockers: z.array(submissionBlockerSchema),
+}).strict().superRefine((value, context) => {
+  if (value.valid === (value.blockers.length > 0)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Submission validation result is inconsistent" });
+  }
+});
+
 export type PaperCatalogRow = z.infer<typeof paperCatalogRowSchema>;
 export type PaperCatalogPage = z.infer<typeof paperCatalogPageSchema>;
 export type ReviewTask = z.infer<typeof reviewTaskSchema>;
@@ -767,3 +891,23 @@ export type StructureSourceImage = z.infer<typeof structureSourceImageSchema>;
 export type StructureSourceImageList = z.infer<typeof structureSourceImageListSchema>;
 export type StructureSourceImageMutation = z.infer<typeof structureSourceImageMutationSchema>;
 export type StructureSourceImageDelete = z.infer<typeof structureSourceImageDeleteSchema>;
+export type Lineage = z.infer<typeof lineageRecordSchema>;
+export type LineageMember = z.infer<typeof lineageMemberSchema>;
+export type LineageEdge = z.infer<typeof lineageEdgeSchema>;
+export type LineageList = z.infer<typeof lineageListSchema>;
+export type LineageMutation = z.infer<typeof lineageMutationSchema>;
+export type LineageMemberMutation = z.infer<typeof lineageMemberMutationSchema>;
+export type LineageEdgeMutation = z.infer<typeof lineageEdgeMutationSchema>;
+export type DeletedRecord = z.infer<typeof deletedRecordSchema>;
+export type Evidence = z.infer<typeof evidenceRecordSchema>;
+export type EvidenceList = z.infer<typeof evidenceListSchema>;
+export type EvidenceMutation = z.infer<typeof evidenceMutationSchema>;
+export type EvidenceLink = z.infer<typeof edgeEvidenceLinkSchema>;
+export type EvidenceLinkList = z.infer<typeof evidenceLinkListSchema>;
+export type EvidenceLinkMutation = z.infer<typeof evidenceLinkMutationSchema>;
+export type Activity = z.infer<typeof activitySchema>;
+export type ActivityList = z.infer<typeof activityListSchema>;
+export type ActivityMutation = z.infer<typeof activityMutationSchema>;
+export type ActivityDelete = z.infer<typeof activityDeleteSchema>;
+export type SubmissionBlocker = z.infer<typeof submissionBlockerSchema>;
+export type SubmissionValidation = z.infer<typeof submissionValidationSchema>;

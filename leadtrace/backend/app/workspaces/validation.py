@@ -184,14 +184,24 @@ def validate_submission(session: Session, workspace_id: UUID) -> SubmissionValid
     edges = list(
         session.scalars(select(LineageEdge).where(LineageEdge.workspace_id == workspace_id))
     )
+    contentful_evidence_ids = {
+        row.id
+        for row in session.scalars(
+            select(Evidence).where(Evidence.workspace_id == workspace_id)
+        )
+        if row.x0 is not None
+        or bool(row.quoted_text and row.quoted_text.strip())
+        or bool(row.caption and row.caption.strip())
+    }
     supporting_edge_ids = {
-        edge_id
-        for edge_id in session.scalars(
-            select(EdgeEvidenceLink.edge_id).where(
+        link.edge_id
+        for link in session.scalars(
+            select(EdgeEvidenceLink).where(
                 EdgeEvidenceLink.workspace_id == workspace_id,
                 EdgeEvidenceLink.role == EvidenceRole.SUPPORTS,
             )
         )
+        if link.evidence_id in contentful_evidence_ids
     }
     for edge in edges:
         if edge.review_status is LineageEdgeReviewStatus.DRAFT:

@@ -242,6 +242,52 @@ def test_submission_rejects_confirmed_edge_without_supporting_evidence(
         assert any(item.code == "EDGE_SUPPORTING_EVIDENCE_REQUIRED" for item in result.blockers)
 
 
+def test_submission_rejects_empty_supporting_evidence(workspace_fixture):
+    fixture = workspace_fixture
+    service = SubmissionService()
+    with fixture.session_factory.begin() as session:
+        _complete_sections(session, fixture)
+        compound = Compound(
+            paper_id=fixture.paper_id,
+            workspace_id=fixture.workspace_id,
+            compound_label="SUB-1",
+            sort_order=0,
+            created_by_kind="reviewer",
+        )
+        session.add(compound)
+        session.flush()
+        edge = _add_supported_edge(session, fixture, compound)
+        evidence = Evidence(
+            paper_id=fixture.paper_id,
+            workspace_id=fixture.workspace_id,
+            kind=EvidenceKind.TEXT,
+            source_sha256="a" * 64,
+            page_number=1,
+            quoted_text=None,
+            caption=None,
+        )
+        session.add(evidence)
+        session.flush()
+        session.add(
+            EdgeEvidenceLink(
+                paper_id=fixture.paper_id,
+                workspace_id=fixture.workspace_id,
+                edge_id=edge.id,
+                evidence_id=evidence.id,
+                role=EvidenceRole.SUPPORTS,
+            )
+        )
+        session.flush()
+
+        result = service.validate(session, workspace_id=fixture.workspace_id)
+
+        assert any(
+            item.code == "EDGE_SUPPORTING_EVIDENCE_REQUIRED"
+            and item.entity_id == edge.id
+            for item in result.blockers
+        )
+
+
 def test_submission_requires_edge_disposition_but_allows_explicit_unresolved(
     workspace_fixture,
 ):
@@ -490,6 +536,29 @@ def test_submission_api_enforces_csrf_assignment_version_and_blockers(
     with fixture.session_factory() as session:
         assert session.scalar(select(func.count()).select_from(PaperSubmission)) == 0
         assert session.scalar(select(func.count()).select_from(ChangeEvent)) == 0
+
+
+def test_submission_validation_api_returns_record_addressable_blockers_only_to_assignee(
+    workspace_fixture,
+):
+    fixture = workspace_fixture
+    fixture.login("workspace.reviewer")
+    url = f"/api/v2/workspaces/{fixture.workspace_id}/submission-validation"
+
+    response = fixture.client.get(url)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is False
+    assert {item["section_key"] for item in payload["blockers"]} == {
+        section.value for section in PaperSection
+    }
+    assert all(item["entity_type"] == "paper_section_review" for item in payload["blockers"])
+
+    fixture.login("workspace.other")
+    concealed = fixture.client.get(url)
+    assert concealed.status_code == 404
+    assert concealed.json()["code"] == "RESOURCE_NOT_FOUND"
 
 
 def test_submission_api_freezes_safe_snapshot_and_replays_idempotently(

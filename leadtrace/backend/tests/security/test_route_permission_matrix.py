@@ -195,8 +195,9 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v2/review/tasks",
         "/api/v2/workspaces/{workspace_id}",
         "/api/v2/workspaces/{workspace_id}/bibliography",
-        "/api/v2/workspaces/{workspace_id}/sections/{section}",
-        "/api/v2/workspaces/{workspace_id}/submit",
+            "/api/v2/workspaces/{workspace_id}/sections/{section}",
+            "/api/v2/workspaces/{workspace_id}/submission-validation",
+            "/api/v2/workspaces/{workspace_id}/submit",
         "/api/v2/workspaces/{workspace_id}/compounds",
         "/api/v2/workspaces/{workspace_id}/compounds/order",
         "/api/v2/workspaces/{workspace_id}/lineages",
@@ -271,7 +272,7 @@ def test_retired_scientific_v1_routes_are_not_registered(
             or route.path.startswith("/api/v2/workspaces/")
         )
     ]
-    assert len(workspace_routes) == 13
+    assert len(workspace_routes) == 14
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION
@@ -294,6 +295,10 @@ def test_retired_scientific_v1_routes_are_not_registered(
             "PUT",
             "/api/v2/workspaces/{workspace_id}/sections/{section}",
         ): Action.EDIT_DRAFT,
+        (
+            "GET",
+            "/api/v2/workspaces/{workspace_id}/submission-validation",
+        ): Action.READ_DRAFT,
         ("POST", "/api/v2/workspaces/{workspace_id}/submit"): Action.EDIT_DRAFT,
         (
             "GET",

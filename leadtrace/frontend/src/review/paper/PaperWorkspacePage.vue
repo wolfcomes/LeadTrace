@@ -3,8 +3,12 @@ import { computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { useAuthStore } from "../../auth/store";
+import ActivityEditor from "./ActivityEditor.vue";
 import CompoundList from "./CompoundList.vue";
+import EvidenceEditor from "./EvidenceEditor.vue";
+import LineageEditor from "./LineageEditor.vue";
 import SectionStatusControl from "./SectionStatusControl.vue";
+import SubmissionChecklist from "./SubmissionChecklist.vue";
 import { usePaperWorkspace } from "./usePaperWorkspace";
 import WorkspaceHeader from "./WorkspaceHeader.vue";
 
@@ -37,6 +41,16 @@ function selectTab(tab: TabKey): void {
 
 function selectCompound(compoundId: string): void {
   void router.replace({ path: route.path, query: { ...route.query, entity: compoundId } });
+}
+
+function selectEntity(entityId: string): void {
+  void router.replace({ path: route.path, query: { ...route.query, entity: entityId } });
+}
+
+function focusRecord(tab: "bibliography" | "compounds" | "lineages" | "evidence", entityId?: string): void {
+  const { entity: _currentEntity, ...preservedQuery } = route.query;
+  const query = { ...preservedQuery, tab, ...(entityId ? { entity: entityId } : {}) };
+  void router.replace({ path: route.path, query });
 }
 
 function refreshWorkspace(): void {
@@ -106,15 +120,47 @@ watch(
           />
         </template>
         <template v-else-if="activeTab === 'lineages'">
-          <div class="section-heading"><div><p class="eyebrow">LINEAGE</p><h2>优化链</h2></div><button class="button-primary" data-add-lineage type="button" :disabled="readOnly">添加 Lineage</button></div>
-          <p class="workspace-empty-copy">通过 Member 和 Edge 逐步构建文章中的优化链。</p>
+          <LineageEditor
+            :key="`${workspaceState.workspace.value.id}:lineages:${workspaceState.refreshEpoch.value}`"
+            :workspace="workspaceState.workspace.value"
+            :selected-entity-id="typeof route.query.entity === 'string' ? route.query.entity : undefined"
+            :read-only="readOnly"
+            @select="selectEntity"
+            @mutated="refreshWorkspace"
+            @conflict="workspaceState.handleConflict()"
+          />
         </template>
         <template v-else-if="activeTab === 'evidence'">
-          <div class="section-heading"><div><p class="eyebrow">EVIDENCE & ACTIVITIES</p><h2>证据与活性</h2></div><div class="editor-actions"><button class="button-primary" data-add-evidence type="button" :disabled="readOnly">添加 Evidence</button><button class="button-secondary" data-add-activity type="button" :disabled="readOnly">添加 Activity</button></div></div>
-          <p class="workspace-empty-copy">Evidence 主要绑定 Lineage Edge；Activity 记录文章报告的活性数据。</p>
+          <div class="evidence-activity-workspace">
+            <EvidenceEditor
+              :key="`${workspaceState.workspace.value.id}:evidence:${workspaceState.refreshEpoch.value}`"
+              :workspace="workspaceState.workspace.value"
+              :selected-entity-id="typeof route.query.entity === 'string' ? route.query.entity : undefined"
+              :read-only="readOnly"
+              @select="selectEntity"
+              @mutated="refreshWorkspace"
+              @conflict="workspaceState.handleConflict()"
+            />
+            <ActivityEditor
+              :key="`${workspaceState.workspace.value.id}:activities:${workspaceState.refreshEpoch.value}`"
+              :workspace="workspaceState.workspace.value"
+              :selected-entity-id="typeof route.query.entity === 'string' ? route.query.entity : undefined"
+              :read-only="readOnly"
+              @select="selectEntity"
+              @mutated="refreshWorkspace"
+              @conflict="workspaceState.handleConflict()"
+            />
+          </div>
         </template>
         <template v-else>
-          <div class="section-heading"><div><p class="eyebrow">REVIEW & SUBMIT</p><h2>检查与提交</h2></div></div><p class="workspace-empty-copy">六个固定区段全部处置后，可提交给 Admin 审批。</p>
+          <SubmissionChecklist
+            :key="`${workspaceState.workspace.value.id}:submission:${workspaceState.refreshEpoch.value}`"
+            :workspace="workspaceState.workspace.value"
+            :read-only="readOnly"
+            @navigate="focusRecord"
+            @mutated="refreshWorkspace"
+            @conflict="workspaceState.handleConflict()"
+          />
         </template>
       </section>
     </template>

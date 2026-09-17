@@ -2,11 +2,23 @@ import { apiRequest } from "../api/client";
 import {
   adminSubmissionDetailSchema,
   adminSubmissionListSchema,
+  activityDeleteSchema,
+  activityListSchema,
+  activityMutationSchema,
   assignmentResponseSchema,
   compoundDeleteSchema,
   compoundListSchema,
   compoundMutationSchema,
   decisionMutationSchema,
+  deletedRecordSchema,
+  evidenceLinkListSchema,
+  evidenceLinkMutationSchema,
+  evidenceListSchema,
+  evidenceMutationSchema,
+  lineageEdgeMutationSchema,
+  lineageListSchema,
+  lineageMemberMutationSchema,
+  lineageMutationSchema,
   paperCatalogPageSchema,
   paperCatalogRowSchema,
   paperWorkspaceSchema,
@@ -19,13 +31,26 @@ import {
   structureSourceImageListSchema,
   structureSourceImageMutationSchema,
   submissionMutationSchema,
+  submissionValidationSchema,
   type AdminSubmissionDetail,
   type AdminSubmissionList,
+  type ActivityDelete,
+  type ActivityList,
+  type ActivityMutation,
   type AssignmentResponse,
   type CompoundDelete,
   type CompoundList,
   type CompoundMutation,
   type DecisionMutation,
+  type DeletedRecord,
+  type EvidenceLinkList,
+  type EvidenceLinkMutation,
+  type EvidenceList,
+  type EvidenceMutation,
+  type LineageEdgeMutation,
+  type LineageList,
+  type LineageMemberMutation,
+  type LineageMutation,
   type PaperCatalogPage,
   type PaperCatalogRow,
   type PaperWorkspace,
@@ -38,6 +63,7 @@ import {
   type StructureSourceImageList,
   type StructureSourceImageMutation,
   type SubmissionMutation,
+  type SubmissionValidation,
 } from "./types";
 
 
@@ -250,6 +276,188 @@ export function deleteStructureSourceImage(
 
 export function structureSourceImageContentUrl(sourceImageId: string): string {
   return `/api/v2/structure-source-images/${encodeURIComponent(sourceImageId)}/content`;
+}
+
+export function listLineages(workspaceId: string): Promise<LineageList> {
+  return apiRequest(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/lineages`, lineageListSchema);
+}
+
+export function createLineage(
+  workspaceId: string,
+  payload: { expected_workspace_version: number; lineage_label: string; description?: string | null },
+  csrfToken: string | null,
+): Promise<LineageMutation> {
+  return apiRequest(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/lineages`, lineageMutationSchema, { method: "POST", csrfToken, body: payload });
+}
+
+export function updateLineage(
+  lineageId: string,
+  payload: { expected_workspace_version: number; lineage_label?: string; description?: string | null },
+  csrfToken: string | null,
+): Promise<LineageMutation> {
+  return apiRequest(`/api/v2/lineages/${encodeURIComponent(lineageId)}`, lineageMutationSchema, { method: "PATCH", csrfToken, body: payload });
+}
+
+export function deleteLineage(lineageId: string, expectedWorkspaceVersion: number, csrfToken: string | null): Promise<DeletedRecord> {
+  return apiRequest(`/api/v2/lineages/${encodeURIComponent(lineageId)}`, deletedRecordSchema, { method: "DELETE", csrfToken, body: { expected_workspace_version: expectedWorkspaceVersion } });
+}
+
+export function addLineageMember(
+  lineageId: string,
+  payload: { expected_workspace_version: number; compound_id: string; role: "root" | "intermediate" | "terminal" | "unspecified" },
+  csrfToken: string | null,
+): Promise<LineageMemberMutation> {
+  return apiRequest(`/api/v2/lineages/${encodeURIComponent(lineageId)}/members`, lineageMemberMutationSchema, { method: "POST", csrfToken, body: payload });
+}
+
+export function updateLineageMember(
+  memberId: string,
+  payload: { expected_workspace_version: number; role: "root" | "intermediate" | "terminal" | "unspecified" },
+  csrfToken: string | null,
+): Promise<LineageMemberMutation> {
+  return apiRequest(`/api/v2/lineage-members/${encodeURIComponent(memberId)}`, lineageMemberMutationSchema, { method: "PATCH", csrfToken, body: payload });
+}
+
+export function deleteLineageMember(memberId: string, expectedWorkspaceVersion: number, csrfToken: string | null): Promise<DeletedRecord> {
+  return apiRequest(`/api/v2/lineage-members/${encodeURIComponent(memberId)}`, deletedRecordSchema, { method: "DELETE", csrfToken, body: { expected_workspace_version: expectedWorkspaceVersion } });
+}
+
+export function createLineageEdge(
+  lineageId: string,
+  payload: {
+    expected_workspace_version: number;
+    parent_compound_id: string;
+    child_compound_id: string;
+    relation_type: string;
+    modification_summary?: string | null;
+    review_status: "draft" | "reviewer_confirmed" | "unresolved";
+  },
+  csrfToken: string | null,
+): Promise<LineageEdgeMutation> {
+  return apiRequest(`/api/v2/lineages/${encodeURIComponent(lineageId)}/edges`, lineageEdgeMutationSchema, { method: "POST", csrfToken, body: payload });
+}
+
+export function updateLineageEdge(
+  edgeId: string,
+  payload: {
+    expected_workspace_version: number;
+    parent_compound_id?: string;
+    child_compound_id?: string;
+    review_status?: "draft" | "reviewer_confirmed" | "unresolved";
+    relation_type?: string;
+    modification_summary?: string | null;
+  },
+  csrfToken: string | null,
+): Promise<LineageEdgeMutation> {
+  return apiRequest(`/api/v2/lineage-edges/${encodeURIComponent(edgeId)}`, lineageEdgeMutationSchema, { method: "PATCH", csrfToken, body: payload });
+}
+
+export function deleteLineageEdge(edgeId: string, expectedWorkspaceVersion: number, csrfToken: string | null): Promise<DeletedRecord> {
+  return apiRequest(`/api/v2/lineage-edges/${encodeURIComponent(edgeId)}`, deletedRecordSchema, { method: "DELETE", csrfToken, body: { expected_workspace_version: expectedWorkspaceVersion } });
+}
+
+export function listEvidence(workspaceId: string): Promise<EvidenceList> {
+  return apiRequest(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/evidence`, evidenceListSchema);
+}
+
+export function createEvidence(
+  workspaceId: string,
+  payload: {
+    expected_workspace_version: number;
+    kind: "text" | "table" | "scheme" | "image";
+    source_sha256: string;
+    page_number: number;
+    bbox?: { x0: number; y0: number; x1: number; y1: number } | null;
+    quoted_text?: string | null;
+    caption?: string | null;
+    reviewer_note?: string | null;
+  },
+  csrfToken: string | null,
+): Promise<EvidenceMutation> {
+  return apiRequest(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/evidence`, evidenceMutationSchema, { method: "POST", csrfToken, body: payload });
+}
+
+export function updateEvidence(
+  evidenceId: string,
+  payload: {
+    expected_workspace_version: number;
+    kind?: "text" | "table" | "scheme" | "image";
+    source_sha256?: string;
+    page_number?: number;
+    bbox?: { x0: number; y0: number; x1: number; y1: number } | null;
+    quoted_text?: string | null;
+    caption?: string | null;
+    reviewer_note?: string | null;
+  },
+  csrfToken: string | null,
+): Promise<EvidenceMutation> {
+  return apiRequest(`/api/v2/evidence/${encodeURIComponent(evidenceId)}`, evidenceMutationSchema, { method: "PATCH", csrfToken, body: payload });
+}
+
+export function deleteEvidence(evidenceId: string, expectedWorkspaceVersion: number, csrfToken: string | null): Promise<DeletedRecord> {
+  return apiRequest(`/api/v2/evidence/${encodeURIComponent(evidenceId)}`, deletedRecordSchema, { method: "DELETE", csrfToken, body: { expected_workspace_version: expectedWorkspaceVersion } });
+}
+
+export function listEvidenceLinks(edgeId: string): Promise<EvidenceLinkList> {
+  return apiRequest(`/api/v2/lineage-edges/${encodeURIComponent(edgeId)}/evidence-links`, evidenceLinkListSchema);
+}
+
+export function createEvidenceLink(
+  edgeId: string,
+  payload: { expected_workspace_version: number; evidence_id: string; role: "supports" | "contradicts" | "contextual" },
+  csrfToken: string | null,
+): Promise<EvidenceLinkMutation> {
+  return apiRequest(`/api/v2/lineage-edges/${encodeURIComponent(edgeId)}/evidence-links`, evidenceLinkMutationSchema, { method: "POST", csrfToken, body: payload });
+}
+
+export function deleteEvidenceLink(linkId: string, expectedWorkspaceVersion: number, csrfToken: string | null): Promise<DeletedRecord> {
+  return apiRequest(`/api/v2/edge-evidence-links/${encodeURIComponent(linkId)}`, deletedRecordSchema, { method: "DELETE", csrfToken, body: { expected_workspace_version: expectedWorkspaceVersion } });
+}
+
+export function listActivities(compoundId: string): Promise<ActivityList> {
+  return apiRequest(`/api/v2/compounds/${encodeURIComponent(compoundId)}/activities`, activityListSchema);
+}
+
+export function createActivity(
+  compoundId: string,
+  payload: {
+    expected_workspace_version: number;
+    evidence_id?: string | null;
+    assay_name: string;
+    metric: string;
+    operator: "=" | "<" | "<=" | ">" | ">=" | "~";
+    value: string | number;
+    unit?: string | null;
+    context?: string | null;
+  },
+  csrfToken: string | null,
+): Promise<ActivityMutation> {
+  return apiRequest(`/api/v2/compounds/${encodeURIComponent(compoundId)}/activities`, activityMutationSchema, { method: "POST", csrfToken, body: payload });
+}
+
+export function updateActivity(
+  activityId: string,
+  payload: {
+    expected_workspace_version: number;
+    evidence_id?: string | null;
+    assay_name?: string;
+    metric?: string;
+    operator?: "=" | "<" | "<=" | ">" | ">=" | "~";
+    value?: string | number;
+    unit?: string | null;
+    context?: string | null;
+  },
+  csrfToken: string | null,
+): Promise<ActivityMutation> {
+  return apiRequest(`/api/v2/activities/${encodeURIComponent(activityId)}`, activityMutationSchema, { method: "PATCH", csrfToken, body: payload });
+}
+
+export function deleteActivity(activityId: string, expectedWorkspaceVersion: number, csrfToken: string | null): Promise<ActivityDelete> {
+  return apiRequest(`/api/v2/activities/${encodeURIComponent(activityId)}`, activityDeleteSchema, { method: "DELETE", csrfToken, body: { expected_workspace_version: expectedWorkspaceVersion } });
+}
+
+export function getSubmissionValidation(workspaceId: string): Promise<SubmissionValidation> {
+  return apiRequest(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/submission-validation`, submissionValidationSchema);
 }
 
 export function submitWorkspace(

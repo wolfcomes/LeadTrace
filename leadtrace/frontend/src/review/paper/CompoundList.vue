@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 
 import { ApiError } from "../../api/client";
 import { useAuthStore } from "../../auth/store";
-import { createCompound, deleteCompound, listCompounds, updateCompound } from "../../v2/api";
+import { createCompound, deleteCompound, getCompoundStructure, listCompounds, updateCompound } from "../../v2/api";
 import type { Compound, PaperWorkspace } from "../../v2/types";
 import CompoundStructureEditor from "./CompoundStructureEditor.vue";
 
@@ -67,9 +67,25 @@ async function load(): Promise<void> {
     const result = await listCompounds(props.workspace.id);
     compounds.value = result.items;
     localVersion.value = result.workspace_version;
-    const requested = props.selectedCompoundId
+    let requested = props.selectedCompoundId
       ? result.items.find((item) => item.id === props.selectedCompoundId)
       : undefined;
+    if (props.selectedCompoundId && !requested) {
+      const structureResults = await Promise.all(result.items.map(async (item) => {
+        try {
+          return { item, result: await getCompoundStructure(item.id) };
+        } catch {
+          return null;
+        }
+      }));
+      for (const structureResult of structureResults) {
+        if (!structureResult) continue;
+        localVersion.value = Math.max(localVersion.value, structureResult.result.workspace_version);
+        if (structureResult.result.structure?.id === props.selectedCompoundId) {
+          requested = structureResult.item;
+        }
+      }
+    }
     const next = requested ?? result.items[0];
     selectedId.value = next?.id;
     if (next && !props.selectedCompoundId) emit("select", next.id);
@@ -205,7 +221,7 @@ onMounted(load);
     <p v-else-if="compounds.length === 0" class="workspace-empty-copy">当前尚无条目。可直接人工新增 Compound，并为每个 Compound 维护一个 Structure。</p>
     <div v-else class="compound-editor-layout">
       <aside class="compound-list-panel" aria-label="Compound 列表">
-        <article v-for="compound in compounds" :key="compound.id" data-compound-row :class="{ selected: compound.id === selectedId }">
+        <article v-for="compound in compounds" :key="compound.id" data-compound-row :data-compound-id="compound.id" :class="{ selected: compound.id === selectedId }">
           <button type="button" @click="select(compound)"><code>{{ compound.compound_label }}</code><span>{{ compound.display_name || "未命名" }}</span></button>
           <button v-if="!readOnly" class="button-quiet" data-edit-compound type="button" :disabled="busy" @click="startEdit(compound)">编辑</button>
           <button v-if="!readOnly" class="button-quiet" type="button" :disabled="busy" @click="remove(compound)">删除</button>

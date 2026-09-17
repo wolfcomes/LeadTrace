@@ -244,6 +244,49 @@ def test_evidence_validates_locator_scope_precision_and_referenced_delete(
     assert deletion.status_code == 409
 
 
+def test_evidence_create_and_update_require_scientific_content(science_api_context):
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    source_sha = _source_sha(context, context.first.paper_id)
+    empty_create = context.client.post(
+        f"/api/v2/workspaces/{context.first.workspace_id}/evidence",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "expected_workspace_version": 1,
+            "kind": "text",
+            "source_sha256": source_sha,
+            "page_number": 1,
+            "bbox": None,
+            "quoted_text": "  ",
+            "caption": None,
+            "reviewer_note": "A note is not scientific Evidence content",
+        },
+    )
+    assert empty_create.status_code == 422
+    assert empty_create.json()["code"] == "EVIDENCE_INVALID"
+
+    created = _create_evidence(context, csrf, 1)
+    evidence_id = created.json()["evidence"]["id"]
+    empty_update = context.client.patch(
+        f"/api/v2/evidence/{evidence_id}",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "expected_workspace_version": 2,
+            "bbox": None,
+            "quoted_text": None,
+            "caption": " ",
+        },
+    )
+    assert empty_update.status_code == 422
+    assert empty_update.json()["code"] == "EVIDENCE_INVALID"
+
+    listing = context.client.get(
+        f"/api/v2/workspaces/{context.first.workspace_id}/evidence"
+    )
+    assert listing.json()["workspace_version"] == 2
+    assert listing.json()["items"][0]["quoted_text"]
+
+
 def test_evidence_update_link_update_and_delete(science_api_context):
     context = science_api_context
     _, edge_id, _ = _seed_edges(context)

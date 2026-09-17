@@ -64,6 +64,15 @@ def _clean_optional(value: str | None) -> str | None:
     return value.strip() or None
 
 
+def _validate_content(
+    *, bbox_present: bool, quoted_text: str | None, caption: str | None
+) -> None:
+    if not bbox_present and quoted_text is None and caption is None:
+        raise EvidenceValidationError(
+            "Evidence requires a bounding box, quoted text, or caption"
+        )
+
+
 def evidence_snapshot(row: Evidence) -> dict[str, object]:
     bbox = None
     if row.x0 is not None:
@@ -181,14 +190,21 @@ class EvidenceService:
                 source_sha256=source_sha256,
                 page_number=page_number,
             )
+            clean_quoted_text = _clean_optional(quoted_text)
+            clean_caption = _clean_optional(caption)
+            _validate_content(
+                bbox_present=bbox is not None,
+                quoted_text=clean_quoted_text,
+                caption=clean_caption,
+            )
             row = Evidence(
                 paper_id=context.workspace.paper_id,
                 workspace_id=context.workspace.id,
                 kind=kind,
                 source_sha256=source_sha256,
                 page_number=page_number,
-                quoted_text=_clean_optional(quoted_text),
-                caption=_clean_optional(caption),
+                quoted_text=clean_quoted_text,
+                caption=clean_caption,
                 crop_asset_id=None,
                 reviewer_note=_clean_optional(reviewer_note),
             )
@@ -235,6 +251,21 @@ class EvidenceService:
             before = evidence_snapshot(row)
             source_sha256 = str(updates.get("source_sha256", row.source_sha256))
             page_number = int(updates.get("page_number", row.page_number))
+            clean_quoted_text = _clean_optional(
+                updates.get("quoted_text", row.quoted_text)  # type: ignore[arg-type]
+            )
+            clean_caption = _clean_optional(
+                updates.get("caption", row.caption)  # type: ignore[arg-type]
+            )
+            _validate_content(
+                bbox_present=(
+                    updates["bbox"] is not None
+                    if "bbox" in updates
+                    else row.x0 is not None
+                ),
+                quoted_text=clean_quoted_text,
+                caption=clean_caption,
+            )
             self._validate_locator(
                 session,
                 paper_id=context.workspace.paper_id,
@@ -247,9 +278,14 @@ class EvidenceService:
                 row.kind = updates["kind"]  # type: ignore[assignment]
             if "bbox" in updates:
                 self._apply_bbox(row, updates["bbox"])  # type: ignore[arg-type]
-            for field in ("quoted_text", "caption", "reviewer_note"):
-                if field in updates:
-                    setattr(row, field, _clean_optional(updates[field]))  # type: ignore[arg-type]
+            if "quoted_text" in updates:
+                row.quoted_text = clean_quoted_text
+            if "caption" in updates:
+                row.caption = clean_caption
+            if "reviewer_note" in updates:
+                row.reviewer_note = _clean_optional(  # type: ignore[arg-type]
+                    updates["reviewer_note"]
+                )
             changed["value"] = row
             return MutationChange(
                 "evidence",
