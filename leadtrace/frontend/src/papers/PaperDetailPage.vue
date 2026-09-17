@@ -1,249 +1,116 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-
 import { ApiError } from "../api/client";
-import { fetchPaperDetail } from "../api/published";
-import type { PaperDetailResponse } from "../api/schema";
-import EvidenceCard from "../evidence/EvidenceCard.vue";
-import { zhCN } from "../i18n/zh-CN";
-import LineageView from "../lineages/LineageView.vue";
-import QualitySummary from "./QualitySummary.vue";
-import ReleaseVerificationBadge from "./ReleaseVerificationBadge.vue";
+import { getPublishedPaper, publishedAssetUrl } from "../v2/api";
+import type { PublishedPaperDetail } from "../v2/types";
 
-
-type ViewState = "loading" | "ready" | "not-found" | "empty-release" | "error";
-
+type State = "loading" | "ready" | "not-found" | "error";
 const route = useRoute();
-const state = ref<ViewState>("loading");
-const detail = ref<PaperDetailResponse | null>(null);
-const requestId = ref<string | undefined>();
+const state = ref<State>("loading");
+const detail = ref<PublishedPaperDetail | null>(null);
+const error = ref<string | null>(null);
+const snapshot = computed(() => detail.value?.snapshot ?? null);
+const compoundLabels = computed(() => new Map(snapshot.value?.compounds.map((compound) => [compound.id, compound.compound_label]) ?? []));
+const evidenceById = computed(() => new Map(snapshot.value?.evidence.map((item) => [item.id, item]) ?? []));
 
-const confirmedStructures = computed(() => detail.value?.structures.filter(
-  (structure) => structure.state === "structure_confirmed" && structure.canonical_smiles,
-) ?? []);
-
-const compoundLabels = computed(() => new Map(
-  detail.value?.compounds.map((compound) => [compound.id, compound.label]) ?? [],
-));
-
-const publishedRegions = computed(() => detail.value?.regions ?? []);
-const publishedProposals = computed(() => detail.value?.molecule_proposals ?? []);
-const sourceLocators = computed(() => detail.value?.source_locators ?? []);
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Shanghai",
-  }).format(new Date(value));
+function assetUrl(assetId: string): string {
+  return publishedAssetUrl(String(detail.value?.paper_id ?? ""), assetId);
 }
-
+function edgeLabel(edgeId: string): string {
+  const edge = snapshot.value?.lineage_edges.find((item) => item.id === edgeId);
+  return edge
+    ? `${compoundLabels.value.get(edge.parent_compound_id) ?? edge.parent_compound_id} → ${compoundLabels.value.get(edge.child_compound_id) ?? edge.child_compound_id}`
+    : edgeId;
+}
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Shanghai" }).format(new Date(value));
+}
 async function load(): Promise<void> {
+  const paperId = String(route.params.paperId ?? "");
+  if (!paperId) return;
   state.value = "loading";
   detail.value = null;
-  requestId.value = undefined;
-  const paperId = String(route.params.paperId ?? "");
+  error.value = null;
   try {
-    detail.value = await fetchPaperDetail(paperId);
+    detail.value = await getPublishedPaper(paperId);
     state.value = "ready";
-  } catch (error) {
-    if (error instanceof ApiError) {
-      requestId.value = error.requestId;
-      if (error.code === "CURRENT_RELEASE_NOT_FOUND") state.value = "empty-release";
-      else if (error.code === "RESOURCE_NOT_FOUND") state.value = "not-found";
-      else state.value = "error";
-    } else {
+  } catch (caught) {
+    if (caught instanceof ApiError && caught.status === 404) state.value = "not-found";
+    else {
       state.value = "error";
+      error.value = caught instanceof ApiError ? `已批准文章未能读取。请求编号：${caught.requestId ?? "未知"}` : "已批准文章未能读取。";
     }
   }
 }
-
 watch(() => route.params.paperId, load, { immediate: true });
 </script>
 
 <template>
-  <div class="published-page detail-page detail-layout" data-paper-detail>
-    <RouterLink class="back-link" :to="{ name: 'papers' }">← {{ zhCN.published.detail.back }}</RouterLink>
-
-    <section v-if="state === 'loading'" class="page-state" aria-live="polite">
-      <span class="state-spinner" aria-hidden="true"></span>
-      <p>{{ zhCN.published.states.loading }}</p>
-    </section>
-
-    <section v-else-if="state === 'empty-release'" class="page-state" data-empty-state>
-      <span class="state-symbol" aria-hidden="true">—</span>
-      <h1>{{ zhCN.published.states.emptyTitle }}</h1>
-      <p>{{ zhCN.published.states.emptyBody }}</p>
-    </section>
-
-    <section v-else-if="state === 'not-found'" class="page-state">
-      <span class="state-symbol" aria-hidden="true">404</span>
-      <h1>未找到已发布文献</h1>
-      <p>该编号不属于当前发布版本，或文献已不可见。</p>
-      <small v-if="requestId">{{ zhCN.published.states.requestId }} · {{ requestId }}</small>
-    </section>
-
-    <section v-else-if="state === 'error'" class="page-state" role="alert">
-      <span class="state-symbol is-error" aria-hidden="true">!</span>
-      <h1>{{ zhCN.published.states.errorTitle }}</h1>
-      <p>{{ zhCN.published.states.errorBody }}</p>
-      <small v-if="requestId">{{ zhCN.published.states.requestId }} · {{ requestId }}</small>
-      <button class="button-secondary" type="button" @click="load">{{ zhCN.published.states.retry }}</button>
-    </section>
-
-    <template v-else-if="detail">
+  <div class="published-page published-paper-detail" data-published-paper-detail>
+    <RouterLink class="back-link" :to="{ name: 'papers' }">← 返回已批准文章</RouterLink>
+    <section v-if="state === 'loading'" class="page-state" aria-live="polite">正在读取 Published Paper Version…</section>
+    <section v-else-if="state === 'not-found'" class="page-state" data-published-not-found><span class="state-symbol" aria-hidden="true">404</span><h1>未找到已批准文章</h1><p>该文章尚未批准，或编号不存在。</p></section>
+    <section v-else-if="state === 'error'" class="page-state" role="alert"><span class="state-symbol is-error" aria-hidden="true">!</span><h1>{{ error }}</h1><button class="button-secondary" type="button" @click="load">重新加载</button></section>
+    <template v-else-if="detail && snapshot">
       <header class="paper-hero">
         <div class="hero-main">
-          <div class="paper-identifiers">
-            <span>{{ zhCN.published.detail.stableId }} <code>{{ detail.paper.paper_key }}</code></span>
-            <span v-if="detail.paper.doi">{{ zhCN.published.detail.doi }} <code>{{ detail.paper.doi }}</code></span>
-          </div>
-          <h1>{{ detail.paper.title }}</h1>
-          <div class="hero-tags">
-            <span>{{ zhCN.published.detail.year }} · {{ detail.paper.year || "—" }}</span>
-            <span>{{ zhCN.published.detail.target }} · {{ detail.paper.target || "—" }}</span>
-            <span>{{ detail.paper.review_status || "—" }}</span>
-          </div>
+          <div class="paper-identifiers"><span><code>{{ detail.bibliography.paper_key }}</code></span><span v-if="detail.bibliography.doi">DOI <code>{{ detail.bibliography.doi }}</code></span></div>
+          <h1>{{ detail.bibliography.title }}</h1>
+          <p>{{ detail.bibliography.journal }} · {{ detail.bibliography.publication_year }} · {{ detail.bibliography.volume }}({{ detail.bibliography.issue }})</p>
         </div>
-        <aside class="release-card">
-          <span>{{ zhCN.published.detail.release }}</span>
-          <strong>{{ detail.release.title }}</strong>
-          <ReleaseVerificationBadge :status="detail.release.verification_status" />
-          <code>{{ detail.release.key }}</code>
-          <small>{{ zhCN.published.detail.publishedAt }} · {{ formatDate(detail.release.published_at) }}</small>
-        </aside>
+        <aside class="published-version-card"><span>Published Paper Version</span><strong>版本 {{ detail.version_number }}</strong><small>{{ formatDate(detail.published_at) }}</small><code>{{ detail.content_hash }}</code></aside>
       </header>
 
-      <section class="content-section panel verification-section" data-paper-verification aria-label="Paper 发布核验状态">
-        <div class="section-heading">
-          <div><p class="eyebrow">PAPER-LEVEL STATUS</p><h2>Paper 发布状态</h2></div>
-          <ReleaseVerificationBadge :status="detail.release.verification_status" />
-        </div>
-        <div class="verification-grid">
-          <div><span>AI baseline</span><strong>{{ detail.verification?.ai_baseline || "published" }}</strong></div>
-          <div><span>人工核验</span><strong>{{ detail.verification?.human_verified ? "已人工核验" : "尚未人工核验" }}</strong></div>
-          <div><span>发布版本</span><strong>{{ detail.verification?.release_status || detail.release.verification_status }}</strong></div>
-        </div>
-        <a v-if="detail.review_entry" class="button-secondary internal-review-link" :href="detail.review_entry.href">{{ detail.review_entry.label }}</a>
-      </section>
-
-      <section class="content-section panel quality-section">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">QUALITY SIGNALS</p>
-            <h2>{{ zhCN.published.detail.quality }}</h2>
-          </div>
-        </div>
-        <QualitySummary :summary="detail.quality_summary" />
-      </section>
-
       <section class="content-section panel">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">LINEAGE</p>
-            <h2>{{ zhCN.published.detail.lineage }}</h2>
-          </div>
-          <span>{{ detail.lineages.length }} lineages · {{ detail.lineage_edges.length }} edges</span>
-        </div>
-        <LineageView
-          v-if="detail.lineages.length"
-          :lineages="detail.lineages"
-          :edges="detail.lineage_edges"
-          :compounds="detail.compounds"
-          :structures="detail.structures"
-        />
-        <p v-else class="section-empty">{{ zhCN.published.detail.noLineage }}</p>
-      </section>
-
-      <section class="content-section panel">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">CONFIRMED CHEMISTRY</p>
-            <h2>{{ zhCN.published.detail.structures }}</h2>
-          </div>
-          <span>{{ confirmedStructures.length }} confirmed</span>
-        </div>
-        <div v-if="confirmedStructures.length" class="structure-grid">
-          <article v-for="structure in confirmedStructures" :key="structure.id" data-confirmed-structure>
-            <div class="structure-label">
-              <span>{{ zhCN.published.structure.confirmedData }}</span>
-              <strong>{{ compoundLabels.get(structure.compound_id) || "—" }}</strong>
-            </div>
-            <small>{{ zhCN.published.structure.smiles }}</small>
-            <code>{{ structure.canonical_smiles }}</code>
-            <img v-if="structure.drawing_asset" :src="structure.drawing_asset.url" :alt="`${compoundLabels.get(structure.compound_id) || structure.id} 的 RDKit 结构图`" data-rdkit-drawing>
-          </article>
-        </div>
-        <p v-else class="section-empty">{{ zhCN.published.detail.noStructures }}</p>
-      </section>
-
-      <section v-if="publishedProposals.length || publishedRegions.length" class="content-section panel source-evidence-section" data-source-evidence aria-label="来源图像与 OCSR 证据">
-        <div class="section-heading">
-          <div><p class="eyebrow">VISUAL EVIDENCE</p><h2>来源图像与 OCSR</h2></div>
-          <span>{{ publishedProposals.length }} proposals · {{ publishedRegions.length }} Regions</span>
-        </div>
-        <div class="published-proposal-grid">
-          <article v-for="proposal in publishedProposals" :key="proposal.id" class="published-proposal-card" data-ocsr-proposal>
-            <header><strong>{{ proposal.proposal_key }}</strong><span class="status-chip">{{ proposal.disposition }}</span></header>
-            <dl>
-              <div><dt>机器 raw SMILES</dt><dd><code>{{ proposal.machine.raw_values.raw_smiles || "—" }}</code></dd></div>
-              <div><dt>机器 canonical</dt><dd><code>{{ proposal.machine.normalized_values.machine_canonical_smiles || proposal.machine.normalized_values.canonical_smiles || "—" }}</code></dd></div>
-              <div><dt>Reviewer 结果</dt><dd><code>{{ proposal.review.reviewed_smiles || "—" }}</code></dd></div>
-            </dl>
-            <img v-if="proposal.crop_asset" :src="proposal.crop_asset.url" :alt="`${proposal.proposal_key} 来源 crop`" data-published-crop>
-            <p v-else class="section-empty">当前发布版本没有公开 crop 资产。</p>
-          </article>
-        </div>
-        <div v-if="sourceLocators.length" class="published-locator-list">
-          <article v-for="locator in sourceLocators" :key="locator.proposal_id" class="published-locator-card" data-source-locator>
-            <header><strong>来源定位</strong><span>第 {{ locator.region.page_number }} 页 · {{ locator.region.id }}</span></header>
-            <div class="locator-grid">
-              <img v-if="locator.crop_asset" :src="locator.crop_asset.url" alt="来源 crop">
-              <img v-if="locator.source_asset" :src="locator.source_asset.url" alt="来源页面">
-              <code>{{ locator.region.bounds.x0.toFixed(3) }}, {{ locator.region.bounds.y0.toFixed(3) }} → {{ locator.region.bounds.x1.toFixed(3) }}, {{ locator.region.bounds.y1.toFixed(3) }}</code>
+        <div class="section-heading"><div><p class="eyebrow">COMPOUNDS & STRUCTURES</p><h2>化合物与结构</h2></div><span>{{ snapshot.compounds.length }} compounds</span></div>
+        <div class="published-compound-grid">
+          <article v-for="compound in snapshot.compounds" :key="compound.id">
+            <header><strong>{{ compound.compound_label }}</strong><span>{{ compound.display_name }}</span></header>
+            <div v-for="structure in snapshot.structures.filter((item) => item.compound_id === compound.id)" :key="structure.id">
+              <img v-if="structure.depiction_asset_id" data-published-depiction :src="assetUrl(structure.depiction_asset_id)" :alt="`${compound.compound_label} RDKit 结构`">
+              <code>{{ structure.canonical_smiles ?? structure.smiles ?? "—" }}</code>
+              <span class="status-chip">{{ structure.status }}</span>
             </div>
           </article>
         </div>
+      </section>
+
+      <section class="content-section panel">
+        <div class="section-heading"><div><p class="eyebrow">LINEAGE</p><h2>Lead optimization Lineage</h2></div><span>{{ snapshot.lineages.length }} lineages</span></div>
+        <article v-for="lineage in snapshot.lineages" :key="lineage.id" class="published-lineage-card">
+          <header><strong>{{ lineage.lineage_label }}</strong><span>{{ lineage.description }}</span></header>
+          <div class="lineage-member-roles">
+            <span v-for="member in snapshot.lineage_members.filter((item) => item.lineage_id === lineage.id)" :key="member.id"><strong>{{ compoundLabels.get(member.compound_id) }}</strong><small>{{ member.role }}</small></span>
+          </div>
+          <div v-for="edge in snapshot.lineage_edges.filter((item) => item.lineage_id === lineage.id)" :key="edge.id" class="published-edge-row">
+            <strong>{{ compoundLabels.get(edge.parent_compound_id) }} → {{ compoundLabels.get(edge.child_compound_id) }}</strong>
+            <span>{{ edge.relation_type }} · {{ edge.modification_summary ?? "—" }}</span>
+          </div>
+        </article>
+        <p v-if="!snapshot.lineages.length" class="section-empty">该文章没有报告 Lineage。</p>
       </section>
 
       <section class="content-section panel split-section">
         <div>
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">EVIDENCE</p>
-              <h2>{{ zhCN.published.detail.evidence }}</h2>
-            </div>
-          </div>
-          <div v-if="detail.evidence.length" class="evidence-list">
-            <EvidenceCard v-for="item in detail.evidence" :key="item.id" :evidence="item" />
-          </div>
-          <p v-else class="section-empty">{{ zhCN.published.detail.noEvidence }}</p>
+          <div class="section-heading"><div><p class="eyebrow">EDGE EVIDENCE</p><h2>关系证据</h2></div></div>
+          <article v-for="item in snapshot.evidence" :key="item.id" class="published-evidence-card">
+            <header><strong>{{ item.kind }} · 第 {{ item.page_number }} 页</strong><span>{{ item.caption }}</span></header>
+            <img v-if="item.crop_asset_id" data-published-evidence-crop :src="assetUrl(item.crop_asset_id)" alt="Edge Evidence crop">
+            <blockquote v-if="item.quoted_text">{{ item.quoted_text }}</blockquote>
+            <small v-for="link in snapshot.edge_evidence_links.filter((row) => row.evidence_id === item.id)" :key="link.id">{{ link.role }} · {{ edgeLabel(link.edge_id) }}</small>
+          </article>
+          <p v-if="!snapshot.evidence.length" class="section-empty">该文章没有报告 Evidence。</p>
         </div>
-
         <div>
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">ACTIVITY</p>
-              <h2>{{ zhCN.published.detail.activities }}</h2>
-            </div>
-          </div>
-          <div v-if="detail.activities.length" class="activity-table-wrap">
-            <table class="data-table">
-              <thead>
-                <tr><th>Compound</th><th>Metric</th><th>Value</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="activity in detail.activities" :key="activity.id">
-                  <td>{{ compoundLabels.get(activity.compound_id) || "—" }}</td>
-                  <td>{{ activity.metric || "—" }}</td>
-                  <td><strong>{{ activity.qualifier || "" }} {{ activity.value || "—" }} {{ activity.unit || "" }}</strong></td>
-                  <td><span>{{ activity.state || "—" }}</span></td>
-                </tr>
-              </tbody>
+          <div class="section-heading"><div><p class="eyebrow">ACTIVITY</p><h2>活性数据</h2></div></div>
+          <div class="activity-table-wrap">
+            <table v-if="snapshot.activities.length" class="data-table">
+              <thead><tr><th>Compound</th><th>Assay</th><th>Metric</th><th>Value</th><th>Evidence</th></tr></thead>
+              <tbody><tr v-for="activity in snapshot.activities" :key="activity.id"><td>{{ compoundLabels.get(activity.compound_id) }}</td><td>{{ activity.assay_name }}</td><td>{{ activity.metric }}</td><td><strong>{{ activity.operator }} {{ activity.value }} {{ activity.unit ?? "" }}</strong></td><td>{{ activity.evidence_id ? evidenceById.get(activity.evidence_id)?.caption ?? "已关联" : "—" }}</td></tr></tbody>
             </table>
+            <p v-else class="section-empty">该文章没有报告 Activity。</p>
           </div>
-          <p v-else class="section-empty">{{ zhCN.published.detail.noActivities }}</p>
         </div>
       </section>
     </template>

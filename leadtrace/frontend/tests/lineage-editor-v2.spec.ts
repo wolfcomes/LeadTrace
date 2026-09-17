@@ -52,6 +52,7 @@ describe("Lineage editor", () => {
     await wrapper.get("[data-lineage-label-input]").setValue("Series C");
     await wrapper.get("[data-save-lineage]").trigger("click");
     await flushPromises();
+    await wrapper.get(`[data-lineage-id='${ids.lineages[0]}'] > button`).trigger("click");
     await wrapper.get(`[data-edge-id='${edges[0].id}'] [data-delete-edge]`).trigger("click");
     await flushPromises();
 
@@ -59,6 +60,40 @@ describe("Lineage editor", () => {
     expect(JSON.parse(String(writes[0]?.init?.body))).toMatchObject({ expected_workspace_version: 1, lineage_label: "Series C" });
     expect(JSON.parse(String(writes[1]?.init?.body))).toEqual({ expected_workspace_version: 2 });
     expect(new Headers(writes[0]?.init?.headers).get("X-CSRF-Token")).toBe("reviewer-csrf");
+  });
+
+  it("selects the first Lineage created in a blank Workspace", async () => {
+    let currentVersion = 1;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), "http://leadtrace.test");
+      if (url.pathname === `/api/v2/workspaces/${ids.workspace}`) return response(workspace(currentVersion));
+      if (url.pathname.endsWith("/compounds")) return response({ workspace_id: ids.workspace, workspace_version: currentVersion, items: compounds, total: compounds.length });
+      if (url.pathname.endsWith("/lineages") && init?.method === "POST") {
+        currentVersion += 1;
+        const body = JSON.parse(String(init.body));
+        return response({
+          lineage: {
+            ...lineages[1],
+            id: ids.lineages[2],
+            lineage_label: body.lineage_label,
+            sort_order: 0,
+          },
+          workspace_version: currentVersion,
+        }, 201);
+      }
+      if (url.pathname.endsWith("/lineages")) return response({ workspace_id: ids.workspace, workspace_version: currentVersion, items: [], total: 0 });
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    }));
+    const { wrapper } = await mountWorkspace("lineages");
+
+    await wrapper.get("[data-add-lineage]").trigger("click");
+    await wrapper.get("[data-lineage-label-input]").setValue("First manual series");
+    await wrapper.get("[data-save-lineage]").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get(`[data-lineage-id='${ids.lineages[2]}']`).classes()).toContain("selected");
+    expect(wrapper.get("[data-lineage-graph]").attributes("data-node-count")).toBe("0");
+    expect(wrapper.get(".member-editor").text()).toContain("Compound 角色");
   });
 
   it("edits AI-prefilled Lineage metadata and Edge fields in place", async () => {

@@ -122,10 +122,12 @@ async function create(): Promise<void> {
       description: lineageDescription.value.trim() || null,
     }, auth.csrfToken);
     lineages.value = [...lineages.value, result.lineage];
+    selectedLineageId.value = result.lineage.id;
     localVersion.value = result.workspace_version;
     lineageLabel.value = "";
     lineageDescription.value = "";
     showCreate.value = false;
+    emit("select", result.lineage.id);
     emit("mutated", result.workspace_version);
   } catch (reason) {
     mutationError(reason, "Lineage 未能创建，请重试。");

@@ -1,4 +1,3 @@
-import { defineComponent, h } from "vue";
 import {
   createRouter,
   createWebHistory,
@@ -11,7 +10,6 @@ import type { UserRole } from "../api/schema";
 import ChangePasswordPage from "../auth/ChangePasswordPage.vue";
 import LoginPage from "../auth/LoginPage.vue";
 import { useAuthStore } from "../auth/store";
-import { zhCN } from "../i18n/zh-CN";
 import PaperDetailPage from "../papers/PaperDetailPage.vue";
 import PaperLibraryPage from "../papers/PaperLibraryPage.vue";
 import TaskListPage from "../review/tasks/TaskListPage.vue";
@@ -23,17 +21,9 @@ import JobsPage from "../admin/JobsPage.vue";
 import SystemPage from "../admin/SystemPage.vue";
 import PaperCatalogPage from "../admin/PaperCatalogPage.vue";
 import PaperCatalogDetailPage from "../admin/PaperCatalogDetailPage.vue";
+import ApprovalCenterPage from "../approvals/ApprovalCenterPage.vue";
+import PaperSubmissionReviewPage from "../approvals/PaperSubmissionReviewPage.vue";
 import AppShell from "./AppShell.vue";
-
-const PlaceholderPage = defineComponent({
-  setup() {
-    return () => h("section", { class: "placeholder-page" }, [
-      h("p", { class: "eyebrow" }, zhCN.shell.placeholderEyebrow),
-      h("h1", zhCN.shell.placeholderTitle),
-      h("p", zhCN.shell.placeholderBody),
-    ]);
-  },
-});
 
 const publishedRoles: UserRole[] = ["visitor", "reviewer", "admin"];
 const reviewRoles: UserRole[] = ["reviewer", "admin"];
@@ -62,8 +52,8 @@ export function createAppRouter(
           { path: "review/papers/:paperId", name: "review-paper", component: PaperWorkspacePage, meta: { roles: reviewRoles } },
           { path: "admin/papers", name: "admin-papers", component: PaperCatalogPage, meta: { roles: adminRoles } },
           { path: "admin/papers/:paperId", name: "admin-paper-detail", component: PaperCatalogDetailPage, meta: { roles: adminRoles } },
-          { path: "admin/submissions", name: "admin-submissions", component: PlaceholderPage, meta: { roles: adminRoles } },
-          { path: "admin/submissions/:submissionId", name: "admin-submission-detail", component: PlaceholderPage, meta: { roles: adminRoles } },
+          { path: "admin/submissions", name: "admin-submissions", component: ApprovalCenterPage, meta: { roles: adminRoles } },
+          { path: "admin/submissions/:submissionId", name: "admin-submission-detail", component: PaperSubmissionReviewPage, meta: { roles: adminRoles } },
           { path: "admin/files", component: FilesPage, meta: { roles: adminRoles } },
           { path: "admin/users", component: UsersPage, meta: { roles: adminRoles } },
           { path: "admin/audit", component: AuditPage, meta: { roles: adminRoles } },
