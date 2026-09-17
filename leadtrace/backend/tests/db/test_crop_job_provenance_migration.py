@@ -116,7 +116,7 @@ def test_applied_0021_database_upgrades_crop_job_provenance_constraint(
     finally:
         engine.dispose()
 
-    command.upgrade(config, "head")
+    command.upgrade(config, NEW_REVISION)
     engine = create_database_engine(empty_postgresql_database_url)
     try:
         after = _constraints(engine)

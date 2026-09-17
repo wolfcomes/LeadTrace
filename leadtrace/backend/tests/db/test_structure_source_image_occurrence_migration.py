@@ -36,13 +36,13 @@ def _unique_constraint_names(database_url: str) -> set[str]:
         engine.dispose()
 
 
-def test_occurrence_uniqueness_migration_is_head_and_reversible(
+def test_occurrence_uniqueness_migration_remains_reversible_from_head(
     empty_postgresql_database_url: str,
 ) -> None:
     config = _config(empty_postgresql_database_url)
     command.upgrade(config, "head")
     assert ScriptDirectory.from_config(config).get_current_head() == (
-        "0022_crop_job_source_provenance"
+        "0023_paper_submissions"
     )
     assert CONSTRAINT_NAME in _unique_constraint_names(empty_postgresql_database_url)
 
@@ -56,4 +56,4 @@ def test_occurrence_uniqueness_migration_is_head_and_reversible(
             revision = MigrationContext.configure(connection).get_current_revision()
     finally:
         engine.dispose()
-    assert revision == "0022_crop_job_source_provenance"
+    assert revision == "0023_paper_submissions"

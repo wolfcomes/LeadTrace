@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -177,6 +178,53 @@ class SectionUpdateRequest(WorkspaceProjection):
         return normalized or None
 
 
+class SubmissionRequest(WorkspaceProjection):
+    expected_workspace_version: int = Field(ge=1)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=255)
+    reviewer_note: str | None = Field(default=None, max_length=10_000)
+
+    @field_validator("idempotency_key", "reviewer_note")
+    @classmethod
+    def normalize_submission_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class SubmissionBlockerResponse(WorkspaceProjection):
+    code: str
+    message: str
+    entity_type: str
+    entity_id: UUID | None
+    section_key: PaperSection | None
+
+
+class SubmissionResponse(WorkspaceProjection):
+    id: UUID
+    paper_id: UUID
+    workspace_id: UUID
+    review_task_id: UUID
+    submission_number: int
+    idempotency_key: str
+    snapshot: dict[str, object]
+    content_hash: str
+    workspace_version: int
+    submitted_by_id: UUID
+    reviewer_note: str | None
+    submitted_at: datetime
+
+
+class SubmissionMutationResponse(WorkspaceProjection):
+    submission: SubmissionResponse
+    workspace_version: int
+
+
+class SubmissionValidationResponse(WorkspaceProjection):
+    valid: bool
+    blockers: list[SubmissionBlockerResponse]
+
+
 __all__ = [
     "AssignmentRequest",
     "AssignmentResponse",
@@ -186,6 +234,11 @@ __all__ = [
     "ReviewTaskListResponse",
     "ReviewTaskResponse",
     "SectionUpdateRequest",
+    "SubmissionBlockerResponse",
+    "SubmissionMutationResponse",
+    "SubmissionRequest",
+    "SubmissionResponse",
+    "SubmissionValidationResponse",
     "WorkspaceResponse",
     "WorkspaceSourceResponse",
 ]

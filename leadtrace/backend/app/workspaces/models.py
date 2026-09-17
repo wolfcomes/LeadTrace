@@ -150,6 +150,85 @@ class PaperWorkspace(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
+class PaperSubmission(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "paper_submissions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "paper_id"],
+            ["paper_workspaces.id", "paper_workspaces.paper_id"],
+            name="fk_paper_submissions_workspace_paper",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["review_task_id", "paper_id"],
+            ["review_tasks.id", "review_tasks.paper_id"],
+            name="fk_paper_submissions_task_paper",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["submitted_by_id"],
+            ["users.id"],
+            name="fk_paper_submissions_submitter",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "workspace_id",
+            "submission_number",
+            name="uq_paper_submissions_workspace_number",
+        ),
+        UniqueConstraint(
+            "workspace_id",
+            "idempotency_key",
+            name="uq_paper_submissions_workspace_idempotency",
+        ),
+        CheckConstraint(
+            "submission_number > 0",
+            name="ck_paper_submissions_positive_number",
+        ),
+        CheckConstraint(
+            "workspace_version > 0",
+            name="ck_paper_submissions_positive_workspace_version",
+        ),
+        CheckConstraint(
+            "btrim(idempotency_key) <> ''",
+            name="ck_paper_submissions_idempotency_required",
+        ),
+        CheckConstraint(
+            "content_hash ~ '^[0-9a-f]{64}$'",
+            name="ck_paper_submissions_content_hash",
+        ),
+        Index(
+            "ix_paper_submissions_workspace_time",
+            "workspace_id",
+            "submitted_at",
+        ),
+    )
+
+    paper_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("papers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    workspace_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), nullable=False
+    )
+    review_task_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), nullable=False
+    )
+    submission_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    snapshot: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    workspace_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    submitted_by_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), nullable=False
+    )
+    reviewer_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class PaperSectionReview(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "paper_section_reviews"
     __table_args__ = (
@@ -302,6 +381,7 @@ __all__ = [
     "PaperSection",
     "PaperSectionReview",
     "PaperSectionState",
+    "PaperSubmission",
     "PaperWorkspace",
     "ReviewTask",
     "ReviewTaskState",

@@ -17,8 +17,9 @@ from app.security.permissions import (
     require_request_csrf,
 )
 from app.security.policies import Action, Principal
+from app.users.models import UserRole
 from app.workspaces.history import MutationChange
-from app.workspaces.models import PaperSection, PaperSectionReview
+from app.workspaces.models import PaperSection, PaperSectionReview, PaperSubmission
 from app.workspaces.schemas import (
     BibliographyResponse,
     BibliographyUpdateRequest,
@@ -26,8 +27,19 @@ from app.workspaces.schemas import (
     ReviewTaskListResponse,
     ReviewTaskResponse,
     SectionUpdateRequest,
+    SubmissionBlockerResponse,
+    SubmissionMutationResponse,
+    SubmissionRequest,
+    SubmissionResponse,
     WorkspaceResponse,
     WorkspaceSourceResponse,
+)
+from app.workspaces.submission import (
+    SubmissionNotFoundError,
+    SubmissionReadOnlyError,
+    SubmissionService,
+    SubmissionValidationError,
+    SubmissionVersionConflictError,
 )
 from app.workspaces.service import (
     ReviewTaskAggregate,
@@ -84,6 +96,23 @@ def _workspace_response(aggregate: WorkspaceAggregate) -> WorkspaceResponse:
     )
 
 
+def _submission_response(submission: PaperSubmission) -> SubmissionResponse:
+    return SubmissionResponse(
+        id=submission.id,
+        paper_id=submission.paper_id,
+        workspace_id=submission.workspace_id,
+        review_task_id=submission.review_task_id,
+        submission_number=submission.submission_number,
+        idempotency_key=submission.idempotency_key,
+        snapshot=submission.snapshot,
+        content_hash=submission.content_hash,
+        workspace_version=submission.workspace_version,
+        submitted_by_id=submission.submitted_by_id,
+        reviewer_note=submission.reviewer_note,
+        submitted_at=submission.submitted_at,
+    )
+
+
 def _translate_workspace_error(error: Exception) -> APIError | HTTPException:
     if isinstance(error, WorkspaceNotFoundError):
         return APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
@@ -112,6 +141,52 @@ def _translate_workspace_error(error: Exception) -> APIError | HTTPException:
     raise error
 
 
+def _translate_submission_error(error: Exception) -> APIError | HTTPException:
+    if isinstance(error, SubmissionNotFoundError):
+        return APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
+    if isinstance(error, SubmissionVersionConflictError):
+        return APIError(
+            409,
+            "WORKSPACE_VERSION_CONFLICT",
+            "Workspace version changed",
+            details={
+                "expected_workspace_version": error.expected_version,
+                "current_workspace_version": error.current_version,
+            },
+        )
+    if isinstance(error, SubmissionReadOnlyError):
+        return APIError(
+            409,
+            "WORKSPACE_READ_ONLY",
+            "Workspace is read-only",
+            details={
+                "workspace_state": error.state.value,
+                "current_workspace_version": error.current_version,
+            },
+        )
+    if isinstance(error, SubmissionValidationError):
+        return APIError(
+            409,
+            "SUBMISSION_BLOCKED",
+            "Paper Workspace is not ready for submission",
+            details={
+                "blockers": [
+                    SubmissionBlockerResponse(
+                        code=blocker.code,
+                        message=blocker.message,
+                        entity_type=blocker.entity_type,
+                        entity_id=blocker.entity_id,
+                        section_key=blocker.section_key,
+                    ).model_dump(mode="json")
+                    for blocker in error.blockers
+                ]
+            },
+        )
+    if isinstance(error, ValueError):
+        return APIError(422, "INVALID_REQUEST", str(error))
+    raise error
+
+
 def _integrity_constraint_name(error: IntegrityError) -> str | None:
     diagnostics = getattr(error.orig, "diag", None)
     constraint_name = getattr(diagnostics, "constraint_name", None)
@@ -121,6 +196,7 @@ def _integrity_constraint_name(error: IntegrityError) -> str | None:
 def create_workspaces_router(settings: Settings) -> APIRouter:
     router = APIRouter(tags=["paper workspaces"])
     service = WorkspaceService()
+    submission_service = SubmissionService()
     session_secret = settings.session_secret.get_secret_value()
 
     @router.get("/api/v2/review/tasks", response_model=ReviewTaskListResponse)
@@ -285,6 +361,51 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
             WorkspaceVersionConflictError,
         ) as error:
             raise _translate_workspace_error(error) from error
+
+    @router.post(
+        "/api/v2/workspaces/{workspace_id}/submit",
+        response_model=SubmissionMutationResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def submit_workspace(
+        workspace_id: UUID,
+        payload: SubmissionRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        idempotency_key_header: str | None = Header(
+            default=None, alias="Idempotency-Key"
+        ),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> SubmissionMutationResponse:
+        require_request_csrf(principal, csrf_token, session_secret)
+        if principal.role is not UserRole.REVIEWER:
+            raise HTTPException(status_code=403, detail="Permission denied")
+        header_key = idempotency_key_header.strip() if idempotency_key_header else None
+        idempotency_key = header_key or payload.idempotency_key
+        if idempotency_key is None:
+            raise APIError(422, "INVALID_REQUEST", "idempotency_key is required")
+        try:
+            with session.begin():
+                submission = submission_service.submit(
+                    session,
+                    workspace_id=workspace_id,
+                    reviewer_id=principal.user_id,
+                    expected_workspace_version=payload.expected_workspace_version,
+                    idempotency_key=idempotency_key,
+                    reviewer_note=payload.reviewer_note,
+                )
+                return SubmissionMutationResponse(
+                    submission=_submission_response(submission),
+                    workspace_version=submission.workspace_version,
+                )
+        except (
+            SubmissionNotFoundError,
+            SubmissionReadOnlyError,
+            SubmissionValidationError,
+            SubmissionVersionConflictError,
+            ValueError,
+        ) as error:
+            raise _translate_submission_error(error) from error
 
     return router
 
