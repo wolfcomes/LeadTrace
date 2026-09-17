@@ -35,7 +35,7 @@ function withQuery(path: string, values: Record<string, string | number | undefi
 }
 
 export function listAdminPapers(
-  options: { limit?: number; offset?: number } = {},
+  options: { limit?: number; offset?: number; search?: string } = {},
 ): Promise<PaperCatalogPage> {
   return apiRequest(
     withQuery("/api/v2/admin/papers", options),

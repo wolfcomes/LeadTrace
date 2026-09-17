@@ -156,6 +156,40 @@ export const paperSourceSchema = z.object({
   integrity_state: sourceIntegrityStateSchema,
 }).strict();
 
+export const catalogReviewSchema = z.object({
+  review_task_id: uuidSchema,
+  workspace_id: uuidSchema,
+  assigned_reviewer_id: uuidSchema,
+  assignee_display_name: z.string().min(1),
+  task_status: reviewTaskStateSchema,
+  workspace_state: workspaceStateSchema,
+  sections_resolved: z.number().int().min(0).max(6),
+  sections_total: z.number().int().min(0).max(6),
+  submission_state: z.enum([
+    "not_submitted",
+    "submitted",
+    "changes_requested",
+    "approved",
+  ]),
+}).strict().superRefine((value, context) => {
+  addWorkflowPairIssue(value, context);
+  if (value.sections_resolved > value.sections_total) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Resolved section count exceeds total",
+    });
+  }
+  const expectedSubmissionState = value.task_status === "assigned"
+    ? "not_submitted"
+    : value.task_status;
+  if (value.submission_state !== expectedSubmissionState) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Task and submission states are inconsistent",
+    });
+  }
+});
+
 export const paperCatalogRowSchema = z.object({
   id: uuidSchema,
   paper_key: z.string().min(1),
@@ -167,6 +201,7 @@ export const paperCatalogRowSchema = z.object({
   doi: z.string().min(1).nullable(),
   catalog_state: paperCatalogStateSchema,
   source: paperSourceSchema,
+  review: catalogReviewSchema.nullable(),
 }).strict();
 
 export const paperCatalogPageSchema = z.object({

@@ -1,70 +1,57 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { ref, watch } from "vue";
 import { useRoute } from "vue-router";
 
 import { ApiError } from "../api/client";
-import { createReviewTask } from "../review/api";
-import {
-  fetchAdminPaper,
-  fetchAdminUsers,
-  type AdminPaperDetail,
-  type AdminUser,
-} from "./api";
-import { adminPaperWorkflowLabel } from "./paperWorkflow";
+import { getAdminPaper } from "../v2/api";
+import type { AssignmentResponse, PaperCatalogRow } from "../v2/types";
+import ReviewerAssignmentDialog from "./ReviewerAssignmentDialog.vue";
 
 
 type ViewState = "loading" | "ready" | "error" | "not-found";
 
 const route = useRoute();
 const state = ref<ViewState>("loading");
-const detail = ref<AdminPaperDetail | null>(null);
-const reviewers = ref<AdminUser[]>([]);
-const reviewerId = ref("");
-const priority = ref(50);
-const busy = ref(false);
-const actionError = ref<string>();
+const paper = ref<PaperCatalogRow>();
 const requestId = ref<string>();
+const showAssignment = ref(false);
 let loadSequence = 0;
 
-const enabledReviewers = computed(() => reviewers.value.filter(
-  (user) => user.role === "reviewer" && user.is_enabled,
-));
+function sourceHealthy(value: PaperCatalogRow): boolean {
+  return value.catalog_state !== "source_error" && value.source.integrity_state === "verified";
+}
 
-const reviewEntry = computed(() => {
-  if (!detail.value) return null;
-  if (detail.value.review_entry) return detail.value.review_entry;
-  if (detail.value.paper.changeset) return `/review/changesets/${detail.value.paper.changeset.id}`;
-  if (detail.value.paper.task) return `/review/changesets?task=${detail.value.paper.task.id}`;
-  return null;
-});
+function canAssign(value: PaperCatalogRow): boolean {
+  return sourceHealthy(value) && (!value.review || value.review.task_status === "approved");
+}
 
-const blockerText = computed(() => {
-  switch (detail.value?.paper.modification_blocker) {
-    case "baseline_must_be_published": return "必须先批准并发布 AI 提取基线，之后才能创建可追溯修改。";
-    case "review_task_required": return "先分配一名核查员，再进入可追溯修改工作区。";
-    case "pending_admin_approval": return "人工核验已经提交，当前等待 Admin 审批。";
-    case "approved_changeset_locked": return "已批准版本保持只读；如需继续修改，请创建新的核查任务。";
-    default: return "";
-  }
-});
+function sourceLabel(value: PaperCatalogRow): string {
+  return {
+    registered: "PDF 已登记",
+    verified: "PDF 已验证",
+    missing: "PDF 缺失",
+    corrupt: "PDF 已损坏",
+  }[value.source.integrity_state];
+}
+
+function submissionLabel(value: PaperCatalogRow): string {
+  return {
+    not_submitted: "未提交",
+    submitted: "待 Admin 审批",
+    changes_requested: "已退回修改",
+    approved: "已批准",
+  }[value.review?.submission_state ?? "not_submitted"];
+}
 
 async function load(): Promise<void> {
   const sequence = ++loadSequence;
   state.value = "loading";
-  detail.value = null;
+  paper.value = undefined;
   requestId.value = undefined;
-  actionError.value = undefined;
-  const paperId = String(route.params.paperId || "");
-  const candidateId = typeof route.query.candidate_id === "string" ? route.query.candidate_id : undefined;
   try {
-    const [paper, users] = await Promise.all([
-      fetchAdminPaper(paperId, candidateId),
-      fetchAdminUsers(),
-    ]);
+    const result = await getAdminPaper(String(route.params.paperId));
     if (sequence !== loadSequence) return;
-    detail.value = paper;
-    reviewers.value = users;
-    reviewerId.value = enabledReviewers.value[0]?.id ?? "";
+    paper.value = result;
     state.value = "ready";
   } catch (error) {
     if (sequence !== loadSequence) return;
@@ -73,106 +60,101 @@ async function load(): Promise<void> {
   }
 }
 
-async function assignPaper(): Promise<void> {
-  if (!detail.value || !reviewerId.value || busy.value) return;
-  busy.value = true;
-  actionError.value = undefined;
-  try {
-    const task = await createReviewTask({
-      paper_id: detail.value.paper.id,
-      assigned_reviewer_id: reviewerId.value,
-      priority: priority.value,
-    });
-    const reviewer = reviewers.value.find((user) => user.id === task.assigned_reviewer_id);
-    detail.value.paper.task = {
-      id: task.id,
-      status: task.status,
-      assignee_id: task.assigned_reviewer_id,
-      assignee_display_name: reviewer?.display_name ?? "未知用户",
-      priority: task.priority,
-      version: task.version,
-      updated_at: task.updated_at,
-    };
-    detail.value.paper.workflow_state = "ai_baseline_in_review";
-    detail.value.paper.can_modify = true;
-    detail.value.paper.modification_blocker = null;
-    detail.value.review_entry = `/review/changesets?task=${task.id}`;
-  } catch (error) {
-    requestId.value = error instanceof ApiError ? error.requestId : undefined;
-    actionError.value = "任务分配失败，文章状态可能已经变化，请刷新后重试。";
-  } finally {
-    busy.value = false;
-  }
+function onAssigned(result: AssignmentResponse, reviewerName: string): void {
+  if (!paper.value) return;
+  paper.value = {
+    ...paper.value,
+    review: {
+      review_task_id: result.review_task_id,
+      workspace_id: result.workspace_id,
+      assigned_reviewer_id: result.assigned_reviewer_id,
+      assignee_display_name: reviewerName,
+      task_status: result.task_status,
+      workspace_state: result.workspace_state,
+      sections_resolved: result.sections.filter((section) => section.state !== "pending").length,
+      sections_total: result.sections.length,
+      submission_state: "not_submitted",
+    },
+  };
+  showAssignment.value = false;
 }
 
-watch(
-  () => [route.params.paperId, route.query.candidate_id],
-  load,
-  { immediate: true },
-);
+watch(() => route.params.paperId, load, { immediate: true });
 </script>
 
 <template>
   <div class="detail-page admin-page review-workspace">
-    <RouterLink class="back-link" :to="{ name: 'admin-papers', query: route.query.candidate_id ? { candidate_id: route.query.candidate_id } : {} }">← 返回文章目录</RouterLink>
-    <section v-if="state === 'loading'" class="page-state"><span class="state-spinner"></span><p>正在读取文章信息…</p></section>
-    <section v-else-if="state === 'not-found'" class="page-state"><span>404</span><h1>未找到文章</h1><p>该文章可能不属于当前数据库或导入候选。</p></section>
-    <section v-else-if="state === 'error'" class="page-state" role="alert"><span class="state-symbol is-error">!</span><h1>暂时无法读取文章</h1><small v-if="requestId">请求编号 · {{ requestId }}</small><button class="button-secondary" type="button" @click="load">重新加载</button></section>
+    <RouterLink class="back-link" :to="{ name: 'admin-papers', query: route.query }">← 返回文章目录</RouterLink>
 
-    <template v-else-if="detail">
+    <section v-if="state === 'loading'" class="page-state"><span class="state-spinner"></span><p>正在读取文章信息…</p></section>
+    <section v-else-if="state === 'not-found'" class="page-state"><span>404</span><h1>未找到文章</h1></section>
+    <section v-else-if="state === 'error'" class="page-state" role="alert">
+      <span class="state-symbol is-error">!</span><h1>暂时无法读取文章</h1>
+      <small v-if="requestId">请求编号 · {{ requestId }}</small>
+      <button class="button-secondary" type="button" @click="load">重新加载</button>
+    </section>
+
+    <template v-else-if="paper">
       <header class="paper-header page-heading">
         <div>
-          <div class="identifiers"><code class="status-chip">{{ detail.paper.paper_key }}</code><code v-if="detail.paper.doi" class="status-chip">{{ detail.paper.doi }}</code></div>
-          <h1>{{ detail.paper.title }}</h1>
-          <p>{{ detail.paper.year || "年份未知" }}<template v-if="detail.paper.target"> · {{ detail.paper.target }}</template></p>
+          <div class="identifiers"><code class="status-chip">{{ paper.paper_key }}</code><code v-if="paper.doi" class="status-chip">{{ paper.doi }}</code></div>
+          <h1>{{ paper.title }}</h1>
+          <p>{{ paper.journal }} · {{ paper.publication_year }} · Volume {{ paper.volume }} · Issue {{ paper.issue }}</p>
         </div>
-        <aside class="panel">
-          <span>{{ detail.source.title }}</span>
-          <strong class="status-chip" :data-verification="detail.paper.verification_status">{{ detail.paper.verification_status === "human_verified" ? "已人工核验" : "未验证" }}</strong>
-          <small class="status-chip" :data-status="detail.paper.publication_status">{{ detail.paper.publication_status === "published" ? "已发布" : "未发布" }}</small>
-        </aside>
+        <span class="status-chip" :data-status="paper.source.integrity_state">{{ sourceLabel(paper) }}</span>
       </header>
 
-      <section class="workspace-grid">
+      <section class="catalog-detail-grid">
         <div class="main-column">
-          <section class="panel quality-panel">
-            <div class="section-heading"><div><p class="eyebrow">DATABASE SUMMARY</p><h2>数据库内容</h2></div></div>
-            <div class="quality-grid">
-              <div data-quality-compounds><strong>{{ detail.paper.quality.compounds }}</strong><span>个分子</span></div>
-              <div><strong>{{ detail.paper.quality.confirmed_structures }} / {{ detail.paper.quality.structures }}</strong><span>结构已确认</span></div>
-              <div><strong>{{ detail.paper.quality.evidence }}</strong><span>条证据</span></div>
-              <div><strong>{{ detail.paper.quality.activities }}</strong><span>条活性记录</span></div>
-              <div><strong>{{ detail.paper.quality.lineage_edges }}</strong><span>条优化关系</span></div>
-              <div><strong>{{ detail.paper.quality.visual_objects }}</strong><span>个图像对象</span></div>
-            </div>
+          <section class="panel catalog-metadata">
+            <div class="section-heading"><div><p class="eyebrow">BIBLIOGRAPHY</p><h2>目录基础信息</h2></div></div>
+            <dl>
+              <div><dt>Paper ID</dt><dd><code>{{ paper.id }}</code></dd></div>
+              <div><dt>期刊</dt><dd>{{ paper.journal }}</dd></div>
+              <div><dt>年份</dt><dd>{{ paper.publication_year }}</dd></div>
+              <div><dt>Volume</dt><dd>{{ paper.volume }}</dd></div>
+              <div><dt>Issue</dt><dd>{{ paper.issue }}</dd></div>
+              <div><dt>DOI</dt><dd>{{ paper.doi || "未登记" }}</dd></div>
+            </dl>
           </section>
 
           <section class="panel source-panel">
-            <div><p class="eyebrow">SOURCE EVIDENCE</p><h2>原始文献</h2><p>在新页面打开数据库登记的原始 PDF，用于逐项人工核查。</p></div>
-            <a class="button-secondary" data-source-pdf :href="detail.source_pdf_url" target="_blank" rel="noopener">查看原始 PDF ↗</a>
+            <div>
+              <p class="eyebrow">SOURCE PDF</p><h2>原始文献</h2>
+              <p>{{ paper.source.source_key }} · {{ paper.source.page_count }} 页 · {{ paper.source.byte_size.toLocaleString("zh-CN") }} bytes</p>
+            </div>
+            <a class="button-secondary" data-source-pdf :href="`/api/v2/papers/${paper.id}/source-pdf`" target="_blank" rel="noopener">打开 PDF ↗</a>
           </section>
         </div>
 
         <aside class="review-panel panel">
-          <p class="eyebrow">TRACEABLE REVIEW</p><h2>人工核验与修改</h2>
-          <div class="current-state"><span>当前状态</span><strong class="status-chip" :data-state="detail.paper.workflow_state">{{ adminPaperWorkflowLabel(detail.paper.workflow_state) }}</strong></div>
-          <template v-if="reviewEntry">
-            <p v-if="detail.paper.task">已分配给 {{ detail.paper.task.assignee_display_name }}。所有修改将记录在 changeset 中，可审批、追溯和回滚。</p>
-            <RouterLink class="button-primary full" data-open-review :to="reviewEntry">进入修改工作区</RouterLink>
+          <p class="eyebrow">REVIEW WORKFLOW</p><h2>Reviewer 工作流</h2>
+          <template v-if="paper.review">
+            <dl class="review-summary">
+              <div><dt>Reviewer</dt><dd>{{ paper.review.assignee_display_name }}</dd></div>
+              <div><dt>区段进度</dt><dd>{{ paper.review.sections_resolved }} / {{ paper.review.sections_total }}</dd></div>
+              <div><dt>提交状态</dt><dd>{{ submissionLabel(paper) }}</dd></div>
+            </dl>
+            <RouterLink
+              v-if="paper.review.task_status !== 'approved'"
+              class="button-primary full"
+              :to="`/review/papers/${paper.id}`"
+            >查看 Reviewer Workspace</RouterLink>
           </template>
-          <form v-else-if="detail.paper.publication_status === 'published'" data-assignment-form @submit.prevent="assignPaper">
-            <p>{{ blockerText }}</p>
-            <label class="form-field">核查员<select id="paper-reviewer" v-model="reviewerId" class="form-control" required><option value="" disabled>请选择</option><option v-for="reviewer in enabledReviewers" :key="reviewer.id" :value="reviewer.id">{{ reviewer.display_name }} · {{ reviewer.username }}</option></select></label>
-            <label class="form-field">优先级<input v-model.number="priority" class="form-control" type="number" min="0" max="100"></label>
-            <button class="button-primary full" data-assign-paper type="submit" :disabled="busy || !reviewerId">{{ busy ? "正在分配…" : "分配并准备修改" }}</button>
-          </form>
-          <template v-else>
-            <p>{{ blockerText }}</p>
-            <RouterLink class="button-secondary full" to="/admin/imports">前往导入审批</RouterLink>
-          </template>
-          <p v-if="actionError" class="action-error inline-feedback is-error" role="alert">{{ actionError }}<small v-if="requestId">请求编号 · {{ requestId }}</small></p>
+          <p v-else>尚未分配。Reviewer 可从空白 Workspace 开始，不需要先运行 AI。</p>
+          <p v-if="!sourceHealthy(paper)" class="inline-feedback is-error">Source PDF 完整性异常，修复前不能分配。</p>
+          <button class="button-primary full" data-assign type="button" :disabled="!canAssign(paper)" @click="showAssignment = true">
+            {{ paper.review?.task_status === "approved" ? "再次分配" : paper.review ? "已分配" : "分配 Reviewer" }}
+          </button>
         </aside>
       </section>
     </template>
+
+    <ReviewerAssignmentDialog
+      v-if="paper && showAssignment"
+      :paper="paper"
+      @close="showAssignment = false"
+      @assigned="onAssigned"
+    />
   </div>
 </template>

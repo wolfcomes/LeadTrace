@@ -138,7 +138,8 @@
 .rollback-page { max-width: 1020px; margin-left: 0; }
 .check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .admin-metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; }
-.catalog-page .filter-panel { grid-template-columns: minmax(240px, 1.5fr) minmax(150px, .7fr) minmax(220px, 1fr) minmax(130px, .6fr) auto; }
+.catalog-page .filter-panel { display: grid; grid-template-columns: minmax(280px, 1fr) auto; }
+.catalog-detail-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, .65fr); gap: 24px; align-items: start; }
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(310px, .75fr); gap: 24px; }
 .paper-workspace-shell { display: grid; min-width: 0; gap: 0; }
 .paper-workspace-tabs { position: sticky; z-index: 8; top: var(--topbar-height); border-bottom: 0; overflow-x: auto; flex-wrap: nowrap; }
@@ -272,6 +273,7 @@
   .approval-page .summary-band { flex-direction: column; }
   .scientific-grid { grid-template-columns: 1fr; }
   .workspace-grid { grid-template-columns: 1fr; }
+  .catalog-detail-grid { grid-template-columns: 1fr; }
   .review-panel { position: static; }
   .paper-header,
   .source-panel { align-items: flex-start; flex-direction: column; }

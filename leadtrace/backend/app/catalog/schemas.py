@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
 from app.papers.models import Paper, PaperCatalogState
+from app.workspaces.models import ReviewTaskState, WorkspaceState
 
 
 class CatalogProjection(BaseModel):
@@ -36,6 +38,23 @@ class PaperSourceResponse(CatalogProjection):
         )
 
 
+class CatalogReviewResponse(CatalogProjection):
+    review_task_id: UUID
+    workspace_id: UUID
+    assigned_reviewer_id: UUID
+    assignee_display_name: str
+    task_status: ReviewTaskState
+    workspace_state: WorkspaceState
+    sections_resolved: int = Field(ge=0, le=6)
+    sections_total: int = Field(ge=0, le=6)
+    submission_state: Literal[
+        "not_submitted",
+        "submitted",
+        "changes_requested",
+        "approved",
+    ]
+
+
 class PaperCatalogResponse(CatalogProjection):
     id: UUID
     paper_key: str
@@ -47,12 +66,14 @@ class PaperCatalogResponse(CatalogProjection):
     doi: str | None
     catalog_state: PaperCatalogState
     source: PaperSourceResponse
+    review: CatalogReviewResponse | None
 
     @classmethod
     def from_models(
         cls,
         paper: Paper,
         source: PaperSource,
+        review: CatalogReviewResponse | None = None,
     ) -> "PaperCatalogResponse":
         return cls(
             id=paper.id,
@@ -65,6 +86,7 @@ class PaperCatalogResponse(CatalogProjection):
             doi=paper.doi,
             catalog_state=paper.catalog_state,
             source=PaperSourceResponse.from_source(source),
+            review=review,
         )
 
 
@@ -76,6 +98,7 @@ class PaperCatalogPage(CatalogProjection):
 
 
 __all__ = [
+    "CatalogReviewResponse",
     "PaperCatalogPage",
     "PaperCatalogResponse",
     "PaperSourceResponse",

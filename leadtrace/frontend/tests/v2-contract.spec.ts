@@ -180,6 +180,7 @@ describe("paper-centric v2 response contracts", () => {
           page_count: 12,
           integrity_state: "verified",
         },
+        review: null,
       }],
       total: 1,
       limit: 20,
@@ -247,6 +248,58 @@ describe("paper-centric v2 response contracts", () => {
       limit: 20,
       offset: 100,
     });
+  });
+
+  it("rejects inconsistent catalog review progress and submission state", () => {
+    const review = {
+      review_task_id: ids.task,
+      workspace_id: ids.workspace,
+      assigned_reviewer_id: ids.reviewer,
+      assignee_display_name: "Reviewer One",
+      task_status: "assigned",
+      workspace_state: "editing",
+      sections_resolved: 0,
+      sections_total: 6,
+      submission_state: "not_submitted",
+    };
+    const base = {
+      id: ids.paper,
+      paper_key: bibliography.paper_key,
+      title: bibliography.title,
+      journal: bibliography.journal,
+      publication_year: bibliography.publication_year,
+      volume: bibliography.volume,
+      issue: bibliography.issue,
+      doi: bibliography.doi,
+      catalog_state: "verified",
+      source: {
+        id: ids.source,
+        ...source,
+        sha256: "a".repeat(64),
+        byte_size: 1024,
+        page_count: 12,
+        integrity_state: "verified",
+      },
+    };
+
+    expect(paperCatalogPageSchema.parse({
+      items: [{ ...base, review }],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    }).items[0]?.review?.sections_total).toBe(6);
+    expect(() => paperCatalogPageSchema.parse({
+      items: [{ ...base, review: { ...review, sections_resolved: 7 } }],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    })).toThrow();
+    expect(() => paperCatalogPageSchema.parse({
+      items: [{ ...base, review: { ...review, submission_state: "submitted" } }],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    })).toThrow();
   });
 
   it("rejects duplicate or incomplete fixed sections and impossible workflow pairs", () => {

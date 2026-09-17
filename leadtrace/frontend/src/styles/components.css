@@ -152,6 +152,7 @@
 .status-chip[data-save-state="saving"] { color: var(--amber-deep); background: var(--amber-pale); }
 .status-chip[data-status="completed"],
 .status-chip[data-status="approved"],
+.status-chip[data-status="verified"],
 .status-chip[data-status="published"],
 .status-chip[data-status="enabled"],
 .status-chip[data-status="ok"],
@@ -165,6 +166,7 @@
 .status-chip[data-status="disabled"],
 .status-chip[data-status="failed"],
 .status-chip[data-status="unavailable"],
+.status-chip[data-status="missing"],
 .status-chip[data-status="corrupt"],
 .status-chip[data-state="changes_requested"],
 .status-chip[data-state="rejected"],
@@ -173,6 +175,7 @@
 .status-chip[data-save-state="error"] { color: var(--danger); background: var(--danger-soft); }
 .status-chip[data-status="pending"],
 .status-chip[data-status="running"],
+.status-chip[data-status="registered"],
 .status-chip[data-status="degraded"],
 .status-chip[data-status="imported_baseline"],
 .status-chip[data-status="unpublished"] { color: var(--amber-deep); background: var(--amber-pale); }
@@ -700,7 +703,14 @@
 .admin-metric-grid small { color: var(--ink-muted); font-size: .65rem; line-height: 1.4; }
 .catalog-page .result-heading { display: flex; justify-content: space-between; color: var(--ink-muted); font: 500 .67rem/1.3 var(--font-mono); }
 .catalog-page .result-heading strong { color: var(--ink); }
-.catalog-page .data-table { min-width: 1120px; }
+.catalog-page .data-table { min-width: 1180px; table-layout: fixed; }
+.catalog-page .data-table th:nth-child(1) { width: 27%; }
+.catalog-page .data-table th:nth-child(2) { width: 19%; }
+.catalog-page .data-table th:nth-child(3) { width: 11%; }
+.catalog-page .data-table th:nth-child(4) { width: 11%; }
+.catalog-page .data-table th:nth-child(5) { width: 9%; }
+.catalog-page .data-table th:nth-child(6) { width: 12%; }
+.catalog-page .data-table th:nth-child(7) { width: 11%; }
 .catalog-page .data-table tbody th { max-width: 360px; }
 .catalog-page .data-table tbody th code,
 .catalog-page .data-table tbody th a,
@@ -709,6 +719,36 @@
 .catalog-page .data-table tbody th a { overflow: hidden; color: var(--ink); font-size: .77rem; font-weight: 720; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
 .catalog-page .data-table tbody th small,
 .catalog-page .assignee + small { margin-top: 5px; color: var(--ink-muted); font-size: .63rem; }
+.catalog-table td > strong,
+.catalog-table td > small { display: block; }
+.catalog-table td > small { margin-top: 5px; color: var(--ink-muted); font-size: .63rem; line-height: 1.45; }
+.catalog-total { display: grid; min-width: 110px; padding-left: 18px; border-left: 3px solid var(--coral); }
+.catalog-total strong { color: var(--ink); font: 600 2rem/1 var(--font-serif); }
+.catalog-total span { margin-top: 5px; color: var(--ink-muted); font-size: .68rem; }
+.catalog-search { min-width: min(520px, 100%); }
+.catalog-metadata { padding: 22px; }
+.catalog-metadata h2 { margin: 0; font: 600 1.26rem/1.3 var(--font-serif); }
+.catalog-metadata dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 18px 0 0; background: var(--line); }
+.catalog-metadata dl div { min-width: 0; padding: 14px; background: var(--surface); }
+.catalog-metadata dt,
+.review-summary dt { color: var(--ink-muted); font: 500 .62rem/1.3 var(--font-mono); }
+.catalog-metadata dd,
+.review-summary dd { margin: 6px 0 0; overflow-wrap: anywhere; color: var(--ink-soft); font-size: .76rem; }
+.review-summary { display: grid; gap: 0; margin: 0 0 16px; }
+.review-summary div { padding: 11px 0; border-bottom: 1px solid var(--line); }
+
+.dialog-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(17, 32, 37, .58); }
+.assignment-dialog { width: min(100%, 510px); padding: 22px; box-shadow: 0 22px 70px rgba(17, 32, 37, .3); }
+.assignment-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.assignment-dialog h2 { margin: 0; font: 600 1.45rem/1.2 var(--font-serif); }
+.assignment-dialog form { display: grid; gap: 16px; }
+.assignment-paper { display: grid; gap: 5px; margin: 18px 0; padding: 12px 14px; border-left: 3px solid var(--coral); background: var(--paper); }
+.assignment-paper code { color: var(--ink-muted); font-size: .64rem; }
+.assignment-paper strong { color: var(--ink-soft); font-size: .78rem; line-height: 1.45; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 9px; }
+.icon-button { display: inline-grid; width: 34px; height: 34px; place-items: center; flex: 0 0 auto; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink-muted); background: var(--surface); cursor: pointer; }
+.icon-button:hover { border-color: var(--coral); color: var(--coral-deep); }
+.inline-feedback small { display: block; margin-top: 4px; }
 .workflow-badge { max-width: 210px; min-height: 0; line-height: 1.4; white-space: normal; }
 .workflow-badge[data-state="human_review_pending_approval"] { color: var(--amber-deep); background: var(--amber-pale); }
 .workflow-badge[data-state="admin_approved"] { color: var(--teal-deep); background: var(--teal-pale); }
@@ -756,6 +796,22 @@
   .paper-card { grid-template-columns: 38px minmax(0, 1fr); padding: 16px 14px; }
   .detail-link { display: none; }
   .quality-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .catalog-page .data-table { min-width: 0; table-layout: auto; }
+  .catalog-page .data-table thead { display: none; }
+  .catalog-page .data-table,
+  .catalog-page .data-table tbody,
+  .catalog-page .data-table tr,
+  .catalog-page .data-table th,
+  .catalog-page .data-table td { display: block; width: 100%; max-width: none; }
+  .catalog-page .data-table tr { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .catalog-page .data-table th,
+  .catalog-page .data-table td { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 8px; padding: 7px 0; border: 0; }
+  .catalog-page .data-table th::before,
+  .catalog-page .data-table td::before { content: attr(data-label); color: var(--ink-muted); font: 600 .61rem/1.4 var(--font-mono); }
+  .catalog-page .data-table th > *,
+  .catalog-page .data-table td > * { grid-column: 2; }
+  .catalog-page .table-actions { justify-content: flex-start; }
+  .catalog-metadata dl { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 440px) {

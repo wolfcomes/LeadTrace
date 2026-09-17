@@ -3,13 +3,17 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import APIError, request_id_for
 from app.auth.router import resolve_remote_address
 from app.catalog.models import PaperSource
-from app.catalog.schemas import PaperCatalogPage, PaperCatalogResponse
+from app.catalog.schemas import (
+    CatalogReviewResponse,
+    PaperCatalogPage,
+    PaperCatalogResponse,
+)
 from app.config import Settings
 from app.database import get_db_session
 from app.papers.models import Paper
@@ -20,6 +24,7 @@ from app.security.permissions import (
     require_request_csrf,
 )
 from app.security.policies import Action, Principal
+from app.users.models import User
 from app.workspaces.assignment import (
     ActiveAssignmentError,
     AssignmentService,
@@ -28,7 +33,82 @@ from app.workspaces.assignment import (
     PaperSourceUnverifiedError,
     ReviewerNotFoundError,
 )
+from app.workspaces.models import (
+    PaperSectionReview,
+    PaperSectionState,
+    PaperWorkspace,
+    ReviewTask,
+)
 from app.workspaces.schemas import AssignmentRequest, AssignmentResponse
+
+
+def _literal_search_pattern(value: str) -> str:
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+    return f"%{escaped}%"
+
+
+def _review_summaries(
+    session: Session,
+    paper_ids: list[UUID],
+) -> dict[UUID, CatalogReviewResponse]:
+    if not paper_ids:
+        return {}
+    task_rows = session.execute(
+        select(ReviewTask, PaperWorkspace, User)
+        .join(PaperWorkspace, PaperWorkspace.review_task_id == ReviewTask.id)
+        .join(User, User.id == ReviewTask.assigned_reviewer_id)
+        .where(ReviewTask.paper_id.in_(paper_ids))
+        .order_by(
+            ReviewTask.paper_id,
+            ReviewTask.updated_at.desc(),
+            ReviewTask.id.desc(),
+        )
+    ).all()
+    latest_by_paper: dict[UUID, tuple[ReviewTask, PaperWorkspace, User]] = {}
+    for task, workspace, assignee in task_rows:
+        latest_by_paper.setdefault(task.paper_id, (task, workspace, assignee))
+
+    workspace_ids = [workspace.id for _, workspace, _ in latest_by_paper.values()]
+    section_counts = (
+        {
+            workspace_id: (int(total), int(resolved))
+            for workspace_id, total, resolved in session.execute(
+                select(
+                    PaperSectionReview.workspace_id,
+                    func.count(PaperSectionReview.id),
+                    func.count(PaperSectionReview.id).filter(
+                        PaperSectionReview.state != PaperSectionState.PENDING
+                    ),
+                )
+                .where(PaperSectionReview.workspace_id.in_(workspace_ids))
+                .group_by(PaperSectionReview.workspace_id)
+            ).all()
+        }
+        if workspace_ids
+        else {}
+    )
+
+    summaries: dict[UUID, CatalogReviewResponse] = {}
+    for paper_id, (task, workspace, assignee) in latest_by_paper.items():
+        total, resolved = section_counts.get(workspace.id, (0, 0))
+        summaries[paper_id] = CatalogReviewResponse(
+            review_task_id=task.id,
+            workspace_id=workspace.id,
+            assigned_reviewer_id=task.assigned_reviewer_id,
+            assignee_display_name=assignee.display_name,
+            task_status=task.status,
+            workspace_state=workspace.state,
+            sections_resolved=resolved,
+            sections_total=total,
+            submission_state=(
+                "not_submitted" if task.status.value == "assigned" else task.status.value
+            ),
+        )
+    return summaries
 
 
 def create_catalog_router(settings: Settings) -> APIRouter:
@@ -41,22 +121,44 @@ def create_catalog_router(settings: Settings) -> APIRouter:
     def list_papers(
         limit: int = Query(default=100, ge=1, le=500),
         offset: int = Query(default=0, ge=0),
+        search: str | None = Query(default=None, min_length=1, max_length=200),
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(require_catalog_management),
     ) -> PaperCatalogPage:
         del principal
         with session.begin():
-            total = int(session.scalar(select(func.count()).select_from(Paper)) or 0)
-            rows = session.execute(
+            filters = []
+            if search is not None and search.strip():
+                pattern = _literal_search_pattern(search.strip())
+                filters.append(or_(
+                    Paper.paper_key.ilike(pattern, escape="\\"),
+                    Paper.title.ilike(pattern, escape="\\"),
+                    Paper.journal.ilike(pattern, escape="\\"),
+                    Paper.doi.ilike(pattern, escape="\\"),
+                ))
+            total_query = select(func.count()).select_from(Paper)
+            rows_query = (
                 select(Paper, PaperSource)
                 .join(PaperSource, PaperSource.id == Paper.source_id)
+            )
+            if filters:
+                total_query = total_query.where(*filters)
+                rows_query = rows_query.where(*filters)
+            total = int(session.scalar(total_query) or 0)
+            rows = session.execute(
+                rows_query
                 .order_by(Paper.paper_key, Paper.id)
                 .limit(limit)
                 .offset(offset)
             ).all()
+            reviews = _review_summaries(session, [paper.id for paper, _ in rows])
         return PaperCatalogPage(
             items=[
-                PaperCatalogResponse.from_models(paper, source)
+                PaperCatalogResponse.from_models(
+                    paper,
+                    source,
+                    reviews.get(paper.id),
+                )
                 for paper, source in rows
             ],
             total=total,
@@ -78,9 +180,13 @@ def create_catalog_router(settings: Settings) -> APIRouter:
                 .join(PaperSource, PaperSource.id == Paper.source_id)
                 .where(Paper.id == paper_id)
             ).one_or_none()
+            reviews = _review_summaries(
+                session,
+                [row[0].id] if row is not None else [],
+            )
         if row is None:
             raise HTTPException(status_code=404, detail="Resource not found")
-        return PaperCatalogResponse.from_models(*row)
+        return PaperCatalogResponse.from_models(*row, reviews.get(row[0].id))
 
     @router.post(
         "/{paper_id}/assign",

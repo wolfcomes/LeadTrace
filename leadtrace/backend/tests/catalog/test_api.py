@@ -31,6 +31,9 @@ PASSWORD = "Catalog API password 2026!"
 class CatalogFixture:
     client: TestClient
     paper_ids: tuple[UUID, ...]
+    admin_id: UUID
+    reviewer_id: UUID
+    session_factory: sessionmaker[Session]
 
 
 @pytest.fixture
@@ -41,14 +44,20 @@ def catalog_client(
 ) -> Iterator[CatalogFixture]:
     paper_ids: list[UUID] = []
     with auth_session_factory.begin() as session:
+        admin_id: UUID | None = None
+        reviewer_id: UUID | None = None
         for role in UserRole:
-            UserService().create_user(
+            user = UserService().create_user(
                 session,
                 username=f"catalog.{role.value}",
                 display_name=f"Catalog {role.value.title()}",
                 role=role,
                 initial_password=PASSWORD,
             )
+            if role is UserRole.REVIEWER:
+                reviewer_id = user.id
+            if role is UserRole.ADMIN:
+                admin_id = user.id
         for index in range(1, 21):
             filename = f"paper-{index:02d}.pdf"
             digest = f"{index:064x}"
@@ -115,7 +124,15 @@ def catalog_client(
         database_bootstrap=lambda _: resources,
     )
     with TestClient(application) as client:
-        yield CatalogFixture(client, tuple(paper_ids))
+        assert admin_id is not None
+        assert reviewer_id is not None
+        yield CatalogFixture(
+            client,
+            tuple(paper_ids),
+            admin_id,
+            reviewer_id,
+            auth_session_factory,
+        )
 
 
 def _login(client: TestClient, role: UserRole) -> str:
@@ -156,6 +173,7 @@ def test_admin_lists_all_papers_with_paginated_safe_source_metadata(
         "doi",
         "catalog_state",
         "source",
+        "review",
     }
     assert set(first["source"]) == {
         "id",
@@ -172,6 +190,84 @@ def test_admin_lists_all_papers_with_paginated_safe_source_metadata(
     assert "/srv/private" not in response.text
     assert "must-never-be-returned" not in response.text
     assert "credential" not in response.text.casefold()
+    assert first["review"] is None
+
+
+def test_admin_catalog_includes_review_progress_and_submission_state(
+    catalog_client: CatalogFixture,
+) -> None:
+    from app.workspaces.models import (
+        PaperSection,
+        PaperSectionReview,
+        PaperSectionState,
+        PaperWorkspace,
+        ReviewTask,
+        ReviewTaskState,
+        WorkspaceState,
+    )
+
+    with catalog_client.session_factory.begin() as session:
+        task = ReviewTask(
+            paper_id=catalog_client.paper_ids[0],
+            assigned_reviewer_id=catalog_client.reviewer_id,
+            created_by_id=catalog_client.admin_id,
+            status=ReviewTaskState.CHANGES_REQUESTED,
+            version=3,
+        )
+        session.add(task)
+        session.flush()
+        workspace = PaperWorkspace(
+            paper_id=task.paper_id,
+            review_task_id=task.id,
+            state=WorkspaceState.EDITING,
+            version=9,
+        )
+        session.add(workspace)
+        session.flush()
+        session.add_all([
+            PaperSectionReview(
+                paper_id=task.paper_id,
+                workspace_id=workspace.id,
+                section_key=section,
+                state=(
+                    PaperSectionState.COMPLETED
+                    if index < 3
+                    else PaperSectionState.NOT_REPORTED
+                    if index == 3
+                    else PaperSectionState.PENDING
+                ),
+                note=None,
+            )
+            for index, section in enumerate(PaperSection)
+        ])
+        task_id = task.id
+        workspace_id = workspace.id
+
+    client = catalog_client.client
+    _login(client, UserRole.ADMIN)
+    response = client.get(
+        "/api/v2/admin/papers",
+        params={"search": "Pilot paper 1"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 11
+    first = next(
+        item for item in payload["items"]
+        if item["id"] == str(catalog_client.paper_ids[0])
+    )
+    assert first["review"] == {
+        "review_task_id": str(task_id),
+        "workspace_id": str(workspace_id),
+        "assigned_reviewer_id": str(catalog_client.reviewer_id),
+        "assignee_display_name": "Catalog Reviewer",
+        "task_status": "changes_requested",
+        "workspace_state": "editing",
+        "sections_resolved": 4,
+        "sections_total": 6,
+        "submission_state": "changes_requested",
+    }
 
 
 def test_admin_catalog_list_supports_stable_offset_pagination(
