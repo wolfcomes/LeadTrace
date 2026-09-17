@@ -6,7 +6,7 @@ LeadTrace keeps two independently verifiable backup streams on a physically
 separate disk or a controlled network destination:
 
 - PostgreSQL: every four hours, and immediately before a schema migration or
-  release publication.
+  publication approval.
 - Assets: one encrypted bundle containing the managed asset root and every
   configured read-only source root, with a daily incremental archive and a
   weekly full archive. Retain the complete chain.
@@ -40,11 +40,11 @@ LEADTRACE_ENCRYPTION_FINGERPRINT=SHA256:...
 LEADTRACE_DATABASE_URL=postgresql+psycopg://...
 LEADTRACE_ASSET_ROOT=/var/lib/leadtrace/assets
 LEADTRACE_ASSET_ALLOWED_PARENT=/var/lib/leadtrace
-LEADTRACE_SOURCE_ROOTS='{"baseline":"/srv/leadtrace-sources/baseline"}'
-LEADTRACE_SOURCE_ALLOWED_PARENTS='{"baseline":"/srv/leadtrace-sources"}'
+LEADTRACE_SOURCE_ROOTS='{"source_pdfs":"/srv/leadtrace-sources/source_pdfs"}'
+LEADTRACE_SOURCE_ALLOWED_PARENTS='{"source_pdfs":"/srv/leadtrace-sources"}'
 LEADTRACE_APPLICATION_VERSION=0.1.0
-LEADTRACE_SCHEMA_VERSION=0015_crop_job_subscriptions
-LEADTRACE_RELEASE_VERSION=release-17
+LEADTRACE_SCHEMA_VERSION=0025_ai_prefill_runs
+LEADTRACE_RELEASE_VERSION=paper-centric-pilot
 ```
 
 The age identity used for a restore is kept separately from the backup
@@ -80,9 +80,9 @@ symbolic links, overlapping roots, and source/destination ancestor overlap are
 rejected before the snapshot is accepted.
 
 `LEADTRACE_SOURCE_ROOTS` and `LEADTRACE_SOURCE_ALLOWED_PARENTS` are required
-JSON objects with exactly the same namespace keys. The `baseline` namespace is
-mandatory because imported source assets use `source/baseline/...` storage
-keys. Every source root must be a strict descendant of its corresponding
+JSON objects with exactly the same namespace keys. The `source_pdfs` namespace
+is mandatory because Paper Sources use `source/source_pdfs/...` storage keys.
+Every source root must be a strict descendant of its corresponding
 allowed parent; do not use `/`, the application worktree, or a broad shared
 data directory as an allowed parent. Each finalized asset backup retains only
 the empty captured directory skeleton after encryption. Keeping those directory

@@ -1,47 +1,27 @@
 from __future__ import annotations
 
 import hashlib
-import importlib
 import json
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import subprocess
-from uuid import UUID
+from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import delete, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.activities.models import Activity
 from app.assets.models import (
     Asset,
     AssetAccessLevel,
     AssetCategory,
     AssetIntegrityState,
 )
-from app.compounds.models import Compound
-from app.evidence.models import Evidence
-from app.imports.models import ImportBatch
-from app.lineages.models import Lineage, LineageEdge
-from app.papers.models import Paper
-from app.releases.manifest import capture_release_artifact_manifest
-from app.releases.models import Release, ReleaseItem
-from app.revisions.models import (
-    ActivityState,
-    EvidenceState,
-    ObjectRevision,
-    StructureState,
-)
-from app.revisions.service import RevisionService
-from app.security.policies import WorkflowState
-from app.structures.models import Structure
+from app.catalog.models import PaperSource, PaperSourceIntegrityState
+from app.papers.models import Paper, PaperCatalogState
 from app.users.models import UserRole
 from app.users.service import UserService
-from app.visual_objects.models import MoleculeObjectType, VisualObject, VisualRegion
-from app.releases.aggregate import _reference_ids
 import leadtrace.ops.restore.verify_restored_system as restore_verification
-from leadtrace.ops.backup.verify_backup import verify_backup
 from leadtrace.ops.restore.verify_restored_system import (
     _safe_database_counts,
     _verify_http_workflow,
@@ -50,507 +30,58 @@ from leadtrace.ops.restore.verify_restored_system import (
 )
 
 
-EXPECTED_RELEASE_AGGREGATE = {
-    "counts": {
-        "corpus_papers": 1,
-        "lineage_papers": 1,
-        "lineages": 1,
-        "compound_entities": 2,
-        "lineage_edges": 1,
-        "activity_rows": 1,
-        "complete_structures": 2,
-        "structure_confirmed": 2,
-        "missing_or_non_unique": 0,
-        "pair_ready_edges": 1,
-        "papers_with_pair_ready": 1,
-    },
-    "integrity": {
-        "self_loops": 0,
-        "duplicate_directed_edges": 0,
-        "unresolved_pair_ready_edges": 0,
-        "dangling_entity_references": 0,
-        "dangling_evidence_references": 0,
-        "invalid_pair_endpoints": 0,
-        "published_missing_or_corrupt_assets": 0,
-    },
+COUNT_KEYS = {
+    "papers",
+    "paper_sources",
+    "review_tasks",
+    "paper_workspaces",
+    "paper_section_reviews",
+    "change_events",
+    "paper_submissions",
+    "admin_decisions",
+    "published_paper_versions",
+    "current_published_papers",
+    "ai_extraction_runs",
+    "compounds",
+    "structures",
+    "structure_source_images",
+    "lineages",
+    "lineage_members",
+    "lineage_edges",
+    "evidence",
+    "edge_evidence_links",
+    "activities",
+    "assets",
+    "crop_jobs",
+    "crop_job_attempts",
+    "crop_job_retry_operations",
+    "maintenance_windows",
+    "users",
+    "admin_users",
+}
+
+ZERO_INTEGRITY = {
+    "paper_source_asset_mismatches": 0,
+    "current_publication_pointer_mismatches": 0,
+    "publication_hash_mismatches": 0,
+    "snapshot_hash_mismatches": 0,
+    "missing_or_corrupt_assets": 0,
+    "audit_chain_invalid": 0,
 }
 
 
-def test_release_reference_keys_are_scoped_to_their_paper() -> None:
-    first_paper = UUID(int=1)
-    second_paper = UUID(int=2)
-    first_compound = UUID(int=3)
-    second_compound = UUID(int=4)
-    keys = {
-        (first_paper, "CMP-1"): first_compound,
-        (second_paper, "CMP-1"): second_compound,
-    }
-
-    assert _reference_ids("CMP-1", keys=keys, paper_id=second_paper) == (
-        second_compound,
-    )
-
-
-def _published_revision(
-    session: Session,
-    *,
-    domain_object: object,
-    actor_id: UUID,
-    snapshot: dict[str, object],
-    structure_state: StructureState | None = None,
-    evidence_state: EvidenceState | None = None,
-    activity_state: ActivityState | None = None,
-    canonical_smiles: str | None = None,
-    relation_status: str | None = None,
-):
-    return RevisionService().create_revision(
-        session,
-        object_identity=domain_object,  # type: ignore[arg-type]
-        actor_id=actor_id,
-        reason="Restore aggregate fixture",
-        snapshot=snapshot,
-        workflow_state=WorkflowState.PUBLISHED,
-        is_current_published=True,
-        structure_state=structure_state,
-        evidence_state=evidence_state,
-        activity_state=activity_state,
-        canonical_smiles=canonical_smiles,
-        relation_status=relation_status,
-    )
-
-
-def _seed_current_release(
-    session_factory: sessionmaker[Session],
-    *,
-    invalid_activity_evidence: bool = False,
-    source_root: Path | None = None,
-) -> dict[str, UUID]:
-    with session_factory.begin() as session:
-        actor = UserService().create_user(
-            session,
-            username="restore.aggregate.admin",
-            display_name="Restore aggregate admin",
-            role=UserRole.ADMIN,
-            initial_password="Fixture-password-123!",
-        )
-        session.add(
-            ImportBatch(
-                source_fingerprint="f" * 64,
-                status="completed",
-                counts={key: 999 for key in EXPECTED_RELEASE_AGGREGATE["counts"]},
-                integrity={
-                    key: 0 for key in EXPECTED_RELEASE_AGGREGATE["integrity"]
-                },
-                asset_linkage={},
-                completed_at=datetime.now(UTC),
-            )
-        )
-        paper = Paper(paper_key="aggregate-paper", doi="10.1000/aggregate")
-        session.add(paper)
-        session.flush()
-        compounds = [
-            Compound(
-                paper_id=paper.id,
-                local_identity=f"CMP-{index}",
-                display_label=f"Compound {index}",
-                normalized_label=f"compound {index}",
-            )
-            for index in (1, 2)
-        ]
-        lineage = Lineage(paper_id=paper.id, lineage_key="LINEAGE-1")
-        evidence = Evidence(paper_id=paper.id, evidence_key="EVID-1")
-        session.add_all([*compounds, lineage, evidence])
-        session.flush()
-        structures = [
-            Structure(
-                paper_id=paper.id,
-                compound_id=compound.id,
-                structure_key=f"STRUCTURE-{index}",
-            )
-            for index, compound in enumerate(compounds, start=1)
-        ]
-        activity = Activity(
-            paper_id=paper.id,
-            compound_id=compounds[1].id,
-            activity_key="ACT-1",
-        )
-        edge = LineageEdge(
-            paper_id=paper.id,
-            lineage_id=lineage.id,
-            edge_key="EDGE-1",
-            parent_compound_id=compounds[0].id,
-            derived_compound_id=compounds[1].id,
-        )
-        source_asset = None
-        if source_root is not None:
-            source_root.mkdir(parents=True, exist_ok=True)
-            source_file = source_root / "source.txt"
-            source_file.write_bytes(b"release source asset\n")
-            source_asset = Asset(
-                storage_key="source/baseline/source.txt",
-                original_filename=source_file.name,
-                sha256=hashlib.sha256(source_file.read_bytes()).hexdigest(),
-                byte_size=source_file.stat().st_size,
-                mime_type="text/plain",
-                category=AssetCategory.EXTERNAL_SOURCE,
-                access_level=AssetAccessLevel.REVIEWER,
-                integrity_state=AssetIntegrityState.VERIFIED,
-                derivation_metadata={},
-                source_metadata={},
-                created_by_id=actor.id,
-            )
-            session.add(source_asset)
-            session.flush()
-        visual_region = VisualRegion(
-            paper_id=paper.id,
-            region_key="REGION-1",
-            page_number=1,
-            asset_id=source_asset.id if source_asset is not None else None,
-        )
-        visual_object = VisualObject(
-            paper_id=paper.id,
-            object_key="VISUAL-1",
-            object_type=MoleculeObjectType.LINKER,
-        )
-        session.add_all([*structures, activity, edge, visual_region, visual_object])
-        session.flush()
-
-        revisions = [
-            _published_revision(
-                session,
-                domain_object=paper,
-                actor_id=actor.id,
-                snapshot={"paper_key": paper.paper_key},
-            ),
-            *[
-                _published_revision(
-                    session,
-                    domain_object=compound,
-                    actor_id=actor.id,
-                    snapshot={
-                        "paper_id": str(paper.id),
-                        "local_identity": compound.local_identity,
-                    },
-                )
-                for compound in compounds
-            ],
-            *[
-                _published_revision(
-                    session,
-                    domain_object=structure,
-                    actor_id=actor.id,
-                    snapshot={
-                        "compound_id": str(structure.compound_id),
-                        "canonical_smiles": "CCO",
-                        "structure_state": "structure_confirmed",
-                    },
-                    structure_state=StructureState.STRUCTURE_CONFIRMED,
-                    canonical_smiles="CCO",
-                )
-                for structure in structures
-            ],
-            _published_revision(
-                session,
-                domain_object=lineage,
-                actor_id=actor.id,
-                snapshot={"paper_id": str(paper.id), "lineage_key": "LINEAGE-1"},
-            ),
-            _published_revision(
-                session,
-                domain_object=evidence,
-                actor_id=actor.id,
-                snapshot={
-                    "compound_ids": [str(compounds[0].id), str(compounds[1].id)],
-                    "evidence_key": "EVID-1",
-                },
-                evidence_state=EvidenceState.CONFIRMED,
-            ),
-            _published_revision(
-                session,
-                domain_object=activity,
-                actor_id=actor.id,
-                snapshot={
-                    "compound_id": str(compounds[1].id),
-                    "evidence_ids": (
-                        ["NOT-A-REAL-EVIDENCE"]
-                        if invalid_activity_evidence
-                        else [str(evidence.id)]
-                    ),
-                },
-                activity_state=ActivityState.CONFIRMED,
-            ),
-            _published_revision(
-                session,
-                domain_object=edge,
-                actor_id=actor.id,
-                snapshot={
-                    "lineage_id": str(lineage.id),
-                    "parent_compound_id": str(compounds[0].id),
-                    "derived_compound_id": str(compounds[1].id),
-                    "evidence_ids": [str(evidence.id)],
-                    "pair_ready": True,
-                    "relation_status": "confirmed",
-                },
-                relation_status="confirmed",
-            ),
-            _published_revision(
-                session,
-                domain_object=visual_region,
-                actor_id=actor.id,
-                snapshot={"page_number": 1, "region_key": "REGION-1"},
-            ),
-            _published_revision(
-                session,
-                domain_object=visual_object,
-                actor_id=actor.id,
-                snapshot={
-                    "object_key": "VISUAL-1",
-                    "object_type": MoleculeObjectType.LINKER.value,
-                },
-            ),
-        ]
-        session.flush()
-        release = Release(
-            release_key="aggregate-r1",
-            title="Aggregate release",
-            notes="",
-            metrics={},
-            published_by_id=actor.id,
-            published_at=datetime.now(UTC),
-            is_current=True,
-            manifest_finalized=False,
-        )
-        session.add(release)
-        session.flush()
-        objects = [
-            paper,
-            *compounds,
-            *structures,
-            lineage,
-            evidence,
-            activity,
-            edge,
-            visual_region,
-            visual_object,
-        ]
-        for order, (domain_object, revision) in enumerate(zip(objects, revisions, strict=True)):
-            session.add(
-                ReleaseItem(
-                    release_id=release.id,
-                    object_id=domain_object.id,
-                    revision_id=revision.id,
-                    paper_id=paper.id,
-                    object_kind=domain_object.object_kind,
-                    manifest_order=order,
-                )
-            )
-        session.flush()
-        capture_release_artifact_manifest(session, release.id)
-        release.manifest_finalized = True
-        session.flush()
-        return {
-            "release_id": release.id,
-            "invalid_revision_id": revisions[0].id,
-            "removed_compound_id": compounds[1].id,
-            "edge_id": edge.id,
-        }
-
-
-def test_restored_asset_tree_matches_manifest_without_reporting_storage_paths(
-    tmp_path: Path,
-) -> None:
-    asset_root = tmp_path / "restored-assets"
-    (asset_root / "objects").mkdir(parents=True)
-    content = b"restored bytes"
-    restored_file = asset_root / "objects" / "one.bin"
-    restored_file.write_bytes(content)
-    manifest = {
-        "schema_version": 1,
-        "asset_root_name": "assets",
-        "file_count": 1,
-        "total_bytes": len(content),
-        "files": [
-            {
-                "path": "objects/one.bin",
-                "size_bytes": len(content),
-                "sha256": hashlib.sha256(content).hexdigest(),
-            }
-        ],
-    }
-    manifest_path = tmp_path / "assets.manifest.json"
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-    report = verify_asset_restore(manifest_path, asset_root)
-
-    assert report.ok is True
-    assert report.file_count == 1
-    assert str(asset_root) not in json.dumps(report.as_dict())
-
-
-def test_restored_asset_tree_reports_hash_mismatch_without_leaking_paths(
-    tmp_path: Path,
-) -> None:
-    asset_root = tmp_path / "restored-assets"
-    asset_root.mkdir()
-    restored_file = asset_root / "one.bin"
-    restored_file.write_bytes(b"tampered")
-    manifest = {
-        "schema_version": 1,
-        "asset_root_name": "assets",
-        "file_count": 1,
-        "total_bytes": 8,
-        "files": [
-                {"path": "one.bin", "size_bytes": 8, "sha256": "0" * 64}
-        ],
-    }
-    manifest_path = tmp_path / "assets.manifest.json"
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-    report = verify_asset_restore(manifest_path, asset_root)
-
-    assert report.ok is False
-    assert report.errors == ("asset_hash_mismatch",)
-    assert str(asset_root) not in json.dumps(report.as_dict())
-
-
-def test_database_restore_counts_are_recomputed_from_the_current_release(
-    auth_session_factory: sessionmaker[Session],
-    empty_postgresql_database_url: str,
-) -> None:
-    _seed_current_release(auth_session_factory)
-
-    aggregate = _safe_database_counts(empty_postgresql_database_url)
-
-    assert aggregate["counts"] == EXPECTED_RELEASE_AGGREGATE["counts"]
-    assert aggregate["integrity"] == EXPECTED_RELEASE_AGGREGATE["integrity"]
-    assert aggregate["release_validation"] == {"valid": True, "issues": []}
-
-
-def test_database_restore_reports_non_asset_release_validation_failures(
-    auth_session_factory: sessionmaker[Session],
-    empty_postgresql_database_url: str,
-) -> None:
-    seeded = _seed_current_release(auth_session_factory)
-    with auth_session_factory.begin() as session:
-        session.execute(
-            text(
-                "ALTER TABLE object_revisions "
-                "DISABLE TRIGGER trg_object_revisions_immutable"
-            )
-        )
-        try:
-            revision = session.get(ObjectRevision, seeded["invalid_revision_id"])
-            assert revision is not None
-            revision.workflow_state = WorkflowState.DRAFT
-            revision.is_current_published = False
-            session.flush()
-        finally:
-            session.execute(
-                text(
-                    "ALTER TABLE object_revisions "
-                    "ENABLE TRIGGER trg_object_revisions_immutable"
-                )
-            )
-
-    aggregate = _safe_database_counts(empty_postgresql_database_url)
-
-    assert aggregate["counts"] == EXPECTED_RELEASE_AGGREGATE["counts"]
-    validation = aggregate["release_validation"]
-    assert validation["valid"] is False  # type: ignore[index]
-    assert {issue["code"] for issue in validation["issues"]} == {  # type: ignore[index]
-        "invalid_revision"
-    }
-
-
-def test_database_restore_counts_detect_a_missing_release_item(
-    auth_session_factory: sessionmaker[Session],
-    empty_postgresql_database_url: str,
-) -> None:
-    seeded = _seed_current_release(auth_session_factory)
-    with auth_session_factory.begin() as session:
-        session.execute(text("ALTER TABLE release_items DISABLE TRIGGER protect_release_item"))
-        try:
-            session.execute(
-                delete(ReleaseItem).where(
-                    ReleaseItem.release_id == seeded["release_id"],
-                    ReleaseItem.object_id == seeded["removed_compound_id"],
-                )
-            )
-        finally:
-            session.execute(text("ALTER TABLE release_items ENABLE TRIGGER protect_release_item"))
-
-    aggregate = _safe_database_counts(empty_postgresql_database_url)
-
-    assert aggregate["counts"]["compound_entities"] == 1  # type: ignore[index]
-    assert aggregate["integrity"]["dangling_entity_references"] > 0  # type: ignore[index]
-
-
-def test_database_restore_integrity_detects_changed_release_relationships(
-    auth_session_factory: sessionmaker[Session],
-    empty_postgresql_database_url: str,
-) -> None:
-    seeded = _seed_current_release(auth_session_factory)
-    with auth_session_factory.begin() as session:
-        edge = session.get(LineageEdge, seeded["edge_id"])
-        assert edge is not None
-        edge.parent_compound_id = None
-
-    aggregate = _safe_database_counts(empty_postgresql_database_url)
-
-    assert aggregate["integrity"]["invalid_pair_endpoints"] > 0  # type: ignore[index]
-
-
-def test_database_restore_integrity_counts_unparseable_references(
-    auth_session_factory: sessionmaker[Session],
-    empty_postgresql_database_url: str,
-) -> None:
-    _seed_current_release(
-        auth_session_factory,
-        invalid_activity_evidence=True,
-    )
-
-    aggregate = _safe_database_counts(empty_postgresql_database_url)
-
-    assert aggregate["integrity"]["dangling_evidence_references"] == 1  # type: ignore[index]
-
-
-def test_database_restore_validates_configured_source_assets(
-    auth_session_factory: sessionmaker[Session],
-    empty_postgresql_database_url: str,
-    tmp_path: Path,
-) -> None:
-    source_root = tmp_path / "source"
-    managed_root = tmp_path / "managed"
-    _seed_current_release(auth_session_factory, source_root=source_root)
-
-    without_source_root = _safe_database_counts(
-        empty_postgresql_database_url,
-        asset_root=managed_root,
-    )
-    with_source_root = _safe_database_counts(
-        empty_postgresql_database_url,
-        asset_root=managed_root,
-        source_roots={"baseline": source_root},
-    )
-
-    assert without_source_root["integrity"]["published_missing_or_corrupt_assets"] == 1  # type: ignore[index]
-    assert with_source_root["integrity"]["published_missing_or_corrupt_assets"] == 0  # type: ignore[index]
-
-
-def test_restored_asset_layout_maps_only_bundled_roots(tmp_path: Path) -> None:
-    bundle_root = tmp_path / "bundle"
-    managed_root = bundle_root / "managed"
-    source_root = bundle_root / "sources" / "baseline"
-    managed_root.mkdir(parents=True)
-    source_root.mkdir(parents=True)
-    manifest = tmp_path / "assets.manifest.json"
+def _write_empty_manifest(root: Path) -> Path:
+    (root / "managed").mkdir(parents=True)
+    (root / "sources" / "source_pdfs").mkdir(parents=True)
+    manifest = root.parent / "assets.manifest.json"
     manifest.write_text(
         json.dumps(
             {
                 "schema_version": 1,
+                "asset_root_name": "asset-snapshot",
                 "layout": {
                     "managed_root": "managed",
-                    "source_roots": {"baseline": "sources/baseline"},
+                    "source_roots": {"source_pdfs": "sources/source_pdfs"},
                 },
                 "file_count": 0,
                 "total_bytes": 0,
@@ -559,99 +90,114 @@ def test_restored_asset_layout_maps_only_bundled_roots(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-
-    managed, sources = restore_verification._restored_asset_layout(  # type: ignore[attr-defined]
-        manifest,
-        bundle_root,
-    )
-
-    assert managed == managed_root
-    assert sources == {"baseline": source_root}
+    return manifest
 
 
-def test_restore_report_completion_includes_database_and_http_verification(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    started_at = datetime(2026, 9, 13, 10, 0, tzinfo=UTC)
-    current_time = started_at + timedelta(seconds=5)
+def _paper_centric_expected_aggregate() -> dict[str, object]:
+    return {
+        "schema_version": 2,
+        "counts": {key: 0 for key in COUNT_KEYS},
+        "integrity_expectations": ZERO_INTEGRITY,
+    }
 
-    class TestClock:
-        @classmethod
-        def now(cls, timezone):
-            return current_time.astimezone(timezone)
 
-    def recompute_database(*_args, **kwargs):
-        nonlocal current_time
-        assert kwargs["source_roots"] == {"baseline": tmp_path}
-        current_time += timedelta(seconds=7)
-        return {
-            "counts": {},
-            "integrity": {},
-            "physical_counts": {},
-            "release_validation": {"valid": True, "issues": []},
-        }
-
-    def verify_http(*_args, **_kwargs):
-        nonlocal current_time
-        current_time += timedelta(seconds=3)
-        return {"ok": True, "checks": {}}
-
-    manifest = tmp_path / "assets.manifest.json"
-    manifest.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "file_count": 0,
-                "total_bytes": 0,
-                "files": [],
-            }
-        ),
-        encoding="utf-8",
-    )
-    asset_root = tmp_path / "assets"
-    asset_root.mkdir()
-    monkeypatch.setattr(restore_verification, "datetime", TestClock)
-    monkeypatch.setattr(
-        restore_verification,
-        "_safe_database_counts",
-        recompute_database,
-    )
-    monkeypatch.setattr(restore_verification, "_verify_http_workflow", verify_http)
-
-    report = restore_verification.verify_restored_system(
-        asset_manifest=manifest,
-        restored_asset_root=asset_root,
-        source_roots={"baseline": tmp_path},
-        database_url="postgresql+psycopg://drill",
-        expected_aggregate={
-            "schema_version": 1,
-            "counts": {},
-            "integrity_expectations": {},
+def _write_backup_metadata(root: Path, backup_id: str, scope: str) -> Path:
+    backup_root = root / backup_id
+    backup_root.mkdir()
+    filenames = {
+        "database": {"database_dump": "database.dump.age"},
+        "assets": {
+            "asset_manifest": "assets.manifest.json",
+            "asset_archive": "assets.tar.age",
+            "asset_snapshot": "tar.snapshot",
         },
-        base_url="https://drill.local",
-        drill_username="reviewer",
-        drill_password="password",
-        backup_evidence={},
-        started_at=started_at,
-        rto_target_seconds=60,
+    }[scope]
+    artifacts: dict[str, dict[str, object]] = {}
+    for artifact_name, filename in filenames.items():
+        content = f"{backup_id}:{artifact_name}".encode()
+        (backup_root / filename).write_bytes(content)
+        artifacts[artifact_name] = {
+            "path": filename,
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "size_bytes": len(content),
+        }
+    metadata: dict[str, object] = {
+        "schema_version": 1,
+        "backup_id": backup_id,
+        "backup_scope": scope,
+        "started_at": "2026-09-17T10:00:00Z",
+        "completed_at": "2026-09-17T10:01:00Z",
+        "outcome": "success",
+        "versions": {
+            "application": "0.1.0",
+            "schema": "0025_ai_prefill_runs",
+            "release": "paper-centric",
+        },
+        "encryption": {
+            "algorithm": "age-x25519",
+            "recipient_fingerprint": "SHA256:test-key",
+            "payloads_encrypted": True,
+        },
+        "destination": {"kind": "separate_disk", "identity": "disk-a"},
+        "artifacts": artifacts,
+    }
+    if scope == "assets":
+        metadata["asset_chain"] = {
+            "mode": "full",
+            "parent_backup_id": None,
+            "position": 0,
+        }
+    metadata_path = backup_root / "backup-metadata.json"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    return metadata_path
+
+
+def test_asset_restore_checks_hash_and_size_without_leaking_paths(tmp_path: Path) -> None:
+    restored = tmp_path / "restored"
+    restored.mkdir()
+    content = b"restored asset"
+    (restored / "asset.bin").write_bytes(content)
+    manifest = tmp_path / "assets.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "file_count": 1,
+                "total_bytes": len(content),
+                "files": [
+                    {
+                        "path": "asset.bin",
+                        "size_bytes": len(content),
+                        "sha256": hashlib.sha256(content).hexdigest(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
     )
 
-    assert report["completed_at"] == "2026-09-13T10:00:15Z"
-    assert report["duration_seconds"] == 15
+    valid = verify_asset_restore(manifest, restored)
+    (restored / "asset.bin").write_bytes(b"tampered asset")
+    invalid = verify_asset_restore(manifest, restored)
+
+    assert valid.ok is True
+    assert invalid.ok is False
+    assert invalid.errors == ("asset_hash_mismatch",)
+    assert str(tmp_path) not in json.dumps(invalid.as_dict())
 
 
-def test_restored_asset_layout_rejects_a_broad_source_root(tmp_path: Path) -> None:
+def test_restored_asset_layout_rejects_manifest_path_escape(tmp_path: Path) -> None:
     bundle_root = tmp_path / "bundle"
-    bundle_root.mkdir()
+    (bundle_root / "sources" / "source_pdfs").mkdir(parents=True)
+    (tmp_path / "outside").mkdir()
     manifest = tmp_path / "assets.manifest.json"
     manifest.write_text(
         json.dumps(
             {
                 "schema_version": 1,
                 "layout": {
-                    "managed_root": "managed",
-                    "source_roots": {"baseline": "/"},
+                    "managed_root": "../outside",
+                    "source_roots": {"source_pdfs": "sources/source_pdfs"},
                 },
                 "file_count": 0,
                 "total_bytes": 0,
@@ -662,193 +208,352 @@ def test_restored_asset_layout_rejects_a_broad_source_root(tmp_path: Path) -> No
     )
 
     with pytest.raises(ValueError, match="inside the restored bundle"):
-        restore_verification._restored_asset_layout(  # type: ignore[attr-defined]
-            manifest,
-            bundle_root,
+        restore_verification._restored_asset_layout(manifest, bundle_root)
+
+
+def test_backup_evidence_contains_verified_hashes_without_storage_paths(
+    tmp_path: Path,
+) -> None:
+    database_metadata = _write_backup_metadata(
+        tmp_path,
+        "database-paper-centric",
+        "database",
+    )
+    asset_metadata = _write_backup_metadata(
+        tmp_path,
+        "assets-paper-centric",
+        "assets",
+    )
+
+    evidence = restore_verification.build_backup_evidence(
+        database_metadata,
+        asset_metadata,
+    )
+
+    assert evidence["database"]["metadata_sha256"] == hashlib.sha256(
+        database_metadata.read_bytes()
+    ).hexdigest()
+    assert evidence["assets"]["metadata_sha256"] == hashlib.sha256(
+        asset_metadata.read_bytes()
+    ).hexdigest()
+    assert evidence["assets"]["chain_backup_ids"] == ["assets-paper-centric"]
+    assert str(tmp_path) not in json.dumps(evidence)
+
+
+def test_safe_database_counts_uses_paper_centric_schema(
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    del auth_session_factory
+
+    aggregate = _safe_database_counts(empty_postgresql_database_url)
+
+    assert aggregate["schema_version"] == 2
+    assert set(aggregate["counts"]) == COUNT_KEYS
+    assert set(aggregate["counts"].values()) == {0}
+    assert aggregate["integrity"] == ZERO_INTEGRITY
+
+
+def test_safe_database_counts_excludes_only_the_temporary_reviewer(
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    with auth_session_factory.begin() as session:
+        UserService().create_user(
+            session,
+            username="restore-admin",
+            display_name="Restore Admin",
+            role=UserRole.ADMIN,
+            initial_password="Restore test admin password 2026!",
+        )
+        UserService().create_user(
+            session,
+            username="restore-drill",
+            display_name="Restore Drill Reviewer",
+            role=UserRole.REVIEWER,
+            initial_password="Restore test reviewer password 2026!",
+        )
+
+    aggregate = _safe_database_counts(
+        empty_postgresql_database_url,
+        excluded_username="restore-drill",
+    )
+
+    assert aggregate["counts"]["users"] == 1
+    assert aggregate["counts"]["admin_users"] == 1
+
+
+def test_safe_database_counts_rejects_an_admin_drill_account(
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
+) -> None:
+    with auth_session_factory.begin() as session:
+        UserService().create_user(
+            session,
+            username="restore-drill",
+            display_name="Incorrect Restore Drill Admin",
+            role=UserRole.ADMIN,
+            initial_password="Restore test admin password 2026!",
+        )
+
+    with pytest.raises(ValueError, match="Reviewer"):
+        _safe_database_counts(
+            empty_postgresql_database_url,
+            excluded_username="restore-drill",
         )
 
 
-def test_restore_report_requires_complete_scientific_baseline_and_evidence(
-    monkeypatch,
-    tmp_path: Path,
+def test_safe_database_counts_rejects_a_missing_drill_account(
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
 ) -> None:
-    asset_root = tmp_path / "assets"
-    asset_root.mkdir()
-    content = b"verified asset"
-    (asset_root / "one.bin").write_bytes(content)
-    manifest = tmp_path / "assets.manifest.json"
-    manifest.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "asset_root_name": "assets",
-                "file_count": 1,
-                "total_bytes": len(content),
-                "files": [
-                    {
-                        "path": "one.bin",
-                        "size_bytes": len(content),
-                        "sha256": hashlib.sha256(content).hexdigest(),
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-    expected = {
-        "schema_version": 1,
-        "counts": {"corpus_papers": 672, "lineages": 193},
-        "integrity_expectations": {"self_loops": 0, "invalid_pair_endpoints": 0},
-    }
-    monkeypatch.setattr(
-        "leadtrace.ops.restore.verify_restored_system._safe_database_counts",
-        lambda _, **__: {
-            "counts": expected["counts"],
-            "integrity": expected["integrity_expectations"],
-            "physical_counts": {"papers": 672, "releases": 1, "audit_events": 10},
-            "release_validation": {"valid": True, "issues": []},
-        },
-    )
-    monkeypatch.setattr(
-        "leadtrace.ops.restore.verify_restored_system._verify_http_workflow",
-        lambda *args, **kwargs: {"ok": True, "checks": {"login": True}},
-    )
-    completed_at = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
-    started_at = completed_at - timedelta(minutes=4)
-    backup_evidence = {
-        "database": {
-            "backup_id": "database-1",
-            "metadata_sha256": "a" * 64,
-            "versions": {"application": "0.1.0", "schema": "0015", "release": "r1"},
-        },
-        "assets": {
-            "backup_id": "assets-2",
-            "metadata_sha256": "b" * 64,
-            "chain_backup_ids": ["assets-1", "assets-2"],
-            "versions": {"application": "0.1.0", "schema": "0015", "release": "r1"},
-        },
-    }
+    del auth_session_factory
 
-    report = verify_restored_system(
-        asset_manifest=manifest,
-        restored_asset_root=asset_root,
-        database_url="postgresql://restore.invalid/drill",
-        expected_aggregate=expected,
-        base_url="https://restore-drill.lan",
-        drill_username="drill",
-        drill_password="protected",
-        backup_evidence=backup_evidence,
-        started_at=started_at,
-        completed_at=completed_at,
-        rto_target_seconds=300,
-    )
-
-    assert report["ok"] is True
-    assert report["baseline"] == {
-        "ok": True,
-        "counts": expected["counts"],
-        "integrity": expected["integrity_expectations"],
-        "physical_counts": {"papers": 672, "releases": 1, "audit_events": 10},
-        "release_validation": {"valid": True, "issues": []},
-    }
-    assert report["backup_evidence"] == backup_evidence
-    assert report["started_at"] == "2026-09-12T11:56:00Z"
-    assert report["completed_at"] == "2026-09-12T12:00:00Z"
-    assert report["duration_seconds"] == 240
-    assert report["rto"] == {"target_seconds": 300, "met": True}
+    with pytest.raises(ValueError, match="Reviewer"):
+        _safe_database_counts(
+            empty_postgresql_database_url,
+            excluded_username="restore-drill",
+        )
 
 
-def test_restore_report_fails_when_any_integrity_expectation_differs(
-    monkeypatch,
+def test_restore_system_reports_an_invalid_admin_drill_account(
     tmp_path: Path,
+    monkeypatch,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
 ) -> None:
-    asset_root = tmp_path / "assets"
-    asset_root.mkdir()
-    manifest = tmp_path / "assets.manifest.json"
-    manifest.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "asset_root_name": "assets",
-                "file_count": 0,
-                "total_bytes": 0,
-                "files": [],
-            }
-        ),
-        encoding="utf-8",
-    )
-    expected = {
-        "schema_version": 1,
-        "counts": {"corpus_papers": 672},
-        "integrity_expectations": {"self_loops": 0},
-    }
+    with auth_session_factory.begin() as session:
+        UserService().create_user(
+            session,
+            username="restore-drill",
+            display_name="Incorrect Restore Drill Admin",
+            role=UserRole.ADMIN,
+            initial_password="Restore test admin password 2026!",
+        )
+    restored = tmp_path / "restored"
+    manifest = _write_empty_manifest(restored)
     monkeypatch.setattr(
-        "leadtrace.ops.restore.verify_restored_system._safe_database_counts",
-        lambda _, **__: {
-            "counts": expected["counts"],
-            "integrity": {"self_loops": 1},
-            "physical_counts": {"papers": 672, "releases": 1, "audit_events": 1},
-            "release_validation": {"valid": True, "issues": []},
-        },
-    )
-    monkeypatch.setattr(
-        "leadtrace.ops.restore.verify_restored_system._verify_http_workflow",
-        lambda *args, **kwargs: {"ok": True},
+        restore_verification,
+        "_verify_http_workflow",
+        lambda *_args, **_kwargs: {"ok": True, "checks": {}},
     )
 
     report = verify_restored_system(
         asset_manifest=manifest,
-        restored_asset_root=asset_root,
-        database_url="postgresql://restore.invalid/drill",
-        expected_aggregate=expected,
-        base_url="https://restore-drill.lan",
-        drill_username="drill",
+        restored_asset_root=restored,
+        database_url=empty_postgresql_database_url,
+        expected_aggregate=_paper_centric_expected_aggregate(),
+        base_url="https://restore.invalid",
+        drill_username="restore-drill",
         drill_password="protected",
-        backup_evidence={"database": {}, "assets": {}},
-        started_at=datetime(2026, 9, 12, 12, 0, tzinfo=UTC),
-        completed_at=datetime(2026, 9, 12, 12, 1, tzinfo=UTC),
-        rto_target_seconds=300,
+        backup_evidence={},
+        started_at=datetime(2026, 9, 17, tzinfo=UTC),
+        completed_at=datetime(2026, 9, 17, 0, 1, tzinfo=UTC),
+        rto_target_seconds=3600,
     )
 
     assert report["ok"] is False
-    assert "database_baseline_mismatch" in report["errors"]
+    assert report["baseline"] == {
+        "ok": False,
+        "error": "drill_account_invalid",
+    }
+    assert report["errors"] == ["drill_account_invalid"]
 
 
-def test_restore_report_fails_when_current_release_validation_fails(
-    monkeypatch: pytest.MonkeyPatch,
+def test_safe_database_counts_validates_paper_source_and_restored_bytes(
     tmp_path: Path,
+    empty_postgresql_database_url: str,
+    auth_session_factory: sessionmaker[Session],
 ) -> None:
-    asset_root = tmp_path / "assets"
-    asset_root.mkdir()
-    manifest = tmp_path / "assets.manifest.json"
-    manifest.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "asset_root_name": "assets",
-                "file_count": 0,
-                "total_bytes": 0,
-                "files": [],
-            }
-        ),
-        encoding="utf-8",
+    managed_root = tmp_path / "managed"
+    source_root = tmp_path / "source_pdfs"
+    managed_root.mkdir()
+    source_root.mkdir()
+    content = b"%PDF-1.4\n/Type /Page\n%%EOF\n"
+    source_file = source_root / "paper.pdf"
+    source_file.write_bytes(content)
+    digest = hashlib.sha256(content).hexdigest()
+    with auth_session_factory.begin() as session:
+        asset = Asset(
+            storage_key="source/source_pdfs/paper.pdf",
+            original_filename="paper.pdf",
+            sha256=digest,
+            byte_size=len(content),
+            mime_type="application/pdf",
+            page_count=1,
+            category=AssetCategory.ARTICLE_PDF,
+            access_level=AssetAccessLevel.REVIEWER,
+            integrity_state=AssetIntegrityState.VERIFIED,
+            derivation_metadata={},
+            source_metadata={"source_root_key": "source_pdfs"},
+        )
+        session.add(asset)
+        session.flush()
+        source = PaperSource(
+            asset_id=asset.id,
+            source_root_key="source_pdfs",
+            source_key="paper.pdf",
+            sha256=digest,
+            byte_size=len(content),
+            page_count=1,
+            integrity_state=PaperSourceIntegrityState.VERIFIED,
+        )
+        session.add(source)
+        session.flush()
+        session.add(
+            Paper(
+                paper_key="restore-paper",
+                source_id=source.id,
+                title="Restore verification paper",
+                journal="Journal of Medicinal Chemistry",
+                publication_year=2026,
+                volume="69",
+                issue="1",
+                doi=None,
+                catalog_state=PaperCatalogState.VERIFIED,
+            )
+        )
+
+    aggregate = _safe_database_counts(
+        empty_postgresql_database_url,
+        asset_root=managed_root,
+        source_roots={"source_pdfs": source_root},
     )
-    expected = {
-        "schema_version": 1,
-        "counts": {"corpus_papers": 1},
-        "integrity_expectations": {"self_loops": 0},
+    source_file.write_bytes(b"tampered")
+    tampered = _safe_database_counts(
+        empty_postgresql_database_url,
+        asset_root=managed_root,
+        source_roots={"source_pdfs": source_root},
+    )
+
+    assert aggregate["counts"]["papers"] == 1
+    assert aggregate["counts"]["paper_sources"] == 1
+    assert aggregate["counts"]["assets"] == 1
+    assert aggregate["integrity"] == ZERO_INTEGRITY
+    assert tampered["integrity"]["missing_or_corrupt_assets"] == 1
+
+
+def test_current_publication_pointer_must_select_latest_version() -> None:
+    pointer_mismatches = getattr(
+        restore_verification,
+        "_current_publication_pointer_mismatches",
+        None,
+    )
+    assert pointer_mismatches is not None
+    paper_id = "paper-1"
+    version_one = SimpleNamespace(id="version-1", paper_id=paper_id, version_number=1)
+    version_two = SimpleNamespace(id="version-2", paper_id=paper_id, version_number=2)
+
+    stale = pointer_mismatches(
+        [SimpleNamespace(id=paper_id, current_published_version_id="version-1")],
+        [version_one, version_two],
+    )
+    current = pointer_mismatches(
+        [SimpleNamespace(id=paper_id, current_published_version_id="version-2")],
+        [version_one, version_two],
+    )
+    missing = pointer_mismatches(
+        [SimpleNamespace(id=paper_id, current_published_version_id=None)],
+        [version_one, version_two],
+    )
+
+    assert stale == 1
+    assert current == 0
+    assert missing == 1
+
+
+def test_restore_system_accepts_paper_centric_expected_aggregate(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    restored = tmp_path / "restored"
+    manifest = _write_empty_manifest(restored)
+    counts = {key: 0 for key in COUNT_KEYS}
+    aggregate = {
+        "schema_version": 2,
+        "counts": counts,
+        "integrity": ZERO_INTEGRITY,
     }
     monkeypatch.setattr(
         restore_verification,
         "_safe_database_counts",
-        lambda *_args, **_kwargs: {
-            "counts": expected["counts"],
-            "integrity": expected["integrity_expectations"],
-            "physical_counts": {"papers": 1, "releases": 1, "audit_events": 1},
-            "release_validation": {
-                "valid": False,
-                "issues": [{"code": "invalid_revision", "object_id": None}],
+        lambda *_args, **_kwargs: aggregate,
+    )
+    monkeypatch.setattr(
+        restore_verification,
+        "_verify_http_workflow",
+        lambda *_args, **_kwargs: {"ok": True, "checks": {}},
+    )
+
+    report = verify_restored_system(
+        asset_manifest=manifest,
+        restored_asset_root=restored,
+        database_url="postgresql+psycopg://restore.invalid/leadtrace_restore_test",
+        expected_aggregate={
+            "schema_version": 2,
+            "counts": counts,
+            "integrity_expectations": ZERO_INTEGRITY,
+        },
+        base_url="https://restore.invalid",
+        drill_username="drill",
+        drill_password="protected",
+        backup_evidence={},
+        started_at=datetime(2026, 9, 17, tzinfo=UTC),
+        completed_at=datetime(2026, 9, 17, 0, 1, tzinfo=UTC),
+        rto_target_seconds=3600,
+    )
+
+    assert report["ok"] is True
+    assert report["schema_version"] == 2
+    assert report["baseline"]["ok"] is True
+
+
+def test_restore_system_rejects_nonzero_integrity_expectations(
+    tmp_path: Path,
+) -> None:
+    restored = tmp_path / "restored"
+    manifest = _write_empty_manifest(restored)
+    nonzero_integrity = {**ZERO_INTEGRITY, "audit_chain_invalid": 1}
+
+    with pytest.raises(
+        ValueError,
+        match="paper-centric expected aggregate",
+    ):
+        verify_restored_system(
+            asset_manifest=manifest,
+            restored_asset_root=restored,
+            database_url=None,
+            expected_aggregate={
+                "schema_version": 2,
+                "counts": {
+                    key: 0
+                    for key in restore_verification.PAPER_CENTRIC_COUNT_KEYS
+                },
+                "integrity_expectations": nonzero_integrity,
             },
+            base_url=None,
+            backup_evidence={},
+            started_at=datetime(2026, 9, 17, tzinfo=UTC),
+            completed_at=datetime(2026, 9, 17, 0, 1, tzinfo=UTC),
+            rto_target_seconds=3600,
+        )
+
+
+def test_restore_system_reports_aggregate_mismatch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    restored = tmp_path / "restored"
+    manifest = _write_empty_manifest(restored)
+    actual_counts = {key: 0 for key in COUNT_KEYS}
+    actual_counts["papers"] = 1
+    monkeypatch.setattr(
+        restore_verification,
+        "_safe_database_counts",
+        lambda *_args, **_kwargs: {
+            "schema_version": 2,
+            "counts": actual_counts,
+            "integrity": ZERO_INTEGRITY,
         },
     )
     monkeypatch.setattr(
@@ -859,138 +564,162 @@ def test_restore_report_fails_when_current_release_validation_fails(
 
     report = verify_restored_system(
         asset_manifest=manifest,
-        restored_asset_root=asset_root,
-        database_url="postgresql://restore.invalid/drill",
-        expected_aggregate=expected,
-        base_url="https://restore-drill.lan",
+        restored_asset_root=restored,
+        database_url="postgresql+psycopg://restore.invalid/leadtrace_restore_test",
+        expected_aggregate=_paper_centric_expected_aggregate(),
+        base_url="https://restore.invalid",
         drill_username="drill",
         drill_password="protected",
-        backup_evidence={"database": {}, "assets": {}},
-        started_at=datetime(2026, 9, 12, 12, 0, tzinfo=UTC),
-        completed_at=datetime(2026, 9, 12, 12, 1, tzinfo=UTC),
-        rto_target_seconds=300,
+        backup_evidence={},
+        started_at=datetime(2026, 9, 17, tzinfo=UTC),
+        completed_at=datetime(2026, 9, 17, 0, 1, tzinfo=UTC),
+        rto_target_seconds=3600,
     )
 
     assert report["ok"] is False
-    assert "release_validation_failed" in report["errors"]
+    assert report["baseline"]["ok"] is False
+    assert report["errors"] == ["database_baseline_mismatch"]
 
 
-def test_restore_report_can_verify_the_backup_metadata_before_extracting(
+def test_restore_system_reports_nonzero_actual_integrity(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    restored = tmp_path / "restored"
+    manifest = _write_empty_manifest(restored)
+    monkeypatch.setattr(
+        restore_verification,
+        "_safe_database_counts",
+        lambda *_args, **_kwargs: {
+            "schema_version": 2,
+            "counts": {key: 0 for key in COUNT_KEYS},
+            "integrity": {**ZERO_INTEGRITY, "audit_chain_invalid": 1},
+        },
+    )
+    monkeypatch.setattr(
+        restore_verification,
+        "_verify_http_workflow",
+        lambda *_args, **_kwargs: {"ok": True, "checks": {}},
+    )
+
+    report = verify_restored_system(
+        asset_manifest=manifest,
+        restored_asset_root=restored,
+        database_url="postgresql+psycopg://restore.invalid/leadtrace_restore_test",
+        expected_aggregate=_paper_centric_expected_aggregate(),
+        base_url="https://restore.invalid",
+        drill_username="drill",
+        drill_password="protected",
+        backup_evidence={},
+        started_at=datetime(2026, 9, 17, tzinfo=UTC),
+        completed_at=datetime(2026, 9, 17, 0, 1, tzinfo=UTC),
+        rto_target_seconds=3600,
+    )
+
+    assert report["ok"] is False
+    assert report["baseline"]["integrity_ok"] is False
+    assert report["errors"] == [
+        "database_baseline_mismatch",
+        "database_integrity_failed",
+    ]
+
+
+def test_restore_system_reports_rto_target_exceeded(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    restored = tmp_path / "restored"
+    manifest = _write_empty_manifest(restored)
+    monkeypatch.setattr(
+        restore_verification,
+        "_safe_database_counts",
+        lambda *_args, **_kwargs: {
+            "schema_version": 2,
+            "counts": {key: 0 for key in COUNT_KEYS},
+            "integrity": ZERO_INTEGRITY,
+        },
+    )
+    monkeypatch.setattr(
+        restore_verification,
+        "_verify_http_workflow",
+        lambda *_args, **_kwargs: {"ok": True, "checks": {}},
+    )
+    started_at = datetime(2026, 9, 17, tzinfo=UTC)
+
+    report = verify_restored_system(
+        asset_manifest=manifest,
+        restored_asset_root=restored,
+        database_url="postgresql+psycopg://restore.invalid/leadtrace_restore_test",
+        expected_aggregate=_paper_centric_expected_aggregate(),
+        base_url="https://restore.invalid",
+        drill_username="drill",
+        drill_password="protected",
+        backup_evidence={},
+        started_at=started_at,
+        completed_at=started_at + timedelta(seconds=61),
+        rto_target_seconds=60,
+    )
+
+    assert report["ok"] is False
+    assert report["duration_seconds"] == 61
+    assert report["rto"] == {"target_seconds": 60, "met": False}
+    assert report["errors"] == ["rto_target_exceeded"]
+
+
+def test_restore_http_workflow_reads_v2_paper_pdf_and_audit(monkeypatch) -> None:
+    requested: list[tuple[str, str]] = []
+
+    class Response:
+        def __init__(self, status_code: int, payload: dict[str, object]) -> None:
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self) -> dict[str, object]:
+            return self._payload
+
+    class Client:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
+        def post(self, path: str, **_: object) -> Response:
+            requested.append(("POST", path))
+            return Response(200, {"csrf_token": "drill-csrf"})
+
+        def get(self, path: str, **_: object) -> Response:
+            requested.append(("GET", path))
+            if path == "/api/v2/papers":
+                return Response(200, {"items": [{"paper_id": "paper-1"}]})
+            return Response(206 if path.endswith("/source-pdf") else 200, {})
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "Client", Client)
+
+    report = _verify_http_workflow(
+        "https://restore-drill.lan",
+        username="drill",
+        password="protected-password",
+    )
+
+    assert report["ok"] is True
+    assert requested == [
+        ("POST", "/api/v1/auth/login"),
+        ("GET", "/api/v2/papers"),
+        ("GET", "/api/v2/papers/paper-1"),
+        ("GET", "/api/v2/papers/paper-1/source-pdf"),
+        ("GET", "/api/v1/audit/events?limit=1"),
+    ]
+
+
+def test_restore_drill_refuses_existing_root_and_protects_plaintext(
     tmp_path: Path,
 ) -> None:
-    artifacts = {
-        "assets.manifest.json": b'{"files": []}\n',
-        "assets.tar.age": b"encrypted archive",
-        "tar.snapshot": b"snapshot state",
-    }
-    for name, content in artifacts.items():
-        (tmp_path / name).write_bytes(content)
-    metadata = {
-        "schema_version": 1,
-        "backup_id": "assets-1",
-        "backup_scope": "assets",
-        "started_at": "2026-09-12T10:00:00Z",
-        "completed_at": "2026-09-12T10:01:00Z",
-        "outcome": "success",
-        "versions": {"application": "0.1.0", "schema": "0015", "release": "r1"},
-        "encryption": {
-            "algorithm": "age-x25519",
-            "recipient_fingerprint": "SHA256:key",
-            "payloads_encrypted": True,
-        },
-        "destination": {"kind": "separate_disk", "identity": "disk-a"},
-        "artifacts": {
-            (
-                "asset_manifest"
-                if name.endswith(".manifest.json")
-                else "asset_snapshot"
-                if name.endswith(".snapshot")
-                else "asset_archive"
-            ): {
-                "path": name,
-                "sha256": hashlib.sha256(content).hexdigest(),
-                "size_bytes": len(content),
-            }
-            for name, content in artifacts.items()
-        },
-        "asset_chain": {
-            "mode": "full",
-            "parent_backup_id": None,
-            "position": 0,
-        },
-    }
-    metadata_path = tmp_path / "backup-metadata.json"
-    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
-
-    report = verify_backup(metadata_path)
-
-    assert report.ok is True
-    assert report.backup_scope == "assets"
-
-
-def test_restore_evidence_is_derived_from_verified_backup_metadata(
-    tmp_path: Path,
-) -> None:
-    def write_backup(backup_id: str, scope: str) -> Path:
-        root = tmp_path / backup_id
-        root.mkdir()
-        names = {
-            "database": {"database_dump": "database.dump.age"},
-            "assets": {
-                "asset_manifest": "assets.manifest.json",
-                "asset_archive": "assets.tar.age",
-                "asset_snapshot": "tar.snapshot",
-            },
-        }[scope]
-        artifacts: dict[str, dict[str, object]] = {}
-        for artifact_name, filename in names.items():
-            content = f"{backup_id}:{artifact_name}".encode()
-            (root / filename).write_bytes(content)
-            artifacts[artifact_name] = {
-                "path": filename,
-                "sha256": hashlib.sha256(content).hexdigest(),
-                "size_bytes": len(content),
-            }
-        metadata = {
-            "schema_version": 1,
-            "backup_id": backup_id,
-            "backup_scope": scope,
-            "started_at": "2026-09-12T10:00:00Z",
-            "completed_at": "2026-09-12T10:01:00Z",
-            "outcome": "success",
-            "versions": {"application": "0.1.0", "schema": "0015", "release": "r1"},
-            "encryption": {
-                "algorithm": "age-x25519",
-                "recipient_fingerprint": "SHA256:key",
-                "payloads_encrypted": True,
-            },
-            "destination": {"kind": "separate_disk", "identity": "disk-a"},
-            "artifacts": artifacts,
-        }
-        if scope == "assets":
-            metadata["asset_chain"] = {
-                "mode": "full",
-                "parent_backup_id": None,
-                "position": 0,
-            }
-        metadata_path = root / "backup-metadata.json"
-        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
-        return metadata_path
-
-    database_metadata = write_backup("database-1", "database")
-    asset_metadata = write_backup("assets-1", "assets")
-    module = importlib.import_module("leadtrace.ops.restore.verify_restored_system")
-    build_backup_evidence = getattr(module, "build_backup_evidence")
-
-    evidence = build_backup_evidence(database_metadata, asset_metadata)
-
-    assert evidence["database"]["backup_id"] == "database-1"
-    assert evidence["assets"]["backup_id"] == "assets-1"
-    assert evidence["assets"]["chain_backup_ids"] == ["assets-1"]
-    assert str(tmp_path) not in json.dumps(evidence)
-
-
-def test_restore_drill_refuses_to_use_an_existing_restore_root(tmp_path: Path) -> None:
     restore_root = tmp_path / "already-used"
     restore_root.mkdir()
     (restore_root / "keep.txt").write_text("keep", encoding="utf-8")
@@ -1018,13 +747,20 @@ def test_restore_drill_refuses_to_use_an_existing_restore_root(tmp_path: Path) -
         text=True,
         check=False,
     )
+    script = script_path.read_text(encoding="utf-8")
 
     assert result.returncode != 0
     assert "restore root" in (result.stderr + result.stdout).casefold()
     assert (restore_root / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert "umask 077" in script
+    assert "trap cleanup_restore_plaintext EXIT" in script
+    assert "--single-transaction" in script
+    assert "--exit-on-error" in script
+    assert "asset_chain.py" in script
+    assert "--listed-incremental=/dev/null" in script
 
 
-def test_restore_drill_rejects_the_production_database_before_restore(
+def test_restore_drill_rejects_production_database_before_pg_restore(
     tmp_path: Path,
 ) -> None:
     script_path = Path(__file__).parents[3] / "ops" / "restore" / "restore_drill.sh"
@@ -1032,23 +768,11 @@ def test_restore_drill_rejects_the_production_database_before_restore(
     marker = tmp_path / "pg-restore-was-called"
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    (fake_bin / "age").write_text(
-        "#!/usr/bin/env bash\nset -euo pipefail\nout=''\n"
-        "while (($#)); do case \"$1\" in --output) out=$2; shift 2;; *) shift;; esac; done\n"
-        "printf 'decrypted' > \"$out\"\n",
-        encoding="utf-8",
-    )
     (fake_bin / "pg_restore").write_text(
         f"#!/usr/bin/env bash\nset -euo pipefail\ntouch {marker!s}\n",
         encoding="utf-8",
     )
-    (fake_bin / "tar").write_text(
-        "#!/usr/bin/env bash\nset -euo pipefail\n",
-        encoding="utf-8",
-    )
-    for command in ("age", "pg_restore", "tar"):
-        (fake_bin / command).chmod(0o755)
-
+    (fake_bin / "pg_restore").chmod(0o755)
     database_url = "postgresql://database.internal/leadtrace_production"
     environment = {
         **os.environ,
@@ -1058,7 +782,7 @@ def test_restore_drill_rejects_the_production_database_before_restore(
         "LEADTRACE_ASSET_METADATA": str(tmp_path / "assets.json"),
         "LEADTRACE_RESTORE_DATABASE_URL": database_url,
         "LEADTRACE_PRODUCTION_DATABASE_URL": database_url,
-        "LEADTRACE_RESTORE_DATABASE_ALLOWLIST": "leadtrace_restore_drill_20260912",
+        "LEADTRACE_RESTORE_DATABASE_ALLOWLIST": "leadtrace_restore_drill_20260917",
         "LEADTRACE_AGE_IDENTITY_FILE": str(tmp_path / "identity.txt"),
         "LEADTRACE_DRILL_BASE_URL": "https://leadtrace.invalid",
         "LEADTRACE_DRILL_USERNAME": "drill",
@@ -1080,29 +804,7 @@ def test_restore_drill_rejects_the_production_database_before_restore(
     assert not marker.exists()
 
 
-def test_restore_drill_uses_atomic_fail_fast_pg_restore() -> None:
-    script_path = Path(__file__).parents[3] / "ops" / "restore" / "restore_drill.sh"
-    script = script_path.read_text(encoding="utf-8")
-
-    assert "--single-transaction" in script
-    assert "--exit-on-error" in script
-
-
-def test_restore_drill_protects_plaintext_and_replays_the_verified_asset_chain() -> None:
-    script_path = Path(__file__).parents[3] / "ops" / "restore" / "restore_drill.sh"
-    script = script_path.read_text(encoding="utf-8")
-
-    assert "umask 077" in script
-    assert "trap cleanup_restore_plaintext EXIT" in script
-    assert "asset_chain.py" in script
-    assert "--listed-incremental=/dev/null" in script
-    assert "require_value LEADTRACE_EXPECTED_AGGREGATE" in script
-    assert "require_value LEADTRACE_RESTORE_RTO_SECONDS" in script
-
-
-def test_restore_target_validator_rejects_a_database_with_user_relations(
-    tmp_path: Path,
-) -> None:
+def test_restore_target_validator_rejects_nonempty_database(tmp_path: Path) -> None:
     helper_path = (
         Path(__file__).parents[3]
         / "ops"
@@ -1117,7 +819,8 @@ def test_restore_target_validator_rejects_a_database_with_user_relations(
         "    def __exit__(self, *args): return None\n"
         "    def execute(self, query): self.query = query\n"
         "    def fetchone(self):\n"
-        "        return ('leadtrace_restore_drill_20260912',) if 'current_database' in self.query else (1,)\n"
+        "        return ('leadtrace_restore_drill_20260917',) "
+        "if 'current_database' in self.query else (1,)\n"
         "class Connection:\n"
         "    def __enter__(self): return self\n"
         "    def __exit__(self, *args): return None\n"
@@ -1129,12 +832,12 @@ def test_restore_target_validator_rejects_a_database_with_user_relations(
         **os.environ,
         "PYTHONPATH": str(fake_module),
         "LEADTRACE_RESTORE_DATABASE_URL": (
-            "postgresql://database.internal/leadtrace_restore_drill_20260912"
+            "postgresql://database.internal/leadtrace_restore_drill_20260917"
         ),
         "LEADTRACE_PRODUCTION_DATABASE_URL": (
             "postgresql://database.internal/leadtrace_production"
         ),
-        "LEADTRACE_RESTORE_DATABASE_ALLOWLIST": "leadtrace_restore_drill_20260912",
+        "LEADTRACE_RESTORE_DATABASE_ALLOWLIST": "leadtrace_restore_drill_20260917",
     }
 
     result = subprocess.run(
@@ -1147,55 +850,3 @@ def test_restore_target_validator_rejects_a_database_with_user_relations(
 
     assert result.returncode != 0
     assert "not empty" in (result.stderr + result.stdout).casefold()
-
-
-def test_restore_http_workflow_reads_paper_pdf_release_and_audit(monkeypatch) -> None:
-    requested: list[tuple[str, str]] = []
-
-    class Response:
-        def __init__(self, status_code: int, payload: dict[str, object]) -> None:
-            self.status_code = status_code
-            self._payload = payload
-
-        def json(self) -> dict[str, object]:
-            return self._payload
-
-    class Client:
-        def __init__(self, **_: object) -> None:
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_: object) -> None:
-            pass
-
-        def post(self, path: str, **_: object) -> Response:
-            requested.append(("POST", path))
-            return Response(200, {"csrf_token": "drill-csrf"})
-
-        def get(self, path: str, **_: object) -> Response:
-            requested.append(("GET", path))
-            if path == "/api/v1/papers?page=1&page_size=1":
-                return Response(200, {"items": [{"id": "paper-1"}]})
-            return Response(206 if path.endswith("/source-pdf") else 200, {})
-
-    import httpx
-
-    monkeypatch.setattr(httpx, "Client", Client)
-
-    report = _verify_http_workflow(
-        "https://restore-drill.lan",
-        username="drill",
-        password="protected-password",
-    )
-
-    assert report["ok"] is True
-    assert requested == [
-        ("POST", "/api/v1/auth/login"),
-        ("GET", "/api/v1/papers?page=1&page_size=1"),
-        ("GET", "/api/v1/papers/paper-1"),
-        ("GET", "/api/v1/papers/paper-1/source-pdf"),
-        ("GET", "/api/v1/published/overview"),
-        ("GET", "/api/v1/audit/events?limit=1"),
-    ]

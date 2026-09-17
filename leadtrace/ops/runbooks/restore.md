@@ -10,7 +10,7 @@ created only in the isolated environment and is disabled after the drill.
 ## Preconditions
 
 - Select one verified database backup and one verified asset backup from the
-  same release window.
+  same maintenance window.
 - Confirm `verify_backup.py` succeeds for both metadata files.
 - Provision an empty PostgreSQL database, add its exact name to the protected
   drill allowlist, and separately provide the production database URL for
@@ -35,7 +35,7 @@ export LEADTRACE_AGE_IDENTITY_FILE=/etc/leadtrace/restore-age-identity
 export LEADTRACE_DRILL_BASE_URL=https://leadtrace-drill.lan
 export LEADTRACE_DRILL_USERNAME=restore-drill
 export LEADTRACE_DRILL_PASSWORD='<provided through protected scheduler secret>'
-export LEADTRACE_EXPECTED_AGGREGATE=/opt/leadtrace/leadtrace/ops/baseline/expected_aggregate.json
+export LEADTRACE_EXPECTED_AGGREGATE=/etc/leadtrace/paper-centric-expected-aggregate.json
 export LEADTRACE_RESTORE_RTO_SECONDS=3600
 export LEADTRACE_PYTHON_BIN=/opt/leadtrace/.venv/bin/python
 
@@ -59,12 +59,57 @@ from that restored manifest. Configure the temporary LeadTrace application
 with the same restored managed/source paths before running the HTTP checks; do
 not point it at any live production source tree.
 
-Database verification recomputes the current Release aggregate and runs the
-complete Release validator against the restored bundle. The report passes only
-when counts and integrity equal the protected expected aggregate and Release
-validation has no issues. Cutover preflight independently loads that same
-expected aggregate and the protected `restore_rto_seconds` target; values
-self-declared only by the restore report are not accepted as cutover evidence.
+Database verification computes a paper-centric schema-v2 aggregate. It counts
+Papers, Sources, section progress, review/workspace history, submissions and
+Admin decisions, published versions, AI runs, scientific records, Assets,
+Crop Job history, maintenance history, users, and Admin accounts. It also verifies
+the Paper Source-to-Asset metadata contract, current publication pointers,
+submission/decision/publication hashes, immutable snapshot hashes, the audit
+chain, and every restored source or managed asset byte. The report passes only
+when those counts and zero-error integrity expectations equal a separately
+protected expected aggregate.
+
+The drill username must identify exactly one Reviewer account absent from the
+protected backup. The verifier rejects a missing account or any other role,
+excludes that one temporary Reviewer from the restored total-user count, and
+still requires the complete Admin count to match.
+
+Create that expected aggregate while writes are frozen, immediately before the
+matching database and asset backups. Run this read-only command from the
+repository root with the production `LEADTRACE_DATABASE_URL`,
+`LEADTRACE_ASSET_ROOT`, and `LEADTRACE_SOURCE_ROOTS` already configured, then
+move the output to protected read-only storage outside the repository:
+
+```bash
+PYTHONPATH=leadtrace/backend:. .venv/bin/python - \
+  >paper-centric-expected-aggregate.json <<'PY'
+import json
+from datetime import UTC, datetime
+
+from app.config import Settings
+from leadtrace.ops.restore.verify_restored_system import _safe_database_counts
+
+settings = Settings()
+actual = _safe_database_counts(
+    settings.database_url,
+    asset_root=settings.asset_root,
+    source_roots=settings.source_roots,
+)
+print(json.dumps({
+    "schema_version": 2,
+    "recorded_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    "counts": actual["counts"],
+    "integrity_expectations": actual["integrity"],
+}, indent=2, sort_keys=True))
+PY
+```
+
+Do not reuse the legacy Release aggregate at
+`leadtrace/ops/baseline/expected_aggregate.json`; it is retained only for the
+pre-cutover history until the separate cutover preflight is converted. Review
+the generated file and require every integrity expectation to be zero before
+accepting it. The file contains counts and error totals only, not database URLs
+or storage paths.
 
 The restore root is created under `umask 077`. Dump, tar, and chain-list
 plaintext are removed on every exit; restored assets are also removed on a
@@ -80,9 +125,8 @@ The report must show:
 - every fixed aggregate count and integrity expectation matches the approved
   baseline;
 - the drill account can log in over HTTPS;
-- a Paper list/detail read works;
+- the `/api/v2/papers` list and detail reads work;
 - an authorized PDF can be read;
-- the current release overview is readable;
 - audit events are readable according to the drill role;
 - no report field contains a password, token, database URL, or absolute
   storage path.
@@ -91,7 +135,7 @@ The report must show:
 
 If any check fails, mark the drill failed, preserve the isolated environment
 for investigation, and do not retry in production. Record the safe error code,
-backup IDs, schema/release versions, elapsed time, and corrective action.
+backup IDs, schema/application versions, elapsed time, and corrective action.
 
 ## Recovery objective
 

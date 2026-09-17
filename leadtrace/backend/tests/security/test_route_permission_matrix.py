@@ -189,6 +189,13 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v1/users",
         "/api/v1/assets/{asset_id}",
         "/api/v1/audit/events",
+        "/api/v1/admin/files",
+        "/api/v1/admin/files/{asset_id}/references",
+        "/api/v1/admin/audit",
+        "/api/v1/admin/jobs",
+        "/api/v1/admin/jobs/{job_id}/retry",
+        "/api/v1/admin/maintenance",
+        "/api/v1/admin/system",
         "/api/v2/admin/papers",
         "/api/v2/admin/papers/{paper_id}",
         "/api/v2/admin/papers/{paper_id}/assign",
@@ -232,11 +239,20 @@ def test_retired_scientific_v1_routes_are_not_registered(
         "/api/v2/papers/{paper_id}/assets/{asset_id}",
         "/api/v2/papers/{paper_id}/source-pdf",
     } <= paths
+    admin_v1_paths = {path for path in paths if path.startswith("/api/v1/admin")}
+    assert admin_v1_paths == {
+        "/api/v1/admin/files",
+        "/api/v1/admin/files/{asset_id}/references",
+        "/api/v1/admin/audit",
+        "/api/v1/admin/jobs",
+        "/api/v1/admin/jobs/{job_id}/retry",
+        "/api/v1/admin/maintenance",
+        "/api/v1/admin/system",
+    }
     assert not any(
         path.startswith(prefix)
         for path in paths
         for prefix in (
-            "/api/v1/admin",
             "/api/v1/approvals",
             "/api/v1/crop-jobs",
             "/api/v1/papers",
@@ -245,6 +261,23 @@ def test_retired_scientific_v1_routes_are_not_registered(
             "/api/v1/review",
         )
     )
+
+
+def test_retired_v1_product_urls_return_not_found(
+    role_matrix_client: tuple[TestClient, UUID],
+) -> None:
+    client, _ = role_matrix_client
+
+    for path in (
+        "/api/v1/admin/imports",
+        "/api/v1/admin/import-candidates",
+        "/api/v1/admin/papers",
+        "/api/v1/approvals",
+        "/api/v1/published/overview",
+        "/api/v1/releases",
+        "/api/v1/review/changesets",
+    ):
+        assert client.get(path).status_code == 404
 
     catalog_routes = [
         route

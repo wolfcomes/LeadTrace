@@ -72,8 +72,8 @@ except json.JSONDecodeError as error:
     raise SystemExit("source root configuration must contain JSON objects") from error
 if not isinstance(raw_source_roots, dict) or not isinstance(raw_allowed_parents, dict):
     raise SystemExit("source root configuration must contain JSON objects")
-if "baseline" not in raw_source_roots:
-    raise SystemExit("source root mapping must include the baseline namespace")
+if "source_pdfs" not in raw_source_roots:
+    raise SystemExit("source root mapping must include the source_pdfs namespace")
 if set(raw_source_roots) != set(raw_allowed_parents):
     raise SystemExit("every source root must have one configured allowed parent")
 

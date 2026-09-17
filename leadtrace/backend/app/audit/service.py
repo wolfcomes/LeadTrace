@@ -233,6 +233,9 @@ class AuditService:
         session: Session,
         *,
         actor_id: UUID | None = None,
+        action: str | None = None,
+        target_type: str | None = None,
+        result: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[AuditEvent]:
@@ -241,6 +244,12 @@ class AuditService:
         statement = select(AuditEvent).order_by(AuditEvent.sequence_number.desc())
         if actor_id is not None:
             statement = statement.where(AuditEvent.actor_id == actor_id)
+        if action is not None:
+            statement = statement.where(AuditEvent.action == action)
+        if target_type is not None:
+            statement = statement.where(AuditEvent.target_type == target_type)
+        if result is not None:
+            statement = statement.where(AuditEvent.result == result)
         return list(session.scalars(statement.limit(limit).offset(offset)))
 
     def verify_chain(self, session: Session) -> AuditVerification:

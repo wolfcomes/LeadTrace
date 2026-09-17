@@ -6,6 +6,8 @@ from sqlalchemy.exc import DBAPIError
 
 from app.assets.models import Asset, AssetIntegrityState
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
+from app.config import Settings
+from app.health.service import HealthService
 from app.papers.models import Paper
 from app.publications.models import (
     AdminDecision,
@@ -283,6 +285,47 @@ def test_later_approval_preserves_version_one_and_moves_current_pointer(
     assert detail.status_code == 200
     assert detail.json()["version_number"] == 2
     assert detail.json()["content_hash"] == second_submission.content_hash
+
+
+def test_publication_health_requires_a_current_paper_pointer(
+    publication_fixture,
+    tmp_path,
+) -> None:
+    fixture = publication_fixture
+    submission = fixture.submit()
+    asset_root = tmp_path / "health-assets"
+    asset_root.mkdir()
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        database_url=str(fixture.session_factory.kw["bind"].url),
+        redis_url="redis://127.0.0.1:6379/0",
+        session_secret="publication-health-secret-more-than-thirty-two-characters",
+        allowed_hosts=["testserver"],
+        asset_root=asset_root,
+    )
+    service = PublicationService()
+    health = HealthService(settings, database_probe=lambda _: True)
+    with fixture.session_factory.begin() as session:
+        admin = session.get(User, fixture.admin_id)
+        assert admin is not None
+        result = service.decide(
+            session,
+            submission_id=submission.id,
+            content_hash=submission.content_hash,
+            action=AdminDecisionAction.APPROVE,
+            reason="Approve the health-check fixture.",
+            idempotency_key="publication-health-approval",
+            actor=admin,
+        )
+        assert result.published_version is not None
+        assert health.collect(session).checks["publication"]["status"] == "ok"
+        paper = session.get(Paper, fixture.paper_id)
+        assert paper is not None
+        paper.current_published_version_id = None
+        session.flush()
+
+        assert health.collect(session).checks["publication"]["status"] == "warning"
 
 
 def test_decisions_and_published_versions_are_database_immutable(publication_fixture):

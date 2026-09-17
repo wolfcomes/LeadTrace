@@ -24,6 +24,7 @@ from app.lineages.router import create_lineages_router
 from app.maintenance.service import enforce_maintenance_mode
 from app.observability.logging import install_request_observability
 from app.observability.metrics import MetricsRegistry, create_metrics_router
+from app.operations.router import create_operations_router
 from app.publications.admin_router import create_admin_publications_router
 from app.publications.router import create_publications_router
 from app.structures.router import create_structures_router
@@ -83,6 +84,12 @@ def create_app(
     application.include_router(create_users_router(runtime_settings))
     application.include_router(create_assets_router())
     application.include_router(create_audit_router())
+    application.include_router(
+        create_operations_router(
+            runtime_settings,
+            database_probe=database_probe,
+        )
+    )
     application.include_router(create_catalog_router(runtime_settings))
     application.include_router(
         create_ai_prefill_router(runtime_settings, ai_prefill_dispatch)

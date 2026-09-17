@@ -34,7 +34,7 @@ load = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-ra"
+addopts = "-ra --import-mode=importlib"
 pythonpath = ["../.."]
 testpaths = ["tests"]
 

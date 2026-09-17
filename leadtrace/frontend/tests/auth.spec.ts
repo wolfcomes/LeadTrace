@@ -101,7 +101,7 @@ describe("authenticated login flow", () => {
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
-    expect(router.currentRoute.value.path).toBe("/overview");
+    expect(router.currentRoute.value.path).toBe("/papers");
     expect(useAuthStore().user?.role).toBe("reviewer");
     expect(wrapper.text()).not.toContain("修改密码");
   });

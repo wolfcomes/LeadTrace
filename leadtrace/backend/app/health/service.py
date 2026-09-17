@@ -5,12 +5,13 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.database import check_database_connection, validate_schema_version
-from app.releases.models import Release
+from app.papers.models import Paper
+from app.publications.models import PublishedPaperVersion
 
 
 CheckProbe = Callable[[str], bool]
@@ -80,12 +81,27 @@ class HealthService:
             "summary": "Database schema matches the application" if schema_ok else "Database schema requires migration",
         }
 
-        release_ok = False
+        publication_ok = False
         if session is not None:
-            release_ok = session.scalar(select(Release.id).where(Release.is_current).limit(1)) is not None
-        checks["release"] = {
-            "status": "ok" if release_ok else "warning",
-            "summary": "A current release is available" if release_ok else "No current release is published",
+            publication_ok = session.scalar(
+                select(Paper.id)
+                .join(
+                    PublishedPaperVersion,
+                    and_(
+                        PublishedPaperVersion.id
+                        == Paper.current_published_version_id,
+                        PublishedPaperVersion.paper_id == Paper.id,
+                    ),
+                )
+                .limit(1)
+            ) is not None
+        checks["publication"] = {
+            "status": "ok" if publication_ok else "warning",
+            "summary": (
+                "At least one Paper version is published"
+                if publication_ok
+                else "No Paper version is published"
+            ),
         }
         required = ("storage", "database", "worker", "schema")
         overall = "ok" if all(checks[name]["status"] == "ok" for name in required) else "degraded"

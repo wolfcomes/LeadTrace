@@ -56,3 +56,17 @@ def test_backend_trusts_only_the_fixed_nginx_peer_for_client_ip_headers() -> Non
     assert trusted_peers == '["172.30.97.10"]'
     assert "--no-proxy-headers" in dockerfile
     assert "--forwarded-allow-ips" not in dockerfile
+
+
+def test_web_mounts_source_pdfs_read_only_with_working_default() -> None:
+    compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
+    web = compose["services"]["web"]
+
+    assert web["environment"]["LEADTRACE_SOURCE_ROOTS"] == (
+        '${LEADTRACE_SOURCE_ROOTS:-{"source_pdfs":'
+        '"/var/lib/leadtrace/source_pdfs"}}'
+    )
+    assert (
+        "${LEADTRACE_SOURCE_PDFS_HOST_ROOT:-../../source_pdfs}:"
+        "/var/lib/leadtrace/source_pdfs:ro"
+    ) in web["volumes"]

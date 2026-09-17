@@ -98,6 +98,7 @@ describe("Admin console", () => {
     expect(wrapper.get(".admin-panel table").classes()).toContain("data-table");
     expect(wrapper.get("[data-job-id='job-1'] td:nth-child(2) span").classes()).toContain("status-chip");
     expect(wrapper.get("[data-job-id='job-1']").text()).toContain("render failed");
+    expect(wrapper.get("[data-navigation]").text()).toContain("任务队列");
     await router.push("/admin/system");
     await flushPromises();
     expect(wrapper.get("h1").text()).toBe("系统状态");
@@ -106,119 +107,4 @@ describe("Admin console", () => {
     expect(wrapper.text()).toContain("healthy");
   });
 
-  it("reviews import candidates with Chinese states and protected decisions", async () => {
-    const pendingId = "81000000-0000-4000-8000-000000000001";
-    const approvedId = "81000000-0000-4000-8000-000000000002";
-    const candidate = (id: string, status: string, decision: unknown = null) => ({
-      id,
-      import_batch_id: "82000000-0000-4000-8000-000000000001",
-      status,
-      is_current: status === "published",
-      manifest: {
-        schema_version: 1,
-        source_fingerprint: "a".repeat(64),
-        status: "imported_baseline",
-        is_current: false,
-        counts: { corpus_papers: 672, compound_entities: 4301 },
-        integrity: { dangling_entity_references: 0 },
-        asset_linkage: {
-          resolved_references: 5033,
-          unique_resolved_assets: 4890,
-          missing_references: 14,
-          ambiguous_references: 3,
-          corrupt_references: 2,
-        },
-        revision_count: 10000,
-      },
-      decision,
-      created_at: "2026-09-13T00:00:00Z",
-    });
-    const candidates = [
-      candidate(pendingId, "imported_baseline"),
-      candidate(approvedId, "approved", {
-        id: "83000000-0000-4000-8000-000000000002",
-        decision: "approve",
-        actor_id: "10000000-0000-4000-8000-000000000001",
-        reason: "已核对导入清单",
-        manifest_hash: "b".repeat(64),
-        created_at: "2026-09-13T01:00:00Z",
-      }),
-      candidate("81000000-0000-4000-8000-000000000003", "rejected", {
-        id: "83000000-0000-4000-8000-000000000003",
-        decision: "reject",
-        actor_id: "10000000-0000-4000-8000-000000000001",
-        reason: "数据需重新导入",
-        manifest_hash: "c".repeat(64),
-        created_at: "2026-09-13T01:00:00Z",
-      }),
-      candidate("81000000-0000-4000-8000-000000000004", "published", {
-        id: "83000000-0000-4000-8000-000000000004",
-        decision: "approve",
-        actor_id: "10000000-0000-4000-8000-000000000001",
-        reason: "已发布",
-        manifest_hash: "d".repeat(64),
-        created_at: "2026-09-13T01:00:00Z",
-      }),
-    ];
-    const calls: Array<{ path: string; init?: RequestInit }> = [];
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = new URL(String(input), "http://leadtrace.test").pathname;
-      calls.push({ path, init });
-      if (path === "/api/v1/admin/imports") return response([]);
-      if (path === "/api/v1/admin/import-candidates") return response(candidates);
-      if (path === `/api/v1/admin/import-candidates/${pendingId}/decision`) {
-        return response({
-          ...candidate(pendingId, "approved"),
-          decision: {
-            id: "83000000-0000-4000-8000-000000000001",
-            decision: "approve",
-            actor_id: "10000000-0000-4000-8000-000000000001",
-            reason: "核对导入计数与完整性",
-            manifest_hash: "e".repeat(64),
-            created_at: "2026-09-13T02:00:00Z",
-          },
-          idempotent: false,
-          request_id: "candidate-decision",
-        });
-      }
-      return response({});
-    }));
-    const router = createAppRouter(createMemoryHistory());
-    await router.push("/admin/imports");
-    await router.isReady();
-    const wrapper = mount(App, { global: { plugins: [router] } });
-    await flushPromises();
-
-    expect(wrapper.get(".import-controls").classes()).toContain("workspace-toolbar");
-    expect(wrapper.get(".candidate-panel table").classes()).toContain("data-table");
-    expect(wrapper.get(".candidate-state").classes()).toContain("status-chip");
-    expect(wrapper.text()).toContain("待审批");
-    expect(wrapper.text()).toContain("已批准，待发布");
-    expect(wrapper.text()).toContain("已拒绝");
-    expect(wrapper.text()).toContain("已发布");
-    expect(wrapper.text()).toContain("5,033 解析引用");
-    expect(wrapper.text()).toContain("4,890 唯一资产");
-    expect(wrapper.text()).toContain("14 缺失");
-    expect(wrapper.text()).toContain("3 歧义");
-    expect(wrapper.text()).toContain("2 损坏");
-    expect(wrapper.findAll("[data-candidate-decision]")).toHaveLength(2);
-    const approve = wrapper.get(`[data-candidate-approve='${pendingId}']`);
-    expect(approve.attributes("disabled")).toBeDefined();
-    await wrapper.get(`[data-candidate-reason='${pendingId}']`).setValue("核对导入计数与完整性");
-    expect(approve.attributes("disabled")).toBeUndefined();
-    await approve.trigger("click");
-    await flushPromises();
-
-    const decisionRequest = calls.find(
-      (call) => call.path === `/api/v1/admin/import-candidates/${pendingId}/decision`,
-    );
-    expect(decisionRequest).toBeTruthy();
-    expect(new Headers(decisionRequest?.init?.headers).get("X-CSRF-Token")).toBe("csrf");
-    expect(JSON.parse(String(decisionRequest?.init?.body))).toEqual({
-      action: "approve",
-      reason: "核对导入计数与完整性",
-    });
-    const publishLink = wrapper.get(`[data-candidate-publish='${approvedId}']`);
-    expect(publishLink.attributes("href")).toBe(`/admin/releases?candidate=${approvedId}`);
-  });
 });

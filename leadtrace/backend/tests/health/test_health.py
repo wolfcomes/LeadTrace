@@ -146,14 +146,9 @@ def test_production_configuration_accepts_explicit_safe_values(tmp_path: Path) -
 
 @pytest.mark.parametrize(
     "field",
-    [
-        "baseline_import_root",
-        "baseline_source_manifest",
-        "baseline_expected_aggregate",
-        "ai_prefill_legacy_root",
-    ],
+    ["ai_prefill_legacy_root"],
 )
-def test_blank_optional_baseline_path_is_treated_as_unconfigured(
+def test_blank_optional_path_is_treated_as_unconfigured(
     tmp_path: Path,
     field: str,
 ) -> None:

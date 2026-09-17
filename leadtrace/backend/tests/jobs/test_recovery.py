@@ -13,7 +13,6 @@ import yaml
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.auth.models import AuthSession
 from app.config import Settings
 from app.database import (
     DatabaseResources,
@@ -33,7 +32,6 @@ from app.main import create_app
 from app.maintenance.models import MaintenanceWindow
 from app.maintenance.service import MaintenanceModeActive
 from app.maintenance.service import MaintenanceService
-from app.releases.models import Release
 from app.security.permissions import get_authenticated_principal
 from app.security.policies import Principal
 from app.security.sessions import SESSION_COOKIE_NAME
@@ -674,177 +672,6 @@ def test_maintenance_mode_rejects_worker_heartbeat(
         assert persisted is not None
         assert updated is False
         assert persisted.heartbeat_at == NOW - timedelta(minutes=1)
-
-
-def _maintenance_client(
-    tmp_path: Path,
-    database_url: str,
-    factory: sessionmaker[Session],
-) -> TestClient:
-    settings = Settings(
-        _env_file=None,
-        environment="test",
-        database_url=database_url,
-        redis_url="redis://127.0.0.1:6379/0",
-        session_secret="maintenance-test-secret-more-than-thirty-two-characters",
-        allowed_hosts=["testserver"],
-        asset_root=tmp_path / "assets",
-    )
-    resources = DatabaseResources(
-        engine=factory.kw["bind"],
-        session_factory=factory,
-    )
-    return TestClient(
-        create_app(
-            settings=settings,
-            database_probe=lambda _: True,
-            database_bootstrap=lambda _: resources,
-        )
-    )
-
-
-def _login(client: TestClient, username: str) -> str:
-    response = client.post(
-        "/api/v1/auth/login",
-        json={"username": username, "password": PASSWORD},
-    )
-    assert response.status_code == 200
-    return response.json()["csrf_token"]
-
-
-def test_maintenance_api_keeps_published_reads_and_blocks_reviewer_writes(
-    tmp_path: Path,
-    empty_postgresql_database_url: str,
-    auth_session_factory: sessionmaker[Session],
-) -> None:
-    with auth_session_factory.begin() as session:
-        users: dict[UserRole, UUID] = {}
-        for role in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.VISITOR):
-            user = UserService().create_user(
-                session,
-                username=f"maintenance.{role.value}",
-                display_name=f"Maintenance {role.value}",
-                role=role,
-                initial_password=PASSWORD,
-            )
-            user.must_change_password = False
-            session.flush()
-            users[role] = user.id
-        session.add(
-            Release(
-                release_key="maintenance-current",
-                title="Current scientific release",
-                notes="",
-                metrics={"paper_count": 1},
-                published_by_id=users[UserRole.ADMIN],
-                published_at=NOW,
-                is_current=True,
-                manifest_finalized=True,
-            )
-        )
-
-    with _maintenance_client(
-        tmp_path,
-        empty_postgresql_database_url,
-        auth_session_factory,
-    ) as client:
-        admin_csrf = _login(client, "maintenance.admin")
-        expected_end = datetime.now(UTC) + timedelta(hours=2)
-        invalid = client.put(
-            "/api/v1/admin/maintenance",
-            headers={"X-CSRF-Token": admin_csrf},
-            json={
-                "active": True,
-                "reason": "Invalid expired window",
-                "expected_end": (datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
-            },
-        )
-        assert invalid.status_code == 422
-
-        enabled = client.put(
-            "/api/v1/admin/maintenance",
-            headers={"X-CSRF-Token": admin_csrf},
-            json={
-                "active": True,
-                "reason": "Apply a verified schema migration",
-                "expected_end": expected_end.isoformat(),
-            },
-        )
-        assert enabled.status_code == 200
-        assert enabled.json() == {
-            "active": True,
-            "reason": "Apply a verified schema migration",
-            "started_at": enabled.json()["started_at"],
-            "expected_end": expected_end.isoformat().replace("+00:00", "Z"),
-            "started_by_id": str(users[UserRole.ADMIN]),
-            "allowed_operations": [
-                "read_published_data",
-                "inspect_system_health",
-                "disable_maintenance_mode",
-            ],
-        }
-
-        client.cookies.clear()
-        unauthenticated = client.post(
-            "/api/v1/review/changesets",
-            json={},
-        )
-        assert unauthenticated.status_code == 401
-        assert unauthenticated.json()["code"] == "AUTHENTICATION_REQUIRED"
-
-        _login(client, "maintenance.visitor")
-        published = client.get("/api/v1/published/overview")
-        assert published.status_code == 200
-        assert published.json()["release"]["key"] == "maintenance-current"
-
-        client.cookies.clear()
-        reviewer_csrf = _login(client, "maintenance.reviewer")
-        with auth_session_factory.begin() as session:
-            before_last_seen = session.scalar(
-                select(AuthSession.last_seen_at)
-                .where(AuthSession.user_id == users[UserRole.REVIEWER])
-                .order_by(AuthSession.created_at.desc())
-                .limit(1)
-            )
-        blocked = client.post(
-            "/api/v1/review/changesets",
-            headers={"X-CSRF-Token": reviewer_csrf},
-            json={},
-        )
-        assert blocked.status_code == 503
-        assert blocked.json()["code"] == "MAINTENANCE_MODE"
-        assert blocked.json()["message"] == "LeadTrace is temporarily read-only"
-        assert blocked.json()["details"] == {
-            "expected_end": expected_end.isoformat().replace("+00:00", "Z"),
-        }
-        with auth_session_factory.begin() as session:
-            after_last_seen = session.scalar(
-                select(AuthSession.last_seen_at)
-                .where(AuthSession.user_id == users[UserRole.REVIEWER])
-                .order_by(AuthSession.created_at.desc())
-                .limit(1)
-            )
-        assert after_last_seen == before_last_seen
-
-        client.cookies.clear()
-        admin_csrf = _login(client, "maintenance.admin")
-        disabled = client.put(
-            "/api/v1/admin/maintenance",
-            headers={"X-CSRF-Token": admin_csrf},
-            json={
-                "active": False,
-                "reason": "Migration and integrity checks completed",
-            },
-        )
-        assert disabled.status_code == 200
-        assert disabled.json()["active"] is False
-
-    with auth_session_factory.begin() as session:
-        windows = list(session.scalars(select(MaintenanceWindow)))
-        assert len(windows) == 1
-        assert windows[0].active_slot is None
-        assert windows[0].ended_by_id == users[UserRole.ADMIN]
-        assert windows[0].ended_reason == "Migration and integrity checks completed"
 
 
 def test_five_concurrent_reviewer_writes_share_the_request_database_session(

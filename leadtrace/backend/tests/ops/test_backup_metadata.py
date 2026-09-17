@@ -395,8 +395,10 @@ def test_asset_backup_finalizes_manifest_and_encrypted_archive(tmp_path: Path) -
         "LEADTRACE_BACKUP_DESTINATION": str(destination),
         "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
         "LEADTRACE_ASSET_ROOT": str(asset_root),
-        "LEADTRACE_SOURCE_ROOTS": json.dumps({"baseline": str(source_root)}),
-        "LEADTRACE_SOURCE_ALLOWED_PARENTS": json.dumps({"baseline": str(tmp_path)}),
+        "LEADTRACE_SOURCE_ROOTS": json.dumps({"source_pdfs": str(source_root)}),
+        "LEADTRACE_SOURCE_ALLOWED_PARENTS": json.dumps(
+            {"source_pdfs": str(tmp_path)}
+        ),
         "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
         "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
         "LEADTRACE_DESTINATION_ID": "test-destination",
@@ -437,11 +439,11 @@ def test_asset_backup_finalizes_manifest_and_encrypted_archive(tmp_path: Path) -
     )
     assert manifest["layout"] == {
         "managed_root": "managed",
-        "source_roots": {"baseline": "sources/baseline"},
+        "source_roots": {"source_pdfs": "sources/source_pdfs"},
     }
     assert {row["path"] for row in manifest["files"]} == {
         "managed/objects/one.txt",
-        "sources/baseline/paper.pdf",
+        "sources/source_pdfs/paper.pdf",
     }
 
 
@@ -483,7 +485,7 @@ def test_asset_backup_requires_explicit_source_root_configuration(
     assert not (destination / "missing-source-config").exists()
 
 
-def test_asset_backup_requires_the_baseline_source_namespace(tmp_path: Path) -> None:
+def test_asset_backup_requires_the_source_pdfs_namespace(tmp_path: Path) -> None:
     destination = tmp_path / "backups"
     destination.mkdir()
     asset_root = tmp_path / "assets"
@@ -508,7 +510,7 @@ def test_asset_backup_requires_the_baseline_source_namespace(tmp_path: Path) -> 
         "LEADTRACE_APPLICATION_VERSION": "0.1.0",
         "LEADTRACE_SCHEMA_VERSION": "0015",
         "LEADTRACE_RELEASE_VERSION": "release-test",
-        "LEADTRACE_BACKUP_ID": "missing-baseline-source",
+        "LEADTRACE_BACKUP_ID": "missing-source-pdfs",
     }
 
     result = subprocess.run(
@@ -520,8 +522,8 @@ def test_asset_backup_requires_the_baseline_source_namespace(tmp_path: Path) -> 
     )
 
     assert result.returncode != 0
-    assert "baseline" in (result.stderr + result.stdout).casefold()
-    assert not (destination / "missing-baseline-source").exists()
+    assert "source_pdfs" in (result.stderr + result.stdout).casefold()
+    assert not (destination / "missing-source-pdfs").exists()
 
 
 def test_asset_backup_rejects_source_root_outside_its_allowed_parent(
@@ -547,9 +549,9 @@ def test_asset_backup_rejects_source_root_outside_its_allowed_parent(
         "LEADTRACE_BACKUP_DESTINATION": str(destination),
         "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
         "LEADTRACE_ASSET_ROOT": str(asset_root),
-        "LEADTRACE_SOURCE_ROOTS": json.dumps({"baseline": str(source_root)}),
+        "LEADTRACE_SOURCE_ROOTS": json.dumps({"source_pdfs": str(source_root)}),
         "LEADTRACE_SOURCE_ALLOWED_PARENTS": json.dumps(
-            {"baseline": str(approved_parent)}
+            {"source_pdfs": str(approved_parent)}
         ),
         "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
         "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
@@ -635,8 +637,10 @@ def test_full_and_incremental_asset_chain_restores_with_real_tar(
         "LEADTRACE_BACKUP_DESTINATION": str(destination),
         "LEADTRACE_ASSET_ALLOWED_PARENT": str(tmp_path),
         "LEADTRACE_ASSET_ROOT": str(asset_root),
-        "LEADTRACE_SOURCE_ROOTS": json.dumps({"baseline": str(source_root)}),
-        "LEADTRACE_SOURCE_ALLOWED_PARENTS": json.dumps({"baseline": str(tmp_path)}),
+        "LEADTRACE_SOURCE_ROOTS": json.dumps({"source_pdfs": str(source_root)}),
+        "LEADTRACE_SOURCE_ALLOWED_PARENTS": json.dumps(
+            {"source_pdfs": str(tmp_path)}
+        ),
         "LEADTRACE_ENCRYPTION_RECIPIENT": "age1example",
         "LEADTRACE_ENCRYPTION_FINGERPRINT": "SHA256:test-key",
         "LEADTRACE_DESTINATION_ID": "test-destination",
@@ -723,7 +727,7 @@ def test_full_and_incremental_asset_chain_restores_with_real_tar(
     assert (restored / "managed" / "second.txt").read_text(encoding="utf-8") == (
         "second revision"
     )
-    assert (restored / "sources" / "baseline" / source_file.name).read_text(
+    assert (restored / "sources" / "source_pdfs" / source_file.name).read_text(
         encoding="utf-8"
     ) == "source revision two"
 

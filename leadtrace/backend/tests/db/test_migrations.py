@@ -586,6 +586,29 @@ def test_alembic_cli_uses_supported_runtime_database_urls(
     assert expected_head in completed.stdout
 
 
+def test_full_migration_chain_renders_as_offline_sql() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "-c",
+            str(ALEMBIC_CONFIG_PATH),
+            "upgrade",
+            "head",
+            "--sql",
+        ],
+        cwd=BACKEND_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "CREATE TABLE ai_extraction_runs" in completed.stdout
+    assert "offline migration requires an empty legacy releases table" in completed.stdout
+
+
 def test_application_starts_only_after_empty_database_is_migrated(
     tmp_path: Path,
     empty_postgresql_database_url: str,

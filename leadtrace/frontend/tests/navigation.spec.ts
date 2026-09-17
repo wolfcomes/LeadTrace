@@ -68,6 +68,7 @@ describe("role-aware application navigation", () => {
       "文章目录",
       "提交审批",
       "文件管理",
+      "任务队列",
       "用户管理",
       "审计记录",
       "系统状态",
@@ -104,7 +105,7 @@ describe("role-aware application navigation", () => {
     expect(wrapper.get("[data-app-shell]").classes()).toContain("application-shell");
     expect(wrapper.get("[data-app-sidebar]").attributes("aria-label")).toBeTruthy();
     expect(wrapper.find("[data-app-topbar]").exists()).toBe(true);
-    expect(wrapper.findAll("[data-navigation-icon]")).toHaveLength(7);
+    expect(wrapper.findAll("[data-navigation-icon]")).toHaveLength(8);
     expect(wrapper.findAll(".nav-link").every((item) => item.attributes("title"))).toBe(true);
   });
 

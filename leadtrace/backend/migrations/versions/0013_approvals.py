@@ -14,7 +14,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
@@ -317,6 +317,20 @@ def _build_release_artifact_snapshot(
 
 
 def _backfill_release_artifact_manifests() -> None:
+    if context.is_offline_mode():
+        op.execute(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM releases) THEN
+                    RAISE EXCEPTION
+                        'offline migration requires an empty legacy releases table';
+                END IF;
+            END;
+            $$
+            """
+        )
+        return
     connection = op.get_bind()
     release_ids = list(
         connection.scalars(sa.text("SELECT id FROM releases ORDER BY id"))

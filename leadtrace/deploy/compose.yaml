@@ -62,10 +62,7 @@ services:
       LEADTRACE_ALLOWED_HOSTS: '${LEADTRACE_ALLOWED_HOSTS:-["localhost","127.0.0.1","leadtrace.lan"]}'
       LEADTRACE_TRUSTED_PROXY_ADDRESSES: '["172.30.97.10"]'
       LEADTRACE_ASSET_ROOT: /var/lib/leadtrace/assets
-      LEADTRACE_SOURCE_ROOTS: '${LEADTRACE_SOURCE_ROOTS:-{}}'
-      LEADTRACE_BASELINE_IMPORT_ROOT: '${LEADTRACE_BASELINE_IMPORT_ROOT:-}'
-      LEADTRACE_BASELINE_SOURCE_MANIFEST: '${LEADTRACE_BASELINE_SOURCE_MANIFEST:-}'
-      LEADTRACE_BASELINE_EXPECTED_AGGREGATE: '${LEADTRACE_BASELINE_EXPECTED_AGGREGATE:-}'
+      LEADTRACE_SOURCE_ROOTS: '${LEADTRACE_SOURCE_ROOTS:-{"source_pdfs":"/var/lib/leadtrace/source_pdfs"}}'
       LEADTRACE_AI_PREFILL_ENGINE: ${LEADTRACE_AI_PREFILL_ENGINE:-legacy_pipeline}
       LEADTRACE_AI_PREFILL_ENGINE_VERSION: ${LEADTRACE_AI_PREFILL_ENGINE_VERSION:-pilot-v1}
       LEADTRACE_NGINX_INTERNAL_TRANSFER: ${LEADTRACE_NGINX_INTERNAL_TRANSFER:-true}
@@ -78,6 +75,7 @@ services:
       - "8000"
     volumes:
       - leadtrace_assets:/var/lib/leadtrace/assets:ro
+      - ${LEADTRACE_SOURCE_PDFS_HOST_ROOT:-../../source_pdfs}:/var/lib/leadtrace/source_pdfs:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
       interval: 10s

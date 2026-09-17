@@ -37,6 +37,7 @@ export const zhCN = {
     articleCatalog: "文章目录",
     submissions: "提交审批",
     files: "文件管理",
+    jobs: "任务队列",
     users: "用户管理",
     audit: "审计记录",
     system: "系统状态",

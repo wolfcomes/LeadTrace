@@ -1,29 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
 from rdkit import Chem, rdBase
 from rdkit.Chem import Descriptors, rdMolDescriptors
 
-from app.revisions.models import StructureState
-
 
 class ChemistryValidationError(ValueError):
     """Raised when a requested chemical interpretation is inconsistent."""
-
-
-class ExperimentalMaterial(StrEnum):
-    UNIQUE = "unique"
-    NON_UNIQUE_STEREOCHEMISTRY = "non_unique_stereochemistry"
-    MULTICOMPONENT = "multicomponent"
-    CONSTITUTION_ONLY = "constitution_only"
-
-
-class SourceComparison(StrEnum):
-    NOT_COMPARED = "not_compared"
-    MATCH = "match"
-    MISMATCH = "mismatch"
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,10 +24,7 @@ class StructureValidation:
     has_radicals: bool
     has_stereochemistry: bool
     is_salt: bool
-    experimental_material: ExperimentalMaterial
-    source_comparison: SourceComparison
     messages: tuple[str, ...]
-    eligible_states: tuple[StructureState, ...]
 
 
 def _parse(smiles: str) -> Chem.Mol | None:
@@ -96,22 +77,10 @@ def validate_structure(
     smiles: str,
     *,
     selected_component_smiles: str | None = None,
-    experimental_material: ExperimentalMaterial = ExperimentalMaterial.UNIQUE,
-    source_comparison: SourceComparison = SourceComparison.NOT_COMPARED,
-    source_verified: bool = False,
-    human_confirmed: bool = False,
 ) -> StructureValidation:
     input_smiles = smiles.strip()
     molecule = _parse(input_smiles) if input_smiles else None
     if molecule is None:
-        states = [StructureState.PROPOSAL]
-        if experimental_material is ExperimentalMaterial.NON_UNIQUE_STEREOCHEMISTRY:
-            states.append(StructureState.NON_UNIQUE_STEREOCHEMISTRY)
-        if experimental_material is ExperimentalMaterial.MULTICOMPONENT:
-            states.append(StructureState.MULTICOMPONENT_UNRESOLVED)
-        if source_comparison is SourceComparison.MISMATCH:
-            states.append(StructureState.SOURCE_STRUCTURE_MISMATCH)
-        states.append(StructureState.REJECTED)
         return StructureValidation(
             input_smiles=input_smiles,
             parseable=False,
@@ -125,10 +94,7 @@ def validate_structure(
             has_radicals=False,
             has_stereochemistry=False,
             is_salt=False,
-            experimental_material=experimental_material,
-            source_comparison=source_comparison,
             messages=(("NO_UNIQUE_SMILES",) if not input_smiles else ("SMILES_PARSE_FAILED",)),
-            eligible_states=tuple(states),
         )
 
     validated, selected, component_count, messages = _selected_component(
@@ -148,33 +114,6 @@ def validate_structure(
     )
     canonical = _canonical(validated, isomeric=False)
     canonical_isomeric = _canonical(validated, isomeric=True)
-    states = [StructureState.PROPOSAL, StructureState.PARSEABLE_CANDIDATE]
-    if source_verified:
-        states.append(StructureState.SOURCE_BOUND_CANDIDATE)
-    if component_count > 1 and selected is None:
-        states.append(StructureState.MULTICOMPONENT_UNRESOLVED)
-    if experimental_material is ExperimentalMaterial.NON_UNIQUE_STEREOCHEMISTRY:
-        states.append(StructureState.NON_UNIQUE_STEREOCHEMISTRY)
-    if experimental_material is ExperimentalMaterial.MULTICOMPONENT:
-        if StructureState.MULTICOMPONENT_UNRESOLVED not in states:
-            states.append(StructureState.MULTICOMPONENT_UNRESOLVED)
-    if experimental_material is ExperimentalMaterial.CONSTITUTION_ONLY:
-        states.append(StructureState.CONSTITUTION_CONFIRMED)
-    if source_comparison is SourceComparison.MISMATCH:
-        states.append(StructureState.SOURCE_STRUCTURE_MISMATCH)
-
-    confirmation_blocked = (
-        component_count > 1 and selected is None
-        or has_dummy_atoms
-        or has_radicals
-        or experimental_material is not ExperimentalMaterial.UNIQUE
-        or source_comparison is not SourceComparison.MATCH
-        or not source_verified
-        or not human_confirmed
-    )
-    if not confirmation_blocked:
-        states.append(StructureState.STRUCTURE_CONFIRMED)
-    states.append(StructureState.REJECTED)
     return StructureValidation(
         input_smiles=input_smiles,
         parseable=True,
@@ -188,8 +127,5 @@ def validate_structure(
         has_radicals=has_radicals,
         has_stereochemistry=has_stereochemistry,
         is_salt=is_salt,
-        experimental_material=experimental_material,
-        source_comparison=source_comparison,
         messages=tuple(messages),
-        eligible_states=tuple(states),
     )

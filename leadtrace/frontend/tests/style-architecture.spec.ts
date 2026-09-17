@@ -86,14 +86,8 @@ describe("centralized visual system", () => {
   it("documents the remaining component-specific style exceptions", () => {
     expect(matchingVueLines(
       /\.(?:button-primary|button-secondary|button-danger|admin-panel|page-heading|page-state)\b|table\s*\{/,
-    )).toEqual([
-      "src/approvals/ScientificApprovalReview.vue:.binding-table { display: grid; gap: 8px; padding: 16px; border: 1px solid var(--line); background: var(--surface); }",
-      "src/approvals/ScientificApprovalReview.vue:.binding-table table { width: 100%; border-collapse: collapse; font-size: .68rem; }",
-    ]);
+    )).toEqual([]);
 
-    expect(matchingVueLines(/#[0-9a-fA-F]{3,8}|rgba?\(/)).toEqual([
-      "src/review/conflicts/ConflictResolver.vue:.conflict-layer { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(23, 43, 60, .62); }",
-      "src/review/conflicts/ConflictResolver.vue:.conflict-dialog { width: min(100%, 510px); padding: 28px; border-top: 4px solid var(--danger); box-shadow: 0 28px 80px rgba(23, 43, 60, .25); }",
-    ]);
+    expect(matchingVueLines(/#[0-9a-fA-F]{3,8}|rgba?\(/)).toEqual([]);
   });
 });

@@ -1,48 +1,80 @@
 # LeadTrace
 
-LeadTrace is a LAN-hosted evidence and review platform for medicinal-chemistry
-lead-optimization data. The new modular monolith is being introduced beside the
-existing read-only Dashboard so the scientific corpus remains available during
-migration.
+LeadTrace is a LAN-hosted, paper-centric review system for medicinal-chemistry
+lead-optimization data. It runs beside the separate read-only legacy Dashboard;
+the Dashboard remains available on port `8765` and is not part of this
+application.
 
-This scaffold provides:
+## Current workflow
 
-- a FastAPI process with independent liveness and dependency readiness checks;
-- typed configuration that rejects unsafe production values;
-- a Vue 3 and TypeScript application shell with explicit loading, ready,
-  unavailable, forbidden, not-found, and error states;
-- PostgreSQL with versioned Alembic migrations, Redis, a Celery worker, the
-  frontend development server, and Nginx in Docker Compose;
-- Admin-created local accounts with role-aware server sessions; and
-- one externally published development port (`8876` by default). PostgreSQL,
-  Redis, FastAPI, and Vite remain Docker-internal.
+The PostgreSQL schema treats one Paper as the scientific ownership boundary:
 
-Business data pages, review workflows, and source migration are added in
-subsequent implementation tasks.
+- one protected source PDF is registered as an Asset and Paper Source;
+- one Paper stores the deterministic catalog fields extracted from that PDF;
+- one active Reviewer assignment owns one editable Paper Workspace;
+- the Workspace uses one fixed template, while the number of Compounds,
+  Structures, Lineages, Edges, Evidence records, and Activities may vary;
+- each Compound has at most one Structure, plus zero or more source-PDF image
+  occurrences used to verify connectivity and identity;
+- Evidence primarily supports Lineage Edges;
+- every Reviewer mutation increments the Workspace version and appends history;
+- submission freezes an immutable snapshot;
+- an Admin must request changes or approve the frozen submission; and
+- approval publishes an immutable Paper Version visible from the Paper library.
 
-## Local backend tests
+AI prefill is optional. It writes through the same scientific service boundary
+as the Reviewer UI, but only into a blank untouched Workspace. The complete AI
+payload is applied in one PostgreSQL transaction, never overwrites human work,
+and creates the same single Structure row that a Reviewer may later edit in
+place. The first adapter reads existing pilot artifacts; a future PDF model can
+implement the same versioned payload contract.
+
+PostgreSQL is the only business-data authority. Redis is delivery state for
+Celery and may be rebuilt from PostgreSQL-backed jobs and extraction runs.
+
+## Local verification
+
+Backend tests require an isolated PostgreSQL database whose name ends in
+`_test`. The fixture rebuilds the shared `public` schema, so database-backed
+pytest invocations must run serially.
 
 ```bash
 python -m venv .venv
 .venv/bin/python -m pip install -e 'leadtrace/backend[test]'
 cd leadtrace/backend
-../../.venv/bin/python -m pytest
+LEADTRACE_TEST_DATABASE_URL='postgresql+psycopg://leadtrace@127.0.0.1/leadtrace_test' \
+  ../../.venv/bin/python -m pytest -v
 ```
 
-## Frontend tests and build
+Frontend verification:
 
 ```bash
 cd leadtrace/frontend
 npm ci
-npm test
+npm test -- --run
+npm run typecheck
 npm run build
+npx playwright test
+```
+
+Static and migration checks:
+
+```bash
+cd leadtrace/backend
+../../.venv/bin/python -m compileall -q app
+../../.venv/bin/python -m alembic -c alembic.ini upgrade head --sql \
+  >/tmp/leadtrace-migration.sql
+../../.venv/bin/python -m app.cli.audit verify
+cd ../..
+docker compose -f leadtrace/deploy/compose.yaml config -q
+git diff --check
 ```
 
 ## Development stack
 
-Copy `deploy/env/example.env` to a private `.env` next to `compose.yaml`, replace
-the placeholders, provision the internal-CA certificate and private key as
-`deploy/nginx/tls/leadtrace.crt` and `deploy/nginx/tls/leadtrace.key`, and run
+Copy `deploy/env/example.env` to a protected `.env` next to
+`compose.yaml`, replace all placeholders, provision the internal-CA files as
+`deploy/nginx/tls/leadtrace.crt` and `deploy/nginx/tls/leadtrace.key`, then run
 from the repository root:
 
 ```bash
@@ -52,101 +84,85 @@ docker compose --env-file leadtrace/deploy/.env \
   -f leadtrace/deploy/compose.yaml up -d --build
 ```
 
-Without `--env-file`, Compose uses explicitly development-only defaults. After
-the internal CA is trusted by the client and the certificate SAN includes
-`leadtrace.lan`, open `https://leadtrace.lan:8876/`. The Compose Nginx service
-always expects TLS; its port must not be documented or operated as plain HTTP.
-The legacy Dashboard remains separate on port 8765.
+After trusting the internal CA, open `https://leadtrace.lan:8876/`. Nginx is
+the only externally published service. PostgreSQL, Redis, FastAPI, Vite, and
+the workers remain internal. Both Web and Worker mount `source_pdfs` read-only;
+the Worker also mounts the selected legacy AI artifact root read-only.
 
-The one-shot `migrate` service upgrades a fresh PostgreSQL volume before the
-web process and worker start. The application itself never changes schemas at
-startup; it refuses to serve when the database is not at the expected Alembic
-head.
+The one-shot `migrate` service upgrades a fresh PostgreSQL volume before Web
+and Worker start. The application never changes schemas during startup and
+refuses to serve when the database is not at the expected Alembic head.
 
-## Reviewer scientific workspace rollout
+## New pilot database only
 
-Migration `0018_reviewer_scientific_workspace` adds immutable OCSR proposal
-evidence, source Regions, Paper review scopes, and append-only attestations.
-Baseline imports created after this migration include proposal/crop evidence in
-the candidate and its first Release. A baseline that was published before the
-proposal tables were populated must be repaired explicitly by an enabled Admin;
-historical Release manifests and active Reviewer changesets are never edited or
-silently rebased.
+Do not run the paper-centric migrations directly against a live or historical
+business database. Verify its timestamped backup, restore that backup into a
+separate isolated database for rollback testing, then create a new empty pilot
+database. Import only the selected 20 source PDFs into that new database.
 
-After reauthenticating as an Admin, run the evidence-only successor operation
-with the exact source fingerprint recorded in the current Release's baseline
-metadata:
+Build a deterministic manifest without modifying the source directory:
 
 ```bash
-python -m app.cli.import_proposals \
-  --source-root /absolute/path/to/source-workspace/source_pdfs/project \
-  --source-manifest /absolute/path/to/source-manifest.json \
-  --expected-aggregate /absolute/path/to/expected-aggregate.json \
-  --source-fingerprint <64-character-baseline-fingerprint> \
-  --actor-id <admin-uuid> \
-  --idempotency-key machine-evidence-2026-09-15
+python leadtrace/ops/pilot/build_manifest.py \
+  --source-root /read-only/source_pdfs \
+  --source-directory '<pilot-source-directory>' \
+  --source-root-key source_pdfs \
+  --journal 'Journal of Medicinal Chemistry' \
+  --publication-year 2024 \
+  --volume 67 \
+  --issue 5 \
+  --created-on 2026-09-17 \
+  --output /protected/acceptance/pilot-manifest.json
 ```
 
-The command prints only Release IDs, counts, and idempotency state. It never
-prints credentials, storage keys, source paths, or crop paths. The successor
-Release keeps the existing `human_review` metric and remains unverified until a
-Reviewer Paper attestation, independent Admin approval, and successor Release
-publication complete the normal workflow. Verify the metric before publishing:
+Validate all 20 hashes and metadata before writing, then apply the exact same
+manifest:
 
 ```bash
-python -m app.cli.audit verify
+cd leadtrace/backend
+python -m app.cli.import_pilot \
+  --manifest /protected/acceptance/pilot-manifest.json \
+  --source-root /read-only/source_pdfs \
+  --dry-run
+python -m app.cli.import_pilot \
+  --manifest /protected/acceptance/pilot-manifest.json \
+  --source-root /read-only/source_pdfs \
+  --apply
 ```
 
-## Native development without Docker
+Both commands must report `verified=20`. A repeated apply is allowed only as
+an exact idempotent replay.
 
-Docker is optional during the current development phase. Point LeadTrace at a
-dedicated PostgreSQL database whose name ends in `_test` for tests, or at a
-dedicated development database for manual use. Do not use a production or
-scientific source-data database.
+## Accounts and native development
 
-This native Uvicorn command is a direct HTTP development mode without Nginx.
-It is not accepted for production cutover or LAN TLS validation.
+Configure a dedicated development database and protected runtime secrets. The
+source-root key must match the pilot manifest.
 
 ```bash
-python -m venv .venv
-.venv/bin/python -m pip install -e 'leadtrace/backend[test]'
 export LEADTRACE_DATABASE_URL='postgresql+psycopg://leadtrace@127.0.0.1/leadtrace_dev'
 export LEADTRACE_SESSION_SECRET='replace-with-a-long-random-development-secret'
 export LEADTRACE_DEFAULT_ACCOUNT_PASSWORD='replace-with-a-protected-local-default'
 export LEADTRACE_ALLOWED_HOSTS='["127.0.0.1","localhost","leadtrace.lan"]'
 export LEADTRACE_ASSET_ROOT='/absolute/path/to/leadtrace-data/assets'
-export LEADTRACE_SOURCE_ROOTS='{"baseline":"/absolute/path/to/source-workspace"}'
-export LEADTRACE_BASELINE_IMPORT_ROOT='/absolute/path/to/source-workspace/source_pdfs/project'
-export LEADTRACE_BASELINE_SOURCE_MANIFEST='/absolute/path/to/source-manifest.json'
-export LEADTRACE_BASELINE_EXPECTED_AGGREGATE='/absolute/path/to/expected-aggregate.json'
+export LEADTRACE_SOURCE_ROOTS='{"source_pdfs":"/absolute/path/to/source_pdfs"}'
 export LEADTRACE_NGINX_INTERNAL_TRANSFER='false'
 cd leadtrace/backend
 ../../.venv/bin/python -m alembic -c alembic.ini upgrade head
 ../../.venv/bin/python -m app.cli.users create admin \
   --display-name 'LeadTrace Admin' --role admin --bootstrap
 ../../.venv/bin/python -m uvicorn app.main:app \
-  --host 0.0.0.0 --port 8876 --no-proxy-headers
+  --host 127.0.0.1 --port 8876 --no-proxy-headers
 ```
 
-`LEADTRACE_SOURCE_ROOTS.baseline` is the manifest workspace used to resolve
-protected source assets. `LEADTRACE_BASELINE_IMPORT_ROOT` is the narrower,
-read-only dataset directory containing `01_manifest` and `09_paper_review`.
-The two other baseline settings point to the approved manifest and aggregate
-contract. The Admin HTTP backfill operation is unavailable unless all three
-paths are configured and mounted read-only in the web container.
-
-Replace the default-password placeholder through a protected, non-versioned
-service environment before creating accounts. The CLI never accepts or prints
-the value. `--bootstrap` is limited to the first Admin in an empty user
-database; later CLI account creation and individual reset require an explicit
-enabled Admin `--actor-id` and append a credential-free audit event. Browser
-password changes are optional after login and are available from the signed-in
-account area.
-In native direct mode, proxy headers stay disabled so a LAN client cannot
-forge the source address used by login throttling.
+The CLI never accepts or prints the configured default password. `--bootstrap`
+is limited to the first Admin in an empty user database; later account creation
+requires an enabled Admin actor and appends a credential-free audit event.
 
 Health endpoints:
 
-- `GET /health/live` confirms only that the API process is alive;
-- `GET /health/ready` returns HTTP 503 until PostgreSQL and the protected asset
-  root are available.
+- `GET /health/live` checks only that the API process is alive.
+- `GET /health/ready` returns HTTP 503 until PostgreSQL and protected storage
+  are available.
+
+The complete pilot procedure and evidence checklist are in
+`docs/acceptance/leadtrace-paper-centric-pilot.md`.

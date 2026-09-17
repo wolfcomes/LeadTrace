@@ -20,6 +20,43 @@ from leadtrace.ops.backup.verify_backup import verify_backup  # noqa: E402
 
 
 CHUNK_SIZE = 1024 * 1024
+PAPER_CENTRIC_COUNT_KEYS = {
+    "papers",
+    "paper_sources",
+    "review_tasks",
+    "paper_workspaces",
+    "paper_section_reviews",
+    "change_events",
+    "paper_submissions",
+    "admin_decisions",
+    "published_paper_versions",
+    "current_published_papers",
+    "ai_extraction_runs",
+    "compounds",
+    "structures",
+    "structure_source_images",
+    "lineages",
+    "lineage_members",
+    "lineage_edges",
+    "evidence",
+    "edge_evidence_links",
+    "activities",
+    "assets",
+    "crop_jobs",
+    "crop_job_attempts",
+    "crop_job_retry_operations",
+    "maintenance_windows",
+    "users",
+    "admin_users",
+}
+PAPER_CENTRIC_INTEGRITY_KEYS = {
+    "paper_source_asset_mismatches",
+    "current_publication_pointer_mismatches",
+    "publication_hash_mismatches",
+    "snapshot_hash_mismatches",
+    "missing_or_corrupt_assets",
+    "audit_chain_invalid",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +71,10 @@ class AssetRestoreReport:
             "file_count": self.file_count,
             "errors": list(self.errors),
         }
+
+
+class InvalidDrillAccountError(ValueError):
+    pass
 
 
 def _sha256(path: Path) -> str:
@@ -189,50 +230,272 @@ def _restored_asset_layout(
     return bundled_directory(managed_value), source_roots
 
 
+def _current_publication_pointer_mismatches(
+    papers: Sequence[object],
+    published_versions: Sequence[object],
+) -> int:
+    latest_by_paper: dict[object, object] = {}
+    for version in published_versions:
+        paper_id = getattr(version, "paper_id")
+        latest = latest_by_paper.get(paper_id)
+        if latest is None or getattr(version, "version_number") > getattr(
+            latest, "version_number"
+        ):
+            latest_by_paper[paper_id] = version
+
+    paper_ids = {getattr(paper, "id") for paper in papers}
+    mismatches = sum(
+        1
+        for paper in papers
+        if getattr(paper, "current_published_version_id")
+        != (
+            getattr(latest, "id")
+            if (latest := latest_by_paper.get(getattr(paper, "id"))) is not None
+            else None
+        )
+    )
+    return mismatches + len(set(latest_by_paper) - paper_ids)
+
+
+def _zero_error_integrity(value: object) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == PAPER_CENTRIC_INTEGRITY_KEYS
+        and all(type(item) is int and item == 0 for item in value.values())
+    )
+
+
 def _safe_database_counts(
     database_url: str,
     *,
     asset_root: Path | None = None,
     source_roots: dict[str, Path] | None = None,
+    excluded_username: str | None = None,
 ) -> dict[str, object]:
-    from sqlalchemy import select
+    from sqlalchemy import func, select
     from sqlalchemy.orm import Session
 
+    from app.activities.models import Activity
+    from app.assets.models import (
+        Asset,
+        AssetAccessLevel,
+        AssetCategory,
+        AssetIntegrityState,
+    )
     from app.assets.storage import LocalAssetStore
+    from app.ai_prefill.models import AiExtractionRun
+    from app.audit.service import AuditService
+    from app.catalog.models import PaperSource, PaperSourceIntegrityState
+    from app.compounds.models import Compound
     from app.database import create_database_engine
-    from app.releases.aggregate import recompute_release_aggregate
-    from app.releases.models import Release
-    from app.releases.validation import validate_release
+    from app.evidence.models import EdgeEvidenceLink, Evidence
+    from app.jobs.models import CropJob, CropJobAttempt, CropJobRetryOperation
+    from app.lineages.models import Lineage, LineageEdge, LineageMember
+    from app.maintenance.models import MaintenanceWindow
+    from app.papers.models import Paper
+    from app.publications.models import AdminDecision, PublishedPaperVersion
+    from app.structure_images.models import StructureSourceImage
+    from app.structures.models import Structure
+    from app.users.models import User, UserRole
+    from app.users.service import normalize_username
+    from app.workspaces.models import (
+        ChangeEvent,
+        PaperSectionReview,
+        PaperSubmission,
+        PaperWorkspace,
+        ReviewTask,
+    )
+    from app.workspaces.snapshot import canonical_snapshot_hash
+
+    def count_rows(session: Session, model: type[object]) -> int:
+        return int(session.scalar(select(func.count()).select_from(model)) or 0)
 
     engine = create_database_engine(database_url)
     try:
         with Session(engine) as session:
-            release = session.scalar(
-                select(Release).where(Release.is_current).limit(1)
+            user_filters = []
+            if excluded_username is not None:
+                try:
+                    normalized_excluded_username = normalize_username(
+                        excluded_username
+                    )
+                except ValueError as error:
+                    raise InvalidDrillAccountError(
+                        "restore drill account must be an existing Reviewer"
+                    ) from error
+                drill_user = session.scalar(
+                    select(User).where(
+                        User.normalized_username == normalized_excluded_username
+                    )
+                )
+                if drill_user is None or drill_user.role is not UserRole.REVIEWER:
+                    raise InvalidDrillAccountError(
+                        "restore drill account must be an existing Reviewer"
+                    )
+                user_filters.append(
+                    User.normalized_username != normalized_excluded_username
+                )
+            users_query = select(func.count()).select_from(User).where(*user_filters)
+            admin_users_query = (
+                select(func.count())
+                .select_from(User)
+                .where(User.role == UserRole.ADMIN)
             )
-            if release is None or not release.manifest_finalized:
-                raise ValueError("current finalized release is missing")
+            model_counts = {
+                "papers": count_rows(session, Paper),
+                "paper_sources": count_rows(session, PaperSource),
+                "review_tasks": count_rows(session, ReviewTask),
+                "paper_workspaces": count_rows(session, PaperWorkspace),
+                "paper_section_reviews": count_rows(session, PaperSectionReview),
+                "change_events": count_rows(session, ChangeEvent),
+                "paper_submissions": count_rows(session, PaperSubmission),
+                "admin_decisions": count_rows(session, AdminDecision),
+                "published_paper_versions": count_rows(
+                    session, PublishedPaperVersion
+                ),
+                "current_published_papers": int(
+                    session.scalar(
+                        select(func.count())
+                        .select_from(Paper)
+                        .where(Paper.current_published_version_id.is_not(None))
+                    )
+                    or 0
+                ),
+                "ai_extraction_runs": count_rows(session, AiExtractionRun),
+                "compounds": count_rows(session, Compound),
+                "structures": count_rows(session, Structure),
+                "structure_source_images": count_rows(
+                    session, StructureSourceImage
+                ),
+                "lineages": count_rows(session, Lineage),
+                "lineage_members": count_rows(session, LineageMember),
+                "lineage_edges": count_rows(session, LineageEdge),
+                "evidence": count_rows(session, Evidence),
+                "edge_evidence_links": count_rows(session, EdgeEvidenceLink),
+                "activities": count_rows(session, Activity),
+                "assets": count_rows(session, Asset),
+                "crop_jobs": count_rows(session, CropJob),
+                "crop_job_attempts": count_rows(session, CropJobAttempt),
+                "crop_job_retry_operations": count_rows(
+                    session, CropJobRetryOperation
+                ),
+                "maintenance_windows": count_rows(session, MaintenanceWindow),
+                "users": int(session.scalar(users_query) or 0),
+                "admin_users": int(session.scalar(admin_users_query) or 0),
+            }
+
+            source_asset_mismatches = 0
+            source_rows = session.execute(
+                select(PaperSource, Asset)
+                .outerjoin(Asset, Asset.id == PaperSource.asset_id)
+                .order_by(PaperSource.id)
+            ).all()
+            for source, asset in source_rows:
+                expected_storage_key = (
+                    PurePosixPath(
+                        "source", source.source_root_key, source.source_key
+                    ).as_posix()
+                )
+                if (
+                    asset is None
+                    or source.sha256 != asset.sha256
+                    or source.byte_size != asset.byte_size
+                    or source.page_count != asset.page_count
+                    or source.integrity_state is not PaperSourceIntegrityState.VERIFIED
+                    or asset.integrity_state is not AssetIntegrityState.VERIFIED
+                    or asset.category is not AssetCategory.ARTICLE_PDF
+                    or asset.access_level is not AssetAccessLevel.REVIEWER
+                    or asset.storage_key != expected_storage_key
+                ):
+                    source_asset_mismatches += 1
+
+            papers = list(session.scalars(select(Paper)))
+            published_versions = list(session.scalars(select(PublishedPaperVersion)))
+            pointer_mismatches = _current_publication_pointer_mismatches(
+                papers,
+                published_versions,
+            )
+
+            submissions = list(session.scalars(select(PaperSubmission)))
+            submissions_by_id = {
+                submission.id: submission for submission in submissions
+            }
+            decisions = list(session.scalars(select(AdminDecision)))
+            decisions_by_id = {decision.id: decision for decision in decisions}
+            publication_hash_mismatches = 0
+            for decision in decisions:
+                submission = submissions_by_id.get(decision.submission_id)
+                if (
+                    submission is None
+                    or decision.paper_id != submission.paper_id
+                    or decision.content_hash != submission.content_hash
+                ):
+                    publication_hash_mismatches += 1
+            for version in published_versions:
+                submission = submissions_by_id.get(version.submission_id)
+                decision = decisions_by_id.get(version.admin_decision_id)
+                if (
+                    submission is None
+                    or decision is None
+                    or version.paper_id != submission.paper_id
+                    or version.paper_id != decision.paper_id
+                    or version.submission_id != decision.submission_id
+                    or version.content_hash != submission.content_hash
+                    or version.content_hash != decision.content_hash
+                ):
+                    publication_hash_mismatches += 1
+
+            snapshot_hash_mismatches = 0
+            for frozen in [*submissions, *published_versions]:
+                snapshot = frozen.snapshot
+                if (
+                    not isinstance(snapshot, dict)
+                    or canonical_snapshot_hash(snapshot) != frozen.content_hash
+                ):
+                    snapshot_hash_mismatches += 1
+
+            assets = list(session.scalars(select(Asset).order_by(Asset.id)))
             store = (
                 LocalAssetStore(asset_root, source_roots=source_roots)
                 if asset_root is not None
                 else None
             )
-            validation = validate_release(
-                session,
-                release.id,
-                asset_store=store,
-            )
-            aggregate = recompute_release_aggregate(
-                session,
-                release,
-                asset_store=store,
-                validation=validation,
-            ).as_dict()
-            aggregate["release_validation"] = {
-                "valid": validation.valid,
-                "issues": [issue.as_dict() for issue in validation.issues],
+            missing_or_corrupt_assets = 0
+            for asset in assets:
+                if store is None:
+                    missing_or_corrupt_assets += 1
+                    continue
+                try:
+                    inspected = store.inspect(asset.storage_key)
+                except (OSError, ValueError):
+                    missing_or_corrupt_assets += 1
+                    continue
+                if (
+                    inspected.sha256 != asset.sha256
+                    or inspected.byte_size != asset.byte_size
+                    or inspected.mime_type != asset.mime_type
+                    or (
+                        asset.page_count is not None
+                        and inspected.page_count != asset.page_count
+                    )
+                    or (asset.width is not None and inspected.width != asset.width)
+                    or (asset.height is not None and inspected.height != asset.height)
+                ):
+                    missing_or_corrupt_assets += 1
+
+            audit_valid = AuditService().verify_chain(session).valid
+            return {
+                "schema_version": 2,
+                "counts": model_counts,
+                "integrity": {
+                    "paper_source_asset_mismatches": source_asset_mismatches,
+                    "current_publication_pointer_mismatches": pointer_mismatches,
+                    "publication_hash_mismatches": publication_hash_mismatches,
+                    "snapshot_hash_mismatches": snapshot_hash_mismatches,
+                    "missing_or_corrupt_assets": missing_or_corrupt_assets,
+                    "audit_chain_invalid": 0 if audit_valid else 1,
+                },
             }
-            return aggregate
     finally:
         engine.dispose()
 
@@ -262,7 +525,7 @@ def verify_restored_system(
         source_roots if source_roots is not None else bundled_source_roots
     )
     checks: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "assets": asset_report.as_dict(),
         "backup_evidence": backup_evidence,
     }
@@ -270,34 +533,40 @@ def verify_restored_system(
     expected_counts = expected_aggregate.get("counts")
     expected_integrity = expected_aggregate.get("integrity_expectations")
     if (
-        expected_aggregate.get("schema_version") != 1
+        expected_aggregate.get("schema_version") != 2
         or not isinstance(expected_counts, dict)
-        or not isinstance(expected_integrity, dict)
+        or set(expected_counts) != PAPER_CENTRIC_COUNT_KEYS
+        or not _zero_error_integrity(expected_integrity)
     ):
-        raise ValueError("approved expected aggregate is invalid")
+        raise ValueError("approved paper-centric expected aggregate is invalid")
     if database_url:
         try:
             baseline = _safe_database_counts(
                 database_url,
                 asset_root=managed_root,
                 source_roots=active_source_roots,
+                excluded_username=drill_username,
             )
+            integrity_clean = _zero_error_integrity(baseline.get("integrity"))
             baseline_matches = (
-                baseline.get("counts") == expected_counts
+                baseline.get("schema_version") == 2
+                and set(baseline.get("counts", {})) == PAPER_CENTRIC_COUNT_KEYS
+                and baseline.get("counts") == expected_counts
                 and baseline.get("integrity") == expected_integrity
+                and integrity_clean
             )
-            release_validation = baseline.get("release_validation")
-            release_valid = (
-                isinstance(release_validation, dict)
-                and release_validation.get("valid") is True
-                and release_validation.get("issues") == []
-            )
-            baseline_ok = baseline_matches and release_valid
-            checks["baseline"] = {"ok": baseline_ok, **baseline}
+            checks["baseline"] = {
+                "ok": baseline_matches,
+                "integrity_ok": integrity_clean,
+                **baseline,
+            }
             if not baseline_matches:
                 errors.append("database_baseline_mismatch")
-            if not release_valid:
-                errors.append("release_validation_failed")
+            if not integrity_clean:
+                errors.append("database_integrity_failed")
+        except InvalidDrillAccountError:
+            checks["baseline"] = {"ok": False, "error": "drill_account_invalid"}
+            errors.append("drill_account_invalid")
         except Exception:
             checks["baseline"] = {"ok": False, "error": "database_unavailable"}
             errors.append("database_unavailable")
@@ -352,26 +621,25 @@ def _verify_http_workflow(
             )
             if login.status_code != 200:
                 return {"ok": False, "error": "login_failed"}
-            papers = client.get("/api/v1/papers?page=1&page_size=1")
+            papers = client.get("/api/v2/papers")
             paper_id = None
             if papers.status_code == 200:
                 items = papers.json().get("items", [])
                 if isinstance(items, list) and items and isinstance(items[0], dict):
-                    paper_id = items[0].get("id")
+                    paper_id = items[0].get("paper_id")
             checks = {
                 "papers": papers.status_code == 200 and isinstance(paper_id, str),
                 "paper_detail": (
                     isinstance(paper_id, str)
-                    and client.get(f"/api/v1/papers/{paper_id}").status_code == 200
+                    and client.get(f"/api/v2/papers/{paper_id}").status_code == 200
                 ),
                 "authorized_pdf": (
                     isinstance(paper_id, str)
                     and client.get(
-                        f"/api/v1/papers/{paper_id}/source-pdf",
+                        f"/api/v2/papers/{paper_id}/source-pdf",
                         headers={"Range": "bytes=0-1023"},
                     ).status_code in {200, 206}
                 ),
-                "release": client.get("/api/v1/published/overview").status_code == 200,
                 "audit": client.get("/api/v1/audit/events?limit=1").status_code == 200,
             }
             return {"ok": all(checks.values()), "checks": checks}

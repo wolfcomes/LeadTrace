@@ -65,7 +65,7 @@ def test_job_recovery_migration_maps_superseded_jobs_before_downgrade(
     empty_postgresql_database_url: str,
 ) -> None:
     config = _alembic_config(empty_postgresql_database_url)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0014_job_recovery_maintenance")
     engine = create_database_engine(empty_postgresql_database_url)
     factory = create_session_factory(engine)
     try:
