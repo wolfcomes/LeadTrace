@@ -47,6 +47,8 @@ export function workspace(version = 1) {
       asset_id: ids.asset,
       source_root_key: "source_pdfs",
       source_key: "volume67 issue5/paper-01.pdf",
+      sha256: "a".repeat(64),
+      page_count: 12,
     },
     sections: sectionKeys.map((section_key) => ({ section_key, state: "pending", note: null })),
   };
@@ -107,6 +109,9 @@ describe("paper-centric Reviewer workspace", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://leadtrace.test");
       requests.push(url);
+      if (url.pathname.endsWith("/compounds")) {
+        return response({ workspace_id: ids.workspace, workspace_version: 1, items: [], total: 0 });
+      }
       return response(workspace());
     }));
     const router = createAppRouter(createMemoryHistory());
@@ -115,7 +120,10 @@ describe("paper-centric Reviewer workspace", () => {
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
-    expect(requests.map((url) => url.pathname)).toEqual([`/api/v2/workspaces/${ids.workspace}`]);
+    expect(requests.map((url) => url.pathname)).toEqual([
+      `/api/v2/workspaces/${ids.workspace}`,
+      `/api/v2/workspaces/${ids.workspace}/compounds`,
+    ]);
     expect(wrapper.get("[data-paper-workspace]").classes()).toContain("paper-workspace-shell");
     expect(wrapper.findAll("[data-workspace-tab]")).toHaveLength(5);
     expect(wrapper.findAll("[data-section-status]")).toHaveLength(6);

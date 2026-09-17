@@ -39,6 +39,8 @@ const source = {
   asset_id: ids.asset,
   source_root_key: "source_pdfs",
   source_key: "volume67 issue5/paper-01.pdf",
+  sha256: "a".repeat(64),
+  page_count: 12,
 };
 
 const sectionKeys = [
@@ -83,8 +85,6 @@ const frozenSnapshot = {
   },
   source: {
     ...source,
-    sha256: "a".repeat(64),
-    page_count: 12,
   },
   workspace_version: 1,
   sections,

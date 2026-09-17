@@ -26,7 +26,7 @@ function workspace(version = 1): PaperWorkspace {
     version,
     task_status: "assigned",
     bibliography: { paper_id: ids.paper, paper_key: "LT-JMC-2024-67-05-001", title: "Blank reviewer workspace", journal: "Journal of Medicinal Chemistry", publication_year: 2024, volume: "67", issue: "5", doi: null },
-    source: { asset_id: ids.asset, source_root_key: "source_pdfs", source_key: "volume67 issue5/paper-01.pdf" },
+    source: { asset_id: ids.asset, source_root_key: "source_pdfs", source_key: "volume67 issue5/paper-01.pdf", sha256: "a".repeat(64), page_count: 12 },
     sections: sectionKeys.map((section_key) => ({ section_key, state: "pending", note: null })),
   };
 }

@@ -14,9 +14,14 @@
     "@fontsource-variable/noto-serif-sc": "^5.3.0",
     "@tanstack/vue-query": "^5.66.0",
     "cytoscape": "3.34.3",
+    "ketcher-core": "3.12.0",
+    "ketcher-react": "3.12.0",
+    "ketcher-standalone": "3.12.0",
     "lucide-vue-next": "1.0.0",
     "pdfjs-dist": "^4.10.38",
     "pinia": "^3.0.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "vue": "^3.5.0",
     "vue-router": "^4.5.0",
     "zod": "^3.24.0"
@@ -24,6 +29,8 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/node": "^20.17.0",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
     "@vitejs/plugin-vue": "^5.2.0",
     "@vue/test-utils": "2.4.6",
     "jsdom": "^26.0.0",
@@ -31,5 +38,9 @@
     "vite": "6.4.3",
     "vitest": "4.1.11",
     "vue-tsc": "^3.0.0"
+  },
+  "overrides": {
+    "immutable": "3.8.4",
+    "minimatch": "3.1.4"
   }
 }

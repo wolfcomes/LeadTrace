@@ -11,6 +11,7 @@ describe("PDF region review canvas", () => {
         pdfUrl: "/api/v1/papers/paper-1/source-pdf?kind=article",
         pageCount: 1,
         regions: [],
+        selectionMode: true,
       },
     });
 
@@ -58,6 +59,19 @@ describe("PDF region review canvas", () => {
     expect(wrapper.emitted("create-region")).toBeUndefined();
   });
 
+  it("does not draw during normal PDF navigation until selection mode is explicit", async () => {
+    const wrapper = mount(PdfReviewCanvas, {
+      props: { pdfUrl: "/source.pdf", pageCount: 1, regions: [] },
+    });
+    const canvas = wrapper.get("[data-pdf-page]");
+    await canvas.trigger("pointerdown", { clientX: 100, clientY: 50 });
+    await canvas.trigger("pointermove", { clientX: 300, clientY: 250 });
+    await canvas.trigger("pointerup", { clientX: 300, clientY: 250 });
+
+    expect(wrapper.emitted("create-region")).toBeUndefined();
+    expect(canvas.attributes("data-selection-mode")).toBe("false");
+  });
+
   it("emits normalized coordinates when moving and resizing a Region", async () => {
     const wrapper = mount(PdfReviewCanvas, {
       props: {
@@ -65,6 +79,7 @@ describe("PDF region review canvas", () => {
         pageCount: 1,
         regions: [{ id: "r1", pageNumber: 1, x0: 0.1, y0: 0.2, x1: 0.4, y1: 0.5, rotation: 0 }],
         selectedRegionId: "r1",
+        selectionMode: true,
       },
     });
 

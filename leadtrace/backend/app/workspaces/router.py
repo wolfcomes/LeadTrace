@@ -88,6 +88,8 @@ def _workspace_response(aggregate: WorkspaceAggregate) -> WorkspaceResponse:
             asset_id=aggregate.source.asset_id,
             source_root_key=aggregate.source.source_root_key,
             source_key=aggregate.source.source_key,
+            sha256=aggregate.source.sha256,
+            page_count=aggregate.source.page_count,
         ),
         sections=[
             PaperSectionReviewResponse.from_model(section)

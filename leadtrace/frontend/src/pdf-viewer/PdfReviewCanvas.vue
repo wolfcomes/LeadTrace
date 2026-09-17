@@ -8,9 +8,11 @@ const props = withDefaults(defineProps<{
   pageCount: number;
   regions: PdfRegion[];
   readOnly?: boolean;
+  selectionMode?: boolean;
+  allowRotation?: boolean;
   page?: number;
   selectedRegionId?: string;
-}>(), { pageCount: 1 });
+}>(), { pageCount: 1, allowRotation: true });
 
 type RegionGeometry = { id: string; x0: number; y0: number; x1: number; y1: number };
 
@@ -53,7 +55,7 @@ function point(event: PointerEvent): { x: number; y: number } {
 }
 
 function beginDraw(event: PointerEvent): void {
-  if (props.readOnly) return;
+  if (props.readOnly || !props.selectionMode) return;
   (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
   drawing.value = point(event);
   draft.value = { x0: drawing.value.x, y0: drawing.value.y, x1: drawing.value.x, y1: drawing.value.y };
@@ -71,7 +73,7 @@ function updateDraw(event: PointerEvent): void {
 }
 
 function finishDraw(event: PointerEvent): void {
-  if (props.readOnly) return;
+  if (props.readOnly || !props.selectionMode) return;
   if (!drawing.value || !draft.value) return;
   updateDraw(event);
   const finished = draft.value;
@@ -103,6 +105,7 @@ function setZoom(value: number): void {
 }
 
 function setRotation(value: number): void {
+  if (!props.allowRotation) return;
   rotation.value = ((value % 360) + 360) % 360;
   emit("rotation-change", rotation.value);
 }
@@ -161,7 +164,7 @@ onMounted(() => { void renderPdfPage(); });
       <button class="button-quiet" type="button" aria-label="缩小" title="缩小" @click="setZoom(zoom - .1)">-</button>
       <output aria-label="缩放">{{ Math.round(zoom * 100) }}%</output>
       <button class="button-quiet" type="button" aria-label="放大" title="放大" @click="setZoom(zoom + .1)">+</button>
-      <button class="button-quiet" type="button" aria-label="旋转" @click="setRotation(rotation + 90)">旋转</button>
+      <button class="button-quiet" type="button" aria-label="旋转" :disabled="!allowRotation" @click="setRotation(rotation + 90)">旋转</button>
     </header>
     <nav class="page-thumbnails" aria-label="页面缩略图">
       <button v-for="page in pageCount" :key="page" type="button" :class="['button-quiet', { active: page === currentPage }]" :aria-label="`第 ${page} 页`" @click="changePage(page)">{{ page }}</button>
@@ -171,6 +174,7 @@ onMounted(() => { void renderPdfPage(); });
         class="pdf-page"
         data-pdf-page
         :data-page-number="currentPage"
+        :data-selection-mode="selectionMode ? 'true' : 'false'"
         :style="{ transform: `rotate(${rotation}deg)` }"
         @pointerdown="beginDraw"
         @pointermove="updateDraw"
@@ -190,7 +194,7 @@ onMounted(() => { void renderPdfPage(); });
           :key="region.id"
           :region="region"
           :selected="(selectedRegionId ?? selectedId) === region.id"
-          :read-only="readOnly"
+          :read-only="readOnly || !selectionMode"
           @select="(id) => { selectedId = id; emit('select', id); }"
           @duplicate="(id) => emit('duplicate', id)"
           @move="regionGeometry('move-region', $event)"

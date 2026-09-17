@@ -3,6 +3,7 @@ import { computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { useAuthStore } from "../../auth/store";
+import CompoundList from "./CompoundList.vue";
 import SectionStatusControl from "./SectionStatusControl.vue";
 import { usePaperWorkspace } from "./usePaperWorkspace";
 import WorkspaceHeader from "./WorkspaceHeader.vue";
@@ -32,6 +33,14 @@ const readOnly = computed(() => !canEdit.value);
 
 function selectTab(tab: TabKey): void {
   void router.replace({ path: route.path, query: { ...route.query, tab } });
+}
+
+function selectCompound(compoundId: string): void {
+  void router.replace({ path: route.path, query: { ...route.query, entity: compoundId } });
+}
+
+function refreshWorkspace(): void {
+  void workspaceState.reload();
 }
 
 async function synchronizeWorkspace(): Promise<void> {
@@ -86,8 +95,15 @@ watch(
           <dl class="workspace-bibliography"><div><dt>标题</dt><dd>{{ workspaceState.workspace.value.bibliography.title }}</dd></div><div><dt>期刊</dt><dd>{{ workspaceState.workspace.value.bibliography.journal }}</dd></div><div><dt>DOI</dt><dd>{{ workspaceState.workspace.value.bibliography.doi || "未报告" }}</dd></div><div><dt>卷 / 期</dt><dd>{{ workspaceState.workspace.value.bibliography.volume }} / {{ workspaceState.workspace.value.bibliography.issue }}</dd></div></dl>
         </template>
         <template v-else-if="activeTab === 'compounds'">
-          <div class="section-heading"><div><p class="eyebrow">COMPOUNDS & STRUCTURES</p><h2>化合物与结构</h2></div><button class="button-primary" data-add-compound type="button" :disabled="readOnly">添加 Compound</button></div>
-          <p class="workspace-empty-copy">当前尚无条目。可直接人工新增 Compound，并为每个 Compound 维护一个 Structure。</p>
+          <CompoundList
+            :key="`${workspaceState.workspace.value.id}:${workspaceState.refreshEpoch.value}`"
+            :workspace="workspaceState.workspace.value"
+            :selected-compound-id="typeof route.query.entity === 'string' ? route.query.entity : undefined"
+            :read-only="readOnly"
+            @select="selectCompound"
+            @mutated="refreshWorkspace"
+            @conflict="workspaceState.handleConflict()"
+          />
         </template>
         <template v-else-if="activeTab === 'lineages'">
           <div class="section-heading"><div><p class="eyebrow">LINEAGE</p><h2>优化链</h2></div><button class="button-primary" data-add-lineage type="button" :disabled="readOnly">添加 Lineage</button></div>

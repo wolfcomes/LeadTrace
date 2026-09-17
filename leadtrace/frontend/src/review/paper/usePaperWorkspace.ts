@@ -17,6 +17,7 @@ export function usePaperWorkspace(route: RouteLocationNormalizedLoaded, router: 
   const actionError = ref("");
   const concurrencyMessage = ref("");
   const savingSection = ref<string>();
+  const refreshEpoch = ref(0);
   let loadSequence = 0;
 
   function routeWorkspaceId(): string | undefined {
@@ -109,6 +110,15 @@ export function usePaperWorkspace(route: RouteLocationNormalizedLoaded, router: 
     );
   }
 
+  async function handleConflict(target = workspace.value): Promise<void> {
+    if (!target || !routeTargets(target.bibliography.paper_id, target.id)) return;
+    const latest = await reload(target);
+    if (latest && routeTargets(target.bibliography.paper_id, target.id)) {
+      refreshEpoch.value += 1;
+      concurrencyMessage.value = "Workspace 已被其他会话更新，已重新载入最新版本；刚才的操作没有覆盖对方修改。";
+    }
+  }
+
   async function setSectionState(section: string, nextState: SectionState): Promise<void> {
     const current = workspace.value;
     if (!current || savingSection.value || current.state !== "editing" || auth.user?.role !== "reviewer") return;
@@ -126,10 +136,7 @@ export function usePaperWorkspace(route: RouteLocationNormalizedLoaded, router: 
       if (!routeTargets(current.bibliography.paper_id, current.id)) return;
       requestId.value = error instanceof ApiError ? error.requestId : undefined;
       if (error instanceof ApiError && error.code === "WORKSPACE_VERSION_CONFLICT") {
-        const latest = await reload(current);
-        if (latest && routeTargets(current.bibliography.paper_id, current.id)) {
-          concurrencyMessage.value = "Workspace 已被其他会话更新，已重新载入最新版本；刚才的操作没有覆盖对方修改。";
-        }
+        await handleConflict(current);
       } else if (error instanceof ApiError && error.code === "WORKSPACE_READ_ONLY") {
         const latest = await reload(current);
         if (latest && routeTargets(current.bibliography.paper_id, current.id)) {
@@ -143,5 +150,5 @@ export function usePaperWorkspace(route: RouteLocationNormalizedLoaded, router: 
     }
   }
 
-  return { state, workspace, requestId, actionError, concurrencyMessage, savingSection, open, reload, setSectionState };
+  return { state, workspace, requestId, actionError, concurrencyMessage, savingSection, refreshEpoch, open, reload, handleConflict, setSectionState };
 }

@@ -91,6 +91,7 @@ const pageCount = computed(() => Math.max(1, ...props.workspace.pages.map((page)
         :regions="pdfRegions"
         :selected-region-id="selectedRegion?.id"
         :read-only="readOnly"
+        :selection-mode="!readOnly"
         @page-change="emit('select-page', $event)"
         @select="emit('select-region', $event)"
         @create-region="emit('create-region', $event)"

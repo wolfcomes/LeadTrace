@@ -79,6 +79,8 @@ class WorkspaceSourceResponse(WorkspaceProjection):
     asset_id: UUID
     source_root_key: str
     source_key: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    page_count: int = Field(ge=1)
 
 
 class BibliographyResponse(WorkspaceProjection):

@@ -251,6 +251,8 @@ export const workspaceSourceSchema = z.object({
   asset_id: uuidSchema,
   source_root_key: sourceRootKeySchema,
   source_key: sourceKeySchema,
+  sha256: sha256Schema,
+  page_count: z.number().int().positive(),
 }).strict();
 
 export const paperWorkspaceSchema = z.object({
@@ -305,7 +307,7 @@ const snapshotSourceSchema = workspaceSourceSchema.extend({
   page_count: z.number().int().positive(),
 }).strict();
 
-const compoundSchema = z.object({
+export const compoundSchema = z.object({
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -316,7 +318,7 @@ const compoundSchema = z.object({
   created_by_kind: actorKindSchema,
 }).strict();
 
-const structureSchema = z.object({
+export const structureSchema = z.object({
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -331,7 +333,7 @@ const structureSchema = z.object({
   input_method: structureInputMethodSchema,
 }).strict();
 
-const structureSourceImageSchema = z.object({
+const snapshotStructureSourceImageSchema = z.object({
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -430,7 +432,7 @@ export const frozenPaperSnapshotSchema = z.object({
   sections: sectionListSchema,
   compounds: z.array(compoundSchema),
   structures: z.array(structureSchema),
-  structure_source_images: z.array(structureSourceImageSchema),
+  structure_source_images: z.array(snapshotStructureSourceImageSchema),
   lineages: z.array(lineageSchema),
   lineage_members: z.array(lineageMemberSchema),
   lineage_edges: z.array(lineageEdgeSchema),
@@ -526,7 +528,7 @@ const publishedStructureSchema = structureSchema.omit({
   paper_id: true,
   workspace_id: true,
 }).strict();
-const publishedStructureSourceImageSchema = structureSourceImageSchema.omit({
+const publishedStructureSourceImageSchema = snapshotStructureSourceImageSchema.omit({
   paper_id: true,
   workspace_id: true,
   reviewer_note: true,
@@ -661,6 +663,84 @@ export const decisionMutationSchema = z.object({
   }
 });
 
+export const compoundListSchema = z.object({
+  workspace_id: uuidSchema,
+  workspace_version: z.number().int().positive(),
+  items: z.array(compoundSchema),
+  total: z.number().int().nonnegative(),
+}).strict().superRefine((value, context) => {
+  if (value.items.length !== value.total
+    || value.items.some((item) => item.workspace_id !== value.workspace_id)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Compound list identity mismatch" });
+  }
+});
+
+export const compoundMutationSchema = z.object({
+  compound: compoundSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const compoundDeleteSchema = z.object({
+  deleted_compound_id: uuidSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const structureReadSchema = z.object({
+  structure: structureSchema.nullable(),
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const structureMutationSchema = z.object({
+  structure: structureSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const normalizedBBoxSchema = z.object({
+  x0: z.number().min(0).max(1),
+  y0: z.number().min(0).max(1),
+  x1: z.number().min(0).max(1),
+  y1: z.number().min(0).max(1),
+}).strict().refine((bbox) => bbox.x0 < bbox.x1 && bbox.y0 < bbox.y1, {
+  message: "Bounding box must have positive normalized area",
+});
+
+export const structureSourceImageSchema = z.object({
+  id: uuidSchema,
+  paper_id: uuidSchema,
+  workspace_id: uuidSchema,
+  compound_id: uuidSchema,
+  source_sha256: sha256Schema,
+  page_number: z.number().int().positive(),
+  bbox: normalizedBBoxSchema,
+  source_context: z.string().nullable(),
+  label: z.string().nullable(),
+  reviewer_note: z.string().nullable(),
+  crop_status: cropStatusSchema,
+  crop_asset_id: uuidSchema.nullable(),
+}).strict();
+
+export const structureSourceImageListSchema = z.object({
+  compound_id: uuidSchema,
+  workspace_version: z.number().int().positive(),
+  items: z.array(structureSourceImageSchema),
+  total: z.number().int().nonnegative(),
+}).strict().superRefine((value, context) => {
+  if (value.items.length !== value.total
+    || value.items.some((item) => item.compound_id !== value.compound_id)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Structure Source Image list identity mismatch" });
+  }
+});
+
+export const structureSourceImageMutationSchema = z.object({
+  source_image: structureSourceImageSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
+export const structureSourceImageDeleteSchema = z.object({
+  deleted_source_image_id: uuidSchema,
+  workspace_version: z.number().int().positive(),
+}).strict();
+
 export type PaperCatalogRow = z.infer<typeof paperCatalogRowSchema>;
 export type PaperCatalogPage = z.infer<typeof paperCatalogPageSchema>;
 export type ReviewTask = z.infer<typeof reviewTaskSchema>;
@@ -675,3 +755,15 @@ export type PublishedPaperDetail = z.infer<typeof publishedPaperDetailSchema>;
 export type AssignmentResponse = z.infer<typeof assignmentResponseSchema>;
 export type SubmissionMutation = z.infer<typeof submissionMutationSchema>;
 export type DecisionMutation = z.infer<typeof decisionMutationSchema>;
+export type Compound = z.infer<typeof compoundSchema>;
+export type CompoundList = z.infer<typeof compoundListSchema>;
+export type CompoundMutation = z.infer<typeof compoundMutationSchema>;
+export type CompoundDelete = z.infer<typeof compoundDeleteSchema>;
+export type Structure = z.infer<typeof structureSchema>;
+export type StructureRead = z.infer<typeof structureReadSchema>;
+export type StructureMutation = z.infer<typeof structureMutationSchema>;
+export type NormalizedBBox = z.infer<typeof normalizedBBoxSchema>;
+export type StructureSourceImage = z.infer<typeof structureSourceImageSchema>;
+export type StructureSourceImageList = z.infer<typeof structureSourceImageListSchema>;
+export type StructureSourceImageMutation = z.infer<typeof structureSourceImageMutationSchema>;
+export type StructureSourceImageDelete = z.infer<typeof structureSourceImageDeleteSchema>;

@@ -38,11 +38,12 @@ def test_reviewer_lists_only_their_tasks_and_reads_safe_workspace_aggregate(
         "asset_id": str(workspace_fixture.asset_id),
         "source_root_key": "source_pdfs",
         "source_key": "volume67 issue5/paper-01.pdf",
+        "sha256": "a" * 64,
+        "page_count": 12,
     }
     assert len(payload["sections"]) == 6
     assert "storage_key" not in detail.text
     assert "source_metadata" not in detail.text
-    assert "sha256" not in detail.text
     assert "/srv/private" not in detail.text
     assert "must-never-be-returned" not in detail.text
     assert "csrf" not in detail.text.casefold()
