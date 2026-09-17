@@ -1237,7 +1237,7 @@ def _permissions_probe(config: Mapping[str, object]) -> CheckResult:
                 visitor.get(f"/api/v2/papers/{paper_id}/source-pdf").status_code
                 in {403, 404},
                 visitor.get(f"/api/v2/workspaces/{draft_workspace_id}").status_code
-                == 404,
+                in {403, 404},
                 visitor.get("/api/v1/users").status_code == 403,
             )
         with httpx.Client(

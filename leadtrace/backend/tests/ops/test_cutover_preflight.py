@@ -182,8 +182,10 @@ def test_services_probe_requires_writable_asset_storage(
     assert result.status == "FAIL"
 
 
+@pytest.mark.parametrize("visitor_draft_status", [403, 404])
 def test_permissions_probe_checks_unassigned_pdf_and_draft_isolation(
     monkeypatch: pytest.MonkeyPatch,
+    visitor_draft_status: int,
 ) -> None:
     requested: list[tuple[str, str]] = []
 
@@ -222,7 +224,9 @@ def test_permissions_probe_checks_unassigned_pdf_and_draft_isolation(
             if self.role == "visitor" and path.endswith("/source-pdf"):
                 return Response(403)
             if path.endswith("/draft-workspace"):
-                return Response(404 if self.role == "visitor" else 200)
+                return Response(
+                    visitor_draft_status if self.role == "visitor" else 200
+                )
             if path == "/api/v1/users":
                 return Response(200 if self.role == "admin" else 403)
             if path.startswith("/api/v2/admin/"):
