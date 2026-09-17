@@ -97,8 +97,9 @@ command -v tar >/dev/null 2>&1 || fail "tar is required"
 
 age --decrypt --identity "${LEADTRACE_AGE_IDENTITY_FILE}" \
   --output "${RESTORE_ROOT}/database.dump" "${DB_DUMP}"
+PG_RESTORE_DATABASE_URL="${LEADTRACE_RESTORE_DATABASE_URL/postgresql+psycopg:/postgresql:}"
 pg_restore --no-owner --no-privileges --single-transaction --exit-on-error \
-  --dbname="${LEADTRACE_RESTORE_DATABASE_URL}" "${RESTORE_ROOT}/database.dump"
+  --dbname="${PG_RESTORE_DATABASE_URL}" "${RESTORE_ROOT}/database.dump"
 
 PYTHONPATH="${SCRIPT_DIRECTORY}/../../.." "${PYTHON_BIN}" \
   "${BACKUP_DIRECTORY}/asset_chain.py" \

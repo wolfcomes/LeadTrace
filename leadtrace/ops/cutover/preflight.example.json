@@ -1,8 +1,9 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "application_version": "0.1.0",
-  "schema_revision": "0015_crop_job_subscriptions",
-  "release_key": "TO_BE_REPLACED_WITH_CURRENT_RELEASE_KEY",
+  "application_commit": "TO_BE_REPLACED_WITH_EXACT_GIT_COMMIT",
+  "schema_revision": "0025_ai_prefill_runs",
+  "backup_version_marker": "paper-centric-pilot",
   "database_backup_metadata": "/srv/leadtrace-backups/TO_BE_REPLACED_DB_BACKUP/backup-metadata.json",
   "asset_backup_metadata": "/srv/leadtrace-backups/TO_BE_REPLACED_ASSET_BACKUP/backup-metadata.json",
   "restore_report": "/srv/leadtrace-drills/TO_BE_REPLACED_RESTORE_DRILL/restore-report.json",
@@ -10,12 +11,17 @@
   "max_restore_age_days": 31,
   "restore_rto_seconds": 3600,
   "expected_aggregate": "/srv/leadtrace/config/expected_aggregate.json",
+  "restore_expected_aggregate": "/srv/leadtrace/config/restore-expected-aggregate.json",
+  "pilot_manifest": "/srv/leadtrace/config/2026-09-15-volume67-issue5-first20.json",
+  "acceptance_evidence": "/srv/leadtrace/config/acceptance-evidence.json",
+  "visual_acceptance_report": "/srv/leadtrace/config/visual-acceptance.json",
   "asset_root": "/var/lib/leadtrace/assets",
   "source_roots": {
-    "baseline": "/absolute/path/inside-manifest-workspace/source_pdfs/approved-corpus"
+    "source_pdfs": "/absolute/read-only/source_pdfs"
   },
   "base_url": "https://127.0.0.1:8877",
   "old_dashboard_url": "http://127.0.0.1:8765",
   "representative_paper_id": "TO_BE_REPLACED_WITH_PUBLISHED_PAPER_UUID",
-  "source_manifest": "/srv/leadtrace/config/2026-09-10-source-manifest.json"
+  "unassigned_paper_id": "TO_BE_REPLACED_WITH_UNASSIGNED_PAPER_UUID",
+  "draft_workspace_id": "TO_BE_REPLACED_WITH_DRAFT_WORKSPACE_UUID"
 }

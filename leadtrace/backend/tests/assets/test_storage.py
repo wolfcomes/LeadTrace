@@ -5,6 +5,7 @@ from pathlib import Path
 import tomllib
 
 from PIL import Image
+import pymupdf
 import pytest
 
 from app.assets.storage import (
@@ -118,6 +119,26 @@ def test_inspection_uses_content_signatures_and_records_image_dimensions(
     assert inspected.height == 19
     assert inspected.byte_size == image.stat().st_size
     assert len(inspected.sha256) == 64
+
+
+def test_inspection_reads_page_count_from_pdf_object_streams(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    document = pymupdf.open()
+    document.new_page()
+    document.new_page()
+    compressed_pdf = document.tobytes(deflate=True, use_objstms=1)
+    document.close()
+    (source / "compressed.pdf").write_bytes(compressed_pdf)
+    store = LocalAssetStore(
+        tmp_path / "managed",
+        source_roots={"source_pdfs": source},
+    )
+
+    inspected = store.inspect("source/source_pdfs/compressed.pdf")
+
+    assert inspected.mime_type == "application/pdf"
+    assert inspected.page_count == 2
 
 
 def test_extension_and_content_mismatch_is_rejected(tmp_path: Path) -> None:

@@ -9,6 +9,7 @@ import tempfile
 from typing import BinaryIO
 
 from PIL import Image, UnidentifiedImageError
+import pymupdf
 
 
 class AssetPathError(ValueError):
@@ -90,6 +91,22 @@ def _detected_mime(path: Path, header: bytes) -> str:
             return "application/octet-stream"
         return _MIME_BY_SUFFIX[suffix]
     return "application/octet-stream"
+
+
+def _pdf_page_count(*, path: Path | None = None, content: bytes | None = None) -> int | None:
+    try:
+        if content is not None:
+            document = pymupdf.open(stream=content, filetype="pdf")
+        elif path is not None:
+            document = pymupdf.open(path)
+        else:
+            raise ValueError("PDF source is required")
+        with document:
+            return document.page_count or None
+    except (RuntimeError, ValueError):
+        fallback = content if content is not None else path.read_bytes() if path else b""
+        matches = re.findall(rb"/Type\s*/Page(?!s)\b", fallback)
+        return len(matches) or None
 
 
 class LocalAssetStore:
@@ -176,8 +193,7 @@ class LocalAssetStore:
                 raise AssetMimeMismatchError("Image content is invalid") from error
         page_count = None
         if mime_type == "application/pdf":
-            matches = re.findall(rb"/Type\s*/Page(?!s)\b", path.read_bytes())
-            page_count = len(matches) or None
+            page_count = _pdf_page_count(path=path)
         return InspectedFile(
             path=path,
             sha256=sha256,
@@ -268,8 +284,10 @@ class LocalAssetStore:
         with snapshot:
             content = snapshot.read()
         if inspected.mime_type == "application/pdf":
-            matches = re.findall(rb"/Type\s*/Page(?!s)\b", content)
-            inspected = replace(inspected, page_count=len(matches) or None)
+            inspected = replace(
+                inspected,
+                page_count=_pdf_page_count(content=content),
+            )
         return inspected, content
 
     @staticmethod

@@ -1,51 +1,52 @@
-# LeadTrace Native Cutover Runbook
+# LeadTrace Paper-Centric Cutover Runbook
 
 ## Scope
 
-This procedure is for the current no-Docker deployment. Nginx exposes one LAN
-TLS port, `8876`; FastAPI, Redis, PostgreSQL, the Celery worker, and the old
-Dashboard remain on loopback or another non-LAN interface. The production
-frontend is the versioned output of `npm run build`, not the Vite development
-server. `deploy/nginx/nginx.conf` remains the Compose variant;
-`deploy/nginx/nginx.native.conf` is the native variant used here.
+This runbook moves the LAN route from the preserved legacy service to a staged
+Paper-centric LeadTrace candidate. The candidate owns a new PostgreSQL database,
+a separate managed-asset root, and version-matched web and worker processes. The
+currently routed database is never migrated in place.
 
-Only an authorized Admin and an operations operator may conduct the cutover.
-Keep Reviewer writes in maintenance mode until every post-cutover gate and the
-fallback exercise passes. A failed gate is a stop condition, never a reason to
-delete revisions or bypass approval.
+Only an authorized operations operator and Admin approver may conduct the
+cutover. The route may change only in an explicitly approved maintenance window.
+Until that window, keep `:8876`, the legacy database, and the read-only Dashboard
+on `127.0.0.1:8765` unchanged.
 
-## Preconditions
+## Safety rules
 
-- Record the operator, Admin approver, change window, Git commit, application
-  version, Alembic head, target release key, and current route.
-- Confirm one Admin, two distinct Reviewers, and one Visitor are available for
-  UAT. Store credentials in the protected runtime environment, not this record.
-- Confirm the internal CA is trusted by representative LAN clients and the
-  certificate contains the deployed hostname/IP in its SAN.
-- Confirm PostgreSQL, Redis, FastAPI, and the old Dashboard bind only to
-  loopback/internal interfaces. Confirm only the selected Nginx port is LAN
-  reachable.
-- Confirm the old Dashboard is healthy at `127.0.0.1:8765` and is not writable.
-- Confirm the backup destination is a separate disk or controlled network
-  destination and a recent isolated restore report exists.
-- Read `workspace_root` from the approved source manifest. The import source
-  root must be an existing descendant of that directory; a copied corpus at an
-  unrelated path cannot satisfy the approved manifest.
-- Copy `leadtrace/ops/cutover/preflight.example.json` to a protected operations
-  directory and replace every `TO_BE_REPLACED` value with observed evidence.
-- Keep `expected_aggregate` bound to the approved read-only aggregate file and
-  set `restore_rto_seconds` to the agreed production RTO before the drill. The
-  restore report must contain the same exact counts, integrity expectations,
-  and RTO target.
+- Never run Alembic against the currently routed database.
+- Never point a candidate process at the legacy database or asset root.
+- Never modify `source_pdfs/`; it is read-only input identified by the checked-in
+  20-Paper Pilot Manifest.
+- Never treat an acceptance JSON `PASS` value as sufficient evidence. Verify its
+  hash, referenced screenshots, database records, backups, and restore report.
+- Never label a backup destination `separate_disk` unless it is on a physically
+  independent filesystem or controlled network destination.
+- Stop on every failed gate. Do not weaken a gate, edit evidence in place, or
+  switch the primary route to investigate a failure.
 
-The protected process environment must define `LEADTRACE_DATABASE_URL`,
-`LEADTRACE_REDIS_URL`, and the `LEADTRACE_PREFLIGHT_*` and
-`LEADTRACE_SMOKE_*` role credentials. Do not put credentials, database URLs,
-tokens, cookies, or absolute source paths in the acceptance document.
+## Record the change
 
-## Build and stage
+Before staging, record the operator, Admin approver, proposed window, exact Git
+commit, application version, Alembic head, current route, legacy database
+identity, and candidate database identity in the protected operations record.
+Do not record credentials, database URLs, cookies, tokens, or absolute Source
+paths in repository documents.
 
-Run the frontend checks and build from the selected commit:
+Confirm:
+
+- the old Dashboard answers at `http://127.0.0.1:8765` in read-only mode;
+- the current `:8876` route is healthy and its process/database identities are
+  known;
+- one Admin, one assigned Reviewer, one unassigned Paper, one draft Workspace,
+  and one Visitor account are available for the permission matrix;
+- the candidate backup destination is physically independent;
+- the staged TLS certificate covers the loopback hostname or address used by
+  the preflight listener.
+
+## Build the selected commit
+
+Build and test from the exact commit recorded for the candidate:
 
 ```bash
 cd leadtrace/frontend
@@ -55,207 +56,205 @@ npm test -- --run
 npm run build
 ```
 
-Create a new, commit-specific directory below
-`/srv/leadtrace/releases/<git-commit>/frontend`, copy the contents of `dist`
-there, and point `/srv/leadtrace/current-frontend` to it with an atomic symlink
-replacement. Do not overwrite or delete the previous versioned directory.
+Install `dist/` into a new commit-specific directory below
+`/srv/leadtrace/releases/<git-commit>/frontend`. Preserve the previous release
+directory. Do not repoint the LAN-facing frontend symlink yet.
 
-Start the version-matched FastAPI process on `127.0.0.1:8000`, the Celery
-worker and scheduler against the internal Redis service, and the old Dashboard
-on `127.0.0.1:8765` in process-level read-only mode. From the repository root,
-start the fallback with:
+## Provision an isolated candidate
+
+Provision a new empty PostgreSQL database and a new managed-asset root. The
+database name should identify the cutover candidate and must not equal the name
+used by the current route. Keep the URL in the protected process environment:
 
 ```bash
-python dashboard/server.py --host 127.0.0.1 --port 8765 --read-only
+export LEADTRACE_CANDIDATE_DATABASE_URL='<protected candidate URL>'
+export LEADTRACE_CANDIDATE_ASSET_ROOT='/var/lib/leadtrace-candidate/assets'
 ```
 
-Run migrations from `leadtrace/backend` before starting the new web and worker
-processes:
+Before any migration, compare the resolved database host, port, and database
+name against the running legacy service. Stop if any identity is ambiguous or
+equal. Apply migrations only to the new candidate:
 
 ```bash
-python -m alembic -c alembic.ini upgrade head
-python -m alembic -c alembic.ini current
+cd leadtrace/backend
+LEADTRACE_DATABASE_URL="$LEADTRACE_CANDIDATE_DATABASE_URL" \\
+  python -m alembic -c alembic.ini upgrade head
+LEADTRACE_DATABASE_URL="$LEADTRACE_CANDIDATE_DATABASE_URL" \\
+  python -m alembic -c alembic.ini current
 ```
 
-## Install the loopback TLS preflight listener
+The candidate database must now be at `0025_ai_prefill_runs` and contain no
+Paper or scientific business rows. Create the one enabled Admin and the test
+role accounts through the controlled account procedure.
 
-The maintenance API below is intentionally called through the staged loopback
-TLS listener on port `8877`. Install that listener before entering maintenance;
-it does not change the LAN primary route. Install the committed preflight
-server alongside the current route, validate the complete Nginx configuration,
-and reload:
+## Import the fixed Pilot catalog
+
+Use the protected Source root only as read-only input. Dry-run the checked-in
+manifest before applying it to the candidate database:
 
 ```bash
-sudo install -m 0644 leadtrace/deploy/nginx/nginx.native-preflight.conf \
+LEADTRACE_DATABASE_URL="$LEADTRACE_CANDIDATE_DATABASE_URL" \\
+  python -m app.cli.import_pilot \\
+  --manifest ../../docs/pilot/2026-09-15-volume67-issue5-first20.json \\
+  --source-root "$LEADTRACE_PILOT_SOURCE_ROOT" --dry-run
+
+LEADTRACE_DATABASE_URL="$LEADTRACE_CANDIDATE_DATABASE_URL" \\
+  python -m app.cli.import_pilot \\
+  --manifest ../../docs/pilot/2026-09-15-volume67-issue5-first20.json \\
+  --source-root "$LEADTRACE_PILOT_SOURCE_ROOT" --apply
+```
+
+Require exactly 20 verified PaperSources, 20 Papers, and 20 Source assets. Replay
+the import once and require `created=0` and `unchanged=20`.
+
+## Stage candidate services
+
+Start the version-matched FastAPI and Celery processes with
+`LEADTRACE_DATABASE_URL=$LEADTRACE_CANDIDATE_DATABASE_URL`, a candidate-specific
+Redis namespace, and `LEADTRACE_ASSET_ROOT=$LEADTRACE_CANDIDATE_ASSET_ROOT`.
+Bind FastAPI to an unused loopback port. Do not restart or repoint the processes
+serving `:8876`.
+
+Install the loopback-only TLS preflight listener on `:8877` and route it to the
+candidate FastAPI/frontend. Validate the complete proxy configuration before a
+reload:
+
+```bash
+sudo install -m 0644 leadtrace/deploy/nginx/nginx.native-preflight.conf \\
   /etc/nginx/conf.d/leadtrace-preflight.conf
 sudo nginx -t
 sudo nginx -s reload
 ```
 
-The certificate must include `127.0.0.1` in its SAN for the example config, or
-the protected config must use a loopback-resolving hostname present in the SAN.
-Verify `https://127.0.0.1:8877/health/ready` before using the maintenance API.
+Verify `https://127.0.0.1:8877/health/ready`. The listener is for isolated
+candidate testing and must not alter the primary LAN route.
 
-## Enter maintenance and take rollback backups
+## Complete candidate acceptance
 
-Use the Admin maintenance control backed by `PUT /api/v1/admin/maintenance`.
-Set a specific reason and expected end time. Verify Visitor published reads
-continue and Reviewer write attempts are rejected before continuing.
+Against the candidate only, execute and record the manual Reviewer-to-Admin
+approval path, AI-prefill path, request-changes/resubmission path, `not_reported`
+section, invalid-Structure blocker, missing-Evidence blocker, and the forced
+AI/Reviewer race. The Reviewer submission still requires Admin approval.
 
-Use the authenticated Admin session cookie and the CSRF token returned by
-login. Keep both values in protected shell variables and out of shell history:
+Capture desktop and mobile visual acceptance. The visual report must identify
+the selected commit, report no browser/request errors, prove the PDF, Ketcher,
+RDKit, and Lineage surfaces rendered, and include byte size and SHA-256 for each
+relative screenshot path.
 
-```bash
-curl --fail-with-body --request PUT \
-  --cookie "leadtrace_session=${LEADTRACE_ADMIN_SESSION}" \
-  --header "X-CSRF-Token: ${LEADTRACE_ADMIN_CSRF}" \
-  --header 'Content-Type: application/json' \
-  --data '{"active":true,"reason":"Release 1 cutover","expected_end":"2026-09-13T02:00:00Z"}' \
-  https://127.0.0.1:8877/api/v1/admin/maintenance
-```
+Update the protected `acceptance-evidence.json` from observed IDs and database
+values. Do not hand-author a success value that is not backed by the candidate.
 
-Load the protected backup environment and capture database and full asset
-backups of the state that exists before the final import. These are rollback
-backups: their metadata must identify the currently deployed application,
-schema, and release, and they must not be substituted for the later cutover
-candidate evidence.
+## Back up and restore the candidate
+
+Configure the backup scripts for the candidate database and candidate asset
+root. Write encrypted database and full-asset backups to the verified independent
+destination, then validate both metadata files:
 
 ```bash
 bash leadtrace/ops/backup/backup_postgres.sh
 LEADTRACE_ASSET_BACKUP_MODE=full bash leadtrace/ops/backup/backup_assets.sh
-python leadtrace/ops/backup/verify_backup.py \
-  /srv/leadtrace-backups/<database-backup-id>/backup-metadata.json
-python leadtrace/ops/backup/verify_backup.py \
-  /srv/leadtrace-backups/<asset-backup-id>/backup-metadata.json
+python leadtrace/ops/backup/verify_backup.py \\
+  /srv/leadtrace-backups/<candidate-database-id>/backup-metadata.json
+python leadtrace/ops/backup/verify_backup.py \\
+  /srv/leadtrace-backups/<candidate-assets-id>/backup-metadata.json
 ```
 
-Record the rollback backup IDs and destination identity. Stop if verification
-fails or the configured age exceeds the four-hour database RPO.
-
-## Apply the final import and validate
-
-Run the exact reconciliation first. `--source-root` is read-only input and must
-be the approved source tree; this command must not modify that tree.
-
-```bash
-cd leadtrace/backend
-python -m app.cli.import_baseline \
-  --source-root /absolute/path/inside-manifest-workspace/source_pdfs/approved-corpus \
-  --expected-aggregate ../ops/baseline/expected_aggregate.json \
-  --source-manifest ../../docs/baseline/2026-09-10-source-manifest.json \
-  --report /srv/leadtrace/acceptance/final-reconcile.json \
-  --dry-run
-```
-
-If and only if the dry run matches exactly, repeat with `--apply`. Admin must
-validate the resulting candidate and publish through the approval workflow.
-Record the actual current release key and keep maintenance mode active.
-
-## Back up and restore the cutover candidate
-
-After the final import is applied, validated, approved, and published, create a
-second database backup and a second full asset backup. Set the protected backup
-environment to the candidate application version, schema revision, and actual
-current release key. Use new backup IDs; do not overwrite or relabel the
-rollback backups.
-
-```bash
-bash leadtrace/ops/backup/backup_postgres.sh
-LEADTRACE_ASSET_BACKUP_MODE=full bash leadtrace/ops/backup/backup_assets.sh
-python leadtrace/ops/backup/verify_backup.py \
-  /srv/leadtrace-backups/<candidate-database-backup-id>/backup-metadata.json
-python leadtrace/ops/backup/verify_backup.py \
-  /srv/leadtrace-backups/<candidate-asset-backup-id>/backup-metadata.json
-```
-
-Provision a new allowlisted empty drill database, a new restore root, and the
-isolated HTTPS drill application described in `restore.md`. Point
-`LEADTRACE_DATABASE_METADATA` and `LEADTRACE_ASSET_METADATA` at the selected
-candidate backup IDs and run the complete restore drill:
-
-```bash
-LEADTRACE_PYTHON_BIN=/opt/leadtrace/.venv/bin/python \
-  bash leadtrace/ops/restore/restore_drill.sh
-```
-
-Stop unless `restore-report.json` is `PASS`, meets the agreed RTO, and its
-database ID, terminal asset ID, full asset chain, metadata hashes, and versions
-match the selected candidate backup IDs exactly. Its current Release validation
-must also be valid with an empty issue list. Update the protected preflight
-configuration with these candidate metadata paths, the new restore report, the
-approved expected aggregate, the agreed RTO in seconds, and the actual current
-release key. The earlier monthly report and rollback backup IDs are not valid
-substitutes.
+Restore those exact backups into another empty allowlisted database and another
+empty asset root. Run `leadtrace/ops/restore/restore_drill.sh` against isolated
+HTTP endpoints. Require a schema-v2 `PASS` report, exact Paper-centric counts,
+zero integrity defects, verified Source and managed-asset hashes, matching
+submission/publication hashes, and an RTO within the configured target.
 
 ## Preflight the staged candidate
 
-Use the loopback-only TLS listener installed before maintenance. Set preflight
-`base_url` to this listener and `old_dashboard_url` directly to
-`http://127.0.0.1:8765`. Then run the machine-readable gate from the repository
-root:
+Copy `leadtrace/ops/cutover/preflight.example.json` into a protected operations
+directory and replace every placeholder with observed candidate evidence. Bind
+`application_commit` to the exact tested commit. Point
+`visual_acceptance_report`, both backup metadata paths, the restore report,
+candidate and restore expected aggregates, the fixed Pilot Manifest, and the
+acceptance evidence at their immutable files.
+
+Set `base_url` to the loopback TLS candidate listener and
+`old_dashboard_url` to `http://127.0.0.1:8765`. Export the candidate database URL,
+candidate Redis URL, exact application commit, and protected role credentials,
+then run:
 
 ```bash
-.venv/bin/python leadtrace/ops/cutover/preflight.py \
-  --config /srv/leadtrace/acceptance/preflight.json \
+LEADTRACE_DATABASE_URL="$LEADTRACE_CANDIDATE_DATABASE_URL" \\
+LEADTRACE_APPLICATION_COMMIT='<exact selected commit>' \\
+  .venv/bin/python leadtrace/ops/cutover/preflight.py \\
+  --config /srv/leadtrace/acceptance/preflight.json \\
   --report /srv/leadtrace/acceptance/preflight-report.json
 ```
 
-Proceed to the LAN route switch only when the process exits `0` and every check
-is `PASS`. This includes
-backup and restore recency, exact import counts, zero configured integrity
-defects, asset hashes, audit chain, current release, source manifest, database,
-Redis, Celery worker, storage, HTTPS, role permissions, and old Dashboard.
+Proceed only when the command exits `0` and all eight checks pass. Independently
+hash and archive the preflight report. A preflight run against the legacy/live
+database is invalid evidence.
+
+## Enter the approved maintenance window
+
+Obtain the recorded Admin approval for the exact commit, candidate database,
+backup IDs, restore report, preflight report hash, and route-switch time. Enter
+maintenance on the currently routed service and verify Reviewer writes are
+blocked while permitted reads still work.
+
+Take fresh encrypted rollback backups of the currently routed database and
+assets to the independent backup destination. Verify them before continuing.
+These backups represent rollback state only; they do not replace the candidate
+backup and restore evidence.
+
+Recheck that candidate processes still use the candidate database, asset root,
+and Redis namespace. Recheck `:8876` and `:8765` process identities. Do not run
+Alembic or any import command during this window.
 
 ## Switch the primary route
 
-Keep a copy of the currently loaded Nginx file outside the included
-`conf.d/*.conf` set. Install `leadtrace/deploy/nginx/nginx.native.conf` as the
-candidate active file, validate it, then reload. A failed `nginx -t` must be
-followed by restoring the prior file without reloading the invalid candidate.
+Keep a copy of the loaded primary proxy file outside the included
+`conf.d/*.conf` set. Install the candidate native configuration, validate it,
+and reload only after validation succeeds:
 
 ```bash
 sudo cp -p /etc/nginx/conf.d/leadtrace.conf /etc/nginx/leadtrace.conf.previous
-sudo install -m 0644 leadtrace/deploy/nginx/nginx.native.conf \
+sudo install -m 0644 leadtrace/deploy/nginx/nginx.native.conf \\
   /etc/nginx/conf.d/leadtrace.conf
 sudo nginx -t
 sudo nginx -s reload
 ```
 
-The public `/legacy-dashboard/` check belongs to the post-switch smoke test;
-the preflight uses the direct loopback Dashboard health URL. Keep the
-loopback-only preflight server until the second LeadTrace smoke test succeeds,
-then remove `/etc/nginx/conf.d/leadtrace-preflight.conf`, run `nginx -t`, and
-reload.
+The active route must now target the already-preflighted candidate processes;
+there is no database migration at route-switch time.
 
-From a LAN client that trusts the internal CA, run:
+Run the Paper-centric smoke test from a representative LAN client:
 
 ```bash
-.venv/bin/python leadtrace/ops/cutover/smoke_test.py \
-  --config /srv/leadtrace/acceptance/smoke.json \
+.venv/bin/python leadtrace/ops/cutover/smoke_test.py \\
+  --config /srv/leadtrace/acceptance/smoke.json \\
   --report /srv/leadtrace/acceptance/smoke-after-cutover.json
 ```
 
-Also verify the authorized PDF range response, browser login, target release,
-and the acceptance Paper matrix. Record timestamps and report hashes.
+Verify health, published Paper list/detail, authorized PDF range reads, draft
+isolation, Admin catalog/submission access, the audit chain, and read-only
+`/legacy-dashboard/`. Record the report hash.
 
-## Exercise the read-only fallback
+## Exercise fallback before enabling writes
 
-Do this before enabling Reviewer writes. Follow `rollback-cutover.md` to install
-`nginx.native-fallback.conf`, run `nginx -t`, and reload. Confirm the old
-Dashboard is the primary route, a GET succeeds, and POST/PUT/PATCH/DELETE are
-denied. The fallback is a route change only: preserve the LeadTrace database,
-assets, audit events, and all new revisions.
+Follow `leadtrace/ops/runbooks/rollback-cutover.md` to route the primary endpoint
+to the read-only old Dashboard. Confirm GET succeeds and write methods are
+denied. This is a route-only exercise: preserve both databases, candidate assets,
+audit history, submissions, and published versions.
 
-Restore `nginx.native.conf`, validate, reload, and repeat `smoke_test.py` into a
-new report file. A successful first smoke test is not evidence for this second
-run. Keep both reports.
+Restore the candidate route, validate the proxy, reload, and run a second smoke
+test into a new report. Remove the loopback preflight listener only after this
+second test passes.
 
 ## Complete or stop
 
-After the second LeadTrace smoke test and role-based UAT pass, obtain explicit
-Admin approval and disable maintenance mode with a recorded reason. Monitor
-errors, worker queue depth, audit verification, and backup jobs throughout the
-stabilization window. Keep `/legacy-dashboard/` available read-only.
+After both smoke tests and role-based UAT pass, obtain final Admin confirmation,
+disable maintenance with a recorded reason, and monitor errors, queue depth,
+Redis health, audit verification, and backup jobs through the stabilization
+window. Keep `/legacy-dashboard/` read-only.
 
-If any gate fails, keep maintenance active, do not publish another release,
-and follow `leadtrace/ops/runbooks/rollback-cutover.md`.
+If any gate fails, keep Reviewer writes disabled, restore the previous route,
+and follow `leadtrace/ops/runbooks/rollback-cutover.md`. Do not migrate the legacy
+database, delete the candidate, or overwrite either backup set while the failure
+is investigated.

@@ -760,6 +760,17 @@ def test_restore_drill_refuses_existing_root_and_protects_plaintext(
     assert "--listed-incremental=/dev/null" in script
 
 
+def test_restore_drill_converts_sqlalchemy_url_for_pg_restore() -> None:
+    script_path = Path(__file__).parents[3] / "ops" / "restore" / "restore_drill.sh"
+    script = script_path.read_text(encoding="utf-8")
+
+    assert (
+        'PG_RESTORE_DATABASE_URL="${LEADTRACE_RESTORE_DATABASE_URL/'
+        'postgresql+psycopg:/postgresql:}"'
+    ) in script
+    assert '--dbname="${PG_RESTORE_DATABASE_URL}"' in script
+
+
 def test_restore_drill_rejects_production_database_before_pg_restore(
     tmp_path: Path,
 ) -> None:

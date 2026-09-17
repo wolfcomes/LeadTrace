@@ -43,12 +43,11 @@ def run_smoke_test(
     clients: Mapping[str | None, object] | None = None,
     credentials: Mapping[str, tuple[str, str]] | None = None,
 ) -> PreflightReport:
-    if config.get("schema_version") != 1:
+    if config.get("schema_version") != 2:
         raise ValueError("unsupported smoke-test configuration schema version")
-    release_key = str(config.get("release_key") or "").strip()
     paper_id = str(config.get("representative_paper_id") or "").strip()
-    if not release_key or not paper_id:
-        raise ValueError("release_key and representative_paper_id are required")
+    if not paper_id:
+        raise ValueError("representative_paper_id is required")
 
     owned_clients: list[object] = []
     active_clients = clients
@@ -107,17 +106,11 @@ def run_smoke_test(
         )
 
         visitor_login = _login(visitor, active_credentials["visitor"])
-        visitor_overview = visitor.get("/api/v1/published/overview")  # type: ignore[attr-defined]
-        visitor_release = (
-            visitor_overview.json().get("release", {}).get("key")
-            if visitor_overview.status_code == 200
-            else None
-        )
         visitor_ok = (
             visitor_login
-            and visitor_release == release_key
-            and visitor.get("/api/v1/papers?page=1&page_size=1").status_code == 200  # type: ignore[attr-defined]
-            and visitor.get(f"/api/v1/papers/{paper_id}/source-pdf").status_code  # type: ignore[attr-defined]
+            and visitor.get("/api/v2/papers?page=1&page_size=1").status_code == 200  # type: ignore[attr-defined]
+            and visitor.get(f"/api/v2/papers/{paper_id}").status_code == 200  # type: ignore[attr-defined]
+            and visitor.get(f"/api/v2/papers/{paper_id}/source-pdf").status_code  # type: ignore[attr-defined]
             in {403, 404}
             and visitor.get("/api/v1/users").status_code == 403  # type: ignore[attr-defined]
         )
@@ -125,7 +118,7 @@ def run_smoke_test(
             _check(
                 "visitor",
                 visitor_ok,
-                "Visitor reads the target release without privileged access",
+                "Visitor reads the published Paper without privileged access",
                 "Visitor smoke test failed",
             )
         )
@@ -133,10 +126,11 @@ def run_smoke_test(
         reviewer_login = _login(reviewer, active_credentials["reviewer"])
         reviewer_ok = (
             reviewer_login
-            and reviewer.get(f"/api/v1/papers/{paper_id}/source-pdf").status_code  # type: ignore[attr-defined]
+            and reviewer.get(f"/api/v2/papers/{paper_id}/source-pdf").status_code  # type: ignore[attr-defined]
             in {200, 206}
             and reviewer.get("/api/v1/users").status_code == 403  # type: ignore[attr-defined]
-            and reviewer.get("/api/v1/releases").status_code == 403  # type: ignore[attr-defined]
+            and reviewer.get("/api/v2/admin/papers?page=1&page_size=1").status_code  # type: ignore[attr-defined]
+            == 403
         )
         checks.append(
             _check(
@@ -152,7 +146,9 @@ def run_smoke_test(
         admin_ok = (
             admin_login
             and admin.get("/api/v1/users").status_code == 200  # type: ignore[attr-defined]
-            and admin.get("/api/v1/releases").status_code == 200  # type: ignore[attr-defined]
+            and admin.get("/api/v2/admin/papers?page=1&page_size=1").status_code  # type: ignore[attr-defined]
+            == 200
+            and admin.get("/api/v2/admin/submissions").status_code == 200  # type: ignore[attr-defined]
             and audit.status_code == 200
             and audit.json().get("valid") is True
         )

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -66,5 +69,12 @@ describe("Ketcher Vue island", () => {
     await flushPromises();
 
     expect(mocks.api.setMolecule).toHaveBeenCalledTimes(1);
+  });
+
+  it("transforms CommonJS calls embedded in Ketcher's ES modules for production", () => {
+    const config = readFileSync(resolve(import.meta.dirname, "../vite.config.ts"), "utf8");
+
+    expect(config).toContain("transformMixedEsModules: true");
+    expect(config).toContain('global: "globalThis"');
   });
 });
