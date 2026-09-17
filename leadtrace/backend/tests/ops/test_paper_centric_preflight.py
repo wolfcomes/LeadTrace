@@ -190,6 +190,7 @@ def _write_visual_acceptance(root: Path) -> Path:
         json.dumps(
             {
                 "schema_version": 1,
+                "application_commit": APPLICATION_COMMIT,
                 "status": "PASS",
                 "source_pdfs_mutated": False,
                 "checks": {
@@ -422,6 +423,32 @@ def test_tampered_visual_screenshot_is_rejected(tmp_path: Path) -> None:
         check for check in report.checks if check.name == "acceptance_evidence"
     )
     assert acceptance.status == "FAIL"
+
+
+def test_visual_acceptance_report_must_match_application_commit(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    visual_path = Path(str(config["visual_acceptance_report"]))
+    visual = json.loads(visual_path.read_text(encoding="utf-8"))
+    visual["application_commit"] = "f" * 40
+    visual_path.write_text(json.dumps(visual), encoding="utf-8")
+    acceptance = json.loads(
+        Path(str(config["acceptance_evidence"])).read_text(encoding="utf-8")
+    )
+    acceptance["artifact_sha256"]["visual_acceptance"] = hashlib.sha256(
+        visual_path.read_bytes()
+    ).hexdigest()
+    Path(str(config["acceptance_evidence"])).write_text(
+        json.dumps(acceptance), encoding="utf-8"
+    )
+
+    report = run_preflight(config, probes=_passing_probes(), now=NOW)
+
+    acceptance_check = next(
+        check for check in report.checks if check.name == "acceptance_evidence"
+    )
+    assert acceptance_check.status == "FAIL"
 
 
 @pytest.mark.parametrize("defect", ["same-paper", "hash-mismatch"])

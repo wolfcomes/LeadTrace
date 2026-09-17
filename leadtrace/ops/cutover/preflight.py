@@ -571,7 +571,12 @@ def _load_acceptance_evidence(
     return payload
 
 
-def _load_visual_acceptance(path: Path, *, expected_sha256: str) -> dict[str, object]:
+def _load_visual_acceptance(
+    path: Path,
+    *,
+    expected_sha256: str,
+    application_commit: str,
+) -> dict[str, object]:
     report_path = path.resolve(strict=True)
     if _sha256_file(report_path) != expected_sha256:
         raise ValueError("visual acceptance report hash does not match")
@@ -580,6 +585,7 @@ def _load_visual_acceptance(path: Path, *, expected_sha256: str) -> dict[str, ob
     if (
         not isinstance(payload, dict)
         or payload.get("schema_version") != 1
+        or payload.get("application_commit") != application_commit
         or payload.get("status") != "PASS"
         or payload.get("source_pdfs_mutated") is not False
         or not isinstance(checks, dict)
@@ -645,6 +651,9 @@ def _acceptance_check(config: Mapping[str, object]) -> CheckResult:
             Path(str(_required_config(config, "visual_acceptance_report", str))),
             expected_sha256=_required_sha256(
                 artifact_hashes, "visual_acceptance"
+            ),
+            application_commit=str(
+                _required_config(config, "application_commit", str)
             ),
         )
         return CheckResult.passed(
