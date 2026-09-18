@@ -142,6 +142,7 @@ cat >"$candidate_caddyfile" <<'CADDYFILE'
 {
     admin 127.0.0.1:20199
     auto_https disable_redirects
+    skip_install_trust
 }
 
 https://127.0.0.1:18878 {

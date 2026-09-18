@@ -114,6 +114,30 @@ def test_native_nginx_assets_preserve_strict_security_headers() -> None:
         assert 'X-Frame-Options "SAMEORIGIN"' not in assets_location
 
 
+def test_internal_assets_preserve_strict_security_headers() -> None:
+    strict_headers = (
+        'add_header X-Content-Type-Options "nosniff" always;',
+        'add_header X-Frame-Options "DENY" always;',
+        'add_header Referrer-Policy "same-origin" always;',
+        'add_header Permissions-Policy "camera=(), geolocation=(), microphone=()" always;',
+        'add_header Strict-Transport-Security "max-age=31536000" always;',
+        "add_header Content-Security-Policy \"default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'\" always;",
+    )
+
+    for path in NGINX_SECURITY_PATHS:
+        configuration = path.read_text(encoding="utf-8")
+        internal_assets = _prefix_location(
+            configuration,
+            "/_leadtrace_internal_assets/",
+        )
+
+        for header in strict_headers:
+            assert header in internal_assets
+        assert "'unsafe-eval'" not in internal_assets
+        assert "worker-src" not in internal_assets
+        assert 'X-Frame-Options "SAMEORIGIN"' not in internal_assets
+
+
 def test_cutover_runbook_runs_isolated_caddy_header_preflight() -> None:
     runbook = CUTOVER_RUNBOOK_PATH.read_text(encoding="utf-8")
     section_start = runbook.index("## Scope Ketcher security headers")
@@ -126,6 +150,7 @@ def test_cutover_runbook_runs_isolated_caddy_header_preflight() -> None:
     assert "127.0.0.1:20199" in caddy_section
     assert "caddy run" in caddy_section
     assert "caddy stop" in caddy_section
+    assert "skip_install_trust" in caddy_section
     assert 'find "$LEADTRACE_FRONTEND_RELEASE/assets"' in caddy_section
     assert 'curl -kfsSI "$candidate_origin$asset_url"' in caddy_section
     assert "https://127.0.0.1:8877" not in caddy_section
