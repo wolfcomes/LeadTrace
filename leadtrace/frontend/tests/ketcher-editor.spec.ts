@@ -85,6 +85,25 @@ describe("Ketcher iframe adapter", () => {
     }, window.location.origin);
   });
 
+  it("uses the latest model value received while editing is disabled", async () => {
+    const wrapper = mountEditor({ modelValue: "A", disabled: true });
+    await wrapper.setProps({ modelValue: "B" });
+    await wrapper.setProps({ disabled: false });
+    const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
+    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage");
+    dispatchChildMessage(iframe, createChildMessage("ready"));
+    await flushPromises();
+
+    expect(postMessage).toHaveBeenCalledOnce();
+    expect(postMessage).toHaveBeenCalledWith({
+      protocol: KETCHER_MESSAGE_PROTOCOL,
+      version: KETCHER_MESSAGE_VERSION,
+      kind: "set-molecule",
+      requestId: 1,
+      molecule: "B",
+    }, window.location.origin);
+  });
+
   it("accepts ready only from its same-origin child and then sends the initial SMILES", async () => {
     const wrapper = mountEditor({ modelValue: "CCO" });
     const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
@@ -187,6 +206,48 @@ describe("Ketcher iframe adapter", () => {
 
     await expect(editor.getMolfile()).resolves.toBe("MANUALLY FIXED MOLFILE");
     expect(wrapper.emitted("update:modelValue")).toEqual([["MANUALLY FIXED MOLFILE"]]);
+  });
+
+  it("restores the latest manual edit after editing is disabled and re-enabled", async () => {
+    const wrapper = mountEditor({ modelValue: "CCO" });
+    const firstIframe = wrapper.get("iframe").element as HTMLIFrameElement;
+    dispatchChildMessage(firstIframe, createChildMessage("ready"));
+    dispatchChildMessage(firstIframe, createChildMessage("molfile", 1, "MANUAL MOLFILE"));
+    await wrapper.setProps({ modelValue: "MANUAL MOLFILE" });
+
+    await wrapper.setProps({ disabled: true });
+    await wrapper.setProps({ disabled: false });
+    const secondIframe = wrapper.get("iframe").element as HTMLIFrameElement;
+    const postMessage = vi.spyOn(secondIframe.contentWindow!, "postMessage");
+    dispatchChildMessage(secondIframe, createChildMessage("ready"));
+    await flushPromises();
+
+    expect(postMessage).toHaveBeenCalledWith({
+      protocol: KETCHER_MESSAGE_PROTOCOL,
+      version: KETCHER_MESSAGE_VERSION,
+      kind: "set-molecule",
+      requestId: 2,
+      molecule: "MANUAL MOLFILE",
+    }, window.location.origin);
+  });
+
+  it("rejects a molecule request that stops responding after readiness", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const wrapper = mountEditor();
+    const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
+    dispatchChildMessage(iframe, createChildMessage("ready"));
+    const editor = wrapper.vm as unknown as {
+      setMolecule(value: string): Promise<void>;
+    };
+
+    const setting = editor.setMolecule("CCO");
+    const requestTimeouts = setTimeoutSpy.mock.calls
+      .filter(([, delay]) => delay === 15_000);
+    const requestTimeout = requestTimeouts.at(-1);
+    expect(requestTimeout).toBeDefined();
+    (requestTimeout![0] as () => void)();
+
+    await expect(setting).rejects.toThrow("处理当前结构");
   });
 
   it("reports an unresponsive child after a bounded initialization timeout", async () => {
