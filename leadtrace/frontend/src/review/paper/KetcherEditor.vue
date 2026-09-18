@@ -26,6 +26,8 @@ type PendingRequest = {
   promise: Promise<void>;
   resolve: () => void;
   reject: (reason: Error) => void;
+  status: "pending" | "resolved" | "failed";
+  error?: Error;
 };
 
 let activeRequest: PendingRequest | undefined;
@@ -38,7 +40,7 @@ function createPendingRequest(requestId: number): PendingRequest {
     reject = fail;
   });
   void promise.catch(() => undefined);
-  return { requestId, promise, resolve, reject };
+  return { requestId, promise, resolve, reject, status: "pending" };
 }
 
 function clearReadyTimeout(): void {
@@ -56,7 +58,9 @@ function postMolecule(value: string): void {
 
 function setMolecule(value: string | null | undefined): Promise<void> {
   if (props.disabled) return Promise.reject(new Error("Ketcher 编辑器已停用。"));
-  activeRequest?.reject(new Error("Ketcher molecule request was superseded."));
+  if (activeRequest?.status === "pending") {
+    activeRequest.reject(new Error("Ketcher molecule request was superseded."));
+  }
   pendingMolecule = value ?? "";
   lastEmittedMolfile = undefined;
   activeRequest = createPendingRequest(++nextRequestId);
@@ -84,12 +88,19 @@ function handleMessage(event: MessageEvent): void {
     if (message.requestId !== activeRequest?.requestId) return;
     currentMolfile = message.molfile;
     lastEmittedMolfile = message.molfile;
-    activeRequest.resolve();
+    if (activeRequest.status === "pending") activeRequest.resolve();
+    activeRequest.status = "resolved";
+    activeRequest.error = undefined;
     emit("update:modelValue", message.molfile);
     return;
   }
   if (message.requestId !== null && message.requestId !== activeRequest?.requestId) return;
-  if (message.requestId !== null) activeRequest?.reject(new Error(message.message || "Ketcher 编辑器发生错误。"));
+  if (message.requestId !== null && activeRequest) {
+    const error = new Error(message.message || "Ketcher 编辑器发生错误。");
+    if (activeRequest.status === "pending") activeRequest.reject(error);
+    activeRequest.status = "failed";
+    activeRequest.error = error;
+  }
   emit("error", message.message || "Ketcher 编辑器发生错误。");
 }
 
@@ -106,7 +117,7 @@ async function start(): Promise<void> {
     if (!ready.value && listening) {
       failed.value = true;
       const message = "Ketcher 编辑器未能载入，请重试。";
-      activeRequest?.reject(new Error(message));
+      if (activeRequest?.status === "pending") activeRequest.reject(new Error(message));
       activeRequest = undefined;
       emit("error", message);
     }
@@ -120,7 +131,9 @@ function stop(): void {
   if (listening) window.removeEventListener("message", handleMessage);
   listening = false;
   lastEmittedMolfile = undefined;
-  activeRequest?.reject(new Error("Ketcher editor stopped before the molecule request completed."));
+  if (activeRequest?.status === "pending") {
+    activeRequest.reject(new Error("Ketcher editor stopped before the molecule request completed."));
+  }
   activeRequest = undefined;
 }
 
@@ -143,7 +156,8 @@ if (!props.disabled) void setMolecule(pendingMolecule);
 defineExpose({
   getMolfile: async () => {
     if (props.disabled) throw new Error("Ketcher 编辑器已停用。");
-    await activeRequest?.promise;
+    if (activeRequest?.status === "pending") await activeRequest.promise;
+    if (activeRequest?.status === "failed") throw activeRequest.error;
     return currentMolfile;
   },
   setMolecule,

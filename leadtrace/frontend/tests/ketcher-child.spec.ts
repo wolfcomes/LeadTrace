@@ -170,6 +170,29 @@ describe("Ketcher child bridge", () => {
     }, harness.childWindow.location.origin);
   });
 
+  it("keeps manual edits correlated after the current molecule import fails", async () => {
+    const harness = createHarness();
+    harness.api.setMolecule.mockRejectedValue(new Error("import failed"));
+    harness.api.getMolfile.mockResolvedValue("MANUALLY FIXED MOLFILE");
+    const bridge = createKetcherChildBridge(harness.childWindow);
+    bridge.initialize(harness.api);
+    harness.parent.postMessage.mockClear();
+
+    harness.dispatch(createSetMoleculeMessage(4, "INVALID"));
+    await bridge.whenIdle();
+    harness.parent.postMessage.mockClear();
+    const changeHandler = harness.changeEvent.add.mock.calls[0]?.[0] as () => Promise<void>;
+    await changeHandler();
+
+    expect(harness.parent.postMessage).toHaveBeenCalledWith({
+      protocol: KETCHER_MESSAGE_PROTOCOL,
+      version: KETCHER_MESSAGE_VERSION,
+      kind: "molfile",
+      requestId: 4,
+      molfile: "MANUALLY FIXED MOLFILE",
+    }, harness.childWindow.location.origin);
+  });
+
   it("keeps the failure message inside the fixed-height editor island", () => {
     const css = readFileSync(resolve(import.meta.dirname, "../src/styles/components.css"), "utf8");
 

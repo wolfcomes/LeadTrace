@@ -169,6 +169,26 @@ describe("Ketcher iframe adapter", () => {
     }).getMolfile()).resolves.toBe("ETHANOL MOLFILE");
   });
 
+  it("accepts a manual edit after the current molecule request reports an error", async () => {
+    const wrapper = mountEditor();
+    const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
+    dispatchChildMessage(iframe, createChildMessage("ready"));
+    const editor = wrapper.vm as unknown as {
+      setMolecule(value: string): Promise<void>;
+      getMolfile(): Promise<string>;
+    };
+
+    const setting = editor.setMolecule("INVALID");
+    dispatchChildMessage(iframe, createChildMessage("error", 2, "import failed"));
+    await expect(setting).rejects.toThrow("import failed");
+
+    dispatchChildMessage(iframe, createChildMessage("molfile", 2, "MANUALLY FIXED MOLFILE"));
+    await flushPromises();
+
+    await expect(editor.getMolfile()).resolves.toBe("MANUALLY FIXED MOLFILE");
+    expect(wrapper.emitted("update:modelValue")).toEqual([["MANUALLY FIXED MOLFILE"]]);
+  });
+
   it("reports an unresponsive child after a bounded initialization timeout", async () => {
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     const wrapper = mountEditor();

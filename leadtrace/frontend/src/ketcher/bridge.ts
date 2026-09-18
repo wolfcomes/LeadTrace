@@ -66,6 +66,7 @@ export function createKetcherChildBridge(childWindow: KetcherChildWindow): Ketch
   function applyMolecule(requestId: number, molecule: string): void {
     const sequence = ++moleculeSequence;
     exportSequence += 1;
+    activeRequestId = requestId;
     applyQueue = applyQueue.then(async () => {
       if (!ketcher || disposed) return;
       applyingParentMolecule = true;
@@ -80,7 +81,6 @@ export function createKetcherChildBridge(childWindow: KetcherChildWindow): Ketch
         applyingParentMolecule = false;
       }
       if (sequence !== moleculeSequence) return;
-      activeRequestId = requestId;
       await publishMolfile(sequence, requestId);
     });
   }
