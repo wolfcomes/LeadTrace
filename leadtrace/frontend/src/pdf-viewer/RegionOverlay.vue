@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 
+import { normalizePdfRegionBounds, type PdfRegionBounds } from "./geometry";
+
 export interface PdfRegion {
   id: string;
   regionKey?: string;
@@ -32,7 +34,7 @@ type Interaction = {
   handle?: ResizeHandle;
   startX: number;
   startY: number;
-  bounds: { x0: number; y0: number; x1: number; y1: number };
+  bounds: PdfRegionBounds;
 };
 
 const interaction = ref<Interaction | null>(null);
@@ -47,10 +49,6 @@ const style = computed(() => ({
 
 function clamp(value: number, minimum = 0, maximum = 1): number {
   return Math.min(maximum, Math.max(minimum, value));
-}
-
-function rounded(value: number): number {
-  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 function pageRect(target: EventTarget | null): { left: number; top: number; width: number; height: number } {
@@ -120,13 +118,8 @@ function nextBounds(event: PointerEvent) {
     if (handle.includes("n")) bounds.y0 = clamp(bounds.y0 + dy, 0, bounds.y1 - 0.01);
     if (handle.includes("s")) bounds.y1 = clamp(bounds.y1 + dy, bounds.y0 + 0.01, 1);
   }
-  return {
-    id: props.region.id,
-    x0: rounded(bounds.x0),
-    y0: rounded(bounds.y0),
-    x1: rounded(bounds.x1),
-    y1: rounded(bounds.y1),
-  };
+  const normalized = normalizePdfRegionBounds(bounds);
+  return normalized ? { id: props.region.id, ...normalized } : null;
 }
 
 function finishInteraction(event: PointerEvent): void {
