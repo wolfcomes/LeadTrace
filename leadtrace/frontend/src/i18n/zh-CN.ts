@@ -27,6 +27,7 @@ export const zhCN = {
     passwordMismatch: "两次输入的新密码不一致。",
     passwordFailure: "密码未能更新，请检查后重试。",
     signOut: "退出登录",
+    logoutFailed: "退出登录失败，当前会话仍然有效。请稍后重试。",
     sessionChanged: "当前登录会话已在其他位置发生变化。已重新载入最新身份和权限；之前未完成的操作不会自动重试。",
     dismissSessionNotice: "关闭会话变更提示",
     accessNote: "账号由系统管理员创建。如需访问权限，请联系项目管理员。",

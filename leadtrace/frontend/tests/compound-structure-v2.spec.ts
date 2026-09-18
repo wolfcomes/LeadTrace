@@ -361,7 +361,7 @@ describe("Compound and single-Structure editor", () => {
       if (url.pathname === "/api/v1/auth/session") {
         sessionReads += 1;
         return response({
-          user: { username: "admin", display_name: "Admin", role: "admin", must_change_password: false },
+          user: { username: "reviewer", display_name: "Reviewer Admin", role: "admin", must_change_password: false },
           csrf_token: "admin-csrf",
         });
       }

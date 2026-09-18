@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
+import { z } from "zod";
 
 import { ApiError, apiRequest } from "../api/client";
 import {
@@ -17,6 +18,12 @@ import {
 export type { AuthUser } from "../api/schema";
 
 let activeSessionSync: SessionSync | undefined;
+const logoutResponseSchema = z.undefined();
+
+interface InFlightRefresh {
+  generation: number;
+  promise: Promise<void>;
+}
 
 export const useAuthStore = defineStore("auth", () => {
   const user = ref<AuthUser | null>(null);
@@ -28,10 +35,11 @@ export const useAuthStore = defineStore("auth", () => {
   const sessionNotice = ref<string | null>(null);
   const authenticated = computed(() => user.value !== null);
   let sessionSync: SessionSync | undefined;
-  let refreshInFlight: Promise<void> | undefined;
+  let refreshInFlight: InFlightRefresh | undefined;
   let refreshReportsSessionChange = false;
+  let sessionGeneration = 0;
 
-  function acceptSession(session: AuthenticationResponse): void {
+  function applySession(session: AuthenticationResponse): void {
     user.value = session.user;
     csrfToken.value = session.csrf_token;
     initialized.value = true;
@@ -39,47 +47,101 @@ export const useAuthStore = defineStore("auth", () => {
     serviceUnavailable.value = false;
   }
 
-  function clearSession(): void {
+  function applySignedOut(): void {
     user.value = null;
     csrfToken.value = null;
     initialized.value = true;
   }
 
+  function acceptSession(session: AuthenticationResponse): void {
+    sessionGeneration += 1;
+    applySession(session);
+    refreshReportsSessionChange = false;
+  }
+
+  function clearSession(): void {
+    sessionGeneration += 1;
+    applySignedOut();
+    refreshReportsSessionChange = false;
+    sessionNotice.value = null;
+  }
+
+  function beginCredentialMutation(): number {
+    sessionGeneration += 1;
+    return sessionGeneration;
+  }
+
+  function completeSessionMutation(
+    generation: number,
+    session: AuthenticationResponse,
+  ): boolean {
+    if (generation !== sessionGeneration) return false;
+    sessionGeneration += 1;
+    applySession(session);
+    refreshReportsSessionChange = false;
+    return true;
+  }
+
+  function completeLogout(generation: number): boolean {
+    if (generation !== sessionGeneration) return false;
+    sessionGeneration += 1;
+    applySignedOut();
+    refreshReportsSessionChange = false;
+    sessionNotice.value = null;
+    return true;
+  }
+
   function refreshSession(options: SessionRefreshOptions = {}): Promise<void> {
     refreshReportsSessionChange ||= options.sessionChanged === true;
-    if (refreshInFlight) return refreshInFlight;
+    const generation = sessionGeneration;
+    if (refreshInFlight?.generation === generation) return refreshInFlight.promise;
 
-    refreshInFlight = (async () => {
+    const promise = (async () => {
       try {
-        acceptSession(await apiRequest(
+        const session = await apiRequest(
           "/api/v1/auth/session",
           authenticationResponseSchema,
           { suppressUnauthorizedHandler: true },
-        ));
+        );
+        if (generation !== sessionGeneration) return;
+        applySession(session);
         if (refreshReportsSessionChange) {
           sessionNotice.value = zhCN.auth.sessionChanged;
         }
+        refreshReportsSessionChange = false;
       } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          clearSession();
+        if (generation !== sessionGeneration) return;
+        if (
+          error instanceof ApiError
+          && error.status === 401
+        ) {
+          sessionGeneration += 1;
+          applySignedOut();
+          refreshReportsSessionChange = false;
           return;
         }
         throw error;
       }
     })().finally(() => {
-      refreshInFlight = undefined;
-      refreshReportsSessionChange = false;
+      if (refreshInFlight?.promise === promise) refreshInFlight = undefined;
     });
-    return refreshInFlight;
+    refreshInFlight = { generation, promise };
+    return promise;
   }
 
   function startSessionSync(): void {
     if (sessionSync || typeof window === "undefined" || typeof document === "undefined") return;
     activeSessionSync?.stop();
+    let storage: Storage | undefined;
+    try {
+      storage = window.localStorage;
+    } catch {
+      storage = undefined;
+    }
     sessionSync = createSessionSync({
       window,
       document,
-      storage: window.localStorage,
+      storage,
       BroadcastChannel: typeof globalThis.BroadcastChannel === "function"
         ? globalThis.BroadcastChannel
         : undefined,
@@ -101,6 +163,7 @@ export const useAuthStore = defineStore("auth", () => {
 
   function dismissSessionNotice(): void {
     sessionNotice.value = null;
+    refreshReportsSessionChange = false;
   }
 
   async function restore(): Promise<void> {
@@ -119,11 +182,12 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function login(username: string, password: string): Promise<boolean> {
+    const generation = beginCredentialMutation();
     busy.value = true;
     loginError.value = null;
     serviceUnavailable.value = false;
     try {
-      acceptSession(await apiRequest(
+      const session = await apiRequest(
         "/api/v1/auth/login",
         authenticationResponseSchema,
         {
@@ -131,7 +195,8 @@ export const useAuthStore = defineStore("auth", () => {
           body: { username, password },
           suppressUnauthorizedHandler: true,
         },
-      ));
+      );
+      if (!completeSessionMutation(generation, session)) return false;
       publishCredentialsChanged();
       return true;
     } catch (error) {
@@ -148,7 +213,8 @@ export const useAuthStore = defineStore("auth", () => {
     currentPassword: string,
     newPassword: string,
   ): Promise<void> {
-    acceptSession(await apiRequest(
+    const generation = beginCredentialMutation();
+    const session = await apiRequest(
       "/api/v1/auth/password",
       authenticationResponseSchema,
       {
@@ -156,22 +222,35 @@ export const useAuthStore = defineStore("auth", () => {
         csrfToken: csrfToken.value,
         body: { current_password: currentPassword, new_password: newPassword },
       },
-    ));
-    publishCredentialsChanged();
+    );
+    if (completeSessionMutation(generation, session)) {
+      publishCredentialsChanged();
+    }
   }
 
   async function logout(): Promise<void> {
+    const generation = beginCredentialMutation();
     try {
       await apiRequest(
         "/api/v1/auth/logout",
-        authenticationResponseSchema.optional(),
-        { method: "POST", csrfToken: csrfToken.value },
+        logoutResponseSchema,
+        {
+          method: "POST",
+          csrfToken: csrfToken.value,
+          suppressUnauthorizedHandler: true,
+        },
       );
-    } finally {
-      clearSession();
-      sessionNotice.value = null;
-      publishCredentialsChanged();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        if (completeLogout(generation)) publishCredentialsChanged();
+        return;
+      }
+      if (!(error instanceof ApiError && error.code === "CSRF_VALIDATION_FAILED")) {
+        sessionNotice.value = zhCN.auth.logoutFailed;
+      }
+      throw error;
     }
+    if (completeLogout(generation)) publishCredentialsChanged();
   }
 
   return {

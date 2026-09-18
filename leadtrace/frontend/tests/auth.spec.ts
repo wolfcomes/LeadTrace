@@ -1,15 +1,17 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
+import { createApp, h } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory } from "vue-router";
+import { z } from "zod";
 
+import { apiRequest } from "../src/api/client";
 import LoginPage from "../src/auth/LoginPage.vue";
 import ChangePasswordPage from "../src/auth/ChangePasswordPage.vue";
 import AppShell from "../src/app/AppShell.vue";
 import { useAuthStore } from "../src/auth/store";
 import { createAppRouter } from "../src/app/router";
 import { zhCN } from "../src/i18n/zh-CN";
-
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -23,19 +25,46 @@ function jsonResponse(status: number, body: unknown): Response {
 
 class AuthBroadcastChannel extends EventTarget {
   static readonly sent: unknown[] = [];
+  static readonly instances: AuthBroadcastChannel[] = [];
+  closed = false;
+
+  constructor() {
+    super();
+    AuthBroadcastChannel.instances.push(this);
+  }
 
   postMessage(message: unknown): void {
     AuthBroadcastChannel.sent.push(message);
   }
 
-  close(): void {}
+  close(): void {
+    this.closed = true;
+  }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((finish) => {
+    resolve = finish;
+  });
+  return { promise, resolve };
+}
+
+const reviewerSession = {
+  user: { username: "reviewer", display_name: "Reviewer", role: "reviewer" as const, must_change_password: false },
+  csrf_token: "reviewer-csrf",
+};
+
+const adminSession = {
+  user: { username: "admin", display_name: "Admin", role: "admin" as const, must_change_password: false },
+  csrf_token: "admin-csrf",
+};
 
 describe("authenticated login flow", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     AuthBroadcastChannel.sent.length = 0;
+    AuthBroadcastChannel.instances.length = 0;
   });
 
   afterEach(() => {
@@ -216,6 +245,76 @@ describe("authenticated login flow", () => {
   });
 
   it.each([
+    ["200", () => jsonResponse(200, reviewerSession)],
+    ["401", () => jsonResponse(401, {
+      code: "AUTHENTICATION_REQUIRED",
+      message: "Authentication required",
+      details: {},
+      request_id: "stale-refresh",
+    })],
+  ])("does not let an old refresh %s overwrite a completed login", async (_status, oldResponse) => {
+    const oldRefresh = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/session") return oldRefresh.promise;
+      if (path === "/api/v1/auth/login") return jsonResponse(200, adminSession);
+      throw new Error(`Unexpected request: ${path}`);
+    }));
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    const refresh = auth.refreshSession();
+    await expect(auth.login("admin", "password")).resolves.toBe(true);
+    oldRefresh.resolve(oldResponse());
+    await refresh;
+
+    expect(auth.user?.username).toBe("admin");
+    expect(auth.csrfToken).toBe("admin-csrf");
+  });
+
+  it("does not let an old refresh overwrite a completed password rotation", async () => {
+    const oldRefresh = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/session") return oldRefresh.promise;
+      if (path === "/api/v1/auth/password") {
+        return jsonResponse(200, { ...reviewerSession, csrf_token: "rotated-csrf" });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }));
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    const refresh = auth.refreshSession();
+    await auth.changePassword("password", "new password");
+    oldRefresh.resolve(jsonResponse(200, reviewerSession));
+    await refresh;
+
+    expect(auth.user?.username).toBe("reviewer");
+    expect(auth.csrfToken).toBe("rotated-csrf");
+  });
+
+  it("does not let a pre-logout refresh rehydrate a completed logout", async () => {
+    const oldRefresh = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/session") return oldRefresh.promise;
+      if (path === "/api/v1/auth/logout") return new Response(null, { status: 204 });
+      throw new Error(`Unexpected request: ${path}`);
+    }));
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    const refresh = auth.refreshSession();
+    await auth.logout();
+    oldRefresh.resolve(jsonResponse(200, reviewerSession));
+    await refresh;
+
+    expect(auth.user).toBeNull();
+    expect(auth.csrfToken).toBeNull();
+  });
+
+  it.each([
     ["a 503 response", () => jsonResponse(503, {
       code: "SERVICE_UNAVAILABLE",
       message: "Temporarily unavailable",
@@ -235,6 +334,95 @@ describe("authenticated login flow", () => {
 
     expect(auth.user?.role).toBe("reviewer");
     expect(auth.csrfToken).toBe("reviewer-csrf");
+  });
+
+  it.each([
+    ["a 503 response", () => jsonResponse(503, {
+      code: "SERVICE_UNAVAILABLE",
+      message: "Temporarily unavailable",
+      details: {},
+      request_id: "logout-unavailable",
+    })],
+    ["a network failure", () => Promise.reject(new TypeError("network unavailable"))],
+  ])("preserves the current session when logout fails with %s", async (_label, result) => {
+    vi.stubGlobal("fetch", vi.fn(result));
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    await expect(auth.logout()).rejects.toBeDefined();
+
+    expect(auth.user?.username).toBe("reviewer");
+    expect(auth.csrfToken).toBe("reviewer-csrf");
+    expect(auth.sessionNotice).toBe(zhCN.auth.logoutFailed);
+  });
+
+  it("preserves the current session when logout returns an unexpected 200 response", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, reviewerSession)));
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    await expect(auth.logout()).rejects.toBeDefined();
+
+    expect(auth.user?.username).toBe("reviewer");
+    expect(auth.csrfToken).toBe("reviewer-csrf");
+    expect(auth.sessionNotice).toBe(zhCN.auth.logoutFailed);
+  });
+
+  it("preserves the handler-refreshed session and notice when logout has stale CSRF", async () => {
+    vi.stubGlobal("BroadcastChannel", AuthBroadcastChannel);
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/logout") {
+        return jsonResponse(403, {
+          code: "CSRF_VALIDATION_FAILED",
+          message: "CSRF validation failed",
+          details: {},
+          request_id: "stale-logout-csrf",
+        });
+      }
+      if (path === "/api/v1/auth/session") return jsonResponse(200, adminSession);
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+    createAppRouter(createMemoryHistory());
+
+    await expect(auth.logout()).rejects.toMatchObject({
+      code: "CSRF_VALIDATION_FAILED",
+      requestId: "stale-logout-csrf",
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(auth.user?.username).toBe("admin");
+    expect(auth.csrfToken).toBe("admin-csrf");
+    expect(auth.sessionNotice).toBe(zhCN.auth.sessionChanged);
+    expect(AuthBroadcastChannel.sent).toEqual([]);
+  });
+
+  it("keeps a pending session-change notice across a transient refresh failure", async () => {
+    let reads = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      reads += 1;
+      if (reads === 1) {
+        return jsonResponse(503, {
+          code: "SERVICE_UNAVAILABLE",
+          message: "Temporarily unavailable",
+          details: {},
+          request_id: "refresh-unavailable",
+        });
+      }
+      return jsonResponse(200, adminSession);
+    }));
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    await expect(auth.refreshSession({ sessionChanged: true })).rejects.toBeDefined();
+    await auth.refreshSession();
+
+    expect(auth.user?.username).toBe("admin");
+    expect(auth.csrfToken).toBe("admin-csrf");
+    expect(auth.sessionNotice).toBe(zhCN.auth.sessionChanged);
   });
 
   it("clears an existing session after an authoritative 401 refresh", async () => {
@@ -274,6 +462,47 @@ describe("authenticated login flow", () => {
     await flushPromises();
 
     expect(router.currentRoute.value.path).toBe("/papers");
+  });
+
+  it("leaves login for a safe redirect after another tab authenticates", async () => {
+    const auth = useAuthStore();
+    auth.clearSession();
+    const router = createAppRouter(createMemoryHistory());
+    await router.push({
+      path: "/login",
+      query: { redirect: "/papers?page=2&target=kinase" },
+    });
+    await router.isReady();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, reviewerSession)));
+
+    await auth.refreshSession({ sessionChanged: true });
+    await flushPromises();
+
+    expect(router.currentRoute.value.fullPath).toBe("/papers?page=2&target=kinase");
+  });
+
+  it.each([
+    "/review/papers/60000000-0000-4000-8000-000000000001?workspace=60000000-0000-4000-8000-000000000002",
+    "/change-password",
+  ])("leaves identity-bound route %s after a same-role username replacement", async (path) => {
+    const auth = useAuthStore();
+    auth.acceptSession({
+      user: { ...reviewerSession.user, username: "reviewer.a" },
+      csrf_token: "reviewer-a-csrf",
+    });
+    const router = createAppRouter(createMemoryHistory());
+    await router.push(path);
+    await router.isReady();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, {
+      user: { ...reviewerSession.user, username: "reviewer.b" },
+      csrf_token: "reviewer-b-csrf",
+    })));
+
+    await auth.refreshSession({ sessionChanged: true });
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe("/papers");
+    expect(auth.sessionNotice).toBe(zhCN.auth.sessionChanged);
   });
 
   it("routes an authoritative 401 refresh from a protected page to login", async () => {
@@ -322,5 +551,86 @@ describe("authenticated login flow", () => {
     expect(wrapper.get("[data-session-notice]").text()).toContain(zhCN.auth.sessionChanged);
     await wrapper.get("[data-dismiss-session-notice]").trigger("click");
     expect(wrapper.find("[data-session-notice]").exists()).toBe(false);
+  });
+
+  it("keeps the shell open and shows a warning when sign out fails", async () => {
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+    const router = createAppRouter(createMemoryHistory());
+    await router.push("/papers");
+    await router.isReady();
+    const wrapper = mount(AppShell, {
+      global: { plugins: [router], stubs: { RouterView: true } },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(503, {
+      code: "SERVICE_UNAVAILABLE",
+      message: "Temporarily unavailable",
+      details: {},
+      request_id: "logout-unavailable",
+    })));
+
+    await wrapper.get(".sign-out").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe("/papers");
+    expect(auth.user?.username).toBe("reviewer");
+    expect(wrapper.get("[data-session-notice]").text()).toContain(zhCN.auth.logoutFailed);
+  });
+
+  it("disposes router-owned session synchronization, watchers, and API handlers on app unmount", async () => {
+    vi.stubGlobal("BroadcastChannel", AuthBroadcastChannel);
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const auth = useAuthStore();
+    auth.acceptSession(adminSession);
+    const router = createAppRouter(createMemoryHistory());
+    const app = createApp({ render: () => h("div") });
+    app.use(pinia);
+    app.use(router);
+    app.mount(document.createElement("div"));
+    await router.push("/admin/users");
+    await router.isReady();
+
+    app.unmount();
+    await router.push("/admin/users");
+    auth.acceptSession(reviewerSession);
+    await flushPromises();
+    expect(AuthBroadcastChannel.instances[0]?.closed).toBe(true);
+    expect(router.currentRoute.value.path).toBe("/admin/users");
+
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v2/test") {
+        return jsonResponse(403, {
+          code: "CSRF_VALIDATION_FAILED",
+          message: "CSRF validation failed",
+          details: {},
+          request_id: "disposed-router",
+        });
+      }
+      return jsonResponse(200, adminSession);
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(apiRequest("/api/v2/test", z.unknown())).rejects.toMatchObject({
+      code: "CSRF_VALIDATION_FAILED",
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("keeps focus synchronization when localStorage access is denied", async () => {
+    vi.stubGlobal("BroadcastChannel", undefined);
+    vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
+      throw new DOMException("Storage denied", "SecurityError");
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, adminSession)));
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    expect(() => auth.startSessionSync()).not.toThrow();
+    window.dispatchEvent(new Event("focus"));
+    await flushPromises();
+
+    expect(auth.user?.username).toBe("admin");
   });
 });

@@ -32,7 +32,7 @@ interface SessionSyncChannel extends SessionSyncEventTarget {
 interface SessionSyncDependencies {
   window: SessionSyncEventTarget;
   document: SessionSyncDocument;
-  storage: SessionSyncStorage;
+  storage?: SessionSyncStorage;
   BroadcastChannel?: new (name: string) => SessionSyncChannel;
   refreshSession(options?: SessionRefreshOptions): Promise<void>;
 }
@@ -58,9 +58,14 @@ export function createSessionSync(dependencies: SessionSyncDependencies): Sessio
     BroadcastChannel,
     refreshSession,
   } = dependencies;
-  const channel = BroadcastChannel
-    ? new BroadcastChannel(SESSION_SYNC_CHANNEL)
-    : undefined;
+  let channel: SessionSyncChannel | undefined;
+  if (BroadcastChannel) {
+    try {
+      channel = new BroadcastChannel(SESSION_SYNC_CHANNEL);
+    } catch {
+      channel = undefined;
+    }
+  }
   let stopped = false;
 
   function requestRefresh(options?: SessionRefreshOptions): void {
@@ -102,6 +107,7 @@ export function createSessionSync(dependencies: SessionSyncDependencies): Sessio
         channel.postMessage(CREDENTIALS_CHANGED_SIGNAL);
         return;
       }
+      if (!storage) return;
       try {
         storage.removeItem(SESSION_SYNC_STORAGE_KEY);
         storage.setItem(

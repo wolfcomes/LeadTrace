@@ -45,8 +45,12 @@ const visibleNavigation = computed(() => navigation.filter(
 const initials = computed(() => auth.user?.display_name.trim().slice(0, 1) || "L");
 
 async function signOut(): Promise<void> {
-  await auth.logout();
-  await router.replace("/login");
+  try {
+    await auth.logout();
+    await router.replace("/login");
+  } catch {
+    // The store preserves the active session and exposes the relevant notice.
+  }
 }
 </script>
 

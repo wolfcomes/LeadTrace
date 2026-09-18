@@ -5,7 +5,6 @@ import {
   createSessionSync,
 } from "../src/auth/sessionSync";
 
-
 type Listener = EventListenerOrEventListenerObject;
 
 class FakeEventTarget {
@@ -75,6 +74,16 @@ class FakeBroadcastChannel extends FakeEventTarget {
   receive(message: unknown): void {
     this.emit("message", new MessageEvent("message", { data: message }));
   }
+}
+
+class ThrowingBroadcastChannel extends FakeEventTarget {
+  constructor(_name: string) {
+    super();
+    throw new Error("BroadcastChannel denied");
+  }
+
+  postMessage(): void {}
+  close(): void {}
 }
 
 function setup(BroadcastChannel: typeof FakeBroadcastChannel | null = FakeBroadcastChannel) {
@@ -171,5 +180,24 @@ describe("cross-tab session synchronization", () => {
       key: SESSION_SYNC_STORAGE_KEY,
       value: JSON.stringify(signal),
     }]);
+  });
+
+  it("falls back without losing focus refresh when BroadcastChannel construction throws", async () => {
+    const window = new FakeEventTarget();
+    const document = new FakeDocument();
+    const storage = new FakeStorage();
+    const refreshSession = vi.fn().mockResolvedValue(undefined);
+
+    expect(() => createSessionSync({
+      window,
+      document,
+      storage,
+      BroadcastChannel: ThrowingBroadcastChannel,
+      refreshSession,
+    })).not.toThrow();
+
+    window.emit("focus");
+    await Promise.resolve();
+    expect(refreshSession).toHaveBeenCalledOnce();
   });
 });
