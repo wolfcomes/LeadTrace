@@ -97,7 +97,9 @@ export const useAuthStore = defineStore("auth", () => {
     credentialMutationInProgress.value = false;
     if (refreshAfterCredentialMutation) {
       refreshAfterCredentialMutation = false;
-      void refreshSession({ sessionChanged: true }).catch(() => undefined);
+      void refreshSession({
+        sessionChanged: refreshReportsSessionChange,
+      }).catch(() => undefined);
     }
   }
 
@@ -123,8 +125,6 @@ export const useAuthStore = defineStore("auth", () => {
     ) return false;
     sessionGeneration += 1;
     applySignedOut();
-    refreshReportsSessionChange = false;
-    refreshAfterCredentialMutation = false;
     sessionNotice.value = null;
     return true;
   }
@@ -132,7 +132,7 @@ export const useAuthStore = defineStore("auth", () => {
   function refreshSession(options: SessionRefreshOptions = {}): Promise<void> {
     refreshReportsSessionChange ||= options.sessionChanged === true;
     if (activeCredentialMutation) {
-      refreshAfterCredentialMutation ||= options.sessionChanged === true;
+      refreshAfterCredentialMutation = true;
       return Promise.resolve();
     }
     const generation = sessionGeneration;
@@ -170,6 +170,15 @@ export const useAuthStore = defineStore("auth", () => {
     });
     refreshInFlight = { generation, promise };
     return promise;
+  }
+
+  function recoverFromUnauthorized(_path: string): boolean {
+    if (activeCredentialMutation) {
+      refreshAfterCredentialMutation = true;
+      return false;
+    }
+    clearSession();
+    return true;
   }
 
   async function recoverFromCsrfFailure(path: string): Promise<void> {
@@ -335,6 +344,7 @@ export const useAuthStore = defineStore("auth", () => {
     clearSession,
     restore,
     refreshSession,
+    recoverFromUnauthorized,
     recoverFromCsrfFailure,
     startSessionSync,
     stopSessionSync,

@@ -272,7 +272,7 @@ describe("authenticated login flow", () => {
     expect(auth.csrfToken).toBe("admin-csrf");
   });
 
-  it("does not let a refresh started during login reject the successful login result", async () => {
+  it("lets login settle before consuming a queued plain refresh", async () => {
     const loginResponse = deferred<Response>();
     let sessionReads = 0;
     const fetch = vi.fn(async (input: RequestInfo | URL) => {
@@ -298,10 +298,13 @@ describe("authenticated login flow", () => {
     loginResponse.resolve(jsonResponse(200, adminSession));
 
     await expect(login).resolves.toBe(true);
-    expect(sessionReads).toBe(0);
-    expect(fetch).toHaveBeenCalledOnce();
-    expect(auth.user?.username).toBe("admin");
-    expect(auth.csrfToken).toBe("admin-csrf");
+    await flushPromises();
+
+    expect(sessionReads).toBe(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(auth.user).toBeNull();
+    expect(auth.csrfToken).toBeNull();
+    expect(auth.sessionNotice).toBeNull();
   });
 
   it("refreshes after login when a cross-tab session signal arrives during the mutation", async () => {
@@ -327,6 +330,124 @@ describe("authenticated login flow", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(auth.user?.username).toBe("admin");
     expect(auth.sessionNotice).toBe(zhCN.auth.sessionChanged);
+  });
+
+  it("keeps a login mutation authoritative when an unrelated request returns 401", async () => {
+    const loginResponse = deferred<Response>();
+    let sessionReads = 0;
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/login") return loginResponse.promise;
+      if (path === "/api/v2/unrelated-read") {
+        return jsonResponse(401, {
+          code: "AUTHENTICATION_REQUIRED",
+          message: "Authentication required",
+          details: {},
+          request_id: "unrelated-unauthorized",
+        });
+      }
+      if (path === "/api/v1/auth/session") {
+        sessionReads += 1;
+        return jsonResponse(200, adminSession);
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+    createAppRouter(createMemoryHistory());
+
+    const login = auth.login("admin", "password");
+    const unrelatedFailure = await apiRequest(
+      "/api/v2/unrelated-read",
+      z.unknown(),
+    ).catch((error: unknown) => error);
+    const mutationLockStayedActive = auth.credentialMutationInProgress;
+    loginResponse.resolve(jsonResponse(200, adminSession));
+    const loginSucceeded = await login;
+    await flushPromises();
+
+    expect(unrelatedFailure).toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
+      requestId: "unrelated-unauthorized",
+    });
+    expect(mutationLockStayedActive).toBe(true);
+    expect(loginSucceeded).toBe(true);
+    expect(sessionReads).toBe(1);
+    expect(auth.user?.username).toBe("admin");
+    expect(auth.csrfToken).toBe("admin-csrf");
+    expect(auth.sessionNotice).toBeNull();
+  });
+
+  it.each([
+    ["204", () => new Response(null, { status: 204 })],
+    ["401", () => jsonResponse(401, {
+      code: "AUTHENTICATION_REQUIRED",
+      message: "Authentication required",
+      details: {},
+      request_id: "logout-raced-with-other-tab",
+    })],
+  ])("refreshes the authoritative session after logout %s when another tab changed credentials", async (_status, logoutResult) => {
+    const logoutResponse = deferred<Response>();
+    let sessionReads = 0;
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/logout") return logoutResponse.promise;
+      if (path === "/api/v1/auth/session") {
+        sessionReads += 1;
+        return jsonResponse(200, adminSession);
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    const logout = auth.logout();
+    await auth.refreshSession({ sessionChanged: true });
+    expect(fetch).toHaveBeenCalledOnce();
+    logoutResponse.resolve(logoutResult());
+    await logout;
+    await flushPromises();
+
+    expect(sessionReads).toBe(1);
+    expect(auth.user?.username).toBe("admin");
+    expect(auth.csrfToken).toBe("admin-csrf");
+    expect(auth.sessionNotice).toBe(zhCN.auth.sessionChanged);
+  });
+
+  it("queues a plain refresh during a failed mutation without showing a cross-tab notice", async () => {
+    const loginResponse = deferred<Response>();
+    let sessionReads = 0;
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/login") return loginResponse.promise;
+      if (path === "/api/v1/auth/session") {
+        sessionReads += 1;
+        return jsonResponse(200, adminSession);
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    const login = auth.login("admin", "password");
+    await auth.refreshSession();
+    expect(fetch).toHaveBeenCalledOnce();
+    loginResponse.resolve(jsonResponse(503, {
+      code: "SERVICE_UNAVAILABLE",
+      message: "Temporarily unavailable",
+      details: {},
+      request_id: "login-unavailable",
+    }));
+    await expect(login).resolves.toBe(false);
+    await flushPromises();
+
+    expect(sessionReads).toBe(1);
+    expect(auth.user?.username).toBe("admin");
+    expect(auth.csrfToken).toBe("admin-csrf");
+    expect(auth.sessionNotice).toBeNull();
   });
 
   it("does not let an old refresh overwrite a completed password rotation", async () => {
@@ -444,7 +565,7 @@ describe("authenticated login flow", () => {
     expect(auth.csrfToken).toBeNull();
   });
 
-  it("lets logout finish when an unrelated request triggers CSRF recovery", async () => {
+  it("refreshes after logout when an unrelated request triggers CSRF recovery", async () => {
     const logoutResponse = deferred<Response>();
     const fetch = vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), "http://leadtrace.test").pathname;
@@ -473,10 +594,12 @@ describe("authenticated login flow", () => {
 
     logoutResponse.resolve(new Response(null, { status: 204 }));
     await logout;
+    await flushPromises();
 
-    expect(auth.user).toBeNull();
-    expect(auth.csrfToken).toBeNull();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(auth.user?.username).toBe("reviewer");
+    expect(auth.csrfToken).toBe("reviewer-csrf");
+    expect(auth.sessionNotice).toBe(zhCN.auth.sessionChanged);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it("preserves the handler-refreshed session and notice when logout has stale CSRF", async () => {

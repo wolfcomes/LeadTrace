@@ -116,8 +116,8 @@ export function createAppRouter(
     }
   }
 
-  setUnauthorizedHandler(() => {
-    auth.clearSession();
+  setUnauthorizedHandler((_error, context) => {
+    if (!auth.recoverFromUnauthorized(context.path)) return;
     const redirect = router.currentRoute.value.fullPath;
     if (router.currentRoute.value.name !== "login") {
       void router.replace({ name: "login", query: { redirect } });

@@ -23,16 +23,22 @@ export class ApiError extends Error {
   }
 }
 
-let unauthorizedHandler: (() => void) | undefined;
 export interface ApiFailureContext {
   path: string;
 }
 
+let unauthorizedHandler:
+  ((error: ApiError, context: ApiFailureContext) => void)
+  | undefined;
 let csrfValidationFailedHandler:
   ((error: ApiError, context: ApiFailureContext) => void | Promise<void>)
   | undefined;
 
-export function setUnauthorizedHandler(handler: (() => void) | undefined): void {
+export function setUnauthorizedHandler(
+  handler:
+    ((error: ApiError, context: ApiFailureContext) => void)
+    | undefined,
+): void {
   unauthorizedHandler = handler;
 }
 
@@ -95,7 +101,7 @@ export async function apiRequest<T>(
       details,
     );
     if (response.status === 401 && !suppressUnauthorizedHandler) {
-      unauthorizedHandler?.();
+      unauthorizedHandler?.(error, { path });
     }
     if (code === "CSRF_VALIDATION_FAILED") {
       try {
