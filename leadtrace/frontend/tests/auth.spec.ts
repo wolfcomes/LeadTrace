@@ -379,6 +379,74 @@ describe("authenticated login flow", () => {
     expect(auth.sessionNotice).toBeNull();
   });
 
+  it("ignores an old-session 401 that arrives after a successful login", async () => {
+    const oldRequest = deferred<Response>();
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v2/slow-old-session-read") return oldRequest.promise;
+      if (path === "/api/v1/auth/login") return jsonResponse(200, adminSession);
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+    createAppRouter(createMemoryHistory());
+
+    const oldFailure = apiRequest(
+      "/api/v2/slow-old-session-read",
+      z.unknown(),
+    ).catch((error: unknown) => error);
+    await expect(auth.login("admin", "password")).resolves.toBe(true);
+    oldRequest.resolve(jsonResponse(401, {
+      code: "AUTHENTICATION_REQUIRED",
+      message: "Authentication required",
+      details: {},
+      request_id: "late-old-session-unauthorized",
+    }));
+    await expect(oldFailure).resolves.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
+      requestId: "late-old-session-unauthorized",
+    });
+    await flushPromises();
+
+    expect(auth.user?.username).toBe("admin");
+    expect(auth.csrfToken).toBe("admin-csrf");
+  });
+
+  it("ignores an old-session 401 after an authoritative refresh accepts a new session", async () => {
+    const oldRequest = deferred<Response>();
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v2/slow-old-session-read") return oldRequest.promise;
+      if (path === "/api/v1/auth/session") return jsonResponse(200, adminSession);
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+    createAppRouter(createMemoryHistory());
+
+    const oldFailure = apiRequest(
+      "/api/v2/slow-old-session-read",
+      z.unknown(),
+    ).catch((error: unknown) => error);
+    await auth.refreshSession();
+    oldRequest.resolve(jsonResponse(401, {
+      code: "AUTHENTICATION_REQUIRED",
+      message: "Authentication required",
+      details: {},
+      request_id: "late-pre-refresh-unauthorized",
+    }));
+    await expect(oldFailure).resolves.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
+      requestId: "late-pre-refresh-unauthorized",
+    });
+    await flushPromises();
+
+    expect(auth.user?.username).toBe("admin");
+    expect(auth.csrfToken).toBe("admin-csrf");
+  });
+
   it.each([
     ["204", () => new Response(null, { status: 204 })],
     ["401", () => jsonResponse(401, {

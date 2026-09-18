@@ -25,10 +25,14 @@ export class ApiError extends Error {
 
 export interface ApiFailureContext {
   path: string;
+  sessionGeneration?: number;
 }
 
 let unauthorizedHandler:
   ((error: ApiError, context: ApiFailureContext) => void)
+  | undefined;
+let unauthorizedSessionGeneration:
+  (() => number)
   | undefined;
 let csrfValidationFailedHandler:
   ((error: ApiError, context: ApiFailureContext) => void | Promise<void>)
@@ -38,8 +42,10 @@ export function setUnauthorizedHandler(
   handler:
     ((error: ApiError, context: ApiFailureContext) => void)
     | undefined,
+  getSessionGeneration?: () => number,
 ): void {
   unauthorizedHandler = handler;
+  unauthorizedSessionGeneration = handler ? getSessionGeneration : undefined;
 }
 
 export function setCsrfValidationFailedHandler(
@@ -70,6 +76,7 @@ export async function apiRequest<T>(
   schema: ZodType<T>,
   options: ApiRequestOptions = {},
 ): Promise<T> {
+  const requestSessionGeneration = unauthorizedSessionGeneration?.();
   const {
     body,
     csrfToken,
@@ -101,7 +108,10 @@ export async function apiRequest<T>(
       details,
     );
     if (response.status === 401 && !suppressUnauthorizedHandler) {
-      unauthorizedHandler?.(error, { path });
+      unauthorizedHandler?.(error, {
+        path,
+        sessionGeneration: requestSessionGeneration,
+      });
     }
     if (code === "CSRF_VALIDATION_FAILED") {
       try {

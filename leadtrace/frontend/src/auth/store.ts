@@ -146,6 +146,7 @@ export const useAuthStore = defineStore("auth", () => {
           { suppressUnauthorizedHandler: true },
         );
         if (generation !== sessionGeneration || activeCredentialMutation) return;
+        sessionGeneration += 1;
         applySession(session);
         if (refreshReportsSessionChange) {
           sessionNotice.value = zhCN.auth.sessionChanged;
@@ -172,7 +173,14 @@ export const useAuthStore = defineStore("auth", () => {
     return promise;
   }
 
-  function recoverFromUnauthorized(_path: string): boolean {
+  function recoverFromUnauthorized(
+    _path: string,
+    requestGeneration?: number,
+  ): boolean {
+    if (
+      requestGeneration !== undefined
+      && requestGeneration !== sessionGeneration
+    ) return false;
     if (activeCredentialMutation) {
       refreshAfterCredentialMutation = true;
       return false;
@@ -349,6 +357,7 @@ export const useAuthStore = defineStore("auth", () => {
     startSessionSync,
     stopSessionSync,
     dismissSessionNotice,
+    currentSessionGeneration: () => sessionGeneration,
     login,
     changePassword,
     logout,

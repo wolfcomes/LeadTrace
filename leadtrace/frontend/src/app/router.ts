@@ -117,12 +117,12 @@ export function createAppRouter(
   }
 
   setUnauthorizedHandler((_error, context) => {
-    if (!auth.recoverFromUnauthorized(context.path)) return;
+    if (!auth.recoverFromUnauthorized(context.path, context.sessionGeneration)) return;
     const redirect = router.currentRoute.value.fullPath;
     if (router.currentRoute.value.name !== "login") {
       void router.replace({ name: "login", query: { redirect } });
     }
-  });
+  }, auth.currentSessionGeneration);
   setCsrfValidationFailedHandler(async (_error, context) => {
     await auth.recoverFromCsrfFailure(context.path);
   });
