@@ -73,8 +73,11 @@ function handleMessage(event: MessageEvent): void {
     clearReadyTimeout();
     failed.value = false;
     ready.value = true;
-    if (!activeRequest) void setMolecule(pendingMolecule);
-    postMolecule(pendingMolecule);
+    if (!activeRequest) {
+      void setMolecule(pendingMolecule);
+    } else {
+      postMolecule(pendingMolecule);
+    }
     return;
   }
   if (message.kind === "molfile") {

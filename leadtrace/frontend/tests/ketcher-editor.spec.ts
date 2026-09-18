@@ -216,5 +216,6 @@ describe("Ketcher iframe adapter", () => {
       requestId: 2,
       molecule: "CCO",
     }, window.location.origin);
+    expect(postMessage).toHaveBeenCalledTimes(1);
   });
 });
