@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1600, initial-scale=1">
+  <title>LeadTrace｜导师汇报版</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <section class="slide dark cover" data-title="LeadTrace：把药物化学论文变成可计算的研发知识">
+    <div class="noise"></div>
+    <div class="content">
+      <div class="brand-row">
+        <div class="brand-logo">LT</div>
+        <div>
+          <div class="brand-name">LeadTrace</div>
+          <div class="brand-sub">先导化合物优化证据平台</div>
+        </div>
+      </div>
+      <div class="cover-copy">
+        <div class="topline">Research Platform · Advisor Briefing</div>
+        <h1 class="hero-title">把药物化学论文，变成<span class="accent">可计算的研发知识</span></h1>
+        <p class="subtitle">面向先导优化研究的 Human-in-the-loop 科学数据生产平台：结构化、可追溯、可审核、AI-ready。</p>
+        <div class="cover-metrics">
+          <div class="cover-metric"><strong>20 篇</strong><span>隔离试点论文</span></div>
+          <div class="cover-metric"><strong>6 类 = 0</strong><span>数据完整性异常</span></div>
+          <div class="cover-metric"><strong>766 项</strong><span>前后端自动化测试通过</span></div>
+        </div>
+      </div>
+      <div class="cover-graph" aria-hidden="true">
+        <div class="graph-line l1"></div><div class="graph-line l2"></div>
+        <div class="graph-line l3"></div><div class="graph-line l4"></div>
+        <div class="graph-line l5"></div><div class="graph-line l6"></div>
+        <div class="orb core">可验证的<br>药化知识</div>
+        <div class="orb paper">Paper<br>论文</div>
+        <div class="orb compound">Compound<br>化合物</div>
+        <div class="orb edge">Edge<br>优化关系</div>
+        <div class="orb evidence">Evidence<br>原始证据</div>
+        <div class="orb activity">Activity<br>活性</div>
+      </div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 导师汇报</span><span>01 / 12</span></div>
+  </section>
+
+  <section class="slide light" data-title="论文保存了结论，却没有保存为什么这样改">
+    <div class="content">
+      <div class="topline">01 · Problem</div>
+      <h2 class="display-title">论文保存了结论，却没有保存<span class="accent">“为什么这样改”</span></h2>
+      <div class="bottleneck-grid">
+        <div>
+          <div class="problem-quote">
+            <div class="quote">真正有价值的，不只是某个分子，而是<span style="color:var(--orange)">结构修改 → 活性变化 → 证据依据</span>这一整条决策链。</div>
+            <div class="sub">传统 PDF 适合人阅读，却把药化判断拆散在结构图、正文、表格、图注和补充材料中。</div>
+          </div>
+          <div class="loss-list">
+            <div class="loss-item"><div class="idx">01</div><div><strong>结构孤立</strong><span>化合物图像存在，但身份与关系难以复用</span></div></div>
+            <div class="loss-item"><div class="idx">02</div><div><strong>关系隐含</strong><span>“从 A 到 B 改了什么”依赖专家重新阅读</span></div></div>
+            <div class="loss-item"><div class="idx">03</div><div><strong>证据脱链</strong><span>活性、页码和原文依据无法形成机器可查链路</span></div></div>
+          </div>
+        </div>
+        <div class="pdf-machine card">
+          <div class="doc-stack">
+            <div class="doc-page"></div>
+            <div class="doc-page"></div>
+            <div class="doc-page">
+              <div class="journal">J. Med. Chem.</div>
+              <div class="fake-line"></div><div class="fake-line mid"></div>
+              <div class="mini-structure"><i></i><i></i><i></i></div>
+              <div class="fake-line"></div><div class="fake-line"></div>
+              <div class="fake-line short"></div><div class="fake-line"></div>
+              <div class="fake-line mid"></div><div class="fake-line short"></div>
+            </div>
+          </div>
+          <div class="loss-arrow"><span>语义与证据在传递中丢失</span></div>
+          <div class="black-box">
+            <div class="ai">AI</div>
+            <h3>一次性抽取结果</h3>
+            <p>可以很快，但谁确认？依据在哪？如何纠错？版本是否稳定？</p>
+            <div class="question">?</div>
+          </div>
+          <div class="machine-caption">瓶颈不只是识别精度，而是缺少“可信数据生产机制”</div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 问题定义</span><span>02 / 12</span></div>
+  </section>
+
+  <section class="slide dark" data-title="问题不是再训练一个模型，而是建立可信知识生产闭环">
+    <div class="noise"></div>
+    <div class="content">
+      <div class="topline">02 · Thesis</div>
+      <h2 class="display-title thesis-title">问题不是再训练一个抽取模型，<br>而是建立一套<span class="accent">可信知识生产闭环</span></h2>
+      <div class="thesis-layout">
+        <div class="wrong-answer card">
+          <div class="answer-title"><h3>一次性自动抽取</h3><span class="signal">×</span></div>
+          <div class="simple-pipeline">
+            <div class="box">PDF</div><div class="arrow">→</div><div class="box">AI</div><div class="arrow">→</div><div class="box">结果</div>
+          </div>
+          <div class="risk">
+            <div>缺少来源定位与证据约束</div>
+            <div>无法处理专家修正与并发冲突</div>
+            <div>结果变化时，难以解释差异</div>
+            <div>难以进入正式数据资产</div>
+          </div>
+        </div>
+        <div class="right-answer card">
+          <div class="answer-title"><h3>人机协同的数据生产系统</h3><span class="signal">✓</span></div>
+          <div class="governed-loop">
+            <div class="loop-node ai">AI<br>预填</div>
+            <div class="loop-node review">Reviewer<br>核验与修正</div>
+            <div class="loop-node publish">Admin<br>审批发布</div>
+            <div class="loop-node audit">Evidence<br>审计与追溯</div>
+            <div class="loop-arrow a1">→</div><div class="loop-arrow a2">→</div>
+            <div class="loop-arrow a3">→</div><div class="loop-arrow a4">→</div>
+          </div>
+          <div class="thesis-banner">LeadTrace 的研究对象，是“科学知识如何被可靠地生产、修正并发布”。</div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 核心命题</span><span>03 / 12</span></div>
+  </section>
+
+  <section class="slide light" data-title="把一次药化判断建模成可验证证据链">
+    <div class="content">
+      <div class="topline">03 · Scientific Model</div>
+      <h2 class="display-title">LeadTrace 把一次药化判断，建模成一条<span class="accent">可验证的证据链</span></h2>
+      <div class="graph-model">
+        <div class="model-line m1"></div><div class="model-line m2"></div>
+        <div class="model-line m3 orange"></div><div class="model-line m4 orange"></div>
+        <div class="model-line m5 cyan"></div><div class="model-line m6 cyan"></div>
+        <div class="model-line m7"></div><div class="model-line m8"></div>
+
+        <div class="model-node node-paper">
+          <div class="node-kind">Paper</div><h3>论文</h3><p>书目信息、Source PDF、内容身份</p>
+        </div>
+        <div class="model-node node-compound-a structure">
+          <div><div class="node-kind">Compound A</div><h3>母体化合物</h3><p>结构身份 + 来源图</p></div>
+          <img src="assets/compound-parent.png" alt="母体化合物结构">
+        </div>
+        <div class="model-node node-compound-b structure">
+          <div><div class="node-kind">Compound B</div><h3>衍生化合物</h3><p>结构身份 + 来源图</p></div>
+          <img src="assets/compound-child.png" alt="衍生化合物结构">
+        </div>
+        <div class="model-node node-edge">
+          <div class="node-kind">Lineage Edge</div><h3>直接优化关系</h3>
+          <p>parent → child<br>修改摘要 · 审核状态</p><span class="edge-chip">lead_optimization</span>
+        </div>
+        <div class="model-node node-evidence">
+          <div class="node-kind">Evidence</div><h3>原始证据</h3><p>页码、区域、原文、图注；支持 / 反驳 / 上下文</p>
+        </div>
+        <div class="model-node node-activity">
+          <div class="node-kind">Activity</div><h3>活性数据</h3><p>Assay、Metric、Operator、Value、Unit、Context</p>
+        </div>
+        <div class="model-node node-release">
+          <div class="node-kind">Published</div><h3>发布版本</h3><p>不可变快照<br>内容哈希</p>
+        </div>
+      </div>
+      <div class="source-note">数据模型：Paper → Compound / Structure → Lineage / Edge → Evidence / Activity → Published Paper Version</div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 科学数据模型</span><span>04 / 12</span></div>
+  </section>
+
+  <section class="slide dark" data-title="从只读论文到可发布科学知识">
+    <div class="noise"></div>
+    <div class="content">
+      <div class="topline">04 · End-to-end Workflow</div>
+      <h2 class="display-title">从只读论文，到可发布科学知识：<span class="accent">每一步都有边界</span></h2>
+      <div class="workflow">
+        <div class="stage"><div class="stage-no">01</div><h3>Source PDF</h3><p>原始文件只读；SHA-256 与逻辑定位绑定。</p><span class="stage-tag">SOURCE OF TRUTH</span></div>
+        <div class="stage"><div class="stage-no">02</div><h3>确定性目录</h3><p>解析标题、DOI、卷期、页数和来源身份。</p><span class="stage-tag">CATALOG</span></div>
+        <div class="stage"><div class="stage-no">03</div><h3>AI 可选预填</h3><p>只进入空白、未触碰的 Workspace。</p><span class="stage-tag">OPTIONAL</span></div>
+        <div class="stage"><div class="stage-no">04</div><h3>Reviewer 核验</h3><p>画结构、建谱系、连证据、录活性。</p><span class="stage-tag">HUMAN GATE</span></div>
+        <div class="stage"><div class="stage-no">05</div><h3>冻结提交</h3><p>生成不可变 snapshot 与 content hash。</p><span class="stage-tag">IMMUTABLE</span></div>
+        <div class="stage"><div class="stage-no">06</div><h3>Admin 决策</h3><p>批准，或带理由退回并继续修订。</p><span class="stage-tag">GOVERNANCE</span></div>
+        <div class="stage"><div class="stage-no">07</div><h3>正式发布</h3><p>文献库只读取批准后的固定版本。</p><span class="stage-tag">REUSABLE</span></div>
+        <div class="change-loop"><span>REQUEST CHANGES · 保留旧提交</span></div>
+      </div>
+      <div class="workflow-axioms">
+        <div class="axiom"><strong>PostgreSQL 是唯一业务数据权威</strong><span>Redis/Celery 仅承载任务投递状态</span></div>
+        <div class="axiom"><strong>每次科学数据修改都产生版本与历史</strong><span>科学修改与审计事件同事务提交</span></div>
+        <div class="axiom"><strong>发布读取固定快照</strong><span>避免“已发布内容随草稿漂移”</span></div>
+      </div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 端到端工作流</span><span>05 / 12</span></div>
+  </section>
+
+  <section class="slide light" data-title="AI 提速但没有权力覆盖专家">
+    <div class="content">
+      <div class="topline">05 · Human × AI</div>
+      <h2 class="display-title">AI 提速，但没有权力覆盖专家：<span class="accent">人的判断是最终边界</span></h2>
+      <div class="ai-human-layout">
+        <div class="roles">
+          <div class="role-card card ai">
+            <div class="role-icon">AI</div><h3>机器负责提速</h3>
+            <ul><li>预填化合物、结构与关系</li><li>复用统一的版本化 payload 契约</li><li>整包写入，失败则整包回滚</li><li>不绕过科学服务与验证规则</li></ul>
+          </div>
+          <div class="role-card card human">
+            <div class="role-icon">人</div><h3>专家负责定责</h3>
+            <ul><li>核验结构身份与原图依据</li><li>确认直接优化关系</li><li>处置缺失、冲突与不确定性</li><li>提交并承担发布责任</li></ul>
+          </div>
+        </div>
+        <div class="race-panel card">
+          <div class="eyebrow">Race-safe Apply</div><h3>当 AI 与 Reviewer 同时写入</h3>
+          <div class="race-timeline">
+            <div class="race-step"><span class="time">T₀</span><strong>AI 读取空白 Workspace v0</strong><span class="result">开始抽取</span></div>
+            <div class="race-step human"><span class="time">T₁</span><strong>Reviewer 先完成一次人工修改</strong><span class="result">升级到 v1</span></div>
+            <div class="race-step blocked"><span class="time">T₂</span><strong>AI 尝试提交基于 v0 的结果</strong><span class="result">superseded</span></div>
+            <div class="race-step"><span class="time">T₃</span><strong>系统保留 Reviewer 内容与历史</strong><span class="result">人类优先</span></div>
+          </div>
+          <div class="race-evidence"><div class="zero">0 行</div><p>20 篇试点中的强制竞争场景：过期 AI apply 插入 0 条科学记录，Reviewer 的不可变修改事件完整保留。</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 人机协同机制</span><span>06 / 12</span></div>
+  </section>
+
+  <section class="slide dark" data-title="在一个工作区里完成看画连证审">
+    <div class="noise"></div>
+    <div class="content">
+      <div class="topline">06 · Scientific Workspace</div>
+      <h2 class="display-title">在一个工作区里，完成<span class="accent">“看、画、连、证、审”</span></h2>
+      <div class="workspace-layout">
+        <div class="screen-frame">
+          <div class="screen-dots"><i></i><i></i><i></i></div>
+          <img src="assets/workspace.png" alt="LeadTrace 化合物结构与 PDF 工作区">
+          <div class="screen-callout c1">① Ketcher 结构编辑</div>
+          <div class="screen-callout c2">② 结构规范化</div>
+          <div class="screen-callout c3">③ PDF 证据对照</div>
+        </div>
+        <div class="workspace-aside">
+          <div class="workspace-feature"><div class="verb">看</div><p>原始 PDF 与页码上下文始终在场，不脱离来源判断。</p></div>
+          <div class="workspace-feature"><div class="verb">画 · 连</div><p>Ketcher 编辑结构，Cytoscape 呈现优化谱系与 parent/child 关系。</p></div>
+          <div class="workspace-feature"><div class="verb">证 · 审</div><p>Evidence 绑定 Edge，提交前逐区段完成或显式标记未报道。</p></div>
+          <div class="molecule-pair">
+            <img src="assets/compound-parent.png" alt="母体结构"><div class="pair-arrow">→</div><img src="assets/compound-child.png" alt="衍生结构">
+            <div class="molecule-pair-caption">结构图只是入口；真正的资产是“修改关系 + 证据 + 活性”</div>
+          </div>
+        </div>
+      </div>
+      <div class="source-note">界面截图来自 20 篇隔离试点的可视化验收环境；包含 PDF.js、Ketcher 与 RDKit 回显。</div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 科学审阅工作区</span><span>07 / 12</span></div>
+  </section>
+
+  <section class="slide light" data-title="可信是每一步都能被复核">
+    <div class="content">
+      <div class="topline">07 · Trust by Design</div>
+      <h2 class="display-title">可信，不是“结果看起来对”；而是<span class="accent">每一步都能被复核</span></h2>
+      <div class="trust-layout">
+        <div class="trust-chain">
+          <div class="trust-layer"><div class="trust-index">01</div><div><h3>来源可定位</h3><p>Source PDF、页码、归一化区域、原文与 crop provenance</p></div><div class="trust-proof">SHA-256 · read-only</div></div>
+          <div class="trust-layer"><div class="trust-index">02</div><div><h3>修改可解释</h3><p>before / after、actor、实体、时间与 Workspace version</p></div><div class="trust-proof">change_events</div></div>
+          <div class="trust-layer"><div class="trust-index">03</div><div><h3>提交不可漂移</h3><p>提交时冻结全 Paper snapshot，并绑定 content hash</p></div><div class="trust-proof">immutable submission</div></div>
+          <div class="trust-layer"><div class="trust-index">04</div><div><h3>系统可恢复</h3><p>审计链、加密备份、独立恢复与权限矩阵共同验收</p></div><div class="trust-proof">backup · restore · audit</div></div>
+        </div>
+        <div>
+          <div class="approval-proof">
+            <img src="assets/approval.png" alt="20 篇试点中的真实管理员提交审阅界面">
+            <div class="hash-overlay">
+              <div class="hash-side">Reviewer Submission<span>bd8455e8…914b4fe</span></div>
+              <div class="equal">=</div>
+              <div class="hash-side">Published Version<span>bd8455e8…914b4fe</span></div>
+            </div>
+          </div>
+          <div class="trust-statement">科学可信性被落实成数据库约束、事务规则与验收证据。</div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 可信架构</span><span>08 / 12</span></div>
+  </section>
+
+  <section class="slide dark" data-title="内网部署的数据不出域架构">
+    <div class="noise"></div>
+    <div class="content">
+      <div class="topline">08 · System Architecture</div>
+      <h2 class="display-title">内网部署、数据不出域：<span class="accent">科研语义与工程可靠性统一</span></h2>
+      <div class="architecture">
+        <div class="arch-boundary lan"><span class="boundary-label">CONTROLLED LAN · TLS ONLY</span></div>
+        <div class="arch-boundary data"><span class="boundary-label">DATA AUTHORITY & PROTECTED STORAGE</span></div>
+        <div class="arch-line a1"></div><div class="arch-line a2"></div><div class="arch-line a3"></div>
+        <div class="arch-line a4"></div><div class="arch-line a5"></div><div class="arch-line a6"></div>
+        <div class="arch-line a7"></div><div class="arch-line a8"></div>
+
+        <div class="arch-box arch-client"><div class="arch-kind">Client</div><h3>Browser</h3><p>Visitor · Reviewer · Admin</p></div>
+        <div class="arch-box arch-edge primary"><div class="arch-kind">Secure Edge</div><h3>Nginx / Caddy</h3><p>HTTPS、静态前端、API 代理</p></div>
+        <div class="arch-box arch-web"><div class="arch-kind">Application</div><h3>FastAPI Web</h3><p>权限、科学服务、事务边界</p></div>
+        <div class="arch-box arch-worker"><div class="arch-kind">Background</div><h3>Celery Worker</h3><p>裁图与 AI prefill 任务</p></div>
+        <div class="arch-box arch-pg primary"><div class="arch-kind">Authority</div><h3>PostgreSQL 16</h3><p>唯一业务数据权威</p></div>
+        <div class="arch-box arch-redis"><div class="arch-kind">Delivery State</div><h3>Redis 7</h3><p>可由数据库任务重建</p></div>
+        <div class="arch-box arch-assets"><div class="arch-kind">Managed Assets</div><h3>Evidence & Crops</h3><p>内容寻址、完整性校验</p></div>
+        <div class="arch-box arch-source readonly"><div class="arch-kind">Read-only</div><h3>Source PDFs</h3><p>原始语料不被改写</p></div>
+        <div class="arch-principles"><span class="pill">Modular monolith</span><span class="pill orange">26 个迁移版本</span><span class="pill">角色权限矩阵</span><span class="pill orange">备份 / 恢复 / 回滚</span></div>
+      </div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 系统架构</span><span>09 / 12</span></div>
+  </section>
+
+  <section class="slide light" data-title="20篇确定性入库，3个工作区验证端到端闭环">
+    <div class="content">
+      <div class="topline">09 · Pilot Evidence</div>
+      <h2 class="display-title pilot-title">20 篇论文完成确定性入库，<span class="accent">3 个工作区验证端到端闭环</span></h2>
+      <div class="pilot-strip"><span class="pill">ISOLATED PILOT · PASS</span><span>20 篇入库 · 3 个代表性工作区 · 2 个正式发布版本；生产切换未执行</span></div>
+      <div class="metrics-grid">
+        <div class="metric-card hero card"><div><span class="big-number">20</span><span class="unit">篇</span></div><div><h3>确定性导入，精确重放</h3><p>首次创建 20 篇；重复 apply 创建 0、保持 20，且源 PDF 字节与哈希变化均为 0。</p></div></div>
+        <div class="metric-card compact cyan card"><div class="big-number">6 = 0</div><h3>完整性异常</h3><p>来源、发布指针、快照、资产、审计链等全部为零。</p></div>
+        <div class="metric-card compact orange card"><div class="big-number">8 / 8</div><h3>切换前门禁</h3><p>备份、恢复、工作流、权限、HTTPS、Worker、Source 等全部通过。</p></div>
+        <div class="metric-card compact gold card"><div class="big-number">5s</div><h3>独立恢复演练</h3><p>在 3600 秒 RTO 目标下完成恢复与 HTTP 验证。</p></div>
+        <div class="metric-card compact card"><div class="big-number">679</div><h3>后端测试通过</h3><p>专用 PostgreSQL 测试库；另 1 项可选真实 broker 用例跳过。</p></div>
+        <div class="metric-card compact card"><div class="big-number">87</div><h3>前端测试通过</h3><p>18 个文件；TypeScript、生产构建与 Chromium E2E 同步通过。</p></div>
+        <div class="metric-card compact cyan card"><div class="big-number">2</div><h3>正式发布版本</h3><p>覆盖人工退回重提，以及 AI 预填后人工修正并批准。</p></div>
+      </div>
+      <div class="evidence-bar">
+        <div>验收覆盖的不只是“页面能打开”</div>
+        <div><strong>Manual</strong><span>录入 · 退回 · 重提</span></div>
+        <div><strong>AI</strong><span>预填 · 修改 · 批准</span></div>
+        <div><strong>Race</strong><span>过期 AI 零写入</span></div>
+        <div><strong>Visual</strong><span>桌面与移动端</span></div>
+        <div><strong>Restore</strong><span>22 文件逐一匹配</span></div>
+      </div>
+      <div class="source-note" style="margin-top:12px">来源：LeadTrace 20-Paper Pilot Results；数据为隔离试点证据，不代表生产规模。</div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 试点结果</span><span>10 / 12</span></div>
+  </section>
+
+  <section class="slide dark" data-title="从论文级可信数据走向药化知识网络">
+    <div class="noise"></div>
+    <div class="content">
+      <div class="topline">10 · Research Horizon</div>
+      <h2 class="display-title">从论文级可信数据，走向<span class="accent">跨论文药化知识网络</span></h2>
+      <div class="roadmap">
+        <div class="horizon card">
+          <div class="horizon-no">01</div><div class="horizon-status">NOW · 已验证</div><h3>可信数据生产</h3>
+          <p>让专家判断、AI 结果与原始证据进入同一版本化闭环。</p>
+          <ul><li>Paper-centric 模型</li><li>Human-in-the-loop</li><li>不可变发布与审计</li></ul>
+        </div>
+        <div class="horizon card">
+          <div class="horizon-no">02</div><div class="horizon-status">NEXT · 近期研究</div><h3>跨论文 SAR 网络</h3>
+          <p>连接相同骨架、靶点、修饰模式与活性趋势，形成可查询谱系。</p>
+          <ul><li>结构与亚结构检索</li><li>关系去重与冲突解析</li><li>证据加权的趋势分析</li></ul>
+        </div>
+        <div class="horizon card">
+          <div class="horizon-no">03</div><div class="horizon-status">FUTURE · 长期愿景</div><h3>AI-ready 研发底座</h3>
+          <p>为训练集、检索增强、解释性预测和候选设计提供高质量上下文。</p>
+          <ul><li>可追溯训练语料</li><li>证据约束的模型评估</li><li>面向设计决策的知识服务</li></ul>
+        </div>
+      </div>
+      <div class="research-question"><div class="q">Q</div><p>当科学 AI 进入真实研发流程，如何同时获得速度、可纠错性、可解释性与责任边界？LeadTrace 为这个问题提供了一个可运行的系统原型。</p></div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 研究价值与路线</span><span>11 / 12</span></div>
+  </section>
+
+  <section class="slide dark closing" data-title="从阅读论文到积累组织研发记忆">
+    <div class="noise"></div>
+    <div class="content">
+      <div class="closing-kicker">LEADTRACE · FROM PAPERS TO DECISIONS</div>
+      <h2>从“阅读论文”，到持续积累<br><span style="color:var(--cyan)">组织的研发记忆</span></h2>
+      <p class="closing-sub">LeadTrace 不是把 PDF 搬进数据库，而是把散落的药化判断，变成能被验证、继承和计算的知识资产。</p>
+      <div class="takeaways">
+        <div class="takeaway"><strong>Evidence-linked</strong><span>每个结论回到原始证据</span></div>
+        <div class="takeaway"><strong>Human-governed</strong><span>AI 提速，专家定责</span></div>
+        <div class="takeaway"><strong>AI-ready</strong><span>为跨论文推理奠定可信数据基础</span></div>
+      </div>
+      <div class="qa">Q&amp;A</div>
+    </div>
+    <div class="footer"><span class="mark">LeadTrace · 先导化合物优化证据平台</span><span>12 / 12</span></div>
+  </section>
+
+</body>
+</html>
