@@ -17,8 +17,29 @@ const failed = ref(false);
 let listening = false;
 let readyTimeout: ReturnType<typeof setTimeout> | undefined;
 let pendingMolecule = props.modelValue ?? "";
-let currentMolfile = props.modelValue ?? "";
+let currentMolfile = "";
 let lastEmittedMolfile: string | undefined;
+let nextRequestId = 0;
+
+type PendingRequest = {
+  requestId: number;
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (reason: Error) => void;
+};
+
+let activeRequest: PendingRequest | undefined;
+
+function createPendingRequest(requestId: number): PendingRequest {
+  let resolve!: () => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<void>((finish, fail) => {
+    resolve = finish;
+    reject = fail;
+  });
+  void promise.catch(() => undefined);
+  return { requestId, promise, resolve, reject };
+}
 
 function clearReadyTimeout(): void {
   if (readyTimeout !== undefined) clearTimeout(readyTimeout);
@@ -26,15 +47,20 @@ function clearReadyTimeout(): void {
 }
 
 function postMolecule(value: string): void {
-  if (!ready.value || !frame.value?.contentWindow) return;
-  frame.value.contentWindow.postMessage(createSetMoleculeMessage(value), window.location.origin);
+  if (!ready.value || !frame.value?.contentWindow || !activeRequest) return;
+  frame.value.contentWindow.postMessage(
+    createSetMoleculeMessage(activeRequest.requestId, value),
+    window.location.origin,
+  );
 }
 
-function setMolecule(value: string | null | undefined): void {
+function setMolecule(value: string | null | undefined): Promise<void> {
+  activeRequest?.reject(new Error("Ketcher molecule request was superseded."));
   pendingMolecule = value ?? "";
-  currentMolfile = pendingMolecule;
   lastEmittedMolfile = undefined;
+  activeRequest = createPendingRequest(++nextRequestId);
   postMolecule(pendingMolecule);
+  return activeRequest.promise;
 }
 
 function handleMessage(event: MessageEvent): void {
@@ -50,11 +76,15 @@ function handleMessage(event: MessageEvent): void {
     return;
   }
   if (message.kind === "molfile") {
+    if (message.requestId !== activeRequest?.requestId) return;
     currentMolfile = message.molfile;
     lastEmittedMolfile = message.molfile;
+    activeRequest.resolve();
     emit("update:modelValue", message.molfile);
     return;
   }
+  if (message.requestId !== null && message.requestId !== activeRequest?.requestId) return;
+  if (message.requestId !== null) activeRequest?.reject(new Error(message.message || "Ketcher 编辑器发生错误。"));
   emit("error", message.message || "Ketcher 编辑器发生错误。");
 }
 
@@ -70,7 +100,10 @@ async function start(): Promise<void> {
   readyTimeout = setTimeout(() => {
     if (!ready.value && listening) {
       failed.value = true;
-      emit("error", "Ketcher 编辑器未能载入，请重试。");
+      const message = "Ketcher 编辑器未能载入，请重试。";
+      activeRequest?.reject(new Error(message));
+      activeRequest = undefined;
+      emit("error", message);
     }
   }, READY_TIMEOUT_MS);
 }
@@ -82,6 +115,8 @@ function stop(): void {
   if (listening) window.removeEventListener("message", handleMessage);
   listening = false;
   lastEmittedMolfile = undefined;
+  activeRequest?.reject(new Error("Ketcher editor stopped before the molecule request completed."));
+  activeRequest = undefined;
 }
 
 watch(() => props.modelValue, (value) => {
@@ -90,14 +125,22 @@ watch(() => props.modelValue, (value) => {
 });
 watch(() => props.disabled, (disabled) => {
   if (disabled) stop();
-  else void start();
+  else {
+    void setMolecule(pendingMolecule);
+    void start();
+  }
 });
 onMounted(() => { void start(); });
 onBeforeUnmount(stop);
 
+void setMolecule(pendingMolecule);
+
 defineExpose({
-  getMolfile: async () => currentMolfile,
-  setMolecule: async (value: string | null | undefined) => { setMolecule(value); },
+  getMolfile: async () => {
+    await activeRequest?.promise;
+    return currentMolfile;
+  },
+  setMolecule,
 });
 </script>
 

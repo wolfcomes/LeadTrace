@@ -27,6 +27,7 @@ export function createKetcherChildBridge(childWindow: KetcherChildWindow): Ketch
   let applyingParentMolecule = false;
   let moleculeSequence = 0;
   let exportSequence = 0;
+  let activeRequestId: number | null = null;
   let applyQueue = Promise.resolve();
   const handleKetcherChange = (): Promise<void> => publishMolfile();
 
@@ -34,12 +35,15 @@ export function createKetcherChildBridge(childWindow: KetcherChildWindow): Ketch
     if (!disposed) childWindow.parent.postMessage(message, parentOrigin);
   }
 
-  function reportError(reason: unknown, fallback: string): void {
+  function reportError(reason: unknown, fallback: string, requestId: number | null): void {
     const message = reason instanceof Error && reason.message ? reason.message : fallback;
-    send(createChildMessage("error", message));
+    send(createChildMessage("error", requestId, message));
   }
 
-  async function publishMolfile(expectedMoleculeSequence = moleculeSequence): Promise<void> {
+  async function publishMolfile(
+    expectedMoleculeSequence = moleculeSequence,
+    requestId = activeRequestId,
+  ): Promise<void> {
     if (!ketcher || applyingParentMolecule || disposed) return;
     const sequence = ++exportSequence;
     try {
@@ -48,17 +52,18 @@ export function createKetcherChildBridge(childWindow: KetcherChildWindow): Ketch
         !disposed
         && sequence === exportSequence
         && expectedMoleculeSequence === moleculeSequence
+        && requestId !== null
       ) {
-        send(createChildMessage("molfile", molfile));
+        send(createChildMessage("molfile", requestId, molfile));
       }
     } catch (reason) {
       if (sequence === exportSequence && expectedMoleculeSequence === moleculeSequence) {
-        reportError(reason, "Ketcher 暂时无法导出 Molfile。");
+        reportError(reason, "Ketcher 暂时无法导出 Molfile。", requestId);
       }
     }
   }
 
-  function applyMolecule(molecule: string): void {
+  function applyMolecule(requestId: number, molecule: string): void {
     const sequence = ++moleculeSequence;
     exportSequence += 1;
     applyQueue = applyQueue.then(async () => {
@@ -67,13 +72,16 @@ export function createKetcherChildBridge(childWindow: KetcherChildWindow): Ketch
       try {
         await ketcher.setMolecule(molecule);
       } catch (reason) {
-        if (sequence === moleculeSequence) reportError(reason, "Ketcher 无法载入当前结构文本。");
+        if (sequence === moleculeSequence) {
+          reportError(reason, "Ketcher 无法载入当前结构文本。", requestId);
+        }
         return;
       } finally {
         applyingParentMolecule = false;
       }
       if (sequence !== moleculeSequence) return;
-      await publishMolfile(sequence);
+      activeRequestId = requestId;
+      await publishMolfile(sequence, requestId);
     });
   }
 
@@ -81,7 +89,7 @@ export function createKetcherChildBridge(childWindow: KetcherChildWindow): Ketch
     const event = rawEvent as MessageEvent;
     if (event.origin !== parentOrigin || event.source !== childWindow.parent) return;
     const message = parseParentMessage(event.data);
-    if (message) applyMolecule(message.molecule);
+    if (message) applyMolecule(message.requestId, message.molecule);
   };
 
   function dispose(): void {

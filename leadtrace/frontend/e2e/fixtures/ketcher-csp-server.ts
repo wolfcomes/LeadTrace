@@ -31,10 +31,10 @@ const parentScript = `(() => {
       window.ketcherHarness.ready = true;
       status.value = "ready";
       iframe.contentWindow.postMessage(
-        { protocol, version, kind: "set-molecule", molecule: "CCO" },
+        { protocol, version, kind: "set-molecule", requestId: 1, molecule: "CCO" },
         window.location.origin,
       );
-    } else if (message.kind === "molfile" && typeof message.molfile === "string") {
+    } else if (message.kind === "molfile" && message.requestId === 1 && typeof message.molfile === "string") {
       window.ketcherHarness.molfile = message.molfile;
       status.value = "molfile";
     } else if (message.kind === "error" && typeof message.message === "string") {

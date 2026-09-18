@@ -59,7 +59,23 @@ test("real Ketcher imports SMILES and exports Molfile under its scoped CSP", asy
     { timeout: 30_000 },
   ).not.toBe("");
 
+  const molfile = await page.evaluate(() => window.ketcherHarness?.molfile ?? "");
+  const atomSymbols = molfileAtomSymbols(molfile);
+  expect(atomSymbols.sort()).toEqual(["C", "C", "O"]);
   expect(await page.evaluate(() => window.ketcherHarness?.errors ?? [])).toEqual([]);
   expect(cspErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
+
+function molfileAtomSymbols(molfile: string): string[] {
+  const lines = molfile.split(/\r?\n/);
+  const v2000 = lines.findIndex((line) => line.includes("V2000"));
+  if (v2000 >= 0) {
+    const atomCount = Number.parseInt(lines[v2000]!.slice(0, 3), 10);
+    return lines.slice(v2000 + 1, v2000 + 1 + atomCount)
+      .map((line) => line.slice(31, 34).trim());
+  }
+  return lines
+    .map((line) => /^M  V30 \d+ ([A-Za-z][A-Za-z]?)(?:\s|$)/.exec(line)?.[1])
+    .filter((symbol): symbol is string => Boolean(symbol));
+}

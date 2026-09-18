@@ -17,7 +17,7 @@ const bridge = createKetcherChildBridge(window);
 
 function reportError(reason: unknown, fallback: string): void {
   const message = reason instanceof Error && reason.message ? reason.message : fallback;
-  window.parent.postMessage(createChildMessage("error", message), window.location.origin);
+  window.parent.postMessage(createChildMessage("error", null, message), window.location.origin);
 }
 
 function initialize(api: Ketcher): void {
@@ -37,7 +37,7 @@ try {
     staticResourcesUrl: "",
     structServiceProvider: new StandaloneStructServiceProvider(),
     errorHandler: (message: string) => window.parent.postMessage(
-      createChildMessage("error", message || "Ketcher 编辑器发生错误。"),
+      createChildMessage("error", null, message || "Ketcher 编辑器发生错误。"),
       window.location.origin,
     ),
     onInit: initialize,

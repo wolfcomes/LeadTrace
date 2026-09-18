@@ -67,13 +67,13 @@ describe("Ketcher child bridge", () => {
       kind: "ready",
     }, harness.childWindow.location.origin);
 
-    harness.dispatch(createSetMoleculeMessage("ATTACKER"), { origin: "https://attacker.example" });
-    harness.dispatch(createSetMoleculeMessage("WRONG SOURCE"), { source: {} });
+    harness.dispatch(createSetMoleculeMessage(1, "ATTACKER"), { origin: "https://attacker.example" });
+    harness.dispatch(createSetMoleculeMessage(1, "WRONG SOURCE"), { source: {} });
     harness.dispatch({ protocol: KETCHER_MESSAGE_PROTOCOL, version: 99, kind: "set-molecule", molecule: "BAD" });
     await Promise.resolve();
     expect(harness.api.setMolecule).not.toHaveBeenCalled();
 
-    harness.dispatch(createSetMoleculeMessage("CCO"));
+    harness.dispatch(createSetMoleculeMessage(1, "CCO"));
     await bridge.whenIdle();
     expect(harness.api.setMolecule).toHaveBeenCalledWith("CCO");
   });
@@ -89,9 +89,9 @@ describe("Ketcher child bridge", () => {
     bridge.initialize(harness.api);
     harness.parent.postMessage.mockClear();
 
-    harness.dispatch(createSetMoleculeMessage("A"));
+    harness.dispatch(createSetMoleculeMessage(1, "A"));
     await Promise.resolve();
-    harness.dispatch(createSetMoleculeMessage("B"));
+    harness.dispatch(createSetMoleculeMessage(2, "B"));
     firstImport.resolve();
     await bridge.whenIdle();
 
@@ -102,6 +102,7 @@ describe("Ketcher child bridge", () => {
       protocol: KETCHER_MESSAGE_PROTOCOL,
       version: KETCHER_MESSAGE_VERSION,
       kind: "molfile",
+      requestId: 2,
       molfile: "LATEST MOLFILE",
     }, harness.childWindow.location.origin);
   });
@@ -119,6 +120,7 @@ describe("Ketcher child bridge", () => {
       protocol: KETCHER_MESSAGE_PROTOCOL,
       version: KETCHER_MESSAGE_VERSION,
       kind: "error",
+      requestId: null,
       message: "export failed",
     }, harness.childWindow.location.origin);
 
@@ -134,6 +136,9 @@ describe("Ketcher child bridge", () => {
     bridge.initialize(harness.api);
     harness.parent.postMessage.mockClear();
 
+    harness.dispatch(createSetMoleculeMessage(1, "CCO"));
+    await bridge.whenIdle();
+    harness.parent.postMessage.mockClear();
     const changeHandler = harness.changeEvent.add.mock.calls[0]?.[0] as (event: unknown) => Promise<void>;
     await changeHandler({ source: "canvas" });
 
@@ -141,6 +146,7 @@ describe("Ketcher child bridge", () => {
       protocol: KETCHER_MESSAGE_PROTOCOL,
       version: KETCHER_MESSAGE_VERSION,
       kind: "molfile",
+      requestId: 1,
       molfile: "MOLFILE",
     }, harness.childWindow.location.origin);
   });
@@ -152,13 +158,14 @@ describe("Ketcher child bridge", () => {
     bridge.initialize(harness.api);
     harness.parent.postMessage.mockClear();
 
-    harness.dispatch(createSetMoleculeMessage("INVALID"));
+    harness.dispatch(createSetMoleculeMessage(1, "INVALID"));
     await bridge.whenIdle();
 
     expect(harness.parent.postMessage).toHaveBeenCalledWith({
       protocol: KETCHER_MESSAGE_PROTOCOL,
       version: KETCHER_MESSAGE_VERSION,
       kind: "error",
+      requestId: 1,
       message: "import failed",
     }, harness.childWindow.location.origin);
   });

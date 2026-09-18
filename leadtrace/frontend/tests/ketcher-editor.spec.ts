@@ -53,6 +53,27 @@ describe("Ketcher iframe adapter", () => {
 
   });
 
+  it("restores the current molecule request after editing is disabled and re-enabled", async () => {
+    const wrapper = mountEditor({ modelValue: "CCO" });
+    const firstIframe = wrapper.get("iframe").element as HTMLIFrameElement;
+    dispatchChildMessage(firstIframe, createChildMessage("ready"));
+
+    await wrapper.setProps({ disabled: true });
+    await wrapper.setProps({ disabled: false });
+    const secondIframe = wrapper.get("iframe").element as HTMLIFrameElement;
+    const postMessage = vi.spyOn(secondIframe.contentWindow!, "postMessage");
+    dispatchChildMessage(secondIframe, createChildMessage("ready"));
+    await flushPromises();
+
+    expect(postMessage).toHaveBeenCalledWith({
+      protocol: KETCHER_MESSAGE_PROTOCOL,
+      version: KETCHER_MESSAGE_VERSION,
+      kind: "set-molecule",
+      requestId: 2,
+      molecule: "CCO",
+    }, window.location.origin);
+  });
+
   it("accepts ready only from its same-origin child and then sends the initial SMILES", async () => {
     const wrapper = mountEditor({ modelValue: "CCO" });
     const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
@@ -70,6 +91,7 @@ describe("Ketcher iframe adapter", () => {
       protocol: KETCHER_MESSAGE_PROTOCOL,
       version: KETCHER_MESSAGE_VERSION,
       kind: "set-molecule",
+      requestId: 1,
       molecule: "CCO",
     }, window.location.origin);
     expect(wrapper.find(".ketcher-loading").exists()).toBe(false);
@@ -81,7 +103,7 @@ describe("Ketcher iframe adapter", () => {
     const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage");
 
     dispatchChildMessage(iframe, createChildMessage("ready"));
-    dispatchChildMessage(iframe, createChildMessage("molfile", "MOCK MOLFILE"));
+    dispatchChildMessage(iframe, createChildMessage("molfile", 1, "MOCK MOLFILE"));
     await flushPromises();
 
     expect(wrapper.emitted("update:modelValue")).toEqual([["MOCK MOLFILE"]]);
@@ -97,10 +119,43 @@ describe("Ketcher iframe adapter", () => {
     const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
 
     dispatchChildMessage(iframe, { protocol: KETCHER_MESSAGE_PROTOCOL, version: 99, kind: "error", message: "bad" });
-    dispatchChildMessage(iframe, createChildMessage("error", "Ketcher failed"));
+    dispatchChildMessage(iframe, createChildMessage("error", null, "Ketcher failed"));
     await flushPromises();
 
     expect(wrapper.emitted("error")).toEqual([["Ketcher failed"]]);
+  });
+
+  it("ignores a Molfile response from the molecule request superseded by the parent", async () => {
+    const wrapper = mountEditor({ modelValue: "A" });
+    const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
+
+    dispatchChildMessage(iframe, createChildMessage("ready"));
+    await wrapper.setProps({ modelValue: "B" });
+    dispatchChildMessage(iframe, createChildMessage("molfile", 1, "STALE A MOLFILE"));
+    dispatchChildMessage(iframe, createChildMessage("molfile", 2, "CURRENT B MOLFILE"));
+    await flushPromises();
+
+    expect(wrapper.emitted("update:modelValue")).toEqual([["CURRENT B MOLFILE"]]);
+  });
+
+  it("waits for the correlated child output in its exposed set/get methods", async () => {
+    const wrapper = mountEditor();
+    const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
+    dispatchChildMessage(iframe, createChildMessage("ready"));
+
+    let settled = false;
+    const setting = (wrapper.vm as unknown as {
+      setMolecule(value: string): Promise<void>;
+      getMolfile(): Promise<string>;
+    }).setMolecule("CCO").then(() => { settled = true; });
+    await flushPromises();
+    expect(settled).toBe(false);
+
+    dispatchChildMessage(iframe, createChildMessage("molfile", 2, "ETHANOL MOLFILE"));
+    await setting;
+    await expect((wrapper.vm as unknown as {
+      getMolfile(): Promise<string>;
+    }).getMolfile()).resolves.toBe("ETHANOL MOLFILE");
   });
 
   it("reports an unresponsive child after a bounded initialization timeout", async () => {
@@ -115,5 +170,19 @@ describe("Ketcher iframe adapter", () => {
 
     expect(wrapper.emitted("error")).toEqual([["Ketcher 编辑器未能载入，请重试。"]]);
     expect(wrapper.find(".ketcher-loading").exists()).toBe(false);
+  });
+
+  it("rejects an exposed molecule request when initialization times out", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const wrapper = mountEditor();
+    await flushPromises();
+
+    const setting = (wrapper.vm as unknown as {
+      setMolecule(value: string): Promise<void>;
+    }).setMolecule("CCO");
+    const timeoutCall = setTimeoutSpy.mock.calls.find(([, delay]) => delay === 15_000);
+    (timeoutCall![0] as () => void)();
+
+    await expect(setting).rejects.toThrow("未能载入");
   });
 });
