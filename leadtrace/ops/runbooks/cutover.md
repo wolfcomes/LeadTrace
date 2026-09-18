@@ -53,8 +53,13 @@ cd leadtrace/frontend
 npm ci --no-audit --no-fund
 npm run typecheck
 npm test -- --run
-npm run build
+npm run test:ketcher-csp
 ```
+
+`test:ketcher-csp` always runs the production build before the Chromium CSP
+test, so the browser cannot silently exercise a stale ignored `dist/` tree. It
+uses the self-contained E2E fixture and does not start the Vite development
+server.
 
 Install `dist/` into a new commit-specific directory below
 `/srv/leadtrace/releases/<git-commit>/frontend`. Preserve the previous release
@@ -68,13 +73,19 @@ dynamic evaluation and Blob Workers. Apply the relaxed policy to the exact
 `/ketcher.html` response only; never apply it to `/assets/*`, the SPA
 fallback, or an entire site block.
 
-For a Caddy deployment, use mutually exclusive exact-path and not-path
-matchers. The strict matcher must explicitly exclude `/ketcher.html` so its
-`DENY` and strict CSP headers do not overwrite the Ketcher response:
+For a Caddy deployment, keep the response-header removals global, then use
+mutually exclusive exact-path and not-path matchers for framing and CSP. The
+strict matcher must explicitly exclude `/ketcher.html` so its `DENY` and strict
+CSP headers do not overwrite the Ketcher response:
 
 ```caddyfile
 @ketcher path /ketcher.html
 @leadtraceMain not path /ketcher.html
+
+header {
+    -X-Powered-By
+    -Server
+}
 
 header @leadtraceMain {
     X-Content-Type-Options "nosniff"
@@ -95,16 +106,132 @@ header @ketcher {
 }
 ```
 
-Before any reload, validate the staged file and inspect both response policies:
+Before any maintenance-window reload, build a standalone staged Caddyfile for
+the exact candidate frontend release and exercise it with a temporary Caddy
+process. The following full preflight configuration binds only to loopback
+`:18878`; its admin API binds only to loopback `:20199`. Neither port conflicts
+with the later Nginx candidate listener on `:8877`. Replace `<git-commit>` with
+the recorded commit before running this block:
 
 ```bash
-sudo caddy validate --config /etc/caddy/Caddyfile
-curl -kIs https://127.0.0.1:8877/ | \
-  grep -Ei '^(content-security-policy|x-frame-options):'
-curl -kIs https://127.0.0.1:8877/ketcher.html | \
-  grep -Ei '^(content-security-policy|x-frame-options):'
-curl -kIs https://127.0.0.1:8877/assets/ | \
-  grep -Ei '^(content-security-policy|x-frame-options):'
+(
+set -euo pipefail
+
+export LEADTRACE_FRONTEND_RELEASE="/srv/leadtrace/releases/<git-commit>/frontend"
+test -f "$LEADTRACE_FRONTEND_RELEASE/index.html"
+test -f "$LEADTRACE_FRONTEND_RELEASE/ketcher.html"
+
+caddy_stage_dir="$(mktemp -d /tmp/leadtrace-caddy-preflight.XXXXXX)"
+candidate_caddyfile="$caddy_stage_dir/Caddyfile"
+caddy_log="$caddy_stage_dir/caddy.log"
+caddy_pid=""
+export XDG_DATA_HOME="$caddy_stage_dir/data"
+export XDG_CONFIG_HOME="$caddy_stage_dir/config"
+
+cleanup_caddy_preflight() {
+  if test -n "${caddy_pid:-}" && kill -0 "$caddy_pid" 2>/dev/null; then
+    caddy stop --address 127.0.0.1:20199 || kill "$caddy_pid"
+    wait "$caddy_pid" || true
+  fi
+  rm -rf -- "$caddy_stage_dir"
+}
+trap cleanup_caddy_preflight EXIT
+trap 'exit 130' HUP INT TERM
+
+cat >"$candidate_caddyfile" <<'CADDYFILE'
+{
+    admin 127.0.0.1:20199
+    auto_https disable_redirects
+}
+
+https://127.0.0.1:18878 {
+    bind 127.0.0.1
+    tls internal
+
+    @ketcher path /ketcher.html
+    @leadtraceMain not path /ketcher.html
+
+    header {
+        -X-Powered-By
+        -Server
+    }
+
+    header @leadtraceMain {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "same-origin"
+        Permissions-Policy "camera=(), geolocation=(), microphone=()"
+        Strict-Transport-Security "max-age=31536000"
+        Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    }
+
+    header @ketcher {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "same-origin"
+        Permissions-Policy "camera=(), geolocation=(), microphone=()"
+        Strict-Transport-Security "max-age=31536000"
+        Content-Security-Policy "default-src 'self'; connect-src 'self' blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'none'"
+    }
+
+    root * {$LEADTRACE_FRONTEND_RELEASE}
+    try_files {path} /index.html
+    file_server
+}
+CADDYFILE
+
+caddy validate --config "$candidate_caddyfile" --adapter caddyfile
+caddy run --config "$candidate_caddyfile" --adapter caddyfile \
+  >"$caddy_log" 2>&1 &
+caddy_pid="$!"
+
+candidate_origin="https://127.0.0.1:18878"
+caddy_ready=false
+for attempt in $(seq 1 30); do
+  if curl -kfsS "$candidate_origin/" >/dev/null; then
+    caddy_ready=true
+    break
+  fi
+  kill -0 "$caddy_pid"
+  sleep 0.2
+done
+test "$caddy_ready" = true
+
+asset_file="$(find "$LEADTRACE_FRONTEND_RELEASE/assets" \
+  -maxdepth 1 -type f -print -quit)"
+test -n "$asset_file"
+asset_url="${asset_file#"$LEADTRACE_FRONTEND_RELEASE"}"
+
+main_headers="$(curl -kfsSI "$candidate_origin/")"
+ketcher_headers="$(curl -kfsSI "$candidate_origin/ketcher.html")"
+asset_headers="$(curl -kfsSI "$candidate_origin$asset_url")"
+
+printf '%s\n' "$main_headers" | grep -Fi "script-src 'self';"
+printf '%s\n' "$main_headers" | grep -Fi "frame-ancestors 'none'"
+printf '%s\n' "$main_headers" | grep -Eiq '^x-frame-options:[[:space:]]*DENY'
+
+printf '%s\n' "$ketcher_headers" | grep -Fi "script-src 'self' 'unsafe-eval'"
+printf '%s\n' "$ketcher_headers" | grep -Fi "worker-src 'self' blob:"
+printf '%s\n' "$ketcher_headers" | grep -Fi "frame-ancestors 'self'"
+printf '%s\n' "$ketcher_headers" | \
+  grep -Eiq '^x-frame-options:[[:space:]]*SAMEORIGIN'
+
+printf '%s\n' "$asset_headers" | grep -Fi "script-src 'self';"
+printf '%s\n' "$asset_headers" | grep -Fi "frame-ancestors 'none'"
+printf '%s\n' "$asset_headers" | grep -Eiq '^x-frame-options:[[:space:]]*DENY'
+! printf '%s\n' "$asset_headers" | \
+  grep -Eiq "unsafe-eval|worker-src|SAMEORIGIN"
+
+for headers in "$main_headers" "$ketcher_headers" "$asset_headers"; do
+  ! printf '%s\n' "$headers" | grep -Eiq '^(server|x-powered-by):'
+done
+
+caddy stop --address 127.0.0.1:20199
+wait "$caddy_pid"
+caddy_pid=""
+rm -rf -- "$caddy_stage_dir"
+trap - EXIT HUP INT TERM
+)
 ```
 
 Require `script-src 'self'`, `frame-ancestors 'none'`, and
@@ -112,8 +239,12 @@ Require `script-src 'self'`, `frame-ancestors 'none'`, and
 `script-src 'self' 'unsafe-eval'`, `worker-src 'self' blob:`,
 `frame-ancestors 'self'`, and `X-Frame-Options: SAMEORIGIN` only on
 `/ketcher.html`. The asset response must not contain the relaxed directives.
-Do not edit or reload the live Caddy configuration outside the approved
-maintenance window.
+All three responses must omit `Server` and `X-Powered-By`. Any validation,
+startup, curl, or assertion failure triggers the trap, stops only the temporary
+Caddy process, removes its isolated state, and leaves the live route unchanged.
+Do not bind this preflight to `:8876` or `:8877`; do not edit, reload, or stop
+the live Caddy configuration outside the approved maintenance window. A failed
+preflight is a stop gate, not authorization to alter the production route.
 
 ## Provision an isolated candidate
 
