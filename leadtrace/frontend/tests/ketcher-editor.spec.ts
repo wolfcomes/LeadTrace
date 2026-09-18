@@ -1,80 +1,119 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import KetcherEditor from "../src/review/paper/KetcherEditor.vue";
+import {
+  KETCHER_MESSAGE_PROTOCOL,
+  KETCHER_MESSAGE_VERSION,
+  createChildMessage,
+} from "../src/review/paper/ketcherProtocol";
 
+function dispatchChildMessage(
+  iframe: HTMLIFrameElement,
+  data: unknown,
+  options: { origin?: string; source?: MessageEventSource | null } = {},
+): void {
+  window.dispatchEvent(new MessageEvent("message", {
+    data,
+    origin: options.origin ?? window.location.origin,
+    source: options.source ?? iframe.contentWindow,
+  }));
+}
 
-const mocks = vi.hoisted(() => {
-  const changeEvent = { add: vi.fn(), remove: vi.fn() };
-  const api = {
-    changeEvent,
-    setMolecule: vi.fn(async () => undefined),
-    getMolfile: vi.fn(async () => "MOCK MOLFILE"),
-  };
-  const root = { render: vi.fn(), unmount: vi.fn() };
-  const createRoot = vi.fn(() => root);
-  const createElement = vi.fn((_type: unknown, props: Record<string, unknown>) => ({ props }));
-  root.render.mockImplementation((element: { props: { onInit?: (value: typeof api) => void } }) => {
-    element.props.onInit?.(api);
-  });
-  return { api, changeEvent, root, createRoot, createElement };
-});
+describe("Ketcher iframe adapter", () => {
+  const wrappers: VueWrapper[] = [];
 
-vi.mock("react", () => ({ createElement: mocks.createElement }));
-vi.mock("react-dom/client", () => ({ createRoot: mocks.createRoot }));
-vi.mock("ketcher-react", () => ({ Editor: Symbol("Editor") }));
-vi.mock("ketcher-standalone", () => ({ StandaloneStructServiceProvider: class {} }));
-vi.mock("ketcher-react/dist/index.css", () => ({}));
+  function mountEditor(props: { modelValue?: string | null; disabled?: boolean } = {}): VueWrapper {
+    const wrapper = mount(KetcherEditor, { attachTo: document.body, props });
+    wrappers.push(wrapper);
+    return wrapper;
+  }
 
-describe("Ketcher Vue island", () => {
   afterEach(() => {
-    vi.clearAllMocks();
+    for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
-  it("mounts when editing becomes available and tears down when it becomes read-only", async () => {
-    const wrapper = mount(KetcherEditor, { props: { modelValue: "CCO", disabled: true } });
-    await flushPromises();
-    expect(mocks.createRoot).not.toHaveBeenCalled();
+  it("mounts only while editing is available and removes its message listener", async () => {
+    const addListener = vi.spyOn(window, "addEventListener");
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    const wrapper = mountEditor({ modelValue: "CCO", disabled: true });
+
+    expect(wrapper.find("iframe").exists()).toBe(false);
+    expect(addListener).not.toHaveBeenCalledWith("message", expect.any(Function));
 
     await wrapper.setProps({ disabled: false });
-    await flushPromises();
-    expect(mocks.createRoot).toHaveBeenCalledTimes(1);
-    expect(mocks.changeEvent.add).toHaveBeenCalledTimes(1);
+    expect(wrapper.get("iframe").attributes("src")).toBe("/ketcher.html");
+    expect(addListener).toHaveBeenCalledWith("message", expect.any(Function));
 
     await wrapper.setProps({ disabled: true });
-    await flushPromises();
-    expect(mocks.changeEvent.remove).toHaveBeenCalledTimes(1);
-    expect(mocks.root.unmount).toHaveBeenCalledTimes(1);
+    expect(wrapper.find("iframe").exists()).toBe(false);
+    expect(removeListener).toHaveBeenCalledWith("message", expect.any(Function));
+
   });
 
-  it("converts an initial SMILES value to Molfile before exposing it to the parent", async () => {
-    const wrapper = mount(KetcherEditor, { props: { modelValue: "CCO", disabled: false } });
+  it("accepts ready only from its same-origin child and then sends the initial SMILES", async () => {
+    const wrapper = mountEditor({ modelValue: "CCO" });
+    const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
+    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage");
+    const ready = createChildMessage("ready");
+
+    dispatchChildMessage(iframe, ready, { origin: "https://attacker.example" });
+    dispatchChildMessage(iframe, ready, { source: window });
+    expect(postMessage).not.toHaveBeenCalled();
+
+    dispatchChildMessage(iframe, ready);
     await flushPromises();
 
-    expect(mocks.api.setMolecule).toHaveBeenCalledWith("CCO");
+    expect(postMessage).toHaveBeenCalledWith({
+      protocol: KETCHER_MESSAGE_PROTOCOL,
+      version: KETCHER_MESSAGE_VERSION,
+      kind: "set-molecule",
+      molecule: "CCO",
+    }, window.location.origin);
+    expect(wrapper.find(".ketcher-loading").exists()).toBe(false);
+  });
+
+  it("emits child Molfile output without sending the echoed parent value back", async () => {
+    const wrapper = mountEditor({ modelValue: "CCO" });
+    const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
+    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage");
+
+    dispatchChildMessage(iframe, createChildMessage("ready"));
+    dispatchChildMessage(iframe, createChildMessage("molfile", "MOCK MOLFILE"));
+    await flushPromises();
+
     expect(wrapper.emitted("update:modelValue")).toEqual([["MOCK MOLFILE"]]);
-  });
+    expect(postMessage).toHaveBeenCalledTimes(1);
 
-  it("does not reload Ketcher when the parent echoes its own Molfile output", async () => {
-    const wrapper = mount(KetcherEditor, { props: { modelValue: "CCO", disabled: false } });
-    await flushPromises();
-    expect(mocks.api.setMolecule).toHaveBeenCalledTimes(1);
-
-    const changeHandler = mocks.changeEvent.add.mock.calls[0]?.[0] as (() => Promise<void>);
-    await changeHandler();
     await wrapper.setProps({ modelValue: "MOCK MOLFILE" });
     await flushPromises();
-
-    expect(mocks.api.setMolecule).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("transforms CommonJS calls embedded in Ketcher's ES modules for production", () => {
-    const config = readFileSync(resolve(import.meta.dirname, "../vite.config.ts"), "utf8");
+  it("reports child errors and ignores malformed child messages", async () => {
+    const wrapper = mountEditor();
+    const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
 
-    expect(config).toContain("transformMixedEsModules: true");
-    expect(config).toContain('global: "globalThis"');
+    dispatchChildMessage(iframe, { protocol: KETCHER_MESSAGE_PROTOCOL, version: 99, kind: "error", message: "bad" });
+    dispatchChildMessage(iframe, createChildMessage("error", "Ketcher failed"));
+    await flushPromises();
+
+    expect(wrapper.emitted("error")).toEqual([["Ketcher failed"]]);
+  });
+
+  it("reports an unresponsive child after a bounded initialization timeout", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const wrapper = mountEditor();
+    await flushPromises();
+
+    const timeoutCall = setTimeoutSpy.mock.calls.find(([, delay]) => delay === 15_000);
+    expect(timeoutCall).toBeDefined();
+    (timeoutCall![0] as () => void)();
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.emitted("error")).toEqual([["Ketcher 编辑器未能载入，请重试。"]]);
+    expect(wrapper.find(".ketcher-loading").exists()).toBe(false);
   });
 });

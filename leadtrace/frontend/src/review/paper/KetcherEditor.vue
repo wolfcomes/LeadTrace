@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import type { Ketcher } from "ketcher-core";
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
-import type { Root } from "react-dom/client";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+
+import { createSetMoleculeMessage, parseChildMessage } from "./ketcherProtocol";
+
+const READY_TIMEOUT_MS = 15_000;
 
 const props = withDefaults(defineProps<{ modelValue?: string | null; disabled?: boolean }>(), {
   modelValue: null,
@@ -9,119 +11,103 @@ const props = withDefaults(defineProps<{ modelValue?: string | null; disabled?: 
 });
 const emit = defineEmits<{ "update:modelValue": [molfile: string]; error: [message: string] }>();
 
-const host = ref<HTMLDivElement>();
+const frame = ref<HTMLIFrameElement>();
 const ready = ref(false);
-let reactRoot: Root | undefined;
-let ketcher: Ketcher | undefined;
-let applyingExternalValue = false;
-let disposed = false;
-let mountSequence = 0;
-let outputSequence = 0;
+const failed = ref(false);
+let listening = false;
+let readyTimeout: ReturnType<typeof setTimeout> | undefined;
+let pendingMolecule = props.modelValue ?? "";
+let currentMolfile = props.modelValue ?? "";
 let lastEmittedMolfile: string | undefined;
 
-async function applyMolecule(value: string | null | undefined): Promise<void> {
-  if (!ketcher || !value) return;
-  applyingExternalValue = true;
-  try {
-    await ketcher.setMolecule(value);
-  } catch {
-    emit("error", "Ketcher 无法载入当前结构文本。");
-  } finally {
-    applyingExternalValue = false;
-  }
+function clearReadyTimeout(): void {
+  if (readyTimeout !== undefined) clearTimeout(readyTimeout);
+  readyTimeout = undefined;
 }
 
-async function emitMolfile(): Promise<void> {
-  if (!ketcher || applyingExternalValue) return;
-  const sequence = ++outputSequence;
-  try {
-    const value = await ketcher.getMolfile();
-    if (disposed || sequence !== outputSequence) return;
-    lastEmittedMolfile = value;
-    emit("update:modelValue", value);
-  } catch {
-    emit("error", "Ketcher 暂时无法导出 Molfile。");
-  }
+function postMolecule(value: string): void {
+  if (!ready.value || !frame.value?.contentWindow) return;
+  frame.value.contentWindow.postMessage(createSetMoleculeMessage(value), window.location.origin);
 }
 
-function initialize(api: Ketcher): void {
-  if (disposed || props.disabled || !reactRoot) return;
-  ketcher = api;
-  ketcher.changeEvent.add(emitMolfile);
-  void (async () => {
-    await applyMolecule(props.modelValue);
-    if (props.modelValue && !disposed && !props.disabled && ketcher === api) {
-      await emitMolfile();
-    }
-    if (!disposed && !props.disabled && ketcher === api) ready.value = true;
-  })();
-}
-
-function teardown(): void {
-  mountSequence += 1;
-  outputSequence += 1;
+function setMolecule(value: string | null | undefined): void {
+  pendingMolecule = value ?? "";
+  currentMolfile = pendingMolecule;
   lastEmittedMolfile = undefined;
-  ready.value = false;
-  if (ketcher) ketcher.changeEvent.remove(emitMolfile);
-  ketcher = undefined;
-  reactRoot?.unmount();
-  reactRoot = undefined;
-  applyingExternalValue = false;
+  postMolecule(pendingMolecule);
 }
 
-async function mountEditor(): Promise<void> {
-  if (!host.value || props.disabled || disposed || reactRoot) return;
-  const sequence = ++mountSequence;
+function handleMessage(event: MessageEvent): void {
+  if (event.origin !== window.location.origin || event.source !== frame.value?.contentWindow) return;
+  const message = parseChildMessage(event.data);
+  if (!message) return;
+
+  if (message.kind === "ready") {
+    clearReadyTimeout();
+    failed.value = false;
+    ready.value = true;
+    postMolecule(pendingMolecule);
+    return;
+  }
+  if (message.kind === "molfile") {
+    currentMolfile = message.molfile;
+    lastEmittedMolfile = message.molfile;
+    emit("update:modelValue", message.molfile);
+    return;
+  }
+  emit("error", message.message || "Ketcher 编辑器发生错误。");
+}
+
+async function start(): Promise<void> {
+  if (props.disabled || listening) return;
+  listening = true;
+  failed.value = false;
   ready.value = false;
-  try {
-    const [react, reactDom, ketcherReact, ketcherStandalone] = await Promise.all([
-      import("react"),
-      import("react-dom/client"),
-      import("ketcher-react"),
-      import("ketcher-standalone"),
-      import("ketcher-react/dist/index.css"),
-    ]);
-    if (disposed || props.disabled || sequence !== mountSequence || !host.value) return;
-    const serviceProvider = new ketcherStandalone.StandaloneStructServiceProvider();
-    reactRoot = reactDom.createRoot(host.value);
-    reactRoot.render(react.createElement(ketcherReact.Editor, {
-      staticResourcesUrl: "",
-      structServiceProvider: serviceProvider,
-      errorHandler: (message: string) => emit("error", message || "Ketcher 编辑器发生错误。"),
-      onInit: initialize,
-      disableMacromoleculesEditor: true,
-    }));
-  } catch {
-    if (!disposed && !props.disabled && sequence === mountSequence) {
+  window.addEventListener("message", handleMessage);
+  await nextTick();
+  if (props.disabled || !listening || !frame.value) return;
+  clearReadyTimeout();
+  readyTimeout = setTimeout(() => {
+    if (!ready.value && listening) {
+      failed.value = true;
       emit("error", "Ketcher 编辑器未能载入，请重试。");
     }
-  }
+  }, READY_TIMEOUT_MS);
+}
+
+function stop(): void {
+  clearReadyTimeout();
+  failed.value = false;
+  ready.value = false;
+  if (listening) window.removeEventListener("message", handleMessage);
+  listening = false;
+  lastEmittedMolfile = undefined;
 }
 
 watch(() => props.modelValue, (value) => {
   if (value === lastEmittedMolfile) return;
-  void applyMolecule(value);
+  setMolecule(value);
 });
 watch(() => props.disabled, (disabled) => {
-  if (disabled) teardown();
-  else void mountEditor();
+  if (disabled) stop();
+  else void start();
 });
-onMounted(() => { void mountEditor(); });
-onBeforeUnmount(() => {
-  disposed = true;
-  teardown();
-});
+onMounted(() => { void start(); });
+onBeforeUnmount(stop);
 
 defineExpose({
-  getMolfile: async () => ketcher?.getMolfile() ?? props.modelValue ?? "",
-  setMolecule: applyMolecule,
+  getMolfile: async () => currentMolfile,
+  setMolecule: async (value: string | null | undefined) => { setMolecule(value); },
 });
 </script>
 
 <template>
   <section class="ketcher-island" data-ketcher-editor aria-label="Ketcher 化学结构编辑器">
     <p v-if="disabled" class="workspace-empty-copy">当前 Workspace 为只读，Ketcher 已停用。</p>
-    <p v-else-if="!ready" class="ketcher-loading" aria-live="polite">正在载入本地 Ketcher 编辑器…</p>
-    <div v-show="!disabled" ref="host" class="ketcher-react-host"></div>
+    <template v-else>
+      <p v-if="failed" class="ketcher-failed" role="alert">Ketcher 编辑器未能载入，请关闭后重试。</p>
+      <p v-else-if="!ready" class="ketcher-loading" aria-live="polite">正在载入本地 Ketcher 编辑器…</p>
+      <iframe ref="frame" class="ketcher-frame" src="/ketcher.html" title="Ketcher 化学结构编辑器"></iframe>
+    </template>
   </section>
 </template>
