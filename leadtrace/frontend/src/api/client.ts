@@ -23,10 +23,37 @@ export class ApiError extends Error {
   }
 }
 
-let unauthorizedHandler: (() => void) | undefined;
+export interface ApiFailureContext {
+  path: string;
+  sessionGeneration?: number;
+}
 
-export function setUnauthorizedHandler(handler: (() => void) | undefined): void {
+let unauthorizedHandler:
+  ((error: ApiError, context: ApiFailureContext) => void)
+  | undefined;
+let unauthorizedSessionGeneration:
+  (() => number)
+  | undefined;
+let csrfValidationFailedHandler:
+  ((error: ApiError, context: ApiFailureContext) => void | Promise<void>)
+  | undefined;
+
+export function setUnauthorizedHandler(
+  handler:
+    ((error: ApiError, context: ApiFailureContext) => void)
+    | undefined,
+  getSessionGeneration?: () => number,
+): void {
   unauthorizedHandler = handler;
+  unauthorizedSessionGeneration = handler ? getSessionGeneration : undefined;
+}
+
+export function setCsrfValidationFailedHandler(
+  handler:
+    ((error: ApiError, context: ApiFailureContext) => void | Promise<void>)
+    | undefined,
+): void {
+  csrfValidationFailedHandler = handler;
 }
 
 function failureKind(status: number): ApiFailureKind {
@@ -49,6 +76,7 @@ export async function apiRequest<T>(
   schema: ZodType<T>,
   options: ApiRequestOptions = {},
 ): Promise<T> {
+  const requestSessionGeneration = unauthorizedSessionGeneration?.();
   const {
     body,
     csrfToken,
@@ -72,16 +100,27 @@ export async function apiRequest<T>(
       ? parsed.data.request_id
       : response.headers.get("X-Request-ID") ?? undefined;
     const details = parsed.success ? parsed.data.details : {};
-    if (response.status === 401 && !suppressUnauthorizedHandler) {
-      unauthorizedHandler?.();
-    }
-    throw new ApiError(
+    const error = new ApiError(
       response.status,
       code,
       requestId,
       failureKind(response.status),
       details,
     );
+    if (response.status === 401 && !suppressUnauthorizedHandler) {
+      unauthorizedHandler?.(error, {
+        path,
+        sessionGeneration: requestSessionGeneration,
+      });
+    }
+    if (code === "CSRF_VALIDATION_FAILED") {
+      try {
+        await csrfValidationFailedHandler?.(error, { path });
+      } finally {
+        throw error;
+      }
+    }
+    throw error;
   }
   if (response.status === 204) return schema.parse(undefined);
   return schema.parse(await response.json());

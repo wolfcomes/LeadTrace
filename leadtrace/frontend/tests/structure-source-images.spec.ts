@@ -77,9 +77,39 @@ describe("Structure Source Images", () => {
     expect(wrapper.get('button[aria-label="旋转"]').attributes("disabled")).toBeDefined();
 
     const page = wrapper.get("[data-pdf-page]");
-    await page.trigger("pointerdown", { pointerId: 1, clientX: 80, clientY: 80 });
-    await page.trigger("pointermove", { pointerId: 1, clientX: 320, clientY: 240 });
-    await page.trigger("pointerup", { pointerId: 1, clientX: 320, clientY: 240 });
+    const pageRect: DOMRect = {
+      x: 37.25,
+      y: 49.75,
+      left: 37.25,
+      top: 49.75,
+      width: 812.75,
+      height: 527.125,
+      right: 850,
+      bottom: 576.875,
+      toJSON: () => ({}),
+    };
+    vi.spyOn(page.element, "getBoundingClientRect").mockReturnValue(pageRect);
+    const rawBounds = {
+      x0: 0.15683718909525357,
+      y0: 0.22703818369453047,
+      x1: 0.6357481626298831,
+      y1: 0.7391812865497076,
+    };
+    await page.trigger("pointerdown", {
+      pointerId: 1,
+      clientX: pageRect.left + pageRect.width * rawBounds.x0,
+      clientY: pageRect.top + pageRect.height * rawBounds.y0,
+    });
+    await page.trigger("pointermove", {
+      pointerId: 1,
+      clientX: pageRect.left + pageRect.width * rawBounds.x1,
+      clientY: pageRect.top + pageRect.height * rawBounds.y1,
+    });
+    await page.trigger("pointerup", {
+      pointerId: 1,
+      clientX: pageRect.left + pageRect.width * rawBounds.x1,
+      clientY: pageRect.top + pageRect.height * rawBounds.y1,
+    });
     await flushPromises();
 
     const create = calls.find((call) => call.url.pathname.endsWith("/source-images") && call.init?.method === "POST");
@@ -87,7 +117,7 @@ describe("Structure Source Images", () => {
       expected_workspace_version: 1,
       source_sha256: "b".repeat(64),
       page_number: 1,
-      bbox: { x0: 0.1, y0: 0.2, x1: 0.4, y1: 0.6 },
+      bbox: { x0: 0.1568371891, y0: 0.2270381837, x1: 0.6357481626, y1: 0.7391812865 },
       source_context: null,
       label: null,
       reviewer_note: null,
