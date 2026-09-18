@@ -4,8 +4,12 @@ import {
   type Router,
   type RouterHistory,
 } from "vue-router";
+import { watch } from "vue";
 
-import { setUnauthorizedHandler } from "../api/client";
+import {
+  setCsrfValidationFailedHandler,
+  setUnauthorizedHandler,
+} from "../api/client";
 import type { UserRole } from "../api/schema";
 import ChangePasswordPage from "../auth/ChangePasswordPage.vue";
 import LoginPage from "../auth/LoginPage.vue";
@@ -64,18 +68,40 @@ export function createAppRouter(
       { path: "/:pathMatch(.*)*", redirect: "/" },
     ],
   });
+  const auth = useAuthStore();
+
+  function reconcileCurrentRoute(): void {
+    const route = router.currentRoute.value;
+    if (route.matched.length === 0 || route.meta.public) return;
+    if (!auth.user) {
+      if (route.name !== "login") {
+        void router.replace({
+          name: "login",
+          query: { redirect: route.fullPath },
+        });
+      }
+      return;
+    }
+    const roles = route.meta.roles as UserRole[] | undefined;
+    if (roles && !roles.includes(auth.user.role)) {
+      void router.replace("/papers");
+    }
+  }
 
   setUnauthorizedHandler(() => {
-    const auth = useAuthStore();
     auth.clearSession();
     const redirect = router.currentRoute.value.fullPath;
     if (router.currentRoute.value.name !== "login") {
       void router.replace({ name: "login", query: { redirect } });
     }
   });
+  setCsrfValidationFailedHandler(async () => {
+    await auth.refreshSession({ sessionChanged: true });
+  });
+  watch(() => auth.user?.role, reconcileCurrentRoute);
+  auth.startSessionSync();
 
   router.beforeEach(async (to) => {
-    const auth = useAuthStore();
     if (!auth.initialized) {
       try {
         await auth.restore();

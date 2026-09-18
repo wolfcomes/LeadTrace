@@ -72,7 +72,10 @@ describe("Compound and single-Structure editor", () => {
       csrf_token: "reviewer-csrf",
     });
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    useAuthStore().stopSessionSync();
+    vi.unstubAllGlobals();
+  });
 
   function mockApi(initialStructure = structure()) {
     let currentVersion = 1;
@@ -348,5 +351,56 @@ describe("Compound and single-Structure editor", () => {
     await wrapper.get("[data-save-structure]").trigger("click");
     await flushPromises();
     expect(writeBodies.map((body) => body.expected_workspace_version)).toEqual([1, 2]);
+  });
+
+  it("refreshes changed credentials after CSRF rejection without replaying the Structure PUT", async () => {
+    let writes = 0;
+    let sessionReads = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), "http://leadtrace.test");
+      if (url.pathname === "/api/v1/auth/session") {
+        sessionReads += 1;
+        return response({
+          user: { username: "admin", display_name: "Admin", role: "admin", must_change_password: false },
+          csrf_token: "admin-csrf",
+        });
+      }
+      if (url.pathname === `/api/v2/workspaces/${ids.workspace}/compounds`) {
+        return response({ workspace_id: ids.workspace, workspace_version: 1, items: [compound], total: 1 });
+      }
+      if (url.pathname === `/api/v2/compounds/${ids.compound}/structure`) {
+        if (init?.method === "PUT") {
+          writes += 1;
+          return response({
+            code: "CSRF_VALIDATION_FAILED",
+            message: "CSRF validation failed",
+            request_id: "stale-tab-csrf",
+            details: {},
+          }, 403);
+        }
+        return response({ structure: structure(), workspace_version: 1 });
+      }
+      if (url.pathname.endsWith("/source-images")) {
+        return response({ compound_id: ids.compound, workspace_version: 1, items: [], total: 0 });
+      }
+      return response(workspace());
+    }));
+    const wrapper = await mountWorkspace();
+
+    await wrapper.get("[data-smiles-input]").setValue("CCN");
+    await wrapper.get("[data-save-structure]").trigger("click");
+    await flushPromises();
+
+    expect(writes).toBe(1);
+    expect(sessionReads).toBe(1);
+    expect(useAuthStore().user?.role).toBe("admin");
+    expect(useAuthStore().csrfToken).toBe("admin-csrf");
+    expect(wrapper.get("[data-session-notice]").text()).toContain("当前登录会话已在其他位置发生变化");
+    expect(wrapper.get("[data-admin-readonly]").text()).toContain("只读");
+    expect(wrapper.get("[data-save-structure]").attributes("disabled")).toBeDefined();
+
+    await wrapper.get("[data-save-structure]").trigger("click");
+    await flushPromises();
+    expect(writes).toBe(1);
   });
 });

@@ -8,6 +8,7 @@ import {
   ListTodo,
   ScrollText,
   Users,
+  X,
 } from "lucide-vue-next";
 import { computed, type Component } from "vue";
 import { useRouter } from "vue-router";
@@ -103,6 +104,24 @@ async function signOut(): Promise<void> {
           <button class="sign-out" type="button" @click="signOut">{{ zhCN.auth.signOut }}</button>
         </div>
       </header>
+      <div
+        v-if="auth.sessionNotice"
+        class="inline-feedback is-warning"
+        data-session-notice
+        role="alert"
+      >
+        <span>{{ auth.sessionNotice }}</span>
+        <button
+          class="icon-button"
+          data-dismiss-session-notice
+          type="button"
+          :aria-label="zhCN.auth.dismissSessionNotice"
+          :title="zhCN.auth.dismissSessionNotice"
+          @click="auth.dismissSessionNotice"
+        >
+          <X :size="16" aria-hidden="true" />
+        </button>
+      </div>
       <main id="main-content" tabindex="-1">
         <RouterView />
       </main>
