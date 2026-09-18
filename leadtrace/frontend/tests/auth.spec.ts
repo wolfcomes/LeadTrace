@@ -272,6 +272,34 @@ describe("authenticated login flow", () => {
     expect(auth.csrfToken).toBe("admin-csrf");
   });
 
+  it("does not let a refresh started during login reject the successful login result", async () => {
+    const loginResponse = deferred<Response>();
+    const refreshResponse = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/login") return loginResponse.promise;
+      if (path === "/api/v1/auth/session") return refreshResponse.promise;
+      throw new Error(`Unexpected request: ${path}`);
+    }));
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    const login = auth.login("admin", "password");
+    const refresh = auth.refreshSession();
+    refreshResponse.resolve(jsonResponse(401, {
+      code: "AUTHENTICATION_REQUIRED",
+      message: "Authentication required",
+      details: {},
+      request_id: "refresh-during-login",
+    }));
+    await refresh;
+    loginResponse.resolve(jsonResponse(200, adminSession));
+
+    await expect(login).resolves.toBe(true);
+    expect(auth.user?.username).toBe("admin");
+    expect(auth.csrfToken).toBe("admin-csrf");
+  });
+
   it("does not let an old refresh overwrite a completed password rotation", async () => {
     const oldRefresh = deferred<Response>();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
@@ -400,6 +428,43 @@ describe("authenticated login flow", () => {
     expect(AuthBroadcastChannel.sent).toEqual([]);
   });
 
+  it("shows a logout failure when stale-CSRF recovery is temporarily unavailable", async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/logout") {
+        return jsonResponse(403, {
+          code: "CSRF_VALIDATION_FAILED",
+          message: "CSRF validation failed",
+          details: {},
+          request_id: "stale-logout-csrf",
+        });
+      }
+      if (path === "/api/v1/auth/session") {
+        return jsonResponse(503, {
+          code: "SERVICE_UNAVAILABLE",
+          message: "Temporarily unavailable",
+          details: {},
+          request_id: "csrf-refresh-unavailable",
+        });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+    createAppRouter(createMemoryHistory());
+
+    await expect(auth.logout()).rejects.toMatchObject({
+      code: "CSRF_VALIDATION_FAILED",
+      requestId: "stale-logout-csrf",
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(auth.user?.username).toBe("reviewer");
+    expect(auth.csrfToken).toBe("reviewer-csrf");
+    expect(auth.sessionNotice).toBe(zhCN.auth.logoutFailed);
+  });
+
   it("keeps a pending session-change notice across a transient refresh failure", async () => {
     let reads = 0;
     vi.stubGlobal("fetch", vi.fn(async () => {
@@ -442,6 +507,35 @@ describe("authenticated login flow", () => {
 
     expect(auth.user).toBeNull();
     expect(auth.csrfToken).toBeNull();
+  });
+
+  it("does not carry an old session notice through sign-out into the next login", async () => {
+    let sessionReads = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/login") return jsonResponse(200, reviewerSession);
+      if (path !== "/api/v1/auth/session") throw new Error(`Unexpected request: ${path}`);
+      sessionReads += 1;
+      if (sessionReads === 1) return jsonResponse(200, adminSession);
+      return jsonResponse(401, {
+        code: "AUTHENTICATION_REQUIRED",
+        message: "Authentication required",
+        details: {},
+        request_id: "refresh-expired",
+      });
+    }));
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    await auth.refreshSession({ sessionChanged: true });
+    expect(auth.sessionNotice).toBe(zhCN.auth.sessionChanged);
+
+    await auth.refreshSession();
+    expect(auth.user).toBeNull();
+    expect(auth.sessionNotice).toBeNull();
+
+    await expect(auth.login("reviewer", "password")).resolves.toBe(true);
+    expect(auth.sessionNotice).toBeNull();
   });
 
   it("routes away from a protected page when refreshed authorization no longer permits it", async () => {

@@ -124,7 +124,7 @@ export function createAppRouter(
     }
   });
   setCsrfValidationFailedHandler(async () => {
-    await auth.refreshSession({ sessionChanged: true });
+    await auth.recoverFromCsrfFailure();
   });
   stopAuthorizationWatch = watch(
     [() => auth.user?.username, () => auth.user?.role],

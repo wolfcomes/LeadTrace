@@ -38,6 +38,7 @@ export const useAuthStore = defineStore("auth", () => {
   let refreshInFlight: InFlightRefresh | undefined;
   let refreshReportsSessionChange = false;
   let sessionGeneration = 0;
+  let activeCredentialMutation: number | undefined;
 
   function applySession(session: AuthenticationResponse): void {
     user.value = session.user;
@@ -55,12 +56,15 @@ export const useAuthStore = defineStore("auth", () => {
 
   function acceptSession(session: AuthenticationResponse): void {
     sessionGeneration += 1;
+    activeCredentialMutation = undefined;
     applySession(session);
     refreshReportsSessionChange = false;
+    sessionNotice.value = null;
   }
 
   function clearSession(): void {
     sessionGeneration += 1;
+    activeCredentialMutation = undefined;
     applySignedOut();
     refreshReportsSessionChange = false;
     sessionNotice.value = null;
@@ -68,23 +72,31 @@ export const useAuthStore = defineStore("auth", () => {
 
   function beginCredentialMutation(): number {
     sessionGeneration += 1;
-    return sessionGeneration;
+    activeCredentialMutation = sessionGeneration;
+    return activeCredentialMutation;
+  }
+
+  function finishCredentialMutation(generation: number): void {
+    if (activeCredentialMutation === generation) activeCredentialMutation = undefined;
   }
 
   function completeSessionMutation(
     generation: number,
     session: AuthenticationResponse,
   ): boolean {
-    if (generation !== sessionGeneration) return false;
+    if (generation !== sessionGeneration || activeCredentialMutation !== generation) return false;
     sessionGeneration += 1;
+    activeCredentialMutation = undefined;
     applySession(session);
     refreshReportsSessionChange = false;
+    sessionNotice.value = null;
     return true;
   }
 
   function completeLogout(generation: number): boolean {
-    if (generation !== sessionGeneration) return false;
+    if (generation !== sessionGeneration || activeCredentialMutation !== generation) return false;
     sessionGeneration += 1;
+    activeCredentialMutation = undefined;
     applySignedOut();
     refreshReportsSessionChange = false;
     sessionNotice.value = null;
@@ -103,14 +115,14 @@ export const useAuthStore = defineStore("auth", () => {
           authenticationResponseSchema,
           { suppressUnauthorizedHandler: true },
         );
-        if (generation !== sessionGeneration) return;
+        if (generation !== sessionGeneration || activeCredentialMutation !== undefined) return;
         applySession(session);
         if (refreshReportsSessionChange) {
           sessionNotice.value = zhCN.auth.sessionChanged;
         }
         refreshReportsSessionChange = false;
       } catch (error) {
-        if (generation !== sessionGeneration) return;
+        if (generation !== sessionGeneration || activeCredentialMutation !== undefined) return;
         if (
           error instanceof ApiError
           && error.status === 401
@@ -118,6 +130,7 @@ export const useAuthStore = defineStore("auth", () => {
           sessionGeneration += 1;
           applySignedOut();
           refreshReportsSessionChange = false;
+          sessionNotice.value = null;
           return;
         }
         throw error;
@@ -127,6 +140,15 @@ export const useAuthStore = defineStore("auth", () => {
     });
     refreshInFlight = { generation, promise };
     return promise;
+  }
+
+  async function recoverFromCsrfFailure(): Promise<void> {
+    if (activeCredentialMutation !== undefined) {
+      sessionGeneration += 1;
+      activeCredentialMutation = undefined;
+    }
+    sessionNotice.value = null;
+    await refreshSession({ sessionChanged: true });
   }
 
   function startSessionSync(): void {
@@ -205,6 +227,7 @@ export const useAuthStore = defineStore("auth", () => {
         : zhCN.auth.genericError;
       return false;
     } finally {
+      finishCredentialMutation(generation);
       busy.value = false;
     }
   }
@@ -214,22 +237,27 @@ export const useAuthStore = defineStore("auth", () => {
     newPassword: string,
   ): Promise<void> {
     const generation = beginCredentialMutation();
-    const session = await apiRequest(
-      "/api/v1/auth/password",
-      authenticationResponseSchema,
-      {
-        method: "POST",
-        csrfToken: csrfToken.value,
-        body: { current_password: currentPassword, new_password: newPassword },
-      },
-    );
-    if (completeSessionMutation(generation, session)) {
-      publishCredentialsChanged();
+    try {
+      const session = await apiRequest(
+        "/api/v1/auth/password",
+        authenticationResponseSchema,
+        {
+          method: "POST",
+          csrfToken: csrfToken.value,
+          body: { current_password: currentPassword, new_password: newPassword },
+        },
+      );
+      if (completeSessionMutation(generation, session)) {
+        publishCredentialsChanged();
+      }
+    } finally {
+      finishCredentialMutation(generation);
     }
   }
 
   async function logout(): Promise<void> {
     const generation = beginCredentialMutation();
+    sessionNotice.value = null;
     try {
       await apiRequest(
         "/api/v1/auth/logout",
@@ -240,17 +268,21 @@ export const useAuthStore = defineStore("auth", () => {
           suppressUnauthorizedHandler: true,
         },
       );
+      if (completeLogout(generation)) publishCredentialsChanged();
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         if (completeLogout(generation)) publishCredentialsChanged();
         return;
       }
-      if (!(error instanceof ApiError && error.code === "CSRF_VALIDATION_FAILED")) {
+      if (!(error instanceof ApiError
+        && error.code === "CSRF_VALIDATION_FAILED"
+        && sessionNotice.value === zhCN.auth.sessionChanged)) {
         sessionNotice.value = zhCN.auth.logoutFailed;
       }
       throw error;
+    } finally {
+      finishCredentialMutation(generation);
     }
-    if (completeLogout(generation)) publishCredentialsChanged();
   }
 
   return {
@@ -266,6 +298,7 @@ export const useAuthStore = defineStore("auth", () => {
     clearSession,
     restore,
     refreshSession,
+    recoverFromCsrfFailure,
     startSessionSync,
     stopSessionSync,
     dismissSessionNotice,
