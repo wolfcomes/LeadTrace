@@ -55,6 +55,7 @@ function postMolecule(value: string): void {
 }
 
 function setMolecule(value: string | null | undefined): Promise<void> {
+  if (props.disabled) return Promise.reject(new Error("Ketcher 编辑器已停用。"));
   activeRequest?.reject(new Error("Ketcher molecule request was superseded."));
   pendingMolecule = value ?? "";
   lastEmittedMolfile = undefined;
@@ -72,6 +73,7 @@ function handleMessage(event: MessageEvent): void {
     clearReadyTimeout();
     failed.value = false;
     ready.value = true;
+    if (!activeRequest) void setMolecule(pendingMolecule);
     postMolecule(pendingMolecule);
     return;
   }
@@ -133,10 +135,11 @@ watch(() => props.disabled, (disabled) => {
 onMounted(() => { void start(); });
 onBeforeUnmount(stop);
 
-void setMolecule(pendingMolecule);
+if (!props.disabled) void setMolecule(pendingMolecule);
 
 defineExpose({
   getMolfile: async () => {
+    if (props.disabled) throw new Error("Ketcher 编辑器已停用。");
     await activeRequest?.promise;
     return currentMolfile;
   },

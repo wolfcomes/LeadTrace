@@ -53,6 +53,17 @@ describe("Ketcher iframe adapter", () => {
 
   });
 
+  it("rejects exposed requests immediately while editing is disabled", async () => {
+    const wrapper = mountEditor({ modelValue: "CCO", disabled: true });
+    const editor = wrapper.vm as unknown as {
+      setMolecule(value: string): Promise<void>;
+      getMolfile(): Promise<string>;
+    };
+
+    await expect(editor.setMolecule("CCC")).rejects.toThrow("停用");
+    await expect(editor.getMolfile()).rejects.toThrow("停用");
+  });
+
   it("restores the current molecule request after editing is disabled and re-enabled", async () => {
     const wrapper = mountEditor({ modelValue: "CCO" });
     const firstIframe = wrapper.get("iframe").element as HTMLIFrameElement;
@@ -184,5 +195,26 @@ describe("Ketcher iframe adapter", () => {
     (timeoutCall![0] as () => void)();
 
     await expect(setting).rejects.toThrow("未能载入");
+  });
+
+  it("resynchronizes the current molecule when readiness arrives after the timeout", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const wrapper = mountEditor({ modelValue: "CCO" });
+    await flushPromises();
+    const iframe = wrapper.get("iframe").element as HTMLIFrameElement;
+    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage");
+    const timeoutCall = setTimeoutSpy.mock.calls.find(([, delay]) => delay === 15_000);
+    (timeoutCall![0] as () => void)();
+
+    dispatchChildMessage(iframe, createChildMessage("ready"));
+    await flushPromises();
+
+    expect(postMessage).toHaveBeenCalledWith({
+      protocol: KETCHER_MESSAGE_PROTOCOL,
+      version: KETCHER_MESSAGE_VERSION,
+      kind: "set-molecule",
+      requestId: 2,
+      molecule: "CCO",
+    }, window.location.origin);
   });
 });
