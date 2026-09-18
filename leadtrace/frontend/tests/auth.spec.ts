@@ -274,28 +274,32 @@ describe("authenticated login flow", () => {
 
   it("does not let a refresh started during login reject the successful login result", async () => {
     const loginResponse = deferred<Response>();
-    const refreshResponse = deferred<Response>();
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    let sessionReads = 0;
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), "http://leadtrace.test").pathname;
       if (path === "/api/v1/auth/login") return loginResponse.promise;
-      if (path === "/api/v1/auth/session") return refreshResponse.promise;
+      if (path === "/api/v1/auth/session") {
+        sessionReads += 1;
+        return jsonResponse(401, {
+          code: "AUTHENTICATION_REQUIRED",
+          message: "Authentication required",
+          details: {},
+          request_id: "refresh-during-login",
+        });
+      }
       throw new Error(`Unexpected request: ${path}`);
-    }));
+    });
+    vi.stubGlobal("fetch", fetch);
     const auth = useAuthStore();
     auth.acceptSession(reviewerSession);
 
     const login = auth.login("admin", "password");
-    const refresh = auth.refreshSession();
-    refreshResponse.resolve(jsonResponse(401, {
-      code: "AUTHENTICATION_REQUIRED",
-      message: "Authentication required",
-      details: {},
-      request_id: "refresh-during-login",
-    }));
-    await refresh;
+    await auth.refreshSession();
     loginResponse.resolve(jsonResponse(200, adminSession));
 
     await expect(login).resolves.toBe(true);
+    expect(sessionReads).toBe(0);
+    expect(fetch).toHaveBeenCalledOnce();
     expect(auth.user?.username).toBe("admin");
     expect(auth.csrfToken).toBe("admin-csrf");
   });
@@ -394,6 +398,60 @@ describe("authenticated login flow", () => {
     expect(auth.user?.username).toBe("reviewer");
     expect(auth.csrfToken).toBe("reviewer-csrf");
     expect(auth.sessionNotice).toBe(zhCN.auth.logoutFailed);
+  });
+
+  it("rejects a second logout before it can mutate the shared browser session", async () => {
+    const logoutResponse = deferred<Response>();
+    const fetch = vi.fn(async () => logoutResponse.promise);
+    vi.stubGlobal("fetch", fetch);
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    const firstLogout = auth.logout();
+    const secondLogout = auth.logout();
+
+    await expect(secondLogout).rejects.toThrow("credential mutation");
+    expect(fetch).toHaveBeenCalledOnce();
+
+    logoutResponse.resolve(new Response(null, { status: 204 }));
+    await firstLogout;
+    expect(auth.user).toBeNull();
+    expect(auth.csrfToken).toBeNull();
+  });
+
+  it("lets logout finish when an unrelated request triggers CSRF recovery", async () => {
+    const logoutResponse = deferred<Response>();
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/logout") return logoutResponse.promise;
+      if (path === "/api/v2/unrelated-write") {
+        return jsonResponse(403, {
+          code: "CSRF_VALIDATION_FAILED",
+          message: "CSRF validation failed",
+          details: {},
+          request_id: "unrelated-stale-csrf",
+        });
+      }
+      if (path === "/api/v1/auth/session") return jsonResponse(200, reviewerSession);
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+    createAppRouter(createMemoryHistory());
+
+    const logout = auth.logout();
+    await expect(apiRequest("/api/v2/unrelated-write", z.unknown(), {
+      method: "PUT",
+      csrfToken: "stale",
+    })).rejects.toMatchObject({ code: "CSRF_VALIDATION_FAILED" });
+
+    logoutResponse.resolve(new Response(null, { status: 204 }));
+    await logout;
+
+    expect(auth.user).toBeNull();
+    expect(auth.csrfToken).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("preserves the handler-refreshed session and notice when logout has stale CSRF", async () => {

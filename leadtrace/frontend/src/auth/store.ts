@@ -25,6 +25,11 @@ interface InFlightRefresh {
   promise: Promise<void>;
 }
 
+interface ActiveCredentialMutation {
+  generation: number;
+  path: string;
+}
+
 export const useAuthStore = defineStore("auth", () => {
   const user = ref<AuthUser | null>(null);
   const csrfToken = ref<string | null>(null);
@@ -33,12 +38,14 @@ export const useAuthStore = defineStore("auth", () => {
   const loginError = ref<string | null>(null);
   const serviceUnavailable = ref(false);
   const sessionNotice = ref<string | null>(null);
+  const credentialMutationInProgress = ref(false);
   const authenticated = computed(() => user.value !== null);
   let sessionSync: SessionSync | undefined;
   let refreshInFlight: InFlightRefresh | undefined;
   let refreshReportsSessionChange = false;
   let sessionGeneration = 0;
-  let activeCredentialMutation: number | undefined;
+  let activeCredentialMutation: ActiveCredentialMutation | undefined;
+  let refreshAfterCredentialMutation = false;
 
   function applySession(session: AuthenticationResponse): void {
     user.value = session.user;
@@ -57,6 +64,8 @@ export const useAuthStore = defineStore("auth", () => {
   function acceptSession(session: AuthenticationResponse): void {
     sessionGeneration += 1;
     activeCredentialMutation = undefined;
+    credentialMutationInProgress.value = false;
+    refreshAfterCredentialMutation = false;
     applySession(session);
     refreshReportsSessionChange = false;
     sessionNotice.value = null;
@@ -65,46 +74,64 @@ export const useAuthStore = defineStore("auth", () => {
   function clearSession(): void {
     sessionGeneration += 1;
     activeCredentialMutation = undefined;
+    credentialMutationInProgress.value = false;
+    refreshAfterCredentialMutation = false;
     applySignedOut();
     refreshReportsSessionChange = false;
     sessionNotice.value = null;
   }
 
-  function beginCredentialMutation(): number {
+  function beginCredentialMutation(path: string): number {
+    if (activeCredentialMutation) {
+      throw new Error("Another credential mutation is already in progress.");
+    }
     sessionGeneration += 1;
-    activeCredentialMutation = sessionGeneration;
-    return activeCredentialMutation;
+    activeCredentialMutation = { generation: sessionGeneration, path };
+    credentialMutationInProgress.value = true;
+    return sessionGeneration;
   }
 
   function finishCredentialMutation(generation: number): void {
-    if (activeCredentialMutation === generation) activeCredentialMutation = undefined;
+    if (activeCredentialMutation?.generation !== generation) return;
+    activeCredentialMutation = undefined;
+    credentialMutationInProgress.value = false;
+    if (refreshAfterCredentialMutation) {
+      refreshAfterCredentialMutation = false;
+      void refreshSession({ sessionChanged: true }).catch(() => undefined);
+    }
   }
 
   function completeSessionMutation(
     generation: number,
     session: AuthenticationResponse,
   ): boolean {
-    if (generation !== sessionGeneration || activeCredentialMutation !== generation) return false;
+    if (
+      generation !== sessionGeneration
+      || activeCredentialMutation?.generation !== generation
+    ) return false;
     sessionGeneration += 1;
-    activeCredentialMutation = undefined;
     applySession(session);
-    refreshReportsSessionChange = false;
+    if (!refreshAfterCredentialMutation) refreshReportsSessionChange = false;
     sessionNotice.value = null;
     return true;
   }
 
   function completeLogout(generation: number): boolean {
-    if (generation !== sessionGeneration || activeCredentialMutation !== generation) return false;
+    if (
+      generation !== sessionGeneration
+      || activeCredentialMutation?.generation !== generation
+    ) return false;
     sessionGeneration += 1;
-    activeCredentialMutation = undefined;
     applySignedOut();
     refreshReportsSessionChange = false;
+    refreshAfterCredentialMutation = false;
     sessionNotice.value = null;
     return true;
   }
 
   function refreshSession(options: SessionRefreshOptions = {}): Promise<void> {
     refreshReportsSessionChange ||= options.sessionChanged === true;
+    if (activeCredentialMutation) return Promise.resolve();
     const generation = sessionGeneration;
     if (refreshInFlight?.generation === generation) return refreshInFlight.promise;
 
@@ -115,14 +142,14 @@ export const useAuthStore = defineStore("auth", () => {
           authenticationResponseSchema,
           { suppressUnauthorizedHandler: true },
         );
-        if (generation !== sessionGeneration || activeCredentialMutation !== undefined) return;
+        if (generation !== sessionGeneration || activeCredentialMutation) return;
         applySession(session);
         if (refreshReportsSessionChange) {
           sessionNotice.value = zhCN.auth.sessionChanged;
         }
         refreshReportsSessionChange = false;
       } catch (error) {
-        if (generation !== sessionGeneration || activeCredentialMutation !== undefined) return;
+        if (generation !== sessionGeneration || activeCredentialMutation) return;
         if (
           error instanceof ApiError
           && error.status === 401
@@ -142,10 +169,16 @@ export const useAuthStore = defineStore("auth", () => {
     return promise;
   }
 
-  async function recoverFromCsrfFailure(): Promise<void> {
-    if (activeCredentialMutation !== undefined) {
+  async function recoverFromCsrfFailure(path: string): Promise<void> {
+    if (activeCredentialMutation && activeCredentialMutation.path !== path) {
+      refreshReportsSessionChange = true;
+      refreshAfterCredentialMutation = true;
+      return;
+    }
+    if (activeCredentialMutation?.path === path) {
       sessionGeneration += 1;
       activeCredentialMutation = undefined;
+      credentialMutationInProgress.value = false;
     }
     sessionNotice.value = null;
     await refreshSession({ sessionChanged: true });
@@ -204,7 +237,7 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function login(username: string, password: string): Promise<boolean> {
-    const generation = beginCredentialMutation();
+    const generation = beginCredentialMutation("/api/v1/auth/login");
     busy.value = true;
     loginError.value = null;
     serviceUnavailable.value = false;
@@ -236,7 +269,7 @@ export const useAuthStore = defineStore("auth", () => {
     currentPassword: string,
     newPassword: string,
   ): Promise<void> {
-    const generation = beginCredentialMutation();
+    const generation = beginCredentialMutation("/api/v1/auth/password");
     try {
       const session = await apiRequest(
         "/api/v1/auth/password",
@@ -256,7 +289,7 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function logout(): Promise<void> {
-    const generation = beginCredentialMutation();
+    const generation = beginCredentialMutation("/api/v1/auth/logout");
     sessionNotice.value = null;
     try {
       await apiRequest(
@@ -293,6 +326,7 @@ export const useAuthStore = defineStore("auth", () => {
     loginError,
     serviceUnavailable,
     sessionNotice,
+    credentialMutationInProgress,
     authenticated,
     acceptSession,
     clearSession,

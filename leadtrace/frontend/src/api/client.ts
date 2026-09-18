@@ -24,14 +24,22 @@ export class ApiError extends Error {
 }
 
 let unauthorizedHandler: (() => void) | undefined;
-let csrfValidationFailedHandler: ((error: ApiError) => void | Promise<void>) | undefined;
+export interface ApiFailureContext {
+  path: string;
+}
+
+let csrfValidationFailedHandler:
+  ((error: ApiError, context: ApiFailureContext) => void | Promise<void>)
+  | undefined;
 
 export function setUnauthorizedHandler(handler: (() => void) | undefined): void {
   unauthorizedHandler = handler;
 }
 
 export function setCsrfValidationFailedHandler(
-  handler: ((error: ApiError) => void | Promise<void>) | undefined,
+  handler:
+    ((error: ApiError, context: ApiFailureContext) => void | Promise<void>)
+    | undefined,
 ): void {
   csrfValidationFailedHandler = handler;
 }
@@ -91,7 +99,7 @@ export async function apiRequest<T>(
     }
     if (code === "CSRF_VALIDATION_FAILED") {
       try {
-        await csrfValidationFailedHandler?.(error);
+        await csrfValidationFailedHandler?.(error, { path });
       } finally {
         throw error;
       }

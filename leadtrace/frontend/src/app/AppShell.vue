@@ -105,7 +105,7 @@ async function signOut(): Promise<void> {
           <RouterLink class="account-action" data-change-password to="/change-password">
             {{ zhCN.auth.changePassword }}
           </RouterLink>
-          <button class="sign-out" type="button" @click="signOut">{{ zhCN.auth.signOut }}</button>
+          <button class="sign-out" type="button" :disabled="auth.credentialMutationInProgress" @click="signOut">{{ zhCN.auth.signOut }}</button>
         </div>
       </header>
       <div

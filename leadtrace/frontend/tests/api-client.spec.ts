@@ -24,8 +24,9 @@ describe("API client error handlers", () => {
     }));
     vi.stubGlobal("fetch", fetch);
     let handledError: unknown;
-    setCsrfValidationFailedHandler(async (error) => {
+    setCsrfValidationFailedHandler(async (error, context) => {
       handledError = error;
+      expect(context).toEqual({ path: "/api/v2/test" });
       throw new Error("refresh failed");
     });
 

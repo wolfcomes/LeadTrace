@@ -123,8 +123,8 @@ export function createAppRouter(
       void router.replace({ name: "login", query: { redirect } });
     }
   });
-  setCsrfValidationFailedHandler(async () => {
-    await auth.recoverFromCsrfFailure();
+  setCsrfValidationFailedHandler(async (_error, context) => {
+    await auth.recoverFromCsrfFailure(context.path);
   });
   stopAuthorizationWatch = watch(
     [() => auth.user?.username, () => auth.user?.role],
