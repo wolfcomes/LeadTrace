@@ -304,6 +304,31 @@ describe("authenticated login flow", () => {
     expect(auth.csrfToken).toBe("admin-csrf");
   });
 
+  it("refreshes after login when a cross-tab session signal arrives during the mutation", async () => {
+    const loginResponse = deferred<Response>();
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path === "/api/v1/auth/login") return loginResponse.promise;
+      if (path === "/api/v1/auth/session") return jsonResponse(200, adminSession);
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const auth = useAuthStore();
+    auth.acceptSession(reviewerSession);
+
+    const login = auth.login("reviewer", "password");
+    await auth.refreshSession({ sessionChanged: true });
+    expect(fetch).toHaveBeenCalledOnce();
+
+    loginResponse.resolve(jsonResponse(200, reviewerSession));
+    await expect(login).resolves.toBe(true);
+    await flushPromises();
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(auth.user?.username).toBe("admin");
+    expect(auth.sessionNotice).toBe(zhCN.auth.sessionChanged);
+  });
+
   it("does not let an old refresh overwrite a completed password rotation", async () => {
     const oldRefresh = deferred<Response>();
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

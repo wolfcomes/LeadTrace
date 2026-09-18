@@ -131,7 +131,10 @@ export const useAuthStore = defineStore("auth", () => {
 
   function refreshSession(options: SessionRefreshOptions = {}): Promise<void> {
     refreshReportsSessionChange ||= options.sessionChanged === true;
-    if (activeCredentialMutation) return Promise.resolve();
+    if (activeCredentialMutation) {
+      refreshAfterCredentialMutation ||= options.sessionChanged === true;
+      return Promise.resolve();
+    }
     const generation = sessionGeneration;
     if (refreshInFlight?.generation === generation) return refreshInFlight.promise;
 
