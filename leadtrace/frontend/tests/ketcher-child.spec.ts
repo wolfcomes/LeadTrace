@@ -128,6 +128,23 @@ describe("Ketcher child bridge", () => {
     expect(harness.childWindow.removeEventListener).toHaveBeenCalledWith("beforeunload", expect.any(Function));
   });
 
+  it("publishes user edits even when Ketcher supplies a change-event payload", async () => {
+    const harness = createHarness();
+    const bridge = createKetcherChildBridge(harness.childWindow);
+    bridge.initialize(harness.api);
+    harness.parent.postMessage.mockClear();
+
+    const changeHandler = harness.changeEvent.add.mock.calls[0]?.[0] as (event: unknown) => Promise<void>;
+    await changeHandler({ source: "canvas" });
+
+    expect(harness.parent.postMessage).toHaveBeenCalledWith({
+      protocol: KETCHER_MESSAGE_PROTOCOL,
+      version: KETCHER_MESSAGE_VERSION,
+      kind: "molfile",
+      molfile: "MOLFILE",
+    }, harness.childWindow.location.origin);
+  });
+
   it("publishes an import error for the latest parent molecule", async () => {
     const harness = createHarness();
     harness.api.setMolecule.mockRejectedValue(new Error("import failed"));

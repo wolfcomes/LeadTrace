@@ -28,6 +28,7 @@ export function createKetcherChildBridge(childWindow: KetcherChildWindow): Ketch
   let moleculeSequence = 0;
   let exportSequence = 0;
   let applyQueue = Promise.resolve();
+  const handleKetcherChange = (): Promise<void> => publishMolfile();
 
   function send(message: ReturnType<typeof createChildMessage>): void {
     if (!disposed) childWindow.parent.postMessage(message, parentOrigin);
@@ -90,7 +91,7 @@ export function createKetcherChildBridge(childWindow: KetcherChildWindow): Ketch
     exportSequence += 1;
     childWindow.removeEventListener("message", handleParentMessage);
     childWindow.removeEventListener("beforeunload", handleBeforeUnload);
-    ketcher?.changeEvent.remove(publishMolfile);
+    ketcher?.changeEvent.remove(handleKetcherChange);
     ketcher = undefined;
   }
 
@@ -102,7 +103,7 @@ export function createKetcherChildBridge(childWindow: KetcherChildWindow): Ketch
     initialize(api): void {
       if (disposed || ketcher) return;
       ketcher = api;
-      ketcher.changeEvent.add(publishMolfile);
+      ketcher.changeEvent.add(handleKetcherChange);
       send(createChildMessage("ready"));
     },
     dispose,
