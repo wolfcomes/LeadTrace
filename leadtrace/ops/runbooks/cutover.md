@@ -60,6 +60,61 @@ Install `dist/` into a new commit-specific directory below
 `/srv/leadtrace/releases/<git-commit>/frontend`. Preserve the previous release
 directory. Do not repoint the LAN-facing frontend symlink yet.
 
+## Scope Ketcher security headers
+
+The main application must keep its strict CSP and deny framing. Ketcher is a
+separate same-origin document because its standalone WebAssembly runtime needs
+dynamic evaluation and Blob Workers. Apply the relaxed policy to the exact
+`/ketcher.html` response only; never apply it to `/assets/*`, the SPA
+fallback, or an entire site block.
+
+For a Caddy deployment, use mutually exclusive exact-path and not-path
+matchers. The strict matcher must explicitly exclude `/ketcher.html` so its
+`DENY` and strict CSP headers do not overwrite the Ketcher response:
+
+```caddyfile
+@ketcher path /ketcher.html
+@leadtraceMain not path /ketcher.html
+
+header @leadtraceMain {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "same-origin"
+    Permissions-Policy "camera=(), geolocation=(), microphone=()"
+    Strict-Transport-Security "max-age=31536000"
+    Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+}
+
+header @ketcher {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Referrer-Policy "same-origin"
+    Permissions-Policy "camera=(), geolocation=(), microphone=()"
+    Strict-Transport-Security "max-age=31536000"
+    Content-Security-Policy "default-src 'self'; connect-src 'self' blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'none'"
+}
+```
+
+Before any reload, validate the staged file and inspect both response policies:
+
+```bash
+sudo caddy validate --config /etc/caddy/Caddyfile
+curl -kIs https://127.0.0.1:8877/ | \
+  grep -Ei '^(content-security-policy|x-frame-options):'
+curl -kIs https://127.0.0.1:8877/ketcher.html | \
+  grep -Ei '^(content-security-policy|x-frame-options):'
+curl -kIs https://127.0.0.1:8877/assets/ | \
+  grep -Ei '^(content-security-policy|x-frame-options):'
+```
+
+Require `script-src 'self'`, `frame-ancestors 'none'`, and
+`X-Frame-Options: DENY` on the main response. Require
+`script-src 'self' 'unsafe-eval'`, `worker-src 'self' blob:`,
+`frame-ancestors 'self'`, and `X-Frame-Options: SAMEORIGIN` only on
+`/ketcher.html`. The asset response must not contain the relaxed directives.
+Do not edit or reload the live Caddy configuration outside the approved
+maintenance window.
+
 ## Provision an isolated candidate
 
 Provision a new empty PostgreSQL database and a new managed-asset root. The
