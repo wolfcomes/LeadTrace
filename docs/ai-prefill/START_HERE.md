@@ -54,7 +54,7 @@ main没有`.venv`时，使用保留工作树的Python并设 `PYTHONPATH=/absolut
 每篇拷贝只读源、真实input、外部manifest对照的source-identity-check，以及：
 
 - extraction-guide.md、deepseek-supervised-runbook.md、deepseek-quality-checklist.md；
-- quality-audit-protocol.md、deepseek-v2-rerun-lessons.md、deepseek-self-check-guide.md；
+- quality-audit-protocol.md、quality-pitfalls.md、deepseek-self-check-guide.md；
 - candidate-schema.json、通用candidate example、[compound inventory schema](schemas/compound-inventory-v1.json)；
 - [source self-review schema](schemas/source-self-review-v1.json)（与自检模板一起分发）；
 - templates/deepseek-quality-record.json → quality-record-template.json；
@@ -98,6 +98,8 @@ main没有`.venv`时，使用保留工作树的Python并设 `PYTHONPATH=/absolut
 每篇固定审查样本在看结果前保存；样本外扩展检查另列。总体分母未知填null；不要从候选自身定义分母，不把SD未核对的数值匹配当整行正确，不把ND当漏提或0。reviewer的“all correct”也须按逐项记录核验。新的源审查进程仍属AI审查，不能叫人工gold。
 
 ## 6. Preview写入与可查看状态
+
+Preview数据不导入正式库；代码合并和正式网站更新均不授权复制Preview科学数据。
 
 先读 [Preview runbook](../../leadtrace/ops/runbooks/ai_prefill_preview.md)，由当前descriptor获取profile；检查registry/database实例身份、health、源hash和workspace版本。凭据只由监督者使用，不复制入DeepSeek目录，不打印在日志/最终答复。
 

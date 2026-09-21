@@ -25,6 +25,14 @@ not the current runbook. Read the latest run's `HANDOFF.md` before resuming.
   images. Record portable instructions in Git and live state in the run handoff.
 - Existing workspaces may contain human edits. Never reset workspace versions,
   clear data to bypass the blank-workspace apply rule, or fabricate receipts.
+- Preview scientific data, candidates, assets and database dumps must not be
+  imported into the production database as part of merge or deployment. Production
+  retains its own scientific records. A schema upgrade does not authorize data import.
+- Keep one current version of each operational guide in the source tree. Fold
+  accepted lessons into current guidance; archive completed experiment reports and
+  superseded plans outside the tracked tree (with hashes) before integration.
+  Preserve historical Git commits and frozen run bundles; retain required schema
+  versions, database migrations and regression tests.
 - User scope/authorization takes precedence. Preserve the ai-prefill-tools
   worktree after integration; it hosts the current local Preview and is retained
   for future improvements. Do not remove it as routine branch cleanup.

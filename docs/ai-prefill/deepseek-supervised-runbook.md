@@ -1,16 +1,8 @@
 # DeepSeek 受监督预填运行指南
 
-版本：`deepseek-supervised-v2`，2026-09-20。适用范围：由 Codex 组织多个 DeepSeek harness，生成供人工复核的 CandidateEnvelope.v1，并通过现有 AI Prefill 模块写入隔离 Preview。
+适用范围：由 Codex 组织多个 DeepSeek harness，生成供人工复核的 CandidateEnvelope.v1，并通过现有 AI Prefill 模块写入隔离 Preview。工作流版本和新任务入口以 [START_HERE.md](START_HERE.md) 为准。
 
-> 当前组合流程与新对话恢复方式见 [START_HERE.md](START_HERE.md)；本文件的v2规则与复跑经验、自检指南共同打包。下节首轮实验数字为历史证据，不是当前Preview状态。
-
-## 结论与证据
-
-可以采用“DeepSeek 承担单篇提取，Codex 负责检查、反馈和写入”的分工。目前已有三篇实际并行提取和修订的证据，但没有无人值守的科学正确率或节省费用的证据。
-
-本次 007 / 009 / 020 共交付 105 个化合物、501 条 Activity、166 条原图定位、89 条 Edge。原始输入为论文 PDF、文本辅助、契约和指南；未提供旧 CSV 科学答案。三篇首轮都通过技术验证，但 007 有 53 个、009 有 14 个结构连接错误。错误首轮没有写入 Preview。修订后检查了全部结构重绘；206 项原文数值/符号/ND 对照通过，501 条 Activity 页面字段与候选一致，166 个原图 PNG 成功加载。
-
-这些数字的分母不同：206 项含重复控制行，501 条包含 ADME/PK 和不同表格上下文，166 条含重复共享区域。不能用它们计算通用提取准确率或独立实验数。详细证据见 [本次实验报告](verification-deepseek-2026-09-20.md)。
+本指南与 [质量规则](quality-pitfalls.md)、[交付自检指南](deepseek-self-check-guide.md) 共同组成当前指导。科学准确率和成本改善必须由独立审查及实际费用记录支持，不能从进程正常退出或技术验证通过推导。
 
 ## 推荐分工与并发
 
@@ -24,9 +16,9 @@
 
 当前活动任务内，Codex 可以启动并监控多个进程、读取产物、发送下一轮提示词并通过已有 API 应用结果。用户要求监督者不读原文时，Codex 只检查文件身份、候选、指标和审查产物；源文核验交给新的 DeepSeek 审查进程，报告必须称为独立进程的 AI 复核，不能称为 Codex 原文核验或人工金标准。活动任务结束后，不能假设 Codex 会持续后台值守。跨会话自动恢复、定时唤醒与无人值守调度需要额外的持久协调机制；本轮文档没有实现这些功能。
 
-## v2 的本次改良
+## 输入与阶段验收要求
 
-执行 [覆盖与准确性审查协议](quality-audit-protocol.md)；新增 [独立源文审查提示词](prompts/deepseek-audit.md)。派发前核对外部 manifest 身份，不再仅核对 input/candidate。调查必须产出合法 inventory 与代表结构阶段验收，避免只在 prompt 写“survey”却一口气生成全部候选。实际包必须含 v2 指南与文件 hashes。历史实验保留原指南版本；本轮复验不宣称 v2 已经证明降低了未来错误率。
+执行 [覆盖与准确性审查协议](quality-audit-protocol.md)；新增 [独立源文审查提示词](prompts/deepseek-audit.md)。派发前核对外部 manifest 身份，不再仅核对 input/candidate。调查必须产出合法 inventory 与代表结构阶段验收，避免只在 prompt 写“survey”却一口气生成全部候选。实际包必须含当前指南与文件 hashes；历史实验保留原指南版本。
 
 对共享结构/表格发现的错误按整个系列/列扩大复查：本次 013 重复环编号冲突，010 区域位置误读，005 新表漏填。先修正生成策略/行列映射并验收代表，再批量展开。不要用反复提醒同一句规则代替阶段产物。
 
@@ -159,6 +151,6 @@ PID 只是进程定位信息，恢复时还需核对启动时间和命令，避�
 
 “出色”的目标应由后续同口径复核和成本数据证明。文档、早期骨架检查、局部反馈和缓存原文渲染有望减少返工；若监督仍需逐单元格重做整篇，费用较低的提取模型也未必降低总成本。
 
-## 交付前 producer 自检（2026-09-21）
+## 交付前 producer 自检
 
 按 [交付前自检指南](deepseek-self-check-guide.md)执行新离线命令 `candidate self-check`。任务包必须复制指南和 `templates/deepseek-self-review.json`，冻结实际文件hash；不改历史任务包。先程序preflight，再DeepSeek逐项回查源文，最后以最终candidate文件hash绑定self-review并复跑。最多两轮修正，未决交partial。退出0仅ready_for_independent_review，不能代替独立审查或Preview批准。该检查尚未强制接入Preview API。

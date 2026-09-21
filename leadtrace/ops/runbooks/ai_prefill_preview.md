@@ -237,8 +237,8 @@ available for diagnosis.
 )
 ```
 
-See [the current acceptance record](../../../docs/ai-prefill/verification-2026-09-20.md)
-for verified behavior and remaining M1 work. The presence of a CLI command or a
+See [the current acceptance record](../../../docs/ai-prefill/verification-merge-2026-09-21.md)
+for verified behavior and current limits. The presence of a CLI command or a
 Compose configuration is not evidence that the whole Preview lifecycle passed.
 
 

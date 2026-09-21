@@ -41,3 +41,10 @@
 ## 科学与自动化边界
 
 三篇已有候选仍是draft/needs_revision；本轮未重新提取或修正科学数据，不把代码合并或自检通过等同科学批准。当前自检可检出已知dose/单位/coverage/hash/ref问题；没有执行新的DeepSeek自检前后对照实验。通用持久多harness调度器、完整测量tuple coverage、可靠费用账本及identity-only候选仍是后续优化。
+
+
+## 合并后整理与正式网站诊断
+
+用户进一步要求main保留现行指导、Preview数据不进入正式库。已将22份阶段性报告和已完成计划完整归档到忽略目录 `leadtrace-data/ai-prefill-docs-archive-20260921/`，逐文件hash验证后移出当前源码树，历史仍可从2f27cc8追溯。有效质量规则保留在quality-pitfalls.md；新任务入口、运行指南和引用已更新，相关Markdown链接无失效。迁移链、契约版本和回归测试保留。本次仅文档整理，git diff --check通过，无应用代码变更。
+
+只读检查正式Caddy配置和进程cwd，确认正式前端仍从124c5ed release服务，HTTP返回HTML与该文件逐字节一致；API/worker仍使用leadtrace-cutover-5ea。源码合并并未发布正式网站。未重启正式服务、切换路由、操作正式数据库或将Preview数据迁入正式库。

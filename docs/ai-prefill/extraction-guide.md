@@ -127,8 +127,7 @@ These are operator gates, not new API capabilities. Use the
    guess a parent from numbering, connect every pair, or skip named intermediates.
    Missing text quotation alone is never an exclusion reason for a well-reasoned
    candidate. Preserve source label conflicts and check the labelled drawings.
-   Use the PfPKG audit in `verification-edge-coverage-2026-09-20.md` as a worked
-   example. This is a supervisor audit; `candidate coverage --inventory` currently
+   This is a supervisor audit; `candidate coverage --inventory` currently
    measures compound labels only and does not certify Edge completeness.
 6. For every text or table Evidence, preserve page number, meaningful punctuation,
    numeric values, units, comparison operators, and Unicode symbols. Do not turn a

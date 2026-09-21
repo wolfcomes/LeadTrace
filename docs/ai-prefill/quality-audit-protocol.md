@@ -1,6 +1,6 @@
 # 预填覆盖与准确性审查协议
 
-运行版本：`deepseek-supervised-v2`；CandidateEnvelope 仍为 v1。本文件是操作协议，不新增 API validator，也不自动修正历史候选。此次发现及复验见 [2026-09-20 质量报告](verification-quality-audit-2026-09-20.md)。
+运行版本：`deepseek-supervised-v2`；CandidateEnvelope 仍为 v1。本文件是操作协议，不新增 API validator，也不自动修正历史候选。现行验收补充见 [常见质量问题](quality-pitfalls.md)。
 
 ## 1. 分开评估四个层面
 
