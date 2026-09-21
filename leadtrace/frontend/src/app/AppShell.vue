@@ -8,6 +8,7 @@ import {
   ListTodo,
   ScrollText,
   Users,
+  X,
 } from "lucide-vue-next";
 import { computed, type Component } from "vue";
 import { useRouter } from "vue-router";
@@ -44,8 +45,12 @@ const visibleNavigation = computed(() => navigation.filter(
 const initials = computed(() => auth.user?.display_name.trim().slice(0, 1) || "L");
 
 async function signOut(): Promise<void> {
-  await auth.logout();
-  await router.replace("/login");
+  try {
+    await auth.logout();
+    await router.replace("/login");
+  } catch {
+    // The store preserves the active session and exposes the relevant notice.
+  }
 }
 </script>
 
@@ -100,9 +105,27 @@ async function signOut(): Promise<void> {
           <RouterLink class="account-action" data-change-password to="/change-password">
             {{ zhCN.auth.changePassword }}
           </RouterLink>
-          <button class="sign-out" type="button" @click="signOut">{{ zhCN.auth.signOut }}</button>
+          <button class="sign-out" type="button" :disabled="auth.credentialMutationInProgress" @click="signOut">{{ zhCN.auth.signOut }}</button>
         </div>
       </header>
+      <div
+        v-if="auth.sessionNotice"
+        class="inline-feedback is-warning"
+        data-session-notice
+        role="alert"
+      >
+        <span>{{ auth.sessionNotice }}</span>
+        <button
+          class="icon-button"
+          data-dismiss-session-notice
+          type="button"
+          :aria-label="zhCN.auth.dismissSessionNotice"
+          :title="zhCN.auth.dismissSessionNotice"
+          @click="auth.dismissSessionNotice"
+        >
+          <X :size="16" aria-hidden="true" />
+        </button>
+      </div>
       <main id="main-content" tabindex="-1">
         <RouterView />
       </main>

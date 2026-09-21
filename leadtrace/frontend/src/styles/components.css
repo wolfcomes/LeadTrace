@@ -837,9 +837,10 @@
 .compound-edit-form { align-items: start; flex-wrap: wrap; }
 .compound-edit-form .editor-actions { align-self: end; }
 .ketcher-panel { display: grid; gap: 10px; margin-top: 16px; }
-.ketcher-island { position: relative; min-height: 480px; border: 1px solid var(--line-strong); background: #fcfcfc; overflow: hidden; }
-.ketcher-react-host { height: 480px; }
+.ketcher-island { position: relative; min-height: 480px; height: 480px; border: 1px solid var(--line-strong); background: #fcfcfc; overflow: hidden; }
+.ketcher-frame { display: block; width: 100%; height: 480px; border: 0; background: #fcfcfc; }
 .ketcher-loading { position: absolute; z-index: 2; inset: 0; display: grid; margin: 0; place-items: center; color: var(--ink-muted); background: var(--surface); }
+.ketcher-failed { position: absolute; z-index: 2; inset: 0 0 auto; margin: 0; padding: 10px 12px; border-bottom: 1px solid #dbb9b3; color: var(--danger); background: var(--danger-soft); font-size: .76rem; }
 .structure-source-images { display: grid; gap: 14px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
 .structure-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .structure-comparison .evidence-preview-frame { min-height: 220px; }
@@ -1010,7 +1011,7 @@
   .submission-image-pair, .submission-diff-values { grid-template-columns: 1fr; }
   .decision-actions { display: grid; }
   .ketcher-island,
-  .ketcher-react-host { min-height: 420px; height: 420px; }
+  .ketcher-frame { min-height: 420px; height: 420px; }
   .page-state { min-height: 220px; padding: 26px 18px; }
   .release-card { width: 100%; flex-basis: auto; }
   .paper-card { grid-template-columns: 38px minmax(0, 1fr); padding: 16px 14px; }

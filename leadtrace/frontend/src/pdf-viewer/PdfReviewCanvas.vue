@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 
+import { normalizePdfRegionBounds, type PdfRegionBounds } from "./geometry";
 import RegionOverlay, { type PdfRegion } from "./RegionOverlay.vue";
 
 const props = withDefaults(defineProps<{
@@ -14,7 +15,7 @@ const props = withDefaults(defineProps<{
   selectedRegionId?: string;
 }>(), { pageCount: 1, allowRotation: true });
 
-type RegionGeometry = { id: string; x0: number; y0: number; x1: number; y1: number };
+type RegionGeometry = PdfRegionBounds & { id: string };
 
 const emit = defineEmits<{
   "create-region": [payload: { pageNumber: number; x0: number; y0: number; x1: number; y1: number; rotation: number }];
@@ -33,7 +34,7 @@ const rotation = ref(0);
 const search = ref("");
 const selectedId = ref<string | null>(null);
 const drawing = ref<{ x: number; y: number } | null>(null);
-const draft = ref<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+const draft = ref<PdfRegionBounds | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
 const renderedPage = ref(false);
 const renderError = ref<string | null>(null);
@@ -80,7 +81,9 @@ function finishDraw(event: PointerEvent): void {
   drawing.value = null;
   draft.value = null;
   if (finished.x1 - finished.x0 < 0.01 || finished.y1 - finished.y0 < 0.01) return;
-  emit("create-region", { pageNumber: currentPage.value, ...finished, rotation: rotation.value });
+  const normalized = normalizePdfRegionBounds(finished);
+  if (!normalized) return;
+  emit("create-region", { pageNumber: currentPage.value, ...normalized, rotation: rotation.value });
 }
 
 function changePage(page: number): void {
