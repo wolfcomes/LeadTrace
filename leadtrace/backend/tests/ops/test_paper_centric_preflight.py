@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -665,7 +667,7 @@ def _catalog_config(root: Path, manifest: Path, source_root: Path) -> dict[str, 
     managed = root / "managed"
     managed.mkdir()
     return {
-        "schema_revision": SCHEMA_REVISION,
+        "schema_revision": ScriptDirectory.from_config(Config("alembic.ini")).get_current_head(),
         "pilot_manifest": str(manifest),
         "asset_root": str(managed),
         "source_roots": {"source_pdfs": str(source_root)},
@@ -716,6 +718,12 @@ def test_database_catalog_detects_missing_immutable_history_trigger(
     with auth_session_factory.begin() as session:
         session.execute(
             text("DROP TRIGGER trg_change_events_append_only ON change_events")
+        )
+
+    with pytest.raises(ValueError, match="immutable-history triggers"):
+        _validate_pilot_catalog(
+            auth_session_factory,
+            _catalog_config(tmp_path, manifest, source_root),
         )
 
 

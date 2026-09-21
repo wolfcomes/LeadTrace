@@ -281,6 +281,16 @@
           "title": "Lineage Label",
           "type": "string"
         },
+        "lineage_type": {
+          "default": "unspecified",
+          "enum": [
+            "sar",
+            "synthesis",
+            "unspecified"
+          ],
+          "title": "Lineage Type",
+          "type": "string"
+        },
         "members": {
           "items": {
             "$ref": "#/$defs/AiLineageMember"

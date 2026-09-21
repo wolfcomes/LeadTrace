@@ -957,7 +957,7 @@ def test_preview_revision_downgrades_to_existing_ai_schema_and_reupgrades(
         assert _database_revision(empty_postgresql_database_url) == "0025_ai_prefill_runs"
         command.upgrade(config, "head")
         assert inspect(engine).has_table("preview_application_receipts")
-        assert _database_revision(empty_postgresql_database_url) == "0026_ai_prefill_preview_receipts"
+        assert _database_revision(empty_postgresql_database_url) == ScriptDirectory.from_config(config).get_current_head()
     finally:
         engine.dispose()
 

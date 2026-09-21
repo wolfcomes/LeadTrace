@@ -1,6 +1,6 @@
 # 维护边界与后续优化
 
-本轮可用基础：隔离Preview生命周期与身份验证、候选契约/验证/覆盖/自检、workspace反馈导出、compound内活性与证据、可滚动目录、SAR/合成lineage分类、点线/分子结构切换及edge详情导航。部署主线后仍保留 `.worktrees/ai-prefill-tools`；不要自动移除其依赖与Preview进程所引用的路径。
+本轮可用基础：隔离Preview生命周期与身份验证、候选契约/验证/覆盖/自检、workspace反馈导出、compound内活性与证据、可滚动目录、SAR/合成lineage分类、点线/分子结构切换及edge详情导航。合并主线后仍保留 `.worktrees/ai-prefill-tools`；不要自动移除其依赖与Preview进程所引用的路径。
 
 ## 已知能力边界
 

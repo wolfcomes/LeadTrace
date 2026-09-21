@@ -10,6 +10,7 @@ import fitz
 import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.engine import make_url
 
 from app.assets.models import (
     Asset,
@@ -59,7 +60,7 @@ def _alembic_config(database_url: str) -> Config:
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url)
     config.attributes["leadtrace_database_url"] = database_url
-    config.attributes["leadtrace_expected_database_name"] = database_url.rsplit("/", 1)[-1]
+    config.attributes["leadtrace_expected_database_name"] = make_url(database_url).database
     return config
 
 

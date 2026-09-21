@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "SourceReviewItem": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "enum": [
+            "compound_scope",
+            "measurement_coverage",
+            "activity_semantics",
+            "structure_identity",
+            "source_crops",
+            "sar_reasoning",
+            "synthesis_paths"
+          ],
+          "title": "Check Id",
+          "type": "string"
+        },
+        "checked_edge_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Checked Edge Refs",
+          "type": "array"
+        },
+        "details": {
+          "minLength": 1,
+          "title": "Details",
+          "type": "string"
+        },
+        "source_locations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Locations",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "checked",
+            "unresolved",
+            "not_checked",
+            "not_applicable"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "status",
+        "details"
+      ],
+      "title": "SourceReviewItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "candidate_file_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Candidate File Sha256",
+      "type": "string"
+    },
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/SourceReviewItem"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "reviewer_type": {
+      "const": "producer_self_check",
+      "title": "Reviewer Type",
+      "type": "string"
+    },
+    "self_review_version": {
+      "const": 1,
+      "title": "Self Review Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "self_review_version",
+    "candidate_file_sha256",
+    "reviewer_type",
+    "checks"
+  ],
+  "title": "SourceSelfReview",
+  "type": "object"
+}

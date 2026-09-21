@@ -270,7 +270,7 @@
           "bbox": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/NormalizedBBox-Input"
+                "$ref": "#/components/schemas/app__ai_prefill__contracts__NormalizedBBox-Input"
               },
               {
                 "type": "null"
@@ -424,6 +424,16 @@
             "maxLength": 255,
             "minLength": 1,
             "title": "Lineage Label",
+            "type": "string"
+          },
+          "lineage_type": {
+            "default": "unspecified",
+            "enum": [
+              "sar",
+              "synthesis",
+              "unspecified"
+            ],
+            "title": "Lineage Type",
             "type": "string"
           },
           "members": {
@@ -678,7 +688,7 @@
         "additionalProperties": false,
         "properties": {
           "bbox": {
-            "$ref": "#/components/schemas/NormalizedBBox-Input"
+            "$ref": "#/components/schemas/app__ai_prefill__contracts__NormalizedBBox-Input"
           },
           "compound_ref": {
             "maxLength": 255,
@@ -1207,75 +1217,6 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
-      "NormalizedBBox-Input": {
-        "additionalProperties": false,
-        "properties": {
-          "x0": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "title": "X0"
-          },
-          "x1": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "title": "X1"
-          },
-          "y0": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "title": "Y0"
-          },
-          "y1": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "title": "Y1"
-          }
-        },
-        "required": [
-          "x0",
-          "y0",
-          "x1",
-          "y1"
-        ],
-        "title": "NormalizedBBox",
-        "type": "object"
-      },
       "NormalizedBBox-Output": {
         "additionalProperties": false,
         "properties": {
@@ -1703,12 +1644,81 @@
         ],
         "title": "ValidationReport",
         "type": "object"
+      },
+      "app__ai_prefill__contracts__NormalizedBBox-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "x0": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "X0"
+          },
+          "x1": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "X1"
+          },
+          "y0": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Y0"
+          },
+          "y1": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Y1"
+          }
+        },
+        "required": [
+          "x0",
+          "y0",
+          "x1",
+          "y1"
+        ],
+        "title": "NormalizedBBox",
+        "type": "object"
       }
     }
   },
   "info": {
-    "title": "LeadTrace AI Prefill Preview API",
-    "version": "1.0.0"
+    "title": "LeadTrace API",
+    "version": "0.1.0"
   },
   "openapi": "3.1.0",
   "paths": {

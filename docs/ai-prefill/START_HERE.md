@@ -55,7 +55,8 @@ main没有`.venv`时，使用保留工作树的Python并设 `PYTHONPATH=/absolut
 
 - extraction-guide.md、deepseek-supervised-runbook.md、deepseek-quality-checklist.md；
 - quality-audit-protocol.md、deepseek-v2-rerun-lessons.md、deepseek-self-check-guide.md；
-- candidate-schema.json、通用candidate example、inventory schema（由CompoundInventory导出）；
+- candidate-schema.json、通用candidate example、[compound inventory schema](schemas/compound-inventory-v1.json)；
+- [source self-review schema](schemas/source-self-review-v1.json)（与自检模板一起分发）；
 - templates/deepseek-quality-record.json → quality-record-template.json；
 - templates/deepseek-self-review.json → self-review-template.json；
 - 填好所有占位符的任务prompt、运行预算及runtime-metadata.json。
