@@ -48,7 +48,7 @@ def _operator(row: dict[str, str]) -> str | None:
 
 class LegacyPipelineAdapter:
     engine = "legacy_pipeline"
-    engine_version = "pilot-v1"
+    engine_version = "pilot-v2"
 
     def __init__(self, legacy_root: Path) -> None:
         self.legacy_root = legacy_root
@@ -87,8 +87,15 @@ class LegacyPipelineAdapter:
             row
             for row in _rows(self.output_root / "compound_lineage_edges.csv")
             if row.get("paper_id") == paper_id
-            and row.get("pair_eligible") == "yes"
-            and row.get("relation_status") != "unresolved"
+            # pair_eligible is an old materialized structure-readiness flag.
+            # Recheck endpoints against confirmed structures instead of requiring
+            # that stale flag or an accompanying text quotation.
+            and row.get("relation_status") in {
+                "text_explicit", "figure_explicit", "human_confirmed", "ai_inferred"
+            }
+            and row.get("review_status") not in {"rejected", "invalid"}
+            and _value(row, "relation_type") is not None
+            and _value(row, "parent_entity_id") != _value(row, "derived_entity_id")
             and _value(row, "parent_entity_id") in confirmed
             and _value(row, "derived_entity_id") in confirmed
         ]
@@ -99,14 +106,15 @@ class LegacyPipelineAdapter:
             and _page(row, source.page_count) is not None
             and _value(row, "evidence_text") is not None
         }
-        valid_edges = [
-            row
-            for row in edge_rows
-            if any(
+        valid_edges = edge_rows
+        edges_without_evidence = {
+            row["lineage_edge_id"]
+            for row in valid_edges
+            if not any(
                 ref in evidence_rows
                 for ref in (row.get("evidence_ids") or "").split("|")
             )
-        ]
+        }
 
         activity_rows: list[tuple[dict[str, str], Decimal, str, int]] = []
         for row in _rows(self.output_root / "compound_activities.csv"):
@@ -199,6 +207,12 @@ class LegacyPipelineAdapter:
                             "modification_summary": "; ".join(
                                 value
                                 for value in (
+                                    (
+                                        "AI-proposed relationship; no linked Evidence; "
+                                        f"legacy status: {row['relation_status']}; pending review"
+                                        if row["lineage_edge_id"] in edges_without_evidence
+                                        else None
+                                    ),
                                     _value(row, "modification_site"),
                                     (
                                         f"{_value(row, 'from_group')} -> "

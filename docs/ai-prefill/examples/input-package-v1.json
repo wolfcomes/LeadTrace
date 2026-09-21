@@ -1,0 +1,26 @@
+{
+  "package_version": 1,
+  "experiment_id": "experiment:example",
+  "target": {
+    "paper_key": "paper-example",
+    "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "byte_size": 123456,
+    "page_count": 8
+  },
+  "source_locator": {
+    "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "path": "/authorized/read-only/paper-example.pdf",
+    "access": "read-only"
+  },
+  "schema_version": "CandidateEnvelope.v1",
+  "guide_version": "guide-v1",
+  "recipe": {
+    "purpose": "first extraction"
+  },
+  "parent_candidate_id": null,
+  "input_evaluation_ids": [],
+  "instructions": [
+    "Record omissions instead of guessing.",
+    "Run candidate validate before Preview application."
+  ]
+}

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import { lineageTypeLabels } from "../v2/types";
 import { ApiError } from "../api/client";
 import { getPublishedPaper, publishedAssetUrl } from "../v2/api";
 import type { PublishedPaperDetail } from "../v2/types";
@@ -77,9 +78,9 @@ watch(() => route.params.paperId, load, { immediate: true });
       </section>
 
       <section class="content-section panel">
-        <div class="section-heading"><div><p class="eyebrow">LINEAGE</p><h2>Lead optimization Lineage</h2></div><span>{{ snapshot.lineages.length }} lineages</span></div>
+        <div class="section-heading"><div><p class="eyebrow">LINEAGE</p><h2>SAR 与合成路线</h2></div><span>{{ snapshot.lineages.length }} lineages</span></div>
         <article v-for="lineage in snapshot.lineages" :key="lineage.id" class="published-lineage-card">
-          <header><strong>{{ lineage.lineage_label }}</strong><span>{{ lineage.description }}</span></header>
+          <header><strong>{{ lineage.lineage_label }}</strong><span class="status-chip">{{ lineageTypeLabels[lineage.lineage_type] }}</span><span>{{ lineage.description }}</span></header>
           <div class="lineage-member-roles">
             <span v-for="member in snapshot.lineage_members.filter((item) => item.lineage_id === lineage.id)" :key="member.id"><strong>{{ compoundLabels.get(member.compound_id) }}</strong><small>{{ member.role }}</small></span>
           </div>

@@ -14,6 +14,7 @@ from app.lineages.models import (
     LineageEdgeReviewStatus,
     LineageMember,
     LineageMemberRole,
+    LineageType,
 )
 from app.security.policies import Principal
 from app.workspaces.history import LockedWorkspace, MutationChange
@@ -103,6 +104,7 @@ def lineage_snapshot(lineage: Lineage) -> dict[str, object]:
         "paper_id": str(lineage.paper_id),
         "workspace_id": str(lineage.workspace_id),
         "lineage_label": lineage.lineage_label,
+        **({"lineage_type": lineage.lineage_type.value} if lineage.lineage_type != LineageType.UNSPECIFIED else {}),
         "description": lineage.description,
         "sort_order": lineage.sort_order,
         "created_by_kind": lineage.created_by_kind.value,
@@ -207,6 +209,7 @@ class LineageService:
         actor: Principal,
         lineage_label: str,
         description: str | None,
+        lineage_type: LineageType = LineageType.UNSPECIFIED,
     ) -> LineageMutation:
         created: dict[str, Lineage] = {}
 
@@ -220,6 +223,7 @@ class LineageService:
                 paper_id=context.workspace.paper_id,
                 workspace_id=context.workspace.id,
                 lineage_label=_clean_required(lineage_label, "lineage_label"),
+                lineage_type=LineageType(lineage_type),
                 description=_clean_optional(description),
                 sort_order=int(maximum if maximum is not None else -1) + 1,
             )
@@ -267,6 +271,11 @@ class LineageService:
                 lineage.lineage_label = _clean_required(
                     updates["lineage_label"], "lineage_label"
                 )
+            if "lineage_type" in updates:
+                try:
+                    lineage.lineage_type = LineageType(updates["lineage_type"])
+                except (ValueError, TypeError) as error:
+                    raise LineageValidationError("Invalid lineage_type") from error
             if "description" in updates:
                 lineage.description = _clean_optional(updates["description"])
             changed["value"] = lineage

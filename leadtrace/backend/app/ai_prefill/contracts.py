@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 
 class StrictModel(BaseModel):
@@ -74,11 +74,21 @@ class AiLineageEdge(StrictModel):
 
 
 class AiLineage(StrictModel):
+    lineage_type: Literal["sar", "synthesis", "unspecified"] = "unspecified"
     ref: str = Field(min_length=1, max_length=255)
     lineage_label: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=10_000)
     members: list[AiLineageMember] = Field(default_factory=list)
     edges: list[AiLineageEdge] = Field(default_factory=list)
+
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_serialization(self, handler):
+        # Existing signed candidates and receipts predate classification.
+        data = handler(self)
+        if self.lineage_type == "unspecified":
+            data.pop("lineage_type", None)
+        return data
 
 
 class AiEvidence(StrictModel):

@@ -3,8 +3,9 @@ import { computed, ref, watch } from "vue";
 
 import type { Compound, Lineage, LineageEdge } from "../../v2/types";
 
-const props = defineProps<{ lineage: Lineage; compounds: Compound[]; readOnly?: boolean; busy?: boolean }>();
+const props = defineProps<{ lineage: Lineage; focusedEdgeId?: string; compounds: Compound[]; readOnly?: boolean; busy?: boolean }>();
 const emit = defineEmits<{
+  select: [edgeId: string];
   create: [payload: { parentCompoundId: string; childCompoundId: string; relationType: string; modificationSummary: string | null; reviewStatus: LineageEdge["review_status"] }];
   update: [edge: LineageEdge, payload: { parentCompoundId?: string; childCompoundId?: string; relationType?: string; modificationSummary?: string | null; reviewStatus?: LineageEdge["review_status"] }];
   delete: [edge: LineageEdge];
@@ -13,6 +14,9 @@ const emit = defineEmits<{
 const parentId = ref("");
 const childId = ref("");
 const relationType = ref("lead_optimization");
+watch(() => [props.lineage.id, props.lineage.lineage_type], () => {
+  relationType.value = props.lineage.lineage_type === "synthesis" ? "synthetic_transformation" : "lead_optimization";
+}, { immediate: true });
 const modificationSummary = ref("");
 const reviewStatus = ref<LineageEdge["review_status"]>("draft");
 const editingId = ref<string>();
@@ -83,7 +87,8 @@ function saveEdit(edge: LineageEdge): void {
 
 <template>
   <section class="edge-editor">
-    <header class="compact-heading"><div><p class="eyebrow">EDGES</p><h4>直接优化关系</h4></div></header>
+    <header class="compact-heading"><div><p class="eyebrow">EDGES</p><h4>{{ focusedEdgeId ? "关系说明与证据" : "关系与结构变化" }}</h4></div></header>
+    <p v-if="!focusedEdgeId" class="workspace-empty-copy">Edge 可以由 AI 根据结构、图示或 SAR 推断，不要求文字 Evidence。请在修改摘要中区分推断理由与原文引用，并人工核对关系。</p>
     <div v-if="lineage.edges.length" class="edge-list">
       <article v-for="edge in lineage.edges" :key="edge.id" class="edge-row" :class="{ editing: editingId === edge.id }" :data-edge-id="edge.id">
         <template v-if="editingId === edge.id">
@@ -95,7 +100,7 @@ function saveEdit(edge: LineageEdge): void {
           <div class="editor-actions"><button class="button-primary" data-save-edge-edit type="button" :disabled="busy || !editRelationType.trim() || editParentId === editChildId" @click="saveEdit(edge)">保存 Edge</button><button class="button-quiet" type="button" :disabled="busy" @click="cancelEdit">取消</button></div>
         </template>
         <template v-else>
-          <div><strong>{{ labelById.get(edge.parent_compound_id) || "?" }} → {{ labelById.get(edge.child_compound_id) || "?" }}</strong><small>{{ edge.modification_summary || edge.relation_type }}</small></div>
+          <div><button v-if="!focusedEdgeId" class="button-secondary" data-open-edge type="button" @click="emit('select', edge.id)">查看关系详情 →</button><strong>{{ labelById.get(edge.parent_compound_id) || "?" }} → {{ labelById.get(edge.child_compound_id) || "?" }}</strong><small>{{ edge.modification_summary || edge.relation_type }}</small></div>
           <label class="form-field">审核状态
           <select :value="edge.review_status" :disabled="readOnly || busy" @change="emit('update', edge, { reviewStatus: ($event.target as HTMLSelectElement).value as LineageEdge['review_status'] })">
             <option value="draft">Draft</option><option value="reviewer_confirmed">Reviewer confirmed</option><option value="unresolved">Unresolved</option>
@@ -103,10 +108,11 @@ function saveEdit(edge: LineageEdge): void {
           </label>
           <div class="editor-actions"><button class="button-quiet" data-edit-edge type="button" :disabled="readOnly || busy" @click="startEdit(edge)">编辑</button><button class="button-quiet" data-delete-edge type="button" :disabled="readOnly || busy" @click="emit('delete', edge)">删除 Edge</button></div>
         </template>
+        <slot name="evidence" :edge="edge" />
       </article>
     </div>
     <p v-else class="workspace-empty-copy">当前 Lineage 尚无 Edge。</p>
-    <form class="inline-create-form edge-create-form" @submit.prevent="create">
+    <form v-if="!focusedEdgeId" class="inline-create-form edge-create-form" @submit.prevent="create">
       <label class="form-field">Parent<select v-model="parentId" :disabled="readOnly || busy"><option v-for="compound in memberCompounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>
       <label class="form-field">Child<select v-model="childId" :disabled="readOnly || busy"><option v-for="compound in memberCompounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>
       <label class="form-field">Relation<input v-model="relationType" maxlength="128" :disabled="readOnly || busy"></label>

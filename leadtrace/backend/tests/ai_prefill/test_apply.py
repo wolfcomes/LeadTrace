@@ -56,6 +56,10 @@ class AiContext:
 
 @pytest.fixture
 def ai_context(auth_session_factory: sessionmaker[Session]) -> AiContext:
+    return create_ai_context(auth_session_factory)
+
+
+def create_ai_context(auth_session_factory: sessionmaker[Session]) -> AiContext:
     with auth_session_factory.begin() as session:
         admin = UserService().create_user(
             session,
@@ -164,6 +168,12 @@ def test_applies_complete_payload_with_ai_history_and_stable_structure(
         assert result.applied is True
         assert result.idempotent is False
         assert result.run.status is AiExtractionRunStatus.SUCCEEDED
+        assert result.entity_map is not None
+        assert result.entity_map["/compounds/compound:lead-1"]
+        assert result.entity_map["/compounds/compound:lead-1/structure"]
+        assert result.entity_map["/structure_locators/structure-image:lead-1"]
+        assert result.entity_map["/evidence/evidence:scheme-2"]
+        assert result.entity_map["/activities/0"]
 
     with ai_context.session_factory() as session:
         workspace = session.get(PaperWorkspace, ai_context.workspace_id)
@@ -555,3 +565,45 @@ def test_retried_successful_run_is_idempotent(ai_context: AiContext) -> None:
         assert session.scalar(select(func.count()).select_from(Compound)) == 2
         assert session.scalar(select(func.count()).select_from(Structure)) == 2
         assert session.scalar(select(func.count()).select_from(AiExtractionRun)) == 1
+
+
+def test_ai_edge_without_evidence_is_saved_as_draft_and_listed_for_reviewer(ai_context):
+    from app.lineages.models import LineageEdgeReviewStatus
+    from app.lineages.service import LineageService
+    raw = complete_payload()
+    raw["evidence"] = []
+    raw["edge_evidence_links"] = []
+    raw["activities"] = []
+    raw["structure_locators"] = []
+    reasoning = "AI inference from series design: replace the lead substituent; verify manually"
+    raw["lineages"][0]["edges"][0]["modification_summary"] = reasoning
+    run_id = _queue(ai_context)
+    with ai_context.session_factory.begin() as session:
+        result = AiPrefillService().apply(session, run_id=run_id, payload=AiPrefillPayload.model_validate(raw))
+        assert result.applied
+    with ai_context.session_factory() as session:
+        listing = LineageService().list_lineages(
+            session, workspace_id=ai_context.workspace_id,
+            actor=Principal(ai_context.reviewer_id, UserRole.REVIEWER),
+        )
+        edge = listing.records[0].edges[0]
+        assert edge.review_status is LineageEdgeReviewStatus.DRAFT
+        assert edge.created_by_kind is ChangeActorKind.AI
+        assert edge.modification_summary == reasoning
+        assert session.scalar(select(func.count()).select_from(Evidence)) == 0
+        assert session.scalar(select(func.count()).select_from(EdgeEvidenceLink)) == 0
+
+
+def test_ai_lineage_classification_survives_apply_and_snapshot(ai_context):
+    from app.workspaces.snapshot import build_paper_snapshot
+    payload_data = complete_payload()
+    payload_data["lineages"][0]["lineage_type"] = "synthesis"
+    payload = AiPrefillPayload.model_validate(payload_data)
+    run_id = _queue(ai_context)
+    with ai_context.session_factory.begin() as session:
+        result = AiPrefillService().apply(session, run_id=run_id, payload=payload)
+        assert result.applied
+    with ai_context.session_factory() as session:
+        lineage = session.scalar(select(Lineage))
+        assert lineage.lineage_type == "synthesis"
+        assert build_paper_snapshot(session, ai_context.workspace_id)["lineages"][0]["lineage_type"] == "synthesis"

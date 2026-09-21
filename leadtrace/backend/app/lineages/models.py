@@ -21,6 +21,12 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.workspaces.models import ChangeActorKind
 
 
+class LineageType(StrEnum):
+    SAR = "sar"
+    SYNTHESIS = "synthesis"
+    UNSPECIFIED = "unspecified"
+
+
 class LineageMemberRole(StrEnum):
     ROOT = "root"
     INTERMEDIATE = "intermediate"
@@ -51,6 +57,10 @@ class Lineage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         CheckConstraint("sort_order >= 0", name="ck_lineages_nonnegative_order"),
         CheckConstraint(
+            "lineage_type IN ('sar', 'synthesis', 'unspecified')",
+            name="ck_lineages_type",
+        ),
+        CheckConstraint(
             "created_by_kind IN ('reviewer', 'admin', 'ai', 'system')",
             name="ck_lineages_creator_kind",
         ),
@@ -66,6 +76,13 @@ class Lineage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         PostgreSQLUUID(as_uuid=True), nullable=False
     )
     lineage_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    lineage_type: Mapped[LineageType] = mapped_column(
+        Enum(
+            LineageType, name="lineage_type", native_enum=False, length=16,
+            values_callable=lambda values: [value.value for value in values],
+        ),
+        nullable=False, default=LineageType.UNSPECIFIED, server_default="unspecified",
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_by_kind: Mapped[ChangeActorKind] = mapped_column(
@@ -273,6 +290,7 @@ class LineageEdge(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 __all__ = [
     "Lineage",
+    "LineageType",
     "LineageEdge",
     "LineageEdgeReviewStatus",
     "LineageMember",

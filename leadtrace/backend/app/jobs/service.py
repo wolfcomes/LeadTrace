@@ -13,7 +13,7 @@ from uuid import UUID
 import pymupdf
 from sqlalchemy import event, func, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, SessionTransaction
 
 from app.assets.models import Asset, AssetAccessLevel, AssetCategory, AssetIntegrityState
 from app.assets.service import AssetService
@@ -124,6 +124,16 @@ def cleanup_transaction_created_files(
 @event.listens_for(Session, "after_rollback")
 def _cleanup_created_files_after_outer_rollback(session: Session) -> None:
     if not session.in_nested_transaction():
+        cleanup_transaction_created_files(session)
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _cleanup_created_files_after_session_close(
+    session: Session, transaction: SessionTransaction,
+) -> None:
+    # Session.close() rolls back its connection without firing after_rollback.
+    # Successful outer commits release this registry in after_commit first.
+    if transaction.parent is None:
         cleanup_transaction_created_files(session)
 
 

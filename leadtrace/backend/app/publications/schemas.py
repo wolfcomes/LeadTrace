@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.activities.models import ActivityOperator
 from app.evidence.models import EvidenceKind, EvidenceRole
-from app.lineages.models import LineageEdgeReviewStatus, LineageMemberRole
+from app.lineages.models import LineageEdgeReviewStatus, LineageMemberRole, LineageType
 from app.publications.models import AdminDecisionAction
 from app.structure_images.models import CropStatus
 from app.structures.models import StructureInputMethod, StructureStatus
@@ -200,6 +200,7 @@ class PublishedStructureSourceImage(PublishedSnapshotProjection):
 
 
 class PublishedLineage(PublishedSnapshotProjection):
+    lineage_type: LineageType = LineageType.UNSPECIFIED
     id: UUID
     lineage_label: str
     description: str | None

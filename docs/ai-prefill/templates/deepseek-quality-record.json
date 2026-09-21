@@ -1,0 +1,197 @@
+{
+  "record_format": "deepseek-supervised-sidecar-v2",
+  "template_notice": "Local operational sidecar, not CandidateEnvelope, ValidationReport or Evaluation. Replace placeholders and example rows with actual observations. Null means unknown, not zero. No automatic gate is implemented by this file.",
+  "run_id": "REPLACE",
+  "paper_key": "REPLACE",
+  "stage": "survey",
+  "round": 1,
+  "candidate_id": null,
+  "parent_candidate_id": null,
+  "feedback_ids": [],
+  "identity": {
+    "source_file_sha256": null,
+    "input_file_sha256": null,
+    "guide_version": "deepseek-supervised-v2",
+    "guide_file_sha256": null,
+    "prompt_file_sha256": null,
+    "schema_file_sha256": null,
+    "candidate_file_sha256": null,
+    "canonical_candidate_sha256": null,
+    "canonical_payload_sha256": null,
+    "harness_version": null,
+    "runtime_model": null,
+    "guide_bundle_sha256": {},
+    "manifest_entry_sha256": null,
+    "expected_doi": null,
+    "observed_pdf_doi": null,
+    "expected_title": null,
+    "observed_pdf_title": null,
+    "source_byte_size": null,
+    "source_page_count": null
+  },
+  "process": {
+    "pid": null,
+    "started_at_utc": null,
+    "finished_at_utc": null,
+    "last_progress_at_utc": null,
+    "exit_code": null,
+    "termination_reason": null
+  },
+  "source_coverage": [
+    {
+      "source_id": "REPLACE_WITH_TABLE_OR_FIGURE",
+      "pdf_page": null,
+      "expected_compound_labels": [],
+      "extracted_compound_labels": [],
+      "expected_measurement_items": null,
+      "extracted_measurement_items": null,
+      "omissions": [],
+      "inspection_artifacts": []
+    }
+  ],
+  "counts": {
+    "compounds": null,
+    "activities": null,
+    "structure_locators": null,
+    "compounds_with_any_locator": null,
+    "compounds_with_source_drawing_available": null,
+    "compounds_with_identity_complete_source_set": null,
+    "reference_controls_without_source_drawing": null,
+    "edges": null,
+    "edges_without_supporting_evidence": null
+  },
+  "checks": [
+    {
+      "check_label": "REPLACE_WITH_CHECKLIST_ITEM",
+      "reviewer": null,
+      "reviewer_type": "harness_self_check",
+      "status": "not_checked",
+      "checked_refs": [],
+      "checked_count": null,
+      "population_count": null,
+      "sampling_method": null,
+      "source_reference_artifacts": [],
+      "result_artifacts": [],
+      "findings": []
+    }
+  ],
+  "unresolved_items": [],
+  "technical_validation": {
+    "report_path": null,
+    "report_id": null,
+    "status": "not_checked"
+  },
+  "supervisor_preview_gate": {
+    "decision": "not_reviewed",
+    "reviewer": null,
+    "candidate_file_sha256": null,
+    "reason": null,
+    "human_scientific_review": "pending"
+  },
+  "delivery": {
+    "application_id": null,
+    "workspace_id": null,
+    "workspace_version": null,
+    "receipt_status": null,
+    "browser_verification_path": null
+  },
+  "usage_and_cost": {
+    "usage_source": null,
+    "deepseek_input_tokens": null,
+    "deepseek_output_tokens": null,
+    "deepseek_cached_input_tokens": null,
+    "deepseek_cost": null,
+    "codex_supervision_cost": null,
+    "tool_cost": null,
+    "human_review_minutes": null,
+    "supervisor_active_minutes": null,
+    "currency": null,
+    "pricing_date": null,
+    "measurement_notes": "Capture all rounds and failures; do not assume unknown usage is zero or cached tokens are additive to input tokens."
+  },
+  "independent_inventory": {
+    "path": null,
+    "file_sha256": null,
+    "built_before_candidate_access": null,
+    "reviewer_type": null,
+    "scope": null,
+    "required_labels": null,
+    "matched_labels": null,
+    "missing_labels": [],
+    "extra_labels": [],
+    "unknown_identity_labels": []
+  },
+  "audit_metrics": {
+    "activity": {
+      "candidate_population": null,
+      "source_population": null,
+      "sampling_method": null,
+      "selected_ids": [],
+      "checked": null,
+      "correct": null,
+      "incorrect": null,
+      "uncertain": null,
+      "confirmed_fraction": null,
+      "resolved_accuracy": null,
+      "whole_population_accuracy": null,
+      "record_path": null
+    },
+    "structure": {
+      "candidate_population": null,
+      "source_population": null,
+      "sampling_method": null,
+      "selected_ids": [],
+      "checked": null,
+      "correct": null,
+      "incorrect": null,
+      "uncertain": null,
+      "confirmed_fraction": null,
+      "resolved_accuracy": null,
+      "whole_population_accuracy": null,
+      "record_path": null
+    },
+    "crop_identity": {
+      "candidate_population": null,
+      "source_population": null,
+      "sampling_method": null,
+      "selected_ids": [],
+      "checked": null,
+      "correct": null,
+      "incorrect": null,
+      "uncertain": null,
+      "confirmed_fraction": null,
+      "resolved_accuracy": null,
+      "whole_population_accuracy": null,
+      "record_path": null
+    },
+    "sar_edges": {
+      "candidate_population": null,
+      "source_population": null,
+      "sampling_method": null,
+      "selected_ids": [],
+      "checked": null,
+      "correct": null,
+      "incorrect": null,
+      "uncertain": null,
+      "confirmed_fraction": null,
+      "resolved_accuracy": null,
+      "whole_population_accuracy": null,
+      "record_path": null
+    },
+    "synthesis_edges": {
+      "candidate_population": null,
+      "source_population": null,
+      "sampling_method": null,
+      "selected_ids": [],
+      "checked": null,
+      "correct": null,
+      "incorrect": null,
+      "uncertain": null,
+      "confirmed_fraction": null,
+      "resolved_accuracy": null,
+      "whole_population_accuracy": null,
+      "record_path": null
+    }
+  },
+  "audit_metrics_notice": "C+E+U=N; confirmed_fraction=C/N. Unknown population accuracy stays null. Fresh AI review is not human gold. Locator existence is not visual identity coverage."
+}

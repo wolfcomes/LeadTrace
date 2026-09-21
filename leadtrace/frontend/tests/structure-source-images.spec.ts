@@ -4,6 +4,7 @@ import { createMemoryHistory } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "../src/App.vue";
+import type { StructureSourceImage } from "../src/v2/types";
 import { createAppRouter } from "../src/app/router";
 import { useAuthStore } from "../src/auth/store";
 
@@ -23,7 +24,7 @@ function workspace(version = 1) { return { id: ids.workspace, review_task_id: id
 const compound = { id: ids.compound, paper_id: ids.paper, workspace_id: ids.workspace, compound_label: "12", display_name: null, description: null, sort_order: 0, created_by_kind: "reviewer" };
 const secondCompound = { ...compound, id: ids.secondCompound, compound_label: "13", sort_order: 1 };
 const structure = { id: ids.structure, paper_id: ids.paper, workspace_id: ids.workspace, compound_id: ids.compound, smiles: "CCO", molfile: null, canonical_smiles: "CCO", inchi: "InChI=1S/C2H6O", inchikey: "LFQSCWFLJHTTHZ-UHFFFAOYSA-N", depiction_asset_id: ids.asset, status: "draft", input_method: "manual_smiles" };
-function sourceImage(id: string, cropStatus: "ready" | "failed", compoundId = ids.compound, pageNumber = 2) { return { id, paper_id: ids.paper, workspace_id: ids.workspace, compound_id: compoundId, source_sha256: "b".repeat(64), page_number: pageNumber, bbox: { x0: 0.1, y0: 0.2, x1: 0.4, y1: 0.6 }, source_context: null, label: "Scheme 1", reviewer_note: null, crop_status: cropStatus, crop_asset_id: cropStatus === "ready" ? ids.asset : null }; }
+function sourceImage(id: string, cropStatus: "ready" | "failed", compoundId = ids.compound, pageNumber = 2): StructureSourceImage { return { id, paper_id: ids.paper, workspace_id: ids.workspace, compound_id: compoundId, source_sha256: "b".repeat(64), page_number: pageNumber, bbox: { x0: 0.1, y0: 0.2, x1: 0.4, y1: 0.6 }, source_context: null, label: "Scheme 1", reviewer_note: null, crop_status: cropStatus, crop_asset_id: cropStatus === "ready" ? ids.asset : null }; }
 function response(body: unknown, status = 200): Response { return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "X-Request-ID": "source-image-ui" } }); }
 
 describe("Structure Source Images", () => {
@@ -109,6 +110,16 @@ describe("Structure Source Images", () => {
     expect(retry?.init?.method).toBe("POST");
     expect(JSON.parse(String(retry?.init?.body))).toEqual({ expected_workspace_version: 1 });
     expect(new Headers(retry?.init?.headers).get("X-CSRF-Token")).toBe("reviewer-csrf");
+  });
+
+  it("explains shared source scaffolds and offers the original crop at full size", async () => {
+    const image = { ...sourceImage(ids.readyImage, "ready"), source_context: "共享骨架与编号行；不是独立完整结构。" };
+    mockApi([image]);
+    const wrapper = await mountWorkspace();
+    const card = wrapper.get(`[data-source-image-id='${ids.readyImage}']`);
+    expect(card.text()).toContain(image.source_context);
+    expect(card.get("a[data-open-source-crop]").attributes("href")).toBe(`/api/v2/structure-source-images/${ids.readyImage}/content`);
+    expect(card.get("a[data-open-source-crop]").attributes("target")).toBe("_blank");
   });
 
   it("does not replace the selected Compound's Source Images with a late older read", async () => {

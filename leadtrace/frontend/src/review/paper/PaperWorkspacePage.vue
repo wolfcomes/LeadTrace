@@ -2,10 +2,11 @@
 import { computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import { lineageTypeSchema, type LineageType } from "../../v2/types";
+import { listActivities, listCompounds, listLineages } from "../../v2/api";
+
 import { useAuthStore } from "../../auth/store";
-import ActivityEditor from "./ActivityEditor.vue";
 import CompoundList from "./CompoundList.vue";
-import EvidenceEditor from "./EvidenceEditor.vue";
 import LineageEditor from "./LineageEditor.vue";
 import SectionStatusControl from "./SectionStatusControl.vue";
 import SubmissionChecklist from "./SubmissionChecklist.vue";
@@ -16,7 +17,6 @@ const tabs = [
   { key: "bibliography", label: "文章信息" },
   { key: "compounds", label: "化合物与结构" },
   { key: "lineages", label: "Lineage" },
-  { key: "evidence", label: "证据与活性" },
   { key: "submit", label: "检查与提交" },
 ] as const;
 type TabKey = typeof tabs[number]["key"];
@@ -27,6 +27,7 @@ const auth = useAuthStore();
 const workspaceState = usePaperWorkspace(route, router);
 const activeTab = computed<TabKey>(() => {
   const value = route.query.tab;
+  if (value === "evidence") return "lineages";
   return tabs.some((tab) => tab.key === value) ? value as TabKey : "bibliography";
 });
 const canEdit = computed(() => (
@@ -43,15 +44,42 @@ function selectCompound(compoundId: string): void {
   void router.replace({ path: route.path, query: { ...route.query, entity: compoundId } });
 }
 
-function selectEntity(entityId: string): void {
-  void router.replace({ path: route.path, query: { ...route.query, entity: entityId } });
+function selectEntity(entityId: string | undefined, group?: LineageType): void {
+  const lineageGroup = group ?? route.query.lineage_group;
+  if (route.query.entity === entityId && route.query.lineage_group === lineageGroup) return;
+  void router.push({ path: route.path, query: { ...route.query, entity: entityId, lineage_group: lineageGroup } });
 }
 
-function focusRecord(tab: "bibliography" | "compounds" | "lineages" | "evidence", entityId?: string): void {
+async function focusRecord(tab: "bibliography" | "compounds" | "lineages" | "evidence", entityId?: string): Promise<void> {
+  if (tab === "evidence") {
+    try { tab = await resolveEvidenceTab(entityId); }
+    catch { tab = "lineages"; }
+  }
   const { entity: _currentEntity, ...preservedQuery } = route.query;
   const query = { ...preservedQuery, tab, ...(entityId ? { entity: entityId } : {}) };
   void router.replace({ path: route.path, query });
 }
+
+async function resolveEvidenceTab(entityId?: string): Promise<"compounds" | "lineages"> {
+  const workspace = workspaceState.workspace.value;
+  if (!workspace || !entityId) return "lineages";
+  const lineageResult = await listLineages(workspace.id);
+  if (lineageResult.items.some(lineage => lineage.id === entityId || lineage.edges.some(edge => edge.id === entityId))) return "lineages";
+  const compounds = await listCompounds(workspace.id);
+  const results = await Promise.all(compounds.items.map(compound => listActivities(compound.id)));
+  return results.some(result => result.items.some(activity => activity.id === entityId || activity.evidence_id === entityId)) ? "compounds" : "lineages";
+}
+watch([() => route.query.tab, () => route.query.entity, () => workspaceState.workspace.value?.id], async () => {
+  if (route.query.tab !== "evidence" || !workspaceState.workspace.value) return;
+  const entity = route.query.entity;
+  const workspaceId = workspaceState.workspace.value.id;
+  try {
+    const tab = await resolveEvidenceTab(typeof entity === "string" ? entity : undefined);
+    if (route.query.tab === "evidence" && route.query.entity === entity && workspaceState.workspace.value?.id === workspaceId) {
+      await router.replace({ path: route.path, query: { ...route.query, tab } });
+    }
+  } catch { /* Keep the evidence library reachable if navigation lookup fails. */ }
+});
 
 function refreshWorkspace(): void {
   void workspaceState.reload();
@@ -122,6 +150,7 @@ watch(
         <template v-else-if="activeTab === 'lineages'">
           <LineageEditor
             :key="`${workspaceState.workspace.value.id}:lineages:${workspaceState.refreshEpoch.value}`"
+            :selected-group-type="lineageTypeSchema.safeParse(route.query.lineage_group).data"
             :workspace="workspaceState.workspace.value"
             :selected-entity-id="typeof route.query.entity === 'string' ? route.query.entity : undefined"
             :read-only="readOnly"
@@ -129,28 +158,6 @@ watch(
             @mutated="refreshWorkspace"
             @conflict="workspaceState.handleConflict()"
           />
-        </template>
-        <template v-else-if="activeTab === 'evidence'">
-          <div class="evidence-activity-workspace">
-            <EvidenceEditor
-              :key="`${workspaceState.workspace.value.id}:evidence:${workspaceState.refreshEpoch.value}`"
-              :workspace="workspaceState.workspace.value"
-              :selected-entity-id="typeof route.query.entity === 'string' ? route.query.entity : undefined"
-              :read-only="readOnly"
-              @select="selectEntity"
-              @mutated="refreshWorkspace"
-              @conflict="workspaceState.handleConflict()"
-            />
-            <ActivityEditor
-              :key="`${workspaceState.workspace.value.id}:activities:${workspaceState.refreshEpoch.value}`"
-              :workspace="workspaceState.workspace.value"
-              :selected-entity-id="typeof route.query.entity === 'string' ? route.query.entity : undefined"
-              :read-only="readOnly"
-              @select="selectEntity"
-              @mutated="refreshWorkspace"
-              @conflict="workspaceState.handleConflict()"
-            />
-          </div>
         </template>
         <template v-else>
           <SubmissionChecklist

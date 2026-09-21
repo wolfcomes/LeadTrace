@@ -1,0 +1,34 @@
+import { defineComponent, ref } from 'vue';
+import { flushPromises, mount } from '@vue/test-utils';
+import { afterEach, expect, it, vi } from 'vitest';
+import { useLineageStructures } from '../src/review/paper/useLineageStructures';
+import { getCompoundStructure } from '../src/v2/api';
+vi.mock('../src/v2/api', () => ({ getCompoundStructure: vi.fn() }));
+afterEach(() => vi.resetAllMocks());
+it('bounds concurrent reads, caches repeats and ignores retired workspace responses', async () => {
+  const resolvers = new Map<string, (value: any) => void>();
+  vi.mocked(getCompoundStructure).mockImplementation(id => new Promise(resolve => { resolvers.set(id, resolve); }));
+  const workspace = ref('workspace-a');const ids = ref(['a','b','c','d','e','f']);
+  let state!: ReturnType<typeof useLineageStructures>;
+  const wrapper = mount(defineComponent({ setup() { state = useLineageStructures(() => workspace.value, ids);return () => null; } }));
+  expect(getCompoundStructure).toHaveBeenCalledTimes(4);
+  resolvers.get('a')!({ structure: null, workspace_version: 1 });await flushPromises();
+  expect(getCompoundStructure).toHaveBeenCalledTimes(5);
+  ids.value = ['a','b'];await flushPromises();expect(getCompoundStructure).toHaveBeenCalledTimes(5);
+  workspace.value = 'workspace-b';ids.value = ['new'];await flushPromises();
+  resolvers.get('b')!({ structure: null, workspace_version: 1 });await flushPromises();
+  expect(state.records.value.b).toBeUndefined();
+  resolvers.get('new')!({ structure: null, workspace_version: 1 });await flushPromises();
+  expect(state.records.value.new).toEqual({ status: 'ready', structure: null });
+  wrapper.unmount();
+});
+it('prioritizes the visible lineage ahead of previously queued compounds', async () => {
+  const resolvers = new Map<string, (value: any) => void>();
+  vi.mocked(getCompoundStructure).mockImplementation(id => new Promise(resolve => { resolvers.set(id, resolve); }));
+  const ids = ref(['a', 'b', 'c', 'd', 'old-e', 'old-f']);
+  const wrapper = mount(defineComponent({ setup() { useLineageStructures(() => 'workspace', ids);return () => null; } }));
+  ids.value = ['new-a', 'new-b'];await flushPromises();
+  resolvers.get('a')!({ structure: null, workspace_version: 1 });await flushPromises();
+  expect(getCompoundStructure).toHaveBeenNthCalledWith(5, 'new-a');
+  wrapper.unmount();
+});

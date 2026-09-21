@@ -365,3 +365,37 @@ def test_lineage_writes_enforce_assignment_role_state_csrf_and_version(
     assert readonly.status_code == 409
     assert readonly.json()["code"] == "WORKSPACE_READ_ONLY"
     _assert_history(context, aggregate.workspace_id, 2)
+
+
+def test_lineage_type_persists_in_api_history_and_snapshot(science_api_context):
+    from app.workspaces.snapshot import build_paper_snapshot, canonical_snapshot_hash
+    context = science_api_context
+    csrf = context.login("science.api.reviewer")
+    workspace_id = context.first.workspace_id
+    created = _create_lineage(context, csrf, workspace_id, 1, "Legacy")
+    assert created.status_code == 201
+    assert created.json()["lineage"]["lineage_type"] == "unspecified"
+    lineage_id = created.json()["lineage"]["id"]
+    with context.session_factory() as session:
+        legacy = build_paper_snapshot(session, workspace_id)
+        assert "lineage_type" not in legacy["lineages"][0]
+    classified = context.client.patch(
+        f"/api/v2/lineages/{lineage_id}", headers={"X-CSRF-Token": csrf},
+        json={"expected_workspace_version": 2, "lineage_type": "sar"},
+    )
+    assert classified.status_code == 200, classified.text
+    assert classified.json()["lineage"]["lineage_type"] == "sar"
+    with context.session_factory() as session:
+        typed = build_paper_snapshot(session, workspace_id)
+        assert typed["lineages"][0]["lineage_type"] == "sar"
+        assert canonical_snapshot_hash(typed) != canonical_snapshot_hash(legacy)
+        events = session.scalars(select(ChangeEvent).where(ChangeEvent.workspace_id == workspace_id)).all()
+        update = next(event for event in events if event.action == "lineage.update")
+        assert update.after_value["lineage_type"] == "sar"
+    synthesis = context.client.post(
+        f"/api/v2/workspaces/{workspace_id}/lineages", headers={"X-CSRF-Token": csrf},
+        json={"expected_workspace_version": 3, "lineage_label": "Synthesis", "lineage_type": "synthesis"},
+    )
+    assert synthesis.status_code == 201, synthesis.text
+    listing = context.client.get(f"/api/v2/workspaces/{workspace_id}/lineages").json()
+    assert [item["lineage_type"] for item in listing["items"]] == ["sar", "synthesis"]

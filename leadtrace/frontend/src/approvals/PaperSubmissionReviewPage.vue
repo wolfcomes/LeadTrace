@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import { lineageTypeLabels } from "../v2/types";
 import { ApiError } from "../api/client";
 import { useAuthStore } from "../auth/store";
 import { decideSubmission, getAdminSubmission } from "../v2/api";
@@ -109,7 +110,7 @@ watch(() => route.params.submissionId, load, { immediate: true });
       <section class="submission-science panel" data-submission-lineage>
         <div class="section-heading"><div><p class="eyebrow">LINEAGE</p><h2>完整 Lineage</h2></div></div>
         <article v-for="lineage in snapshot.lineages" :key="lineage.id" class="submission-lineage-card">
-          <header><strong>{{ lineage.lineage_label }}</strong><span>{{ lineage.description }}</span></header>
+          <header><strong>{{ lineage.lineage_label }}</strong><span class="status-chip">{{ lineageTypeLabels[lineage.lineage_type] }}</span><span>{{ lineage.description }}</span></header>
           <div class="lineage-member-roles">
             <span v-for="member in snapshot.lineage_members.filter((item) => item.lineage_id === lineage.id)" :key="member.id"><strong>{{ compoundLabels.get(member.compound_id) }}</strong><small>{{ member.role }}</small></span>
           </div>

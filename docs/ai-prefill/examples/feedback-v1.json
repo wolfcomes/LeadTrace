@@ -1,0 +1,13 @@
+{
+  "evaluation_id": "evaluation:example-v1",
+  "experiment_id": "experiment:example",
+  "candidate_id": "candidate:example-v1",
+  "reviewer": "reviewer@example",
+  "created_at": "2026-09-19T00:30:00Z",
+  "decision": "needs_revision",
+  "issue_codes": [
+    "EVIDENCE_LOCATOR_ONLY"
+  ],
+  "notes": "Check the scheme label and preserve the page locator in the next candidate.",
+  "workspace_snapshot_id": null
+}

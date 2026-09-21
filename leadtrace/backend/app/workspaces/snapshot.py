@@ -14,7 +14,7 @@ from app.activities.models import Activity
 from app.catalog.models import PaperSource
 from app.compounds.models import Compound
 from app.evidence.models import EdgeEvidenceLink, Evidence
-from app.lineages.models import Lineage, LineageEdge, LineageMember
+from app.lineages.models import Lineage, LineageEdge, LineageMember, LineageType
 from app.papers.models import Paper
 from app.structure_images.models import StructureSourceImage
 from app.structures.models import Structure
@@ -219,7 +219,7 @@ def build_paper_snapshot(session: Session, workspace_id: UUID) -> dict[str, Any]
                     "lineage_label",
                     "description",
                     "sort_order",
-                ),
+                ) + (("lineage_type",) if lineage.lineage_type != LineageType.UNSPECIFIED else ()),
             )
             for lineage in lineages
         ],

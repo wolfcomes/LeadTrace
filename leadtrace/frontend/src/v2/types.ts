@@ -379,11 +379,16 @@ const snapshotStructureSourceImageSchema = z.object({
   crop_asset_id: uuidSchema.nullable(),
 }).strict();
 
+export const lineageTypeSchema = z.enum(["sar", "synthesis", "unspecified"]);
+export type LineageType = z.infer<typeof lineageTypeSchema>;
+export const lineageTypeLabels: Record<LineageType, string> = { sar: "SAR / 结构优化", synthesis: "化学合成", unspecified: "待分类" };
+
 export const lineageSchema = z.object({
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
   lineage_label: z.string().min(1),
+  lineage_type: lineageTypeSchema.default("unspecified"),
   description: z.string().nullable(),
   sort_order: z.number().int(),
 }).strict();

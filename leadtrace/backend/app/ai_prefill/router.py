@@ -94,7 +94,11 @@ def create_ai_prefill_router(
         del principal
         with session.begin():
             workspace = _workspace_for_paper(session, paper_id)
-            return _status(session, service, workspace)
+            status = _status(session, service, workspace)
+            if settings.environment == "preview":
+                status.can_start = False
+                status.blocked_reason = "Preview requires candidate application"
+            return status
 
     @router.post(
         "/{paper_id}/ai-prefill",
@@ -115,6 +119,10 @@ def create_ai_prefill_router(
                     csrf_token,
                     settings.session_secret.get_secret_value(),
                 )
+                if settings.environment == "preview":
+                    raise AiPrefillUnavailableError(
+                        "Preview requires candidate application"
+                    )
                 workspace = _workspace_for_paper(session, paper_id)
                 queue_result = service.queue(
                     session,

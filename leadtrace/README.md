@@ -32,6 +32,14 @@ implement the same versioned payload contract.
 PostgreSQL is the only business-data authority. Redis is delivery state for
 Celery and may be rebuilt from PostgreSQL-backed jobs and extraction runs.
 
+## Supervised AI Prefill
+
+For a new or resumed Codex/DeepSeek prefill task, start with
+[AI Prefill START_HERE](../docs/ai-prefill/START_HERE.md). It describes source-reader
+separation, per-paper stages, delivery self-check, independent audit, Preview
+operations and the persistent handoff. Code/docs are tracked; paper-run artifacts
+and local Preview state remain in ignored `leadtrace-data/`.
+
 ## Local verification
 
 Backend tests require an isolated PostgreSQL database whose name ends in

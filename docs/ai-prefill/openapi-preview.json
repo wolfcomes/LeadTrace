@@ -1,0 +1,2161 @@
+{
+  "components": {
+    "schemas": {
+      "AiActivity-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "assay_name": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Assay Name",
+            "type": "string"
+          },
+          "compound_ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Compound Ref",
+            "type": "string"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "evidence_ref": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Ref"
+          },
+          "metric": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Metric",
+            "type": "string"
+          },
+          "operator": {
+            "enum": [
+              "=",
+              "<",
+              "<=",
+              ">",
+              ">=",
+              "~"
+            ],
+            "title": "Operator",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "compound_ref",
+          "assay_name",
+          "metric",
+          "operator",
+          "value"
+        ],
+        "title": "AiActivity",
+        "type": "object"
+      },
+      "AiActivity-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "assay_name": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Assay Name",
+            "type": "string"
+          },
+          "compound_ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Compound Ref",
+            "type": "string"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "evidence_ref": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Ref"
+          },
+          "metric": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Metric",
+            "type": "string"
+          },
+          "operator": {
+            "enum": [
+              "=",
+              "<",
+              "<=",
+              ">",
+              ">=",
+              "~"
+            ],
+            "title": "Operator",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "compound_ref",
+          "assay_name",
+          "metric",
+          "operator",
+          "value"
+        ],
+        "title": "AiActivity",
+        "type": "object"
+      },
+      "AiCompound": {
+        "additionalProperties": false,
+        "properties": {
+          "compound_label": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Compound Label",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Ref",
+            "type": "string"
+          },
+          "structure": {
+            "$ref": "#/components/schemas/AiStructure"
+          }
+        },
+        "required": [
+          "ref",
+          "compound_label",
+          "structure"
+        ],
+        "title": "AiCompound",
+        "type": "object"
+      },
+      "AiEdgeEvidenceLink": {
+        "additionalProperties": false,
+        "properties": {
+          "edge_ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Edge Ref",
+            "type": "string"
+          },
+          "evidence_ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Evidence Ref",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "supports",
+              "contradicts",
+              "contextual"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "edge_ref",
+          "evidence_ref",
+          "role"
+        ],
+        "title": "AiEdgeEvidenceLink",
+        "type": "object"
+      },
+      "AiEvidence-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NormalizedBBox-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "table",
+              "scheme",
+              "image"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "page_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Page Number",
+            "type": "integer"
+          },
+          "quoted_text": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoted Text"
+          },
+          "ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "kind",
+          "page_number"
+        ],
+        "title": "AiEvidence",
+        "type": "object"
+      },
+      "AiEvidence-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NormalizedBBox-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "table",
+              "scheme",
+              "image"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "page_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Page Number",
+            "type": "integer"
+          },
+          "quoted_text": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoted Text"
+          },
+          "ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "kind",
+          "page_number"
+        ],
+        "title": "AiEvidence",
+        "type": "object"
+      },
+      "AiLineage": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/AiLineageEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "lineage_label": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Lineage Label",
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/AiLineageMember"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "lineage_label"
+        ],
+        "title": "AiLineage",
+        "type": "object"
+      },
+      "AiLineageEdge": {
+        "additionalProperties": false,
+        "properties": {
+          "child_compound_ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Child Compound Ref",
+            "type": "string"
+          },
+          "modification_summary": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modification Summary"
+          },
+          "parent_compound_ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Parent Compound Ref",
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Ref",
+            "type": "string"
+          },
+          "relation_type": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Relation Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "parent_compound_ref",
+          "child_compound_ref",
+          "relation_type"
+        ],
+        "title": "AiLineageEdge",
+        "type": "object"
+      },
+      "AiLineageMember": {
+        "additionalProperties": false,
+        "properties": {
+          "compound_ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Compound Ref",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "root",
+              "intermediate",
+              "terminal",
+              "unspecified"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "compound_ref",
+          "role"
+        ],
+        "title": "AiLineageMember",
+        "type": "object"
+      },
+      "AiPrefillPayload-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/AiActivity-Input"
+            },
+            "title": "Activities",
+            "type": "array"
+          },
+          "bibliography": {
+            "$ref": "#/components/schemas/BibliographyCorrection"
+          },
+          "compounds": {
+            "items": {
+              "$ref": "#/components/schemas/AiCompound"
+            },
+            "title": "Compounds",
+            "type": "array"
+          },
+          "edge_evidence_links": {
+            "items": {
+              "$ref": "#/components/schemas/AiEdgeEvidenceLink"
+            },
+            "title": "Edge Evidence Links",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AiEvidence-Input"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "lineages": {
+            "items": {
+              "$ref": "#/components/schemas/AiLineage"
+            },
+            "title": "Lineages",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "structure_locators": {
+            "items": {
+              "$ref": "#/components/schemas/AiStructureLocator-Input"
+            },
+            "title": "Structure Locators",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_version"
+        ],
+        "title": "AiPrefillPayload",
+        "type": "object"
+      },
+      "AiPrefillPayload-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/AiActivity-Output"
+            },
+            "title": "Activities",
+            "type": "array"
+          },
+          "bibliography": {
+            "$ref": "#/components/schemas/BibliographyCorrection"
+          },
+          "compounds": {
+            "items": {
+              "$ref": "#/components/schemas/AiCompound"
+            },
+            "title": "Compounds",
+            "type": "array"
+          },
+          "edge_evidence_links": {
+            "items": {
+              "$ref": "#/components/schemas/AiEdgeEvidenceLink"
+            },
+            "title": "Edge Evidence Links",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AiEvidence-Output"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "lineages": {
+            "items": {
+              "$ref": "#/components/schemas/AiLineage"
+            },
+            "title": "Lineages",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "structure_locators": {
+            "items": {
+              "$ref": "#/components/schemas/AiStructureLocator-Output"
+            },
+            "title": "Structure Locators",
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema_version"
+        ],
+        "title": "AiPrefillPayload",
+        "type": "object"
+      },
+      "AiStructure": {
+        "additionalProperties": false,
+        "properties": {
+          "molfile": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Molfile"
+          },
+          "smiles": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smiles"
+          }
+        },
+        "title": "AiStructure",
+        "type": "object"
+      },
+      "AiStructureLocator-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "bbox": {
+            "$ref": "#/components/schemas/NormalizedBBox-Input"
+          },
+          "compound_ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Compound Ref",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "page_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Page Number",
+            "type": "integer"
+          },
+          "ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Ref",
+            "type": "string"
+          },
+          "source_context": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Context"
+          }
+        },
+        "required": [
+          "ref",
+          "compound_ref",
+          "page_number",
+          "bbox"
+        ],
+        "title": "AiStructureLocator",
+        "type": "object"
+      },
+      "AiStructureLocator-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "bbox": {
+            "$ref": "#/components/schemas/NormalizedBBox-Output"
+          },
+          "compound_ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Compound Ref",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "page_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Page Number",
+            "type": "integer"
+          },
+          "ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Ref",
+            "type": "string"
+          },
+          "source_context": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Context"
+          }
+        },
+        "required": [
+          "ref",
+          "compound_ref",
+          "page_number",
+          "bbox"
+        ],
+        "title": "AiStructureLocator",
+        "type": "object"
+      },
+      "AssistanceContractResponse": {
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "envelope_schema": {
+            "additionalProperties": true,
+            "title": "Envelope Schema",
+            "type": "object"
+          },
+          "profile_version": {
+            "title": "Profile Version",
+            "type": "string"
+          },
+          "validator_version": {
+            "title": "Validator Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "envelope_schema",
+          "profile_version",
+          "validator_version",
+          "capabilities"
+        ],
+        "title": "AssistanceContractResponse",
+        "type": "object"
+      },
+      "BibliographyCorrection": {
+        "additionalProperties": false,
+        "properties": {
+          "doi": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doi"
+          },
+          "issue": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "journal": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Journal"
+          },
+          "publication_year": {
+            "anyOf": [
+              {
+                "maximum": 9999.0,
+                "minimum": 1000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Year"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          }
+        },
+        "title": "BibliographyCorrection",
+        "type": "object"
+      },
+      "CandidateCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/CandidateEnvelope-Input",
+            "description": "At most 5000 scientific objects: Compounds and their Structures each count once; locators, Lineages, members, edges, Evidence, links and Activities also count once."
+          }
+        },
+        "required": [
+          "candidate"
+        ],
+        "title": "CandidateCreateRequest",
+        "type": "object"
+      },
+      "CandidateCreateResponse": {
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/CandidateEnvelope-Output"
+          },
+          "replayed": {
+            "default": false,
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "candidate"
+        ],
+        "title": "CandidateCreateResponse",
+        "type": "object"
+      },
+      "CandidateEnvelope-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "envelope_version": {
+            "const": 1,
+            "title": "Envelope Version",
+            "type": "integer"
+          },
+          "experiment_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "hashes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidateHashes"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_evaluation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Input Evaluation Ids",
+            "type": "array"
+          },
+          "omissions": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateOmission"
+            },
+            "title": "Omissions",
+            "type": "array"
+          },
+          "parent_candidate_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Candidate Id"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/AiPrefillPayload-Input"
+          },
+          "producer": {
+            "$ref": "#/components/schemas/ProducerProvenance"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/CandidateRecipe"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceIdentity"
+          }
+        },
+        "required": [
+          "envelope_version",
+          "candidate_id",
+          "experiment_id",
+          "source",
+          "producer",
+          "recipe",
+          "payload"
+        ],
+        "title": "CandidateEnvelope",
+        "type": "object"
+      },
+      "CandidateEnvelope-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "envelope_version": {
+            "const": 1,
+            "title": "Envelope Version",
+            "type": "integer"
+          },
+          "experiment_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "hashes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidateHashes"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_evaluation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Input Evaluation Ids",
+            "type": "array"
+          },
+          "omissions": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateOmission"
+            },
+            "title": "Omissions",
+            "type": "array"
+          },
+          "parent_candidate_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Candidate Id"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/AiPrefillPayload-Output"
+          },
+          "producer": {
+            "$ref": "#/components/schemas/ProducerProvenance"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/CandidateRecipe"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceIdentity"
+          }
+        },
+        "required": [
+          "envelope_version",
+          "candidate_id",
+          "experiment_id",
+          "source",
+          "producer",
+          "recipe",
+          "payload"
+        ],
+        "title": "CandidateEnvelope",
+        "type": "object"
+      },
+      "CandidateHashes": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_sha256": {
+            "title": "Candidate Sha256",
+            "type": "string"
+          },
+          "payload_sha256": {
+            "title": "Payload Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload_sha256",
+          "candidate_sha256"
+        ],
+        "title": "CandidateHashes",
+        "type": "object"
+      },
+      "CandidateOmission": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_locator": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Locator"
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ],
+        "title": "CandidateOmission",
+        "type": "object"
+      },
+      "CandidateRecipe": {
+        "additionalProperties": false,
+        "properties": {
+          "config_digest": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Digest"
+          },
+          "guide_version": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Guide Version",
+            "type": "string"
+          },
+          "prompt_digest": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Digest"
+          }
+        },
+        "required": [
+          "guide_version"
+        ],
+        "title": "CandidateRecipe",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "NormalizedBBox-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "x0": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "X0"
+          },
+          "x1": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "X1"
+          },
+          "y0": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Y0"
+          },
+          "y1": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Y1"
+          }
+        },
+        "required": [
+          "x0",
+          "y0",
+          "x1",
+          "y1"
+        ],
+        "title": "NormalizedBBox",
+        "type": "object"
+      },
+      "NormalizedBBox-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "x0": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "X0",
+            "type": "string"
+          },
+          "x1": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "X1",
+            "type": "string"
+          },
+          "y0": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Y0",
+            "type": "string"
+          },
+          "y1": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Y1",
+            "type": "string"
+          }
+        },
+        "required": [
+          "x0",
+          "y0",
+          "x1",
+          "y1"
+        ],
+        "title": "NormalizedBBox",
+        "type": "object"
+      },
+      "PreviewApplicationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_workspace_version": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Workspace Version"
+          },
+          "idempotency_key": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "paper_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paper Id"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "validation_report": {
+            "$ref": "#/components/schemas/ValidationReport"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          }
+        },
+        "required": [
+          "validation_report",
+          "idempotency_key"
+        ],
+        "title": "PreviewApplicationRequest",
+        "type": "object"
+      },
+      "PreviewApplicationResponse": {
+        "properties": {
+          "application_id": {
+            "format": "uuid",
+            "title": "Application Id",
+            "type": "string"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "receipt": {
+            "additionalProperties": true,
+            "title": "Receipt",
+            "type": "object"
+          },
+          "reviewer_url": {
+            "description": "Relative reviewer page URL for this application Workspace",
+            "title": "Reviewer Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reviewer_url",
+          "application_id",
+          "idempotent",
+          "receipt"
+        ],
+        "title": "PreviewApplicationResponse",
+        "type": "object"
+      },
+      "ProducerProvenance": {
+        "additionalProperties": false,
+        "properties": {
+          "engine": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Engine",
+            "type": "string"
+          },
+          "engine_version": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "local",
+              "remote",
+              "human-assisted",
+              "legacy-adapter"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "engine",
+          "engine_version",
+          "generated_at"
+        ],
+        "title": "ProducerProvenance",
+        "type": "object"
+      },
+      "SourceIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_size": {
+            "exclusiveMinimum": 0.0,
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "doi": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doi"
+          },
+          "page_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "paper_key": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Paper Key",
+            "type": "string"
+          },
+          "source_sha256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Source Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "paper_key",
+          "source_sha256",
+          "byte_size",
+          "page_count"
+        ],
+        "title": "SourceIdentity",
+        "type": "object"
+      },
+      "ValidationCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "page_texts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Page Texts",
+            "type": "object"
+          }
+        },
+        "title": "ValidationCreateRequest",
+        "type": "object"
+      },
+      "ValidationCreateResponse": {
+        "properties": {
+          "replayed": {
+            "default": false,
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ValidationReport"
+          }
+        },
+        "required": [
+          "report"
+        ],
+        "title": "ValidationCreateResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ValidationIssue": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "entity_ref": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Ref"
+          },
+          "message": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "needs_review",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "path",
+          "message"
+        ],
+        "title": "ValidationIssue",
+        "type": "object"
+      },
+      "ValidationReport": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "candidate_sha256": {
+            "title": "Candidate Sha256",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "experiment_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "payload_sha256": {
+            "title": "Payload Sha256",
+            "type": "string"
+          },
+          "profile_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Profile Version",
+            "type": "string"
+          },
+          "report_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Report Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "valid",
+              "needs_review",
+              "invalid"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "validator_version": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Validator Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report_id",
+          "experiment_id",
+          "candidate_id",
+          "candidate_sha256",
+          "payload_sha256",
+          "profile_version",
+          "validator_version",
+          "status",
+          "created_at"
+        ],
+        "title": "ValidationReport",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "LeadTrace AI Prefill Preview API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v2/admin/ai-prefill/applications/{application_id}": {
+      "get": {
+        "operationId": "get_application_api_v2_admin_ai_prefill_applications__application_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "leadtrace_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Leadtrace Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Application",
+        "tags": [
+          "AI prefilling assistance"
+        ]
+      }
+    },
+    "/api/v2/admin/ai-prefill/candidates": {
+      "post": {
+        "operationId": "create_candidate_api_v2_admin_ai_prefill_candidates_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "leadtrace_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Leadtrace Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "description": "Request body exceeds 2 MiB; error code PREVIEW_REQUEST_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Candidate",
+        "tags": [
+          "AI prefilling assistance"
+        ]
+      }
+    },
+    "/api/v2/admin/ai-prefill/candidates/{candidate_id}": {
+      "get": {
+        "operationId": "get_candidate_api_v2_admin_ai_prefill_candidates__candidate_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "leadtrace_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Leadtrace Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Candidate",
+        "tags": [
+          "AI prefilling assistance"
+        ]
+      }
+    },
+    "/api/v2/admin/ai-prefill/candidates/{candidate_id}/preview-applications": {
+      "post": {
+        "operationId": "apply_candidate_api_v2_admin_ai_prefill_candidates__candidate_id__preview_applications_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "leadtrace_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Leadtrace Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewApplicationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "description": "Request body exceeds 2 MiB; error code PREVIEW_REQUEST_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Candidate",
+        "tags": [
+          "AI prefilling assistance"
+        ]
+      }
+    },
+    "/api/v2/admin/ai-prefill/candidates/{candidate_id}/validations": {
+      "post": {
+        "operationId": "validate_candidate_endpoint_api_v2_admin_ai_prefill_candidates__candidate_id__validations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "leadtrace_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Leadtrace Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidationCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "description": "Request body exceeds 2 MiB; error code PREVIEW_REQUEST_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Candidate Endpoint",
+        "tags": [
+          "AI prefilling assistance"
+        ]
+      }
+    },
+    "/api/v2/admin/ai-prefill/contracts": {
+      "get": {
+        "operationId": "contracts_api_v2_admin_ai_prefill_contracts_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "leadtrace_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Leadtrace Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceContractResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Contracts",
+        "tags": [
+          "AI prefilling assistance"
+        ]
+      }
+    }
+  }
+}

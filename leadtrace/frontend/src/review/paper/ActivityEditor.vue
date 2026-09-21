@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+
+import EvidenceExcerpt from "./EvidenceExcerpt.vue";
+import EvidenceEditor from "./EvidenceEditor.vue";
 
 import { ApiError } from "../../api/client";
 import { useAuthStore } from "../../auth/store";
 import { createActivity, deleteActivity, listActivities, listCompounds, listEvidence, updateActivity } from "../../v2/api";
 import type { Activity, Compound, Evidence, PaperWorkspace } from "../../v2/types";
 
-const props = defineProps<{ workspace: PaperWorkspace; selectedEntityId?: string; readOnly?: boolean }>();
+const props = defineProps<{ workspace: PaperWorkspace; compound?: Compound; selectedEntityId?: string; readOnly?: boolean }>();
 const emit = defineEmits<{ select: [entityId: string]; mutated: [workspaceVersion: number]; conflict: [] }>();
 const auth = useAuthStore();
+const manageEvidence = ref(false);
 const compounds = ref<Compound[]>([]);
 const evidenceItems = ref<Evidence[]>([]);
 const activities = ref<Activity[]>([]);
@@ -33,13 +37,46 @@ const editValue = ref("");
 const editUnit = ref("");
 const editContext = ref("");
 const error = ref("");
+const editor = ref<HTMLElement | null>(null);
+const filterCompoundId = ref("");
+const page = ref(1);
+const pageSize = 25;
+const filteredActivities = computed(() => activities.value.filter((activity) => (
+  !filterCompoundId.value || activity.compound_id === filterCompoundId.value
+)));
+const pageCount = computed(() => Math.max(1, Math.ceil(filteredActivities.value.length / pageSize)));
+const visibleActivities = computed(() => filteredActivities.value.slice((page.value - 1) * pageSize, page.value * pageSize));
+
+const evidenceById = computed(() => new Map(evidenceItems.value.map(item => [item.id, item])));
+const activityEvidenceIds = computed(() => activities.value.flatMap(item => item.evidence_id ? [item.evidence_id] : []));
 
 const compoundById = computed(() => new Map(compounds.value.map((compound) => [compound.id, compound])));
 
 watch(() => props.workspace.version, (version) => {
   if (version > localVersion.value) localVersion.value = version;
 });
-watch(() => props.workspace.id, () => { void load(); });
+watch([() => props.workspace.id, () => props.compound?.id], () => {
+  filterCompoundId.value = "";
+  page.value = 1;
+  cancelActivityEdit();
+  resetForm();
+  manageEvidence.value = false;
+  void load();
+});
+watch(filterCompoundId, () => { page.value = 1; }, { flush: "sync" });
+watch(pageCount, (count) => { page.value = Math.min(page.value, count); }, { flush: "sync" });
+watch(() => props.selectedEntityId, (id) => { void revealActivity(id); });
+
+async function revealActivity(id?: string): Promise<void> {
+  const activity = activities.value.find((item) => item.id === id || item.evidence_id === id);
+  if (!activity) return;
+  if (filterCompoundId.value && filterCompoundId.value !== activity.compound_id) filterCompoundId.value = "";
+  page.value = Math.floor(filteredActivities.value.findIndex((item) => item.id === activity.id) / pageSize) + 1;
+  await nextTick();
+  const row = Array.from(editor.value?.querySelectorAll<HTMLElement>("[data-activity-row]") ?? [])
+    .find((item) => item.dataset.activityId === id);
+  row?.scrollIntoView?.({ block: "center" });
+}
 
 function mutationError(reason: unknown, fallback: string): void {
   if (reason instanceof ApiError && reason.code === "WORKSPACE_VERSION_CONFLICT") {
@@ -50,18 +87,25 @@ function mutationError(reason: unknown, fallback: string): void {
   error.value = fallback;
 }
 
+let loadEpoch = 0;
 async function load(): Promise<void> {
+  const epoch = ++loadEpoch;
+  const scopedCompound = props.compound;
+  activities.value = [];
+  evidenceItems.value = [];
   loading.value = true;
   error.value = "";
   try {
     const [compoundResult, evidenceResult] = await Promise.all([
-      listCompounds(props.workspace.id),
+      scopedCompound ? Promise.resolve({ items: [scopedCompound], workspace_version: props.workspace.version }) : listCompounds(props.workspace.id),
       listEvidence(props.workspace.id),
     ]);
+    if (epoch !== loadEpoch) return;
     compounds.value = compoundResult.items;
     evidenceItems.value = evidenceResult.items;
     compoundId.value = compounds.value[0]?.id ?? "";
     const activityResults = await Promise.all(compounds.value.map((compound) => listActivities(compound.id)));
+    if (epoch !== loadEpoch) return;
     activities.value = activityResults.flatMap((result) => result.items);
     localVersion.value = Math.max(
       compoundResult.workspace_version,
@@ -69,10 +113,11 @@ async function load(): Promise<void> {
       ...activityResults.map((result) => result.workspace_version),
     );
   } catch {
-    error.value = "Activity 数据暂时无法读取。";
+    if (epoch === loadEpoch) error.value = "Activity 数据暂时无法读取。";
   } finally {
-    loading.value = false;
+    if (epoch === loadEpoch) loading.value = false;
   }
+  if (epoch === loadEpoch) await revealActivity(props.selectedEntityId);
 }
 
 function resetForm(): void {
@@ -119,6 +164,8 @@ async function save(): Promise<void> {
     activities.value = [...activities.value, result.activity];
     localVersion.value = result.workspace_version;
     resetForm();
+    await revealActivity(result.activity.id);
+    emit("select", result.activity.id);
     emit("mutated", result.workspace_version);
   } catch (reason) {
     mutationError(reason, "Activity 未能保存；请检查数值和必填字段。");
@@ -162,6 +209,7 @@ async function saveActivityEdit(): Promise<void> {
     activities.value = activities.value.map((item) => item.id === activityId ? result.activity : item);
     localVersion.value = result.workspace_version;
     cancelActivityEdit();
+    emit("select", activityId);
     emit("mutated", result.workspace_version);
   } catch (reason) {
     mutationError(reason, "Activity 修改未能保存；请检查数值和必填字段。");
@@ -174,10 +222,10 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="activity-editor">
+  <section id="workspace-activities" ref="editor" class="activity-editor" tabindex="-1">
     <header class="section-heading"><div><p class="eyebrow">ACTIVITIES</p><h2>活性数据</h2></div><button class="button-secondary" data-add-activity type="button" :disabled="readOnly || busy || compounds.length === 0" @click="showCreate = !showCreate">添加 Activity</button></header>
     <form v-if="showCreate" class="activity-create-form inline-create-form" @submit.prevent="save">
-      <label class="form-field">Compound<select v-model="compoundId" :disabled="readOnly || busy"><option v-for="compound in compounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>
+      <label v-if="!compound" class="form-field">Compound<select v-model="compoundId" :disabled="readOnly || busy"><option v-for="compound in compounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>
       <label class="form-field">Assay<input v-model="assayName" required maxlength="512" :disabled="readOnly || busy"></label>
       <label class="form-field">Metric<input v-model="metric" required maxlength="128" :disabled="readOnly || busy"></label>
       <label class="form-field">Operator<select v-model="operator" :disabled="readOnly || busy"><option value="=">=</option><option value="<">&lt;</option><option value="<=">≤</option><option value=">">&gt;</option><option value=">=">≥</option><option value="~">~</option></select></label>
@@ -199,11 +247,32 @@ onMounted(load);
     </form>
     <p v-if="error" class="inline-feedback is-error" role="alert">{{ error }}</p>
     <p v-if="loading" class="workspace-empty-copy">正在读取 Activity…</p>
-    <p v-else-if="activities.length === 0" class="workspace-empty-copy">当前尚无 Activity；如果文章没有报告活性，可将固定区段标记为“未报告”。</p>
+    <p v-else-if="!error && activities.length === 0" class="workspace-empty-copy">{{ compound ? "当前化合物尚无活性记录。" : "当前尚无 Activity。" }}尚无记录不代表原文未报告，需核对原文后确认。</p>
+    <template v-else-if="!error">
+    <div class="activity-list-controls">
+      <label v-if="!compound" class="form-field">按化合物筛选<select v-model="filterCompoundId" data-activity-filter :disabled="busy"><option value="">全部化合物</option><option v-for="compound in compounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>
+      <p data-activity-count aria-live="polite">共 {{ activities.length }} 条 · 筛选后 {{ filteredActivities.length }} 条 · 每页 {{ pageSize }} 条</p>
+      <nav class="pagination" aria-label="Activity 分页">
+        <button class="button-quiet" data-activity-previous type="button" :disabled="busy || page <= 1" @click="page -= 1">上一页</button>
+        <span data-activity-page aria-live="polite">{{ page }} / {{ pageCount }}</span>
+        <button class="button-quiet" data-activity-next type="button" :disabled="busy || page >= pageCount" @click="page += 1">下一页</button>
+      </nav>
+    </div>
+    <p v-if="filteredActivities.length === 0" class="workspace-empty-copy">该化合物暂无 Activity；可选择其他化合物或全部化合物。</p>
     <div v-else class="activity-table" role="table" aria-label="Activity 条目">
-      <article v-for="activity in activities" :key="activity.id" data-activity-row :class="{ selected: activity.id === selectedEntityId }" role="row" @click="emit('select', activity.id)">
+      <article v-for="activity in visibleActivities" :key="activity.id" data-activity-row :data-activity-id="activity.id" :class="{ selected: activity.id === selectedEntityId }" role="row" @click="emit('select', activity.id)">
         <strong>{{ compoundById.get(activity.compound_id)?.compound_label || "?" }}</strong><span>{{ activity.assay_name }}</span><span>{{ activity.metric }}</span><code>{{ activity.operator }} {{ activity.value }} {{ activity.unit || "" }}</code><small>{{ activity.context || "—" }}</small><div v-if="!readOnly" class="editor-actions"><button class="button-quiet" data-edit-activity type="button" :disabled="busy" @click.stop="startActivityEdit(activity)">编辑</button><button class="button-quiet" type="button" :disabled="busy" @click.stop="remove(activity)">删除</button></div>
+        <div class="activity-evidence" @click.stop>
+          <EvidenceExcerpt v-if="activity.evidence_id && evidenceById.get(activity.evidence_id)" :evidence="evidenceById.get(activity.evidence_id)!" :workspace="workspace" />
+          <small v-else>{{ activity.evidence_id ? '来源证据暂不可用，请核对关联。' : '此条活性尚未关联来源证据。' }}</small>
+        </div>
       </article>
     </div>
+    </template>
+    <details v-if="compound" class="context-evidence-management" @toggle="manageEvidence = ($event.target as HTMLDetailsElement).open">
+      <summary>管理活性来源证据</summary>
+      <p>在此维护来源证据，然后在对应 Activity 的编辑表单中选择 Evidence。共享证据的修改会影响所有引用。</p>
+      <EvidenceEditor v-if="manageEvidence" :workspace="{ ...workspace, version: localVersion }" :evidence-ids="activityEvidenceIds" :activity-only="true" :read-only="readOnly" @mutated="emit('mutated', $event)" @conflict="emit('conflict')" />
+    </details>
   </section>
 </template>

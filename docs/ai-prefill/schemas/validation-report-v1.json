@@ -1,0 +1,135 @@
+{
+  "$defs": {
+    "ValidationIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "entity_ref": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Ref"
+        },
+        "message": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "needs_review",
+            "warning"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "path",
+        "message"
+      ],
+      "title": "ValidationIssue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "candidate_id": {
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "candidate_sha256": {
+      "title": "Candidate Sha256",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "experiment_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/ValidationIssue"
+      },
+      "title": "Issues",
+      "type": "array"
+    },
+    "payload_sha256": {
+      "title": "Payload Sha256",
+      "type": "string"
+    },
+    "profile_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Profile Version",
+      "type": "string"
+    },
+    "report_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Report Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "valid",
+        "needs_review",
+        "invalid"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "validator_version": {
+      "maxLength": 255,
+      "minLength": 1,
+      "title": "Validator Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "report_id",
+    "experiment_id",
+    "candidate_id",
+    "candidate_sha256",
+    "payload_sha256",
+    "profile_version",
+    "validator_version",
+    "status",
+    "created_at"
+  ],
+  "title": "ValidationReport",
+  "type": "object"
+}

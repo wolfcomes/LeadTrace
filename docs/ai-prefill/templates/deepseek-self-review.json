@@ -1,0 +1,56 @@
+{
+  "self_review_version": 1,
+  "candidate_file_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "reviewer_type": "producer_self_check",
+  "checks": [
+    {
+      "check_id": "compound_scope",
+      "status": "not_checked",
+      "details": "REPLACE: actual inspected scope, unresolved labels/indices/refs and results",
+      "source_locations": [],
+      "checked_edge_refs": []
+    },
+    {
+      "check_id": "measurement_coverage",
+      "status": "not_checked",
+      "details": "REPLACE: actual inspected scope, unresolved labels/indices/refs and results",
+      "source_locations": [],
+      "checked_edge_refs": []
+    },
+    {
+      "check_id": "activity_semantics",
+      "status": "not_checked",
+      "details": "REPLACE: actual inspected scope, unresolved labels/indices/refs and results",
+      "source_locations": [],
+      "checked_edge_refs": []
+    },
+    {
+      "check_id": "structure_identity",
+      "status": "not_checked",
+      "details": "REPLACE: actual inspected scope, unresolved labels/indices/refs and results",
+      "source_locations": [],
+      "checked_edge_refs": []
+    },
+    {
+      "check_id": "source_crops",
+      "status": "not_checked",
+      "details": "REPLACE: actual inspected scope, unresolved labels/indices/refs and results",
+      "source_locations": [],
+      "checked_edge_refs": []
+    },
+    {
+      "check_id": "sar_reasoning",
+      "status": "not_checked",
+      "details": "REPLACE: actual inspected scope, unresolved labels/indices/refs and results",
+      "source_locations": [],
+      "checked_edge_refs": []
+    },
+    {
+      "check_id": "synthesis_paths",
+      "status": "not_checked",
+      "details": "REPLACE: actual inspected scope, unresolved labels/indices/refs and results",
+      "source_locations": [],
+      "checked_edge_refs": []
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "operation_version": "four-production-prefill-20260918-v1",
+  "purpose": "historical regression metadata only; not scientific ground truth",
+  "source": "leadtrace/ops/pilot/prefill_four_production_examples.py",
+  "papers": [
+    {"paper_key": "LT-JMC-2024-67-05-004", "payload_sha256": "91bcf32348d4c8bc45dd34330405e23939607c4b8e7226d61181c4bcb40e9759", "counts": {"compounds": 11, "structures": 11, "structure_locators": 0, "lineages": 1, "edges": 6, "evidence": 6, "edge_evidence_links": 6, "activities": 0}},
+    {"paper_key": "LT-JMC-2024-67-05-005", "payload_sha256": "a604db8c329f8e35f10d2844e91e8d063495688d86169011a213621b69a4b3aa", "counts": {"compounds": 41, "structures": 41, "structure_locators": 0, "lineages": 5, "edges": 35, "evidence": 35, "edge_evidence_links": 35, "activities": 0}},
+    {"paper_key": "LT-JMC-2024-67-05-010", "payload_sha256": "9a901a74a1e11bbda419d9083f0915b36a05d0045ffff3e0829193507d8caba9", "counts": {"compounds": 6, "structures": 6, "structure_locators": 0, "lineages": 1, "edges": 5, "evidence": 5, "edge_evidence_links": 5, "activities": 0}},
+    {"paper_key": "LT-JMC-2024-67-05-013", "payload_sha256": "3d965b4f64d14d9ac5f78ddeeb5fcdb204623a06257a269c9bbab00f2737e8a8", "counts": {"compounds": 10, "structures": 10, "structure_locators": 0, "lineages": 1, "edges": 8, "evidence": 8, "edge_evidence_links": 8, "activities": 0}}
+  ]
+}

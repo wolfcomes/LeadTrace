@@ -23,6 +23,7 @@ from app.chemistry.drawing import (
     render_structure_png,
 )
 from app.chemistry.validation import validate_structure
+from app.jobs.service import register_transaction_created_file
 from app.compounds.models import Compound
 from app.compounds.service import structure_snapshot
 from app.security.policies import Principal
@@ -192,6 +193,8 @@ class StructureDrawingService:
             suffix=".png",
             namespace=f"rdkit-structure/{key}",
         )
+        if stored.created:
+            register_transaction_created_file(session, stored.path)
         inspected = store.inspect(stored.storage_key)
         asset, _ = AssetService().register_inspected(
             session,

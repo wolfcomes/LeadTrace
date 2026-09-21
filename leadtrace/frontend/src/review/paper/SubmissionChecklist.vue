@@ -39,8 +39,9 @@ watch(() => props.workspace.version, (version, previous) => {
 function targetTab(blocker: SubmissionBlocker): "bibliography" | "compounds" | "lineages" | "evidence" {
   if (blocker.section_key === "bibliography") return "bibliography";
   if (blocker.section_key === "compounds" || blocker.section_key === "structures") return "compounds";
+  if (blocker.section_key === "activities" || blocker.entity_type === "activity") return "compounds";
   if (blocker.section_key === "lineages") return "lineages";
-  if (blocker.entity_type === "lineage_edge" && blocker.code !== "EDGE_SUPPORTING_EVIDENCE_REQUIRED") return "lineages";
+  if (blocker.entity_type === "lineage_edge") return "lineages";
   return "evidence";
 }
 

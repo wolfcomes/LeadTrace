@@ -22,6 +22,7 @@ from app.lineages.models import (
     LineageEdgeReviewStatus,
     LineageMember,
     LineageMemberRole,
+    LineageType,
 )
 from app.lineages.service import edge_snapshot, lineage_snapshot, member_snapshot
 from app.papers.models import Paper
@@ -35,7 +36,7 @@ from app.jobs.service import (
     transaction_created_files,
 )
 from app.structures.models import Structure, StructureInputMethod, StructureStatus
-from app.structures.service import ParsedStructure, _parse_molfile, _parse_smiles
+from app.structures.service import ParsedStructure, StructureDrawingService, _parse_molfile, _parse_smiles
 from app.users.models import User, UserRole
 from app.workspaces.models import (
     ChangeActorKind,
@@ -58,6 +59,7 @@ class AiApplyResult:
     run: AiExtractionRun
     applied: bool
     idempotent: bool = False
+    entity_map: dict[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,8 +112,11 @@ class AiPrefillService:
     def __init__(
         self,
         structure_image_service: StructureSourceImageService | None = None,
+        *,
+        drawing_service: StructureDrawingService | None = None,
     ) -> None:
         self.structure_image_service = structure_image_service
+        self.drawing_service = drawing_service
 
     @staticmethod
     def _workspace_has_science(session: Session, workspace_id: UUID) -> bool:
@@ -363,7 +368,7 @@ class AiPrefillService:
         existing_created_files = transaction_created_files(session)
         try:
             with session.begin_nested():
-                self._write_payload(
+                entity_map = self._write_payload(
                     session,
                     run=run,
                     workspace=workspace,
@@ -389,7 +394,7 @@ class AiPrefillService:
         workspace.version += 1
         self._mark_terminal(run, AiExtractionRunStatus.SUCCEEDED)
         session.flush()
-        return AiApplyResult(run, applied=True)
+        return AiApplyResult(run, applied=True, entity_map=entity_map)
 
     def _write_payload(
         self,
@@ -401,7 +406,7 @@ class AiPrefillService:
         source: PaperSource,
         payload: AiPrefillPayload,
         parsed_structures: dict[str, ParsedStructure],
-    ) -> None:
+    ) -> dict[str, str]:
         before_paper = _paper_snapshot(paper)
         bibliography = payload.bibliography
         if bibliography.title is not None:
@@ -460,6 +465,12 @@ class AiPrefillService:
             parsed = parsed_structures[item.ref]
             smiles = _clean_optional(item.structure.smiles)
             molfile = item.structure.molfile
+            depiction_asset_id = None
+            if self.drawing_service is not None and parsed.canonical_smiles is not None:
+                depiction_asset_id = self.drawing_service.draw(
+                    session, smiles=parsed.canonical_smiles,
+                    created_by_id=run.requested_by_id,
+                ).asset.id
             structure = Structure(
                 paper_id=run.paper_id,
                 workspace_id=workspace.id,
@@ -469,7 +480,7 @@ class AiPrefillService:
                 molfile=molfile,
                 inchi=parsed.inchi,
                 inchikey=parsed.inchikey,
-                depiction_asset_id=None,
+                depiction_asset_id=depiction_asset_id,
                 status=StructureStatus.DRAFT,
                 input_method=StructureInputMethod.AI_PREFILL,
                 created_by_kind=ChangeActorKind.AI,
@@ -522,6 +533,7 @@ class AiPrefillService:
                 paper_id=run.paper_id,
                 workspace_id=workspace.id,
                 lineage_label=_clean_required(item.lineage_label, "lineage_label"),
+                lineage_type=LineageType(item.lineage_type),
                 description=_clean_optional(item.description),
                 sort_order=lineage_order,
                 created_by_kind=ChangeActorKind.AI,
@@ -713,6 +725,34 @@ class AiPrefillService:
                     after_value=source_image_snapshot(source_image),
                 )
             )
+
+        entity_map: dict[str, str] = {}
+        for item in payload.compounds:
+            entity_map[f"/compounds/{item.ref}"] = str(compounds[item.ref].id)
+        for item, (_, structure) in zip(payload.compounds, structures):
+            entity_map[f"/compounds/{item.ref}/structure"] = str(structure.id)
+        for item, source_image in zip(payload.structure_locators, source_images):
+            entity_map[f"/structure_locators/{item.ref}"] = str(source_image.id)
+        for item in payload.lineages:
+            entity_map[f"/lineages/{item.ref}"] = str(lineages[item.ref].id)
+        member_offset = 0
+        for lineage_index, lineage_item in enumerate(payload.lineages):
+            for member_index, _ in enumerate(lineage_item.members):
+                entity_map[
+                    f"/lineages/{lineage_index}/members/{member_index}"
+                ] = str(members[member_offset].id)
+                member_offset += 1
+            for edge_item in lineage_item.edges:
+                entity_map[
+                    f"/lineages/{lineage_item.ref}/edges/{edge_item.ref}"
+                ] = str(edges[edge_item.ref].id)
+        for item in payload.evidence:
+            entity_map[f"/evidence/{item.ref}"] = str(evidence_by_ref[item.ref].id)
+        for index, link in enumerate(links):
+            entity_map[f"/edge_evidence_links/{index}"] = str(link.id)
+        for index, activity in enumerate(activities):
+            entity_map[f"/activities/{index}"] = str(activity.id)
+        return entity_map
 
 
 __all__ = [

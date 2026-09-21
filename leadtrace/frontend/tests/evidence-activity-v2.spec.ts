@@ -1,8 +1,21 @@
-import { flushPromises } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { activities, compounds, edges, evidence, ids, installReviewer, lineages, links, mountWorkspace, response, workspace } from "./paper-science-v2-fixtures";
+import { activities, compounds, edges, evidence, ids, installReviewer, lineages, links, response, workspace } from "./paper-science-v2-fixtures";
 
+import { defineComponent, ref } from 'vue';
+import EvidenceEditor from '../src/review/paper/EvidenceEditor.vue';
+import ActivityEditor from '../src/review/paper/ActivityEditor.vue';
+// Exercise the reusable editors and their shared optimistic version independently of tab placement.
+async function mountEditors(_tab: string, selectedEntityId?: string) {
+  const wrapper = mount(defineComponent({
+    components: { EvidenceEditor, ActivityEditor },
+    setup() { const current = ref(workspace()); return { current, selectedEntityId, changed(version: number) { current.value = workspace(version); } }; },
+    template: '<div><EvidenceEditor :workspace="current" :selected-entity-id="selectedEntityId" @mutated="changed" /><ActivityEditor :workspace="current" :selected-entity-id="selectedEntityId" @mutated="changed" /></div>',
+  }));
+  await flushPromises();
+  return { wrapper };
+}
 
 describe("Evidence and Activity editor", () => {
   beforeEach(installReviewer);
@@ -27,11 +40,12 @@ describe("Evidence and Activity editor", () => {
       return response(workspace());
     }));
 
-    const { wrapper } = await mountWorkspace("evidence");
+    const { wrapper } = await mountEditors("evidence");
 
     expect(wrapper.findAll("[data-evidence-card]")).toHaveLength(1);
     expect(wrapper.findAll("[data-edge-evidence-link]")).toHaveLength(2);
     expect(wrapper.findAll("[data-activity-row]")).toHaveLength(2);
+    expect(wrapper.get("#workspace-activities").text()).toContain("活性数据");
   });
 
   it("creates quoted Evidence and links it to multiple Edges sequentially", async () => {
@@ -68,7 +82,7 @@ describe("Evidence and Activity editor", () => {
       }
       throw new Error(`Unexpected request: ${url.pathname}`);
     }));
-    const { wrapper } = await mountWorkspace("evidence");
+    const { wrapper } = await mountEditors("evidence");
 
     await wrapper.get("[data-add-evidence]").trigger("click");
     await wrapper.get("[data-evidence-page]").setValue("3");
@@ -105,7 +119,7 @@ describe("Evidence and Activity editor", () => {
       return response(workspace());
     }));
 
-    const { wrapper } = await mountWorkspace("evidence", ids.edges[1]);
+    const { wrapper } = await mountEditors("evidence", ids.edges[1]);
 
     const edgeChoices = wrapper.findAll<HTMLInputElement>("[data-evidence-edge-choice]");
     expect(edgeChoices).toHaveLength(edges.length);
@@ -146,7 +160,7 @@ describe("Evidence and Activity editor", () => {
       }
       throw new Error(`Unexpected request: ${url.pathname}`);
     }));
-    const { wrapper } = await mountWorkspace("evidence");
+    const { wrapper } = await mountEditors("evidence");
 
     await wrapper.get("[data-add-evidence]").trigger("click");
     await wrapper.get("[data-evidence-page]").setValue("3");
@@ -199,7 +213,7 @@ describe("Evidence and Activity editor", () => {
       }
       throw new Error(`Unexpected request: ${url.pathname}`);
     }));
-    const { wrapper } = await mountWorkspace("evidence");
+    const { wrapper } = await mountEditors("evidence");
 
     await wrapper.get("[data-edit-evidence]").trigger("click");
     await wrapper.get("[data-edit-evidence-quote]").setValue("");

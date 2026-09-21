@@ -1,5 +1,9 @@
 .application-shell { min-height: 100vh; color: var(--ink); background: var(--paper); }
 
+.preview-environment + .application-shell .sidebar { top: 40px; }
+.preview-environment + .application-shell .topbar { top: 40px; }
+.preview-environment + .application-shell .paper-workspace-tabs { top: calc(var(--topbar-height) + 40px); }
+
 .sidebar {
   position: fixed;
   z-index: 20;

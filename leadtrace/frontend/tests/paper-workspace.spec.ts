@@ -104,7 +104,7 @@ describe("paper-centric Reviewer workspace", () => {
     expect(wrapper.text()).not.toContain("分子对象");
   });
 
-  it("opens a blank assignment with five tabs, six pending decisions, and add controls", async () => {
+  it("opens a blank assignment with four tabs, six pending decisions, and add controls", async () => {
     const requests: URL[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://leadtrace.test");
@@ -125,7 +125,7 @@ describe("paper-centric Reviewer workspace", () => {
       `/api/v2/workspaces/${ids.workspace}/compounds`,
     ]);
     expect(wrapper.get("[data-paper-workspace]").classes()).toContain("paper-workspace-shell");
-    expect(wrapper.findAll("[data-workspace-tab]")).toHaveLength(5);
+    expect(wrapper.findAll("[data-workspace-tab]")).toHaveLength(4);
     expect(wrapper.findAll("[data-section-status]")).toHaveLength(6);
     expect(wrapper.findAll("[data-section-status][data-state='pending']")).toHaveLength(6);
     expect(wrapper.get("[data-add-compound]").attributes("disabled")).toBeUndefined();

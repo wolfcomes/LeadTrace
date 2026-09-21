@@ -1,0 +1,203 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "application_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Application Id"
+    },
+    "applied_workspace_version": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applied Workspace Version"
+    },
+    "candidate_id": {
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "candidate_sha256": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Candidate Sha256"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "decision": {
+      "enum": [
+        "accepted",
+        "needs_revision",
+        "rejected"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "evaluation_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Evaluation Id",
+      "type": "string"
+    },
+    "experiment_id": {
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "issue_codes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Issue Codes",
+      "type": "array"
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "maxLength": 20000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes"
+    },
+    "payload_sha256": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Payload Sha256"
+    },
+    "reviewer": {
+      "maxLength": 255,
+      "minLength": 1,
+      "title": "Reviewer",
+      "type": "string"
+    },
+    "section_coverage": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "enum": [
+              "reviewed",
+              "partial",
+              "not_reviewed",
+              "not_applicable"
+            ],
+            "type": "string"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Section Coverage"
+    },
+    "source_sha256": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Sha256"
+    },
+    "validation_report_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Validation Report Id"
+    },
+    "workspace_snapshot_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workspace Snapshot Id"
+    },
+    "workspace_snapshot_sha256": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workspace Snapshot Sha256"
+    },
+    "workspace_version": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workspace Version"
+    }
+  },
+  "required": [
+    "evaluation_id",
+    "experiment_id",
+    "candidate_id",
+    "reviewer",
+    "created_at",
+    "decision"
+  ],
+  "title": "Evaluation",
+  "type": "object"
+}

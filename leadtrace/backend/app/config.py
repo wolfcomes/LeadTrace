@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from uuid import UUID
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,7 +18,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    environment: Literal["development", "test", "production"] = "development"
+    environment: Literal["development", "test", "preview", "production"] = "development"
     database_url: str = (
         "postgresql+psycopg://leadtrace:leadtrace-development-only@postgres/leadtrace"
     )
@@ -39,6 +40,11 @@ class Settings(BaseSettings):
     ai_prefill_engine: str = "legacy_pipeline"
     ai_prefill_engine_version: str = "pilot-v1"
     ai_prefill_legacy_root: Path | None = None
+    preview_instance_id: UUID | None = None
+    preview_baseline_sha256: str | None = None
+    preview_artifact_root: Path | None = None
+    preview_registry_path: Path | None = None
+    deployment_profile: str = "default"
 
     @field_validator(
         "ai_prefill_legacy_root",
@@ -48,6 +54,15 @@ class Settings(BaseSettings):
     def normalize_optional_path(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             return None
+        return value
+
+    @field_validator("preview_baseline_sha256")
+    @classmethod
+    def validate_preview_baseline(cls, value: str | None) -> str | None:
+        if value is not None and (
+            len(value) != 64 or any(char not in "0123456789abcdef" for char in value)
+        ):
+            raise ValueError("preview_baseline_sha256 must be a lowercase SHA-256 digest")
         return value
 
     @model_validator(mode="after")
@@ -109,6 +124,7 @@ class Settings(BaseSettings):
             raise ValueError("production source_roots must be dedicated absolute paths")
         optional_paths = {
             "ai_prefill_legacy_root": self.ai_prefill_legacy_root,
+            "preview_artifact_root": self.preview_artifact_root,
         }
         for name, path in optional_paths.items():
             if path is not None and (not path.is_absolute() or path == Path("/")):

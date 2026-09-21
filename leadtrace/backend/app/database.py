@@ -181,6 +181,10 @@ def bootstrap_database(
 ) -> DatabaseResources:
     """Build database resources only after verifying the deployed schema."""
 
+    if settings.environment == "preview":
+        from app.ai_prefill.preview_identity import read_preview_registry
+        read_preview_registry(settings)
+
     engine = create_database_engine(
         settings.database_url,
         pool_size=settings.database_pool_size,
@@ -190,6 +194,10 @@ def bootstrap_database(
     )
     try:
         validate_schema_version(engine, alembic_config_path)
+        if settings.environment == "preview":
+            from app.ai_prefill.preview_identity import verify_preview_connection
+            with engine.connect() as connection:
+                verify_preview_connection(settings, connection)
     except Exception:
         engine.dispose()
         raise

@@ -1,0 +1,103 @@
+# UNSUPPORTED SCAFFOLD: native Preview is the accepted M1 deployment.
+# This file shares owner credentials and lacks native provisioning guarantees.
+# Do not use it as the reviewed deployment; see ops/runbooks/ai_prefill_preview.md.
+name: leadtrace-ai-prefill-preview
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PREVIEW_DATABASE_NAME:-leadtrace_ai_preview}
+      POSTGRES_USER: ${PREVIEW_DATABASE_USER:-leadtrace_preview}
+      POSTGRES_PASSWORD: ${PREVIEW_DATABASE_PASSWORD:?set PREVIEW_DATABASE_PASSWORD}
+    volumes:
+      - preview_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [preview_backend]
+
+  migrate:
+    build:
+      context: ../backend
+    restart: "no"
+    command: ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
+    environment:
+      LEADTRACE_DATABASE_URL: postgresql+psycopg://${PREVIEW_DATABASE_USER:-leadtrace_preview}:${PREVIEW_DATABASE_PASSWORD}@postgres/${PREVIEW_DATABASE_NAME:-leadtrace_ai_preview}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [preview_backend]
+
+  web:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    environment:
+      LEADTRACE_ENVIRONMENT: preview
+      LEADTRACE_DATABASE_URL: postgresql+psycopg://${PREVIEW_DATABASE_USER:-leadtrace_preview}:${PREVIEW_DATABASE_PASSWORD}@postgres/${PREVIEW_DATABASE_NAME:-leadtrace_ai_preview}
+      LEADTRACE_SESSION_SECRET: ${PREVIEW_SESSION_SECRET:?set PREVIEW_SESSION_SECRET}
+      LEADTRACE_DEFAULT_ACCOUNT_PASSWORD: ${PREVIEW_DEFAULT_ACCOUNT_PASSWORD:?set PREVIEW_DEFAULT_ACCOUNT_PASSWORD}
+      LEADTRACE_ALLOWED_HOSTS: '["preview.leadtrace.lan"]'
+      LEADTRACE_ASSET_ROOT: /var/lib/leadtrace/preview/assets
+      LEADTRACE_PREVIEW_ARTIFACT_ROOT: /var/lib/leadtrace/preview/artifacts
+      LEADTRACE_PREVIEW_REGISTRY_PATH: /var/lib/leadtrace/preview/registry/${PREVIEW_INSTANCE_ID}/registry.json
+      LEADTRACE_SOURCE_ROOTS: '{"source_pdfs":"/srv/leadtrace/source-pdfs"}'
+      LEADTRACE_PREVIEW_INSTANCE_ID: ${PREVIEW_INSTANCE_ID:?set PREVIEW_INSTANCE_ID}
+      LEADTRACE_PREVIEW_BASELINE_SHA256: ${PREVIEW_BASELINE_SHA256:?set PREVIEW_BASELINE_SHA256}
+      LEADTRACE_DEPLOYMENT_PROFILE: ai-prefill-preview
+      LEADTRACE_HTTPS_ENABLED: "false"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    expose: ["8000"]
+    volumes:
+      - preview_assets:/var/lib/leadtrace/preview/assets
+      - preview_artifacts:/var/lib/leadtrace/preview/artifacts
+      - ${PREVIEW_REGISTRY_ROOT:?set PREVIEW_REGISTRY_ROOT}:/var/lib/leadtrace/preview/registry:ro
+      - ${PREVIEW_SOURCE_ROOT:?set PREVIEW_SOURCE_ROOT}:/srv/leadtrace/source-pdfs:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    networks: [preview_edge, preview_backend]
+
+  frontend-dev:
+    image: node:20.19-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npm run dev -- --host 0.0.0.0"]
+    volumes:
+      - ../frontend:/app:ro
+      - preview_frontend_modules:/app/node_modules
+    expose: ["5173"]
+    networks: [preview_edge]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+      frontend-dev:
+        condition: service_started
+    ports:
+      - "${PREVIEW_PORT:-8877}:8080"
+    volumes:
+      - ./nginx/ai-prefill-preview.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [preview_edge]
+
+networks:
+  preview_edge:
+  preview_backend:
+    internal: true
+
+volumes:
+  preview_postgres:
+  preview_assets:
+  preview_artifacts:
+  preview_frontend_modules:

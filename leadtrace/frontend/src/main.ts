@@ -1,6 +1,7 @@
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { createPinia } from "pinia";
-import { createApp } from "vue";
+import { createApp, ref } from "vue";
+import { loadPreviewInstance, previewInstanceKey } from "./api/environment";
 import "@fontsource-variable/noto-sans-sc";
 import "@fontsource-variable/noto-serif-sc";
 
@@ -13,6 +14,9 @@ import "./styles/layouts.css";
 
 
 const application = createApp(App);
+const previewInstance = ref<string | null>(null);
+application.provide(previewInstanceKey, previewInstance);
+void loadPreviewInstance().then((instance) => { previewInstance.value = instance; });
 application.use(createPinia());
 application.use(createAppRouter());
 application.use(VueQueryPlugin, {

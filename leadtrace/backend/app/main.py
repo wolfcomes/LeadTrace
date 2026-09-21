@@ -9,6 +9,10 @@ from starlette.concurrency import run_in_threadpool
 
 from app.activities.router import create_activities_router
 from app.ai_prefill.router import AiPrefillDispatch, create_ai_prefill_router
+from app.ai_prefill.assistance_router import create_assistance_router
+from app.ai_prefill.preview_guard import enforce_preview_identity
+from app.ai_prefill.preview_http_limits import PreviewRequestBodyLimitMiddleware
+from app.ai_prefill.preview_identity import PreviewIdentityError, verify_preview_connection
 from app.assets.router import create_assets_router
 from app.audit.router import create_audit_router
 from app.api.errors import install_api_error_handling
@@ -45,11 +49,19 @@ def create_app(
 ) -> FastAPI:
     runtime_settings = settings or get_settings()
 
+    def verify_preview_resources(resources: DatabaseResources) -> None:
+        with resources.engine.connect() as connection:
+            verify_preview_connection(runtime_settings, connection)
+
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         resources = await run_in_threadpool(database_bootstrap, runtime_settings)
         try:
+            if runtime_settings.environment == "preview" and resources is None:
+                raise PreviewIdentityError("Preview requires database resources")
             if resources is not None:
+                if runtime_settings.environment == "preview":
+                    await run_in_threadpool(verify_preview_resources, resources)
                 application.state.database_engine = resources.engine
                 application.state.session_factory = resources.session_factory
             yield
@@ -63,9 +75,11 @@ def create_app(
         docs_url="/api/docs" if runtime_settings.environment != "production" else None,
         redoc_url=None,
         lifespan=lifespan,
-        dependencies=[Depends(enforce_maintenance_mode)],
+        dependencies=[Depends(enforce_preview_identity), Depends(enforce_maintenance_mode)],
     )
     application.state.settings = runtime_settings
+    if runtime_settings.environment == "preview":
+        application.add_middleware(PreviewRequestBodyLimitMiddleware)
     install_api_error_handling(application)
     metrics_registry = MetricsRegistry()
     application.state.metrics_registry = metrics_registry
@@ -94,6 +108,7 @@ def create_app(
     application.include_router(
         create_ai_prefill_router(runtime_settings, ai_prefill_dispatch)
     )
+    application.include_router(create_assistance_router(runtime_settings))
     application.include_router(create_workspaces_router(runtime_settings))
     application.include_router(create_compounds_router(runtime_settings))
     application.include_router(create_structures_router(runtime_settings))

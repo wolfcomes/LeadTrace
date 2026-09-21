@@ -89,6 +89,7 @@ def _lineage_response(record: LineageRecord) -> LineageResponse:
         paper_id=row.paper_id,
         workspace_id=row.workspace_id,
         lineage_label=row.lineage_label,
+        lineage_type=row.lineage_type,
         description=row.description,
         sort_order=row.sort_order,
         members=[_member_response(member) for member in record.members],
@@ -211,6 +212,7 @@ def create_lineages_router(settings: Settings) -> APIRouter:
                     expected_version=payload.expected_workspace_version,
                     actor=principal,
                     lineage_label=payload.lineage_label,
+                    lineage_type=payload.lineage_type,
                     description=payload.description,
                 )
                 return LineageMutationResponse(

@@ -1,0 +1,964 @@
+{
+  "$defs": {
+    "AiActivity": {
+      "additionalProperties": false,
+      "properties": {
+        "assay_name": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Assay Name",
+          "type": "string"
+        },
+        "compound_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Compound Ref",
+          "type": "string"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context"
+        },
+        "evidence_ref": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Ref"
+        },
+        "metric": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Metric",
+          "type": "string"
+        },
+        "operator": {
+          "enum": [
+            "=",
+            "<",
+            "<=",
+            ">",
+            ">=",
+            "~"
+          ],
+          "title": "Operator",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "compound_ref",
+        "assay_name",
+        "metric",
+        "operator",
+        "value"
+      ],
+      "title": "AiActivity",
+      "type": "object"
+    },
+    "AiCompound": {
+      "additionalProperties": false,
+      "properties": {
+        "compound_label": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Compound Label",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display Name"
+        },
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "structure": {
+          "$ref": "#/$defs/AiStructure"
+        }
+      },
+      "required": [
+        "ref",
+        "compound_label",
+        "structure"
+      ],
+      "title": "AiCompound",
+      "type": "object"
+    },
+    "AiEdgeEvidenceLink": {
+      "additionalProperties": false,
+      "properties": {
+        "edge_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Edge Ref",
+          "type": "string"
+        },
+        "evidence_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Evidence Ref",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "supports",
+            "contradicts",
+            "contextual"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "edge_ref",
+        "evidence_ref",
+        "role"
+      ],
+      "title": "AiEdgeEvidenceLink",
+      "type": "object"
+    },
+    "AiEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "bbox": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NormalizedBBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "caption": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caption"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "table",
+            "scheme",
+            "image"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "page_number": {
+          "exclusiveMinimum": 0,
+          "title": "Page Number",
+          "type": "integer"
+        },
+        "quoted_text": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quoted Text"
+        },
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "kind",
+        "page_number"
+      ],
+      "title": "AiEvidence",
+      "type": "object"
+    },
+    "AiLineage": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/AiLineageEdge"
+          },
+          "title": "Edges",
+          "type": "array"
+        },
+        "lineage_label": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Lineage Label",
+          "type": "string"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/$defs/AiLineageMember"
+          },
+          "title": "Members",
+          "type": "array"
+        },
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "lineage_label"
+      ],
+      "title": "AiLineage",
+      "type": "object"
+    },
+    "AiLineageEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "child_compound_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Child Compound Ref",
+          "type": "string"
+        },
+        "modification_summary": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modification Summary"
+        },
+        "parent_compound_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Parent Compound Ref",
+          "type": "string"
+        },
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "relation_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Relation Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "parent_compound_ref",
+        "child_compound_ref",
+        "relation_type"
+      ],
+      "title": "AiLineageEdge",
+      "type": "object"
+    },
+    "AiLineageMember": {
+      "additionalProperties": false,
+      "properties": {
+        "compound_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Compound Ref",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "root",
+            "intermediate",
+            "terminal",
+            "unspecified"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "compound_ref",
+        "role"
+      ],
+      "title": "AiLineageMember",
+      "type": "object"
+    },
+    "AiPrefillPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "activities": {
+          "items": {
+            "$ref": "#/$defs/AiActivity"
+          },
+          "title": "Activities",
+          "type": "array"
+        },
+        "bibliography": {
+          "$ref": "#/$defs/BibliographyCorrection"
+        },
+        "compounds": {
+          "items": {
+            "$ref": "#/$defs/AiCompound"
+          },
+          "title": "Compounds",
+          "type": "array"
+        },
+        "edge_evidence_links": {
+          "items": {
+            "$ref": "#/$defs/AiEdgeEvidenceLink"
+          },
+          "title": "Edge Evidence Links",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/AiEvidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "lineages": {
+          "items": {
+            "$ref": "#/$defs/AiLineage"
+          },
+          "title": "Lineages",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "structure_locators": {
+          "items": {
+            "$ref": "#/$defs/AiStructureLocator"
+          },
+          "title": "Structure Locators",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version"
+      ],
+      "title": "AiPrefillPayload",
+      "type": "object"
+    },
+    "AiStructure": {
+      "additionalProperties": false,
+      "properties": {
+        "molfile": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Molfile"
+        },
+        "smiles": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Smiles"
+        }
+      },
+      "title": "AiStructure",
+      "type": "object"
+    },
+    "AiStructureLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "bbox": {
+          "$ref": "#/$defs/NormalizedBBox"
+        },
+        "compound_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Compound Ref",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "page_number": {
+          "exclusiveMinimum": 0,
+          "title": "Page Number",
+          "type": "integer"
+        },
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "source_context": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Context"
+        }
+      },
+      "required": [
+        "ref",
+        "compound_ref",
+        "page_number",
+        "bbox"
+      ],
+      "title": "AiStructureLocator",
+      "type": "object"
+    },
+    "BibliographyCorrection": {
+      "additionalProperties": false,
+      "properties": {
+        "doi": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Doi"
+        },
+        "issue": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issue"
+        },
+        "journal": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Journal"
+        },
+        "publication_year": {
+          "anyOf": [
+            {
+              "maximum": 9999,
+              "minimum": 1000,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Publication Year"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "volume": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Volume"
+        }
+      },
+      "title": "BibliographyCorrection",
+      "type": "object"
+    },
+    "CandidateHashes": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_sha256": {
+          "title": "Candidate Sha256",
+          "type": "string"
+        },
+        "payload_sha256": {
+          "title": "Payload Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "payload_sha256",
+        "candidate_sha256"
+      ],
+      "title": "CandidateHashes",
+      "type": "object"
+    },
+    "CandidateOmission": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "source_locator": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Locator"
+        }
+      },
+      "required": [
+        "path",
+        "reason"
+      ],
+      "title": "CandidateOmission",
+      "type": "object"
+    },
+    "CandidateRecipe": {
+      "additionalProperties": false,
+      "properties": {
+        "config_digest": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Config Digest"
+        },
+        "guide_version": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Guide Version",
+          "type": "string"
+        },
+        "prompt_digest": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Digest"
+        }
+      },
+      "required": [
+        "guide_version"
+      ],
+      "title": "CandidateRecipe",
+      "type": "object"
+    },
+    "NormalizedBBox": {
+      "additionalProperties": false,
+      "properties": {
+        "x0": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "X0"
+        },
+        "x1": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "X1"
+        },
+        "y0": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Y0"
+        },
+        "y1": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Y1"
+        }
+      },
+      "required": [
+        "x0",
+        "y0",
+        "x1",
+        "y1"
+      ],
+      "title": "NormalizedBBox",
+      "type": "object"
+    },
+    "ProducerProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Engine",
+          "type": "string"
+        },
+        "engine_version": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "local",
+            "remote",
+            "human-assisted",
+            "legacy-adapter"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "engine",
+        "engine_version",
+        "generated_at"
+      ],
+      "title": "ProducerProvenance",
+      "type": "object"
+    },
+    "SourceIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_size": {
+          "exclusiveMinimum": 0,
+          "title": "Byte Size",
+          "type": "integer"
+        },
+        "doi": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Doi"
+        },
+        "page_count": {
+          "exclusiveMinimum": 0,
+          "title": "Page Count",
+          "type": "integer"
+        },
+        "paper_key": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Paper Key",
+          "type": "string"
+        },
+        "source_sha256": {
+          "maxLength": 64,
+          "minLength": 64,
+          "title": "Source Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "paper_key",
+        "source_sha256",
+        "byte_size",
+        "page_count"
+      ],
+      "title": "SourceIdentity",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "candidate_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "envelope_version": {
+      "const": 1,
+      "title": "Envelope Version",
+      "type": "integer"
+    },
+    "experiment_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "hashes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CandidateHashes"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "input_evaluation_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Input Evaluation Ids",
+      "type": "array"
+    },
+    "omissions": {
+      "items": {
+        "$ref": "#/$defs/CandidateOmission"
+      },
+      "title": "Omissions",
+      "type": "array"
+    },
+    "parent_candidate_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Candidate Id"
+    },
+    "payload": {
+      "$ref": "#/$defs/AiPrefillPayload"
+    },
+    "producer": {
+      "$ref": "#/$defs/ProducerProvenance"
+    },
+    "recipe": {
+      "$ref": "#/$defs/CandidateRecipe"
+    },
+    "source": {
+      "$ref": "#/$defs/SourceIdentity"
+    }
+  },
+  "required": [
+    "envelope_version",
+    "candidate_id",
+    "experiment_id",
+    "source",
+    "producer",
+    "recipe",
+    "payload"
+  ],
+  "title": "CandidateEnvelope",
+  "type": "object"
+}

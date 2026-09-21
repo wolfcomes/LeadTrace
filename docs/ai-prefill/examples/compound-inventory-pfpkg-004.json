@@ -1,0 +1,287 @@
+{
+  "inventory_version": 1,
+  "source": {
+    "paper_key": "LT-JMC-2024-67-05-004",
+    "source_sha256": "c1664b69f81386283770d847dece35dd69b12674545d91bd97fa32a598c7a34e",
+    "byte_size": 9471882,
+    "page_count": 37,
+    "doi": "10.1021/acs.jmedchem.3c01795"
+  },
+  "scope": "All unique assayed compound identities in main Tables 1–5; Table 6 uses 50–53 already included. Synthetic intermediates and Figure 1 reference compounds audited separately.",
+  "reviewed_by": "Codex independent visual transcription of actual PDF pages 9–12, 2026-09-20",
+  "entries": [
+    {
+      "label": "1",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "12a",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "12b",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "12c",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "12d",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "13",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "15a",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "15b",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "16",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "17",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "18a",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "18b",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "19a",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "19b",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "20",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 9, Table 1",
+      "role": "assayed"
+    },
+    {
+      "label": "21",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 10, Table 2",
+      "role": "assayed"
+    },
+    {
+      "label": "22",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 10, Table 2",
+      "role": "assayed"
+    },
+    {
+      "label": "23",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 10, Table 2",
+      "role": "assayed"
+    },
+    {
+      "label": "24",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 10, Table 2",
+      "role": "assayed"
+    },
+    {
+      "label": "25",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 10, Table 2",
+      "role": "assayed"
+    },
+    {
+      "label": "26",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 10, Table 2",
+      "role": "assayed"
+    },
+    {
+      "label": "27",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 10, Table 2",
+      "role": "assayed"
+    },
+    {
+      "label": "28",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 10, Table 2",
+      "role": "assayed"
+    },
+    {
+      "label": "32",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 10, Table 2",
+      "role": "assayed"
+    },
+    {
+      "label": "38",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 11, Table 3",
+      "role": "assayed"
+    },
+    {
+      "label": "39",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 11, Table 3",
+      "role": "assayed"
+    },
+    {
+      "label": "40",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 11, Table 3",
+      "role": "assayed"
+    },
+    {
+      "label": "41",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 11, Table 3",
+      "role": "assayed"
+    },
+    {
+      "label": "55",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 11, Table 3",
+      "role": "assayed"
+    },
+    {
+      "label": "56",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 11, Table 3",
+      "role": "assayed"
+    },
+    {
+      "label": "57",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 11, Table 3",
+      "role": "assayed"
+    },
+    {
+      "label": "50",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 11, Table 3",
+      "role": "assayed"
+    },
+    {
+      "label": "51",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 11, Table 3",
+      "role": "assayed"
+    },
+    {
+      "label": "52",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 11, Table 3",
+      "role": "assayed"
+    },
+    {
+      "label": "53",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 11, Table 3",
+      "role": "assayed"
+    },
+    {
+      "label": "33",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 12, Table 4",
+      "role": "assayed"
+    },
+    {
+      "label": "12e",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 12, Table 5",
+      "role": "assayed"
+    },
+    {
+      "label": "12f",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 12, Table 5",
+      "role": "assayed"
+    },
+    {
+      "label": "54",
+      "aliases": [],
+      "required": true,
+      "source_locator": "PDF page 12, Table 5",
+      "role": "assayed"
+    }
+  ]
+}

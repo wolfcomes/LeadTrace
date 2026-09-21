@@ -166,6 +166,8 @@ onMounted(load);
         <img v-if="image.crop_status === 'ready'" :src="structureSourceImageContentUrl(image.id)" :alt="`第 ${image.page_number} 页的结构原图`">
         <p v-else-if="image.crop_status === 'failed'">生成失败；PDF locator 已保留。</p>
         <p v-else>正在生成 crop…</p>
+        <p v-if="image.source_context" data-source-context>{{ image.source_context }}</p>
+        <a v-if="image.crop_status === 'ready'" data-open-source-crop :href="structureSourceImageContentUrl(image.id)" target="_blank" rel="noopener">查看原图大图 ↗</a>
         <footer v-if="!readOnly" class="editor-actions">
           <button v-if="image.crop_status === 'failed'" class="button-secondary" data-retry-crop type="button" :disabled="busy" @click="retry(image)">重试 crop</button>
           <button class="button-quiet" type="button" :disabled="busy" @click="remove(image)">删除</button>

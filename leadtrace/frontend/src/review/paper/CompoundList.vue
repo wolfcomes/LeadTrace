@@ -3,8 +3,9 @@ import { computed, onMounted, ref, watch } from "vue";
 
 import { ApiError } from "../../api/client";
 import { useAuthStore } from "../../auth/store";
-import { createCompound, deleteCompound, getCompoundStructure, listCompounds, updateCompound } from "../../v2/api";
+import { createCompound, deleteCompound, getCompoundStructure, listActivities, listCompounds, updateCompound } from "../../v2/api";
 import type { Compound, PaperWorkspace } from "../../v2/types";
+import ActivityEditor from "./ActivityEditor.vue";
 import CompoundStructureEditor from "./CompoundStructureEditor.vue";
 
 const props = defineProps<{
@@ -31,14 +32,33 @@ const editLabel = ref("");
 const editDisplayName = ref("");
 const editDescription = ref("");
 const error = ref("");
+const nestedEntityOwner = new Map<string, string>();
 const selected = computed(() => compounds.value.find((compound) => compound.id === selectedId.value));
 
 watch(() => props.workspace.version, (version) => {
   if (version > localVersion.value) localVersion.value = version;
 });
-watch(() => props.selectedCompoundId, (id) => {
-  if (id && compounds.value.some((compound) => compound.id === id)) selectedId.value = id;
+watch(() => props.selectedCompoundId, async (id) => {
+  if (!id) return;
+  const owner = await resolveOwner(id);
+  if (props.selectedCompoundId === id && owner) selectedId.value = owner.id;
 });
+function selectActivity(entityId: string): void {
+  if (selectedId.value) nestedEntityOwner.set(entityId, selectedId.value);
+  emit("select", entityId);
+}
+async function resolveOwner(id: string): Promise<Compound | undefined> {
+  const direct = compounds.value.find(item => item.id === id || item.id === nestedEntityOwner.get(id));
+  if (direct) return direct;
+  const activities = await Promise.allSettled(compounds.value.map(async item => ({ item, result: await listActivities(item.id) })));
+  for (const result of activities) {
+    if (result.status === "fulfilled" && result.value.result.items.some(a => a.id === id || a.evidence_id === id)) return result.value.item;
+  }
+  const structures = await Promise.allSettled(compounds.value.map(async item => ({ item, result: await getCompoundStructure(item.id) })));
+  for (const result of structures) {
+    if (result.status === "fulfilled" && result.value.result.structure?.id === id) return result.value.item;
+  }
+}
 watch(() => props.workspace.id, () => { void load(); });
 
 function select(compound: Compound): void {
@@ -67,25 +87,7 @@ async function load(): Promise<void> {
     const result = await listCompounds(props.workspace.id);
     compounds.value = result.items;
     localVersion.value = result.workspace_version;
-    let requested = props.selectedCompoundId
-      ? result.items.find((item) => item.id === props.selectedCompoundId)
-      : undefined;
-    if (props.selectedCompoundId && !requested) {
-      const structureResults = await Promise.all(result.items.map(async (item) => {
-        try {
-          return { item, result: await getCompoundStructure(item.id) };
-        } catch {
-          return null;
-        }
-      }));
-      for (const structureResult of structureResults) {
-        if (!structureResult) continue;
-        localVersion.value = Math.max(localVersion.value, structureResult.result.workspace_version);
-        if (structureResult.result.structure?.id === props.selectedCompoundId) {
-          requested = structureResult.item;
-        }
-      }
-    }
+    const requested = props.selectedCompoundId ? await resolveOwner(props.selectedCompoundId) : undefined;
     const next = requested ?? result.items[0];
     selectedId.value = next?.id;
     if (next && !props.selectedCompoundId) emit("select", next.id);
@@ -220,15 +222,15 @@ onMounted(load);
     <p v-if="loading" class="workspace-empty-copy">正在读取 Compound…</p>
     <p v-else-if="compounds.length === 0" class="workspace-empty-copy">当前尚无条目。可直接人工新增 Compound，并为每个 Compound 维护一个 Structure。</p>
     <div v-else class="compound-editor-layout">
-      <aside class="compound-list-panel" aria-label="Compound 列表">
+      <aside class="compound-list-panel" aria-label="Compound 列表" tabindex="0">
         <article v-for="compound in compounds" :key="compound.id" data-compound-row :data-compound-id="compound.id" :class="{ selected: compound.id === selectedId }">
           <button type="button" @click="select(compound)"><code>{{ compound.compound_label }}</code><span>{{ compound.display_name || "未命名" }}</span></button>
           <button v-if="!readOnly" class="button-quiet" data-edit-compound type="button" :disabled="busy" @click="startEdit(compound)">编辑</button>
           <button v-if="!readOnly" class="button-quiet" type="button" :disabled="busy" @click="remove(compound)">删除</button>
         </article>
       </aside>
+      <div v-if="selected" :key="selected.id" class="compound-detail-panel">
       <CompoundStructureEditor
-        v-if="selected"
         :key="selected.id"
         :compound="selected"
         :workspace-version="localVersion"
@@ -237,6 +239,8 @@ onMounted(load);
         @mutated="nestedMutation"
         @conflict="nestedConflict"
       />
+      <ActivityEditor :workspace="{ ...workspace, version: localVersion }" :compound="selected" :selected-entity-id="selectedCompoundId" :read-only="readOnly" @select="selectActivity" @mutated="nestedMutation" @conflict="nestedConflict" />
+      </div>
     </div>
   </section>
 </template>

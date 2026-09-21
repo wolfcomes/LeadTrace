@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.activities.models import Activity
 from app.compounds.models import Compound
-from app.evidence.models import EdgeEvidenceLink, Evidence, EvidenceRole
+from app.evidence.models import EdgeEvidenceLink, Evidence
 from app.lineages.models import Lineage, LineageEdge, LineageMember, LineageEdgeReviewStatus, LineageMemberRole
 from app.structure_images.models import StructureSourceImage
 from app.structures.models import Structure, StructureStatus
@@ -184,44 +184,12 @@ def validate_submission(session: Session, workspace_id: UUID) -> SubmissionValid
     edges = list(
         session.scalars(select(LineageEdge).where(LineageEdge.workspace_id == workspace_id))
     )
-    contentful_evidence_ids = {
-        row.id
-        for row in session.scalars(
-            select(Evidence).where(Evidence.workspace_id == workspace_id)
-        )
-        if row.x0 is not None
-        or bool(row.quoted_text and row.quoted_text.strip())
-        or bool(row.caption and row.caption.strip())
-    }
-    supporting_edge_ids = {
-        link.edge_id
-        for link in session.scalars(
-            select(EdgeEvidenceLink).where(
-                EdgeEvidenceLink.workspace_id == workspace_id,
-                EdgeEvidenceLink.role == EvidenceRole.SUPPORTS,
-            )
-        )
-        if link.evidence_id in contentful_evidence_ids
-    }
     for edge in edges:
         if edge.review_status is LineageEdgeReviewStatus.DRAFT:
             blockers.append(
                 SubmissionBlocker(
                     "EDGE_NOT_DISPOSITIONED",
                     "Edge must be confirmed or explicitly unresolved",
-                    "lineage_edge",
-                    edge.id,
-                    PaperSection.EDGE_EVIDENCE,
-                )
-            )
-        elif (
-            edge.review_status is LineageEdgeReviewStatus.REVIEWER_CONFIRMED
-            and edge.id not in supporting_edge_ids
-        ):
-            blockers.append(
-                SubmissionBlocker(
-                    "EDGE_SUPPORTING_EVIDENCE_REQUIRED",
-                    "Confirmed Edge needs supporting Evidence",
                     "lineage_edge",
                     edge.id,
                     PaperSection.EDGE_EVIDENCE,

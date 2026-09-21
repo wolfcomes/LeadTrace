@@ -181,6 +181,7 @@ test("blank manual Paper flows from assignment through immutable publication", a
         paper_id: lineage.paper_id,
         workspace_id: lineage.workspace_id,
         lineage_label: lineage.lineage_label,
+          lineage_type: lineage.lineage_type,
         description: lineage.description,
         sort_order: lineage.sort_order,
       })),
@@ -278,6 +279,7 @@ test("blank manual Paper flows from assignment through immutable publication", a
         lineages: snapshot.lineages.map((lineage) => ({
           id: lineage.id,
           lineage_label: lineage.lineage_label,
+          lineage_type: lineage.lineage_type,
           description: lineage.description,
           sort_order: lineage.sort_order,
         })),
@@ -501,6 +503,7 @@ test("blank manual Paper flows from assignment through immutable publication", a
           paper_id: publicationIds.paper,
           workspace_id: publicationIds.workspace,
           lineage_label: String(body.lineage_label),
+          lineage_type: body.lineage_type as Lineage["lineage_type"] ?? "unspecified",
           description: body.description as string | null,
           sort_order: 0,
           members: [],

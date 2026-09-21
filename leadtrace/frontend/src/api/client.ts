@@ -1,4 +1,4 @@
-import type { ZodType } from "zod";
+import type { ZodType, ZodTypeDef } from "zod";
 
 import { apiErrorSchema } from "./schema";
 
@@ -46,7 +46,7 @@ export interface ApiRequestOptions extends Omit<RequestInit, "body"> {
 
 export async function apiRequest<T>(
   path: string,
-  schema: ZodType<T>,
+  schema: ZodType<T, ZodTypeDef, unknown>,
   options: ApiRequestOptions = {},
 ): Promise<T> {
   const {

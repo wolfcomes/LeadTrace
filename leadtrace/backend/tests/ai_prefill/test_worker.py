@@ -424,3 +424,51 @@ def test_legacy_adapter_emits_only_deterministic_supported_records(
     dumped = payload.model_dump(mode="json")
     assert "confidence" not in str(dumped).casefold()
     assert "candidate" not in str(dumped).casefold()
+
+
+@pytest.mark.parametrize("pair_eligible", ["yes", "no"])
+@pytest.mark.parametrize("relation_status", ["figure_explicit", "ai_inferred"])
+def test_legacy_adapter_keeps_resolved_edge_without_text_evidence(tmp_path, pair_eligible, relation_status):
+    _write_legacy_fixture(tmp_path)
+    output = tmp_path / "09_paper_review" / "auto_fill"
+    edges = output / "compound_lineage_edges.csv"
+    edges.write_text(edges.read_text().replace("text_explicit,high,EVID-1,yes", f"{relation_status},high,--,{pair_eligible}"))
+    (output / "compound_activities.csv").unlink()
+    payload = LegacyPipelineAdapter(tmp_path).extract(ProtectedPdfReference(
+        paper_id=UUID("10000000-0000-4000-8000-000000000001"),
+        source_root_key="source_pdfs", source_key="volume67 issue5/paper.pdf",
+        sha256="a" * 64, page_count=12,
+    ))
+    assert [item.ref for item in payload.compounds] == ["CMP-1", "CMP-2"]
+    assert [edge.ref for edge in payload.lineages[0].edges] == ["EDGE-1"]
+    assert payload.edge_evidence_links == []
+    assert payload.evidence == []
+    assert "AI-proposed" in payload.lineages[0].edges[0].modification_summary
+    assert "no linked Evidence" in payload.lineages[0].edges[0].modification_summary
+    assert "OH -> NH2" in payload.lineages[0].edges[0].modification_summary
+
+
+@pytest.mark.parametrize("status", ["unresolved", "rejected", "invalid", ""])
+def test_legacy_adapter_does_not_promote_unknown_or_rejected_relations(tmp_path, status):
+    _write_legacy_fixture(tmp_path)
+    output = tmp_path / "09_paper_review" / "auto_fill"
+    edges = output / "compound_lineage_edges.csv"
+    edges.write_text(edges.read_text().replace("text_explicit,high,EVID-1,yes", f"{status},high,EVID-1,yes"))
+    payload = LegacyPipelineAdapter(tmp_path).extract(ProtectedPdfReference(
+        paper_id=UUID("10000000-0000-4000-8000-000000000001"),
+        source_root_key="source_pdfs", source_key="volume67 issue5/paper.pdf",
+        sha256="a" * 64, page_count=12,
+    ))
+    assert payload.lineages == []
+
+
+def test_legacy_adapter_keeps_human_rejection_out_of_graph(tmp_path):
+    _write_legacy_fixture(tmp_path)
+    edges = tmp_path / "09_paper_review" / "auto_fill" / "compound_lineage_edges.csv"
+    edges.write_text(edges.read_text().replace("EVID-1,yes,unreviewed", "EVID-1,yes,rejected"))
+    payload = LegacyPipelineAdapter(tmp_path).extract(ProtectedPdfReference(
+        paper_id=UUID("10000000-0000-4000-8000-000000000001"),
+        source_root_key="source_pdfs", source_key="volume67 issue5/paper.pdf",
+        sha256="a" * 64, page_count=12,
+    ))
+    assert payload.lineages == []

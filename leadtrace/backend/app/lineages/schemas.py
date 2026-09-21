@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.lineages.models import LineageEdgeReviewStatus, LineageMemberRole
+from app.lineages.models import LineageEdgeReviewStatus, LineageMemberRole, LineageType
 
 
 class WorkspaceVersionRequest(BaseModel):
@@ -14,26 +14,29 @@ class WorkspaceVersionRequest(BaseModel):
 
 
 class LineageCreateRequest(WorkspaceVersionRequest):
+    lineage_type: LineageType = LineageType.UNSPECIFIED
     lineage_label: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=10_000)
 
 
 class LineageUpdateRequest(WorkspaceVersionRequest):
+    lineage_type: LineageType | None = None
     lineage_label: str | None = Field(default=None, max_length=255)
     description: str | None = Field(default=None, max_length=10_000)
 
     @model_validator(mode="after")
     def require_update(self) -> Self:
-        if not ({"lineage_label", "description"} & self.model_fields_set):
+        if not ({"lineage_label", "lineage_type", "description"} & self.model_fields_set):
             raise ValueError("At least one Lineage field is required")
-        if "lineage_label" in self.model_fields_set and self.lineage_label is None:
-            raise ValueError("lineage_label cannot be null")
+        for field in ("lineage_label", "lineage_type"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
         return self
 
     def updates(self) -> dict[str, str | None]:
         return {
             field: getattr(self, field)
-            for field in ("lineage_label", "description")
+            for field in ("lineage_label", "lineage_type", "description")
             if field in self.model_fields_set
         }
 
@@ -130,6 +133,7 @@ class LineageEdgeResponse(BaseModel):
 
 
 class LineageResponse(BaseModel):
+    lineage_type: LineageType = LineageType.UNSPECIFIED
     model_config = ConfigDict(extra="forbid")
     id: UUID
     paper_id: UUID

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 
+import EvidenceExcerpt from "./EvidenceExcerpt.vue";
+
 import { ApiError } from "../../api/client";
 import { useAuthStore } from "../../auth/store";
 import PdfReviewCanvas from "../../pdf-viewer/PdfReviewCanvas.vue";
@@ -16,7 +18,7 @@ import {
 } from "../../v2/api";
 import type { Evidence, EvidenceLink, LineageEdge, NormalizedBBox, PaperWorkspace } from "../../v2/types";
 
-const props = defineProps<{ workspace: PaperWorkspace; selectedEntityId?: string; readOnly?: boolean }>();
+const props = defineProps<{ workspace: PaperWorkspace; edgeId?: string; evidenceIds?: string[]; activityOnly?: boolean; selectedEntityId?: string; readOnly?: boolean }>();
 const emit = defineEmits<{ select: [entityId: string]; mutated: [workspaceVersion: number]; conflict: [] }>();
 const auth = useAuthStore();
 const evidenceItems = ref<Evidence[]>([]);
@@ -45,6 +47,11 @@ const editEvidenceQuote = ref("");
 const editEvidenceCaption = ref("");
 const editEvidenceNote = ref("");
 const error = ref("");
+const showLibrary = ref(false);
+const visibleEvidence = computed(() => evidenceItems.value.filter(item => showLibrary.value || (
+  props.edgeId ? links.value.some(link => link.edge_id === props.edgeId && link.evidence_id === item.id)
+  : props.evidenceIds ? props.evidenceIds.includes(item.id) || item.id === props.selectedEntityId : true
+)));
 
 const edgeById = computed(() => new Map(edges.value.map((edge) => [edge.id, edge])));
 const evidenceRegions = computed(() => evidenceItems.value.flatMap((item) => item.bbox ? [{
@@ -91,7 +98,7 @@ async function load(): Promise<void> {
   error.value = "";
   try {
     const [lineageResult, evidenceResult] = await Promise.all([
-      listLineages(props.workspace.id),
+      props.activityOnly ? Promise.resolve({ items: [], workspace_version: props.workspace.version }) : listLineages(props.workspace.id),
       listEvidence(props.workspace.id),
     ]);
     edges.value = lineageResult.items.flatMap((lineage) => lineage.edges);
@@ -104,6 +111,7 @@ async function load(): Promise<void> {
       ...linkResults.map((result) => result.workspace_version),
     );
     focusAddressedEntity(props.selectedEntityId);
+    if (props.edgeId) selectedEdgeIds.value = [props.edgeId];
   } catch {
     error.value = "Evidence 数据暂时无法读取。";
   } finally {
@@ -124,7 +132,7 @@ function resetForm(): void {
   quotedText.value = "";
   caption.value = "";
   reviewerNote.value = "";
-  selectedEdgeIds.value = [];
+  selectedEdgeIds.value = props.edgeId ? [props.edgeId] : [];
   linkRole.value = "supports";
   linkingEvidenceId.value = undefined;
   linkingEdgeId.value = "";
@@ -134,7 +142,7 @@ function resetForm(): void {
 
 function availableEdges(item: Evidence): LineageEdge[] {
   const linked = new Set(links.value.filter((link) => link.evidence_id === item.id).map((link) => link.edge_id));
-  return edges.value.filter((edge) => !linked.has(edge.id));
+  return edges.value.filter((edge) => (!props.edgeId || edge.id === props.edgeId) && !linked.has(edge.id));
 }
 
 function beginExistingLink(item: Evidence, preferredEdgeId?: string): void {
@@ -192,10 +200,12 @@ async function save(): Promise<void> {
       localVersion.value = linked.workspace_version;
     }
     resetForm();
+    showLibrary.value = true;
     emit("mutated", localVersion.value);
   } catch (reason) {
     if (createdItem) {
       resetForm();
+      showLibrary.value = true;
       beginExistingLink(createdItem, currentEdgeId);
       if (reason instanceof ApiError && reason.code === "WORKSPACE_VERSION_CONFLICT") {
         mutationError(reason, "Workspace 已更新；Evidence 已保留，请重新载入后补充 Edge 关联。");
@@ -296,7 +306,9 @@ onMounted(load);
 
 <template>
   <section class="evidence-editor">
-    <header class="section-heading"><div><p class="eyebrow">EDGE EVIDENCE</p><h2>证据</h2></div><button class="button-primary" data-add-evidence type="button" :disabled="readOnly || busy" @click="showCreate = !showCreate">添加 Evidence</button></header>
+    <header class="section-heading"><div><p class="eyebrow">{{ activityOnly ? "ACTIVITY EVIDENCE" : "EDGE EVIDENCE" }}</p><h2>证据</h2></div><button class="button-primary" data-add-evidence type="button" :disabled="readOnly || busy" @click="showCreate = !showCreate">添加 Evidence</button></header>
+    <button v-if="edgeId || evidenceIds" class="button-quiet" data-toggle-evidence-library type="button" @click="showLibrary = !showLibrary">{{ showLibrary ? '仅显示当前关联证据' : '从全文证据库选择 / 管理未关联证据' }}</button>
+    <p v-if="showLibrary" class="inline-feedback">全文证据库：此处包含其他记录的来源，只有已关联的证据才属于当前记录。共享证据的修改会影响所有引用。</p>
     <form v-if="showCreate" class="evidence-create-form" @submit.prevent="save">
       <div class="inline-create-form">
         <label class="form-field">类型<select v-model="kind" :disabled="readOnly || busy"><option value="text">Text</option><option value="table">Table</option><option value="scheme">Scheme</option><option value="image">Image</option></select></label>
@@ -318,15 +330,15 @@ onMounted(load);
       <p v-if="bbox" class="selection-summary-line">已框选 p{{ pageNumber }} · {{ bbox.x0.toFixed(3) }}, {{ bbox.y0.toFixed(3) }} → {{ bbox.x1.toFixed(3) }}, {{ bbox.y1.toFixed(3) }}</p>
       <label class="form-field">原文引文<textarea v-model="quotedText" data-evidence-quote rows="3" maxlength="20000" :disabled="readOnly || busy"></textarea></label>
       <label class="form-field">Reviewer note<textarea v-model="reviewerNote" rows="2" maxlength="10000" :disabled="readOnly || busy"></textarea></label>
-      <fieldset class="evidence-edge-choices"><legend>关联 Edge（可多选）</legend><label v-for="edge in edges" :key="edge.id"><input v-model="selectedEdgeIds" data-evidence-edge-choice type="checkbox" :value="edge.id" :disabled="readOnly || busy">{{ edgeLabel(edge.id) }} · {{ edge.modification_summary || edge.relation_type }}</label></fieldset>
-      <label class="form-field evidence-role-field">关联角色<select v-model="linkRole" :disabled="readOnly || busy"><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="contextual">Contextual</option></select></label>
+      <fieldset v-if="!activityOnly && !edgeId" class="evidence-edge-choices"><legend>关联 Edge（可多选）</legend><label v-for="edge in edges" :key="edge.id"><input v-model="selectedEdgeIds" data-evidence-edge-choice type="checkbox" :value="edge.id" :disabled="readOnly || busy">{{ edgeLabel(edge.id) }} · {{ edge.modification_summary || edge.relation_type }}</label></fieldset>
+      <label v-if="!activityOnly" class="form-field evidence-role-field">关联角色<select v-model="linkRole" :disabled="readOnly || busy"><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="contextual">Contextual</option></select></label>
       <div class="editor-actions"><button class="button-primary" data-save-evidence type="button" :disabled="busy || pageNumber < 1 || (!quotedText.trim() && !bbox && !caption.trim())" @click="save">保存 Evidence</button><button class="button-quiet" type="button" :disabled="busy" @click="resetForm">取消</button></div>
     </form>
     <p v-if="error" class="inline-feedback is-error" role="alert">{{ error }}</p>
     <p v-if="loading" class="workspace-empty-copy">正在读取 Evidence…</p>
-    <p v-else-if="evidenceItems.length === 0" class="workspace-empty-copy">当前尚无 Evidence。可保存 PDF 引文、表格、Scheme 或图片区域。</p>
+    <p v-else-if="visibleEvidence.length === 0" class="workspace-empty-copy">当前尚无关联证据。可添加证据，或从全文证据库选择。</p>
     <div v-else class="evidence-card-grid">
-      <article v-for="item in evidenceItems" :key="item.id" data-evidence-card :class="{ selected: item.id === selectedEntityId }" @click="emit('select', item.id)">
+      <article v-for="item in visibleEvidence" :key="item.id" data-evidence-card :class="{ selected: item.id === selectedEntityId }" @click="emit('select', item.id)">
         <header><span class="status-chip">{{ item.kind }}</span><strong>p{{ item.page_number }}</strong></header>
         <form v-if="editingEvidenceId === item.id" class="evidence-edit-form" @submit.prevent="saveEvidenceEdit(item)" @click.stop>
           <label class="form-field">类型<select v-model="editEvidenceKind" :disabled="busy"><option value="text">Text</option><option value="table">Table</option><option value="scheme">Scheme</option><option value="image">Image</option></select></label>
@@ -336,10 +348,10 @@ onMounted(load);
           <label class="form-field">Reviewer note<textarea v-model="editEvidenceNote" rows="2" maxlength="10000" :disabled="busy"></textarea></label>
           <div class="editor-actions"><button class="button-primary" data-save-evidence-edit type="button" :disabled="busy || editEvidencePage < 1 || !editEvidenceHasContent" @click="saveEvidenceEdit(item)">保存修改</button><button class="button-quiet" type="button" :disabled="busy" @click="cancelEvidenceEdit">取消</button></div>
         </form>
-        <blockquote v-else-if="item.quoted_text">{{ item.quoted_text }}</blockquote><p v-else>{{ item.caption || "PDF 区域 Evidence" }}</p>
+        <EvidenceExcerpt v-else :evidence="item" :workspace="workspace" />
         <small v-if="item.bbox">bbox · {{ item.bbox.x0.toFixed(3) }}, {{ item.bbox.y0.toFixed(3) }} → {{ item.bbox.x1.toFixed(3) }}, {{ item.bbox.y1.toFixed(3) }}</small>
         <div class="evidence-link-list">
-          <span v-for="link in links.filter((candidate) => candidate.evidence_id === item.id)" :key="link.id" data-edge-evidence-link><span>{{ edgeLabel(link.edge_id) }} · {{ link.role }}</span><button v-if="!readOnly" class="button-quiet" type="button" :disabled="busy" @click.stop="unlink(link)">解除关联</button></span>
+          <span v-for="link in links.filter((candidate) => candidate.evidence_id === item.id && (!edgeId || candidate.edge_id === edgeId))" :key="link.id" data-edge-evidence-link><span>{{ edgeLabel(link.edge_id) }} · {{ link.role }}</span><button v-if="!readOnly" class="button-quiet" type="button" :disabled="busy" @click.stop="unlink(link)">解除关联</button></span>
         </div>
         <button v-if="!readOnly && availableEdges(item).length && linkingEvidenceId !== item.id" class="button-secondary" data-link-existing-evidence type="button" :disabled="busy" @click.stop="beginExistingLink(item)">关联更多 Edge</button>
         <form v-if="linkingEvidenceId === item.id" class="existing-evidence-link-form" @submit.prevent="linkExisting(item)" @click.stop>

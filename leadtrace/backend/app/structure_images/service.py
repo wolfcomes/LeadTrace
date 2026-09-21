@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from copy import copy
+from tempfile import SpooledTemporaryFile
 from decimal import Decimal
 from pathlib import Path
 from typing import BinaryIO
@@ -119,6 +121,19 @@ class StructureSourceImageService:
         self.managed_root = managed_root
         self.source_roots = source_roots
         self.workspace_service = workspace_service or WorkspaceService()
+        self._pinned_source: tuple[UUID, Asset, bytes] | None = None
+
+    def with_source_snapshot(
+        self, *, paper_id: UUID, asset: Asset, content: bytes,
+    ) -> StructureSourceImageService:
+        """Clone this service for one apply using its verified immutable PDF.
+
+        The caller verifies content hash, byte size and page count against the
+        registered source before pinning. Other papers retain normal validation.
+        """
+        scoped = copy(self)
+        scoped._pinned_source = (paper_id, asset, content)
+        return scoped
 
     def _store(self) -> LocalAssetStore:
         return LocalAssetStore(self.managed_root, source_roots=self.source_roots)
@@ -151,6 +166,18 @@ class StructureSourceImageService:
         source_sha256: str,
         page_number: int,
     ) -> tuple[Asset, BinaryIO]:
+        if self._pinned_source is not None and self._pinned_source[0] == paper_id:
+            _, asset, content = self._pinned_source
+            if asset.sha256 != source_sha256 or page_number > (asset.page_count or 0):
+                raise StructureSourceImageValidationError("Pinned Paper Source identity mismatch")
+            snapshot = SpooledTemporaryFile(max_size=1024 * 1024, mode="w+b")
+            try:
+                snapshot.write(content)
+                snapshot.seek(0)
+            except BaseException:
+                snapshot.close()
+                raise
+            return asset, snapshot
         row = session.execute(
             select(PaperSource, Asset)
             .join(Paper, Paper.source_id == PaperSource.id)

@@ -1,0 +1,162 @@
+{
+  "$defs": {
+    "AuthorizedSourceLocator": {
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "default": "read-only",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Access",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "source_sha256": {
+          "maxLength": 64,
+          "minLength": 64,
+          "title": "Source Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_sha256"
+      ],
+      "title": "AuthorizedSourceLocator",
+      "type": "object"
+    },
+    "SourceIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_size": {
+          "exclusiveMinimum": 0,
+          "title": "Byte Size",
+          "type": "integer"
+        },
+        "doi": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Doi"
+        },
+        "page_count": {
+          "exclusiveMinimum": 0,
+          "title": "Page Count",
+          "type": "integer"
+        },
+        "paper_key": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Paper Key",
+          "type": "string"
+        },
+        "source_sha256": {
+          "maxLength": 64,
+          "minLength": 64,
+          "title": "Source Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "paper_key",
+        "source_sha256",
+        "byte_size",
+        "page_count"
+      ],
+      "title": "SourceIdentity",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "experiment_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "guide_version": {
+      "maxLength": 255,
+      "minLength": 1,
+      "title": "Guide Version",
+      "type": "string"
+    },
+    "input_evaluation_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Input Evaluation Ids",
+      "type": "array"
+    },
+    "instructions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Instructions",
+      "type": "array"
+    },
+    "package_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Package Version",
+      "type": "integer"
+    },
+    "parent_candidate_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Candidate Id"
+    },
+    "recipe": {
+      "additionalProperties": true,
+      "title": "Recipe",
+      "type": "object"
+    },
+    "schema_version": {
+      "default": "CandidateEnvelope.v1",
+      "minLength": 1,
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_locator": {
+      "$ref": "#/$defs/AuthorizedSourceLocator"
+    },
+    "target": {
+      "$ref": "#/$defs/SourceIdentity"
+    }
+  },
+  "required": [
+    "experiment_id",
+    "target",
+    "source_locator",
+    "guide_version"
+  ],
+  "title": "PrefillInputPackage",
+  "type": "object"
+}

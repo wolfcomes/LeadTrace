@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "ai-prefill-preview-live.spec.ts",
   fullyParallel: false,
   reporter: "list",
   use: {

@@ -53,6 +53,7 @@ import {
   type LineageList,
   type LineageMemberMutation,
   type LineageMutation,
+  type LineageType,
   type PaperCatalogPage,
   type PaperCatalogRow,
   type PaperWorkspace,
@@ -304,7 +305,7 @@ export function listLineages(workspaceId: string): Promise<LineageList> {
 
 export function createLineage(
   workspaceId: string,
-  payload: { expected_workspace_version: number; lineage_label: string; description?: string | null },
+  payload: { expected_workspace_version: number; lineage_label: string; lineage_type?: LineageType; description?: string | null },
   csrfToken: string | null,
 ): Promise<LineageMutation> {
   return apiRequest(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/lineages`, lineageMutationSchema, { method: "POST", csrfToken, body: payload });
@@ -312,7 +313,7 @@ export function createLineage(
 
 export function updateLineage(
   lineageId: string,
-  payload: { expected_workspace_version: number; lineage_label?: string; description?: string | null },
+  payload: { expected_workspace_version: number; lineage_label?: string; lineage_type?: LineageType; description?: string | null },
   csrfToken: string | null,
 ): Promise<LineageMutation> {
   return apiRequest(`/api/v2/lineages/${encodeURIComponent(lineageId)}`, lineageMutationSchema, { method: "PATCH", csrfToken, body: payload });

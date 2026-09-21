@@ -879,6 +879,10 @@
 .edge-create-form { flex-wrap: wrap; }
 
 .evidence-activity-workspace { display: grid; gap: 28px; }
+.activity-editor { scroll-margin-top: calc(var(--topbar-height) + 110px); }
+.activity-list-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-bottom: 16px; }
+.activity-list-controls .form-field { min-width: 180px; }
+.activity-list-controls .pagination { margin-left: auto; }
 .evidence-editor { padding-bottom: 28px; border-bottom: 1px solid var(--line); }
 .evidence-create-form { display: grid; gap: 12px; margin: 16px 0; padding: 16px; border: 1px solid var(--line); background: var(--paper); }
 .evidence-create-form > .inline-create-form { margin: 0; padding: 0; border: 0; }
@@ -1033,3 +1037,73 @@
 @media (max-width: 440px) {
   .quality-grid { grid-template-columns: 1fr; }
 }
+
+/* The directory contributes no intrinsic height; the selected compound sets the row height. */
+.compound-workspace .compound-editor-layout { align-items: stretch; }
+.compound-workspace { --compound-directory-top: calc(var(--topbar-height) + 64px); }
+.preview-environment + .application-shell .compound-workspace { --compound-directory-top: calc(var(--topbar-height) + 104px); }
+.paper-workspace-tabs { background: var(--surface); }
+.compound-workspace .compound-list-panel { contain: size; min-height: 0; align-self: start; height: 100%; max-height: calc(100dvh - var(--compound-directory-top) - 24px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; position: sticky; top: var(--compound-directory-top); }
+.compound-detail-panel { min-width: 0; display: grid; gap: 24px; }
+.compound-detail-panel .inline-create-form { flex-wrap: wrap; }
+.compound-detail-panel .inline-create-form .form-field { min-width: 130px; }
+.activity-table .activity-evidence, .edge-row .edge-context-evidence { grid-column: 1 / -1; min-width: 0; border-top: 1px solid var(--line); padding-top: 12px; }
+.evidence-excerpt { display: grid; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.evidence-excerpt header { display: flex; gap: 12px; align-items: center; }
+.evidence-excerpt blockquote { margin: 0; padding: 8px 12px; border-left: 3px solid var(--line-strong); white-space: pre-wrap; }
+.evidence-excerpt p { margin: 0; }
+.evidence-excerpt small, .evidence-empty { color: var(--ink-muted); }
+.evidence-excerpt > button { justify-self: start; }
+.edge-context-evidence { display: grid; gap: 10px; }
+.edge-context-evidence h5 { margin: 0; }
+.edge-context-evidence > [data-edge-evidence-link] { display: grid; gap: 8px; }
+.context-evidence-management { margin-top: 16px; padding: 12px; border: 1px solid var(--line); }
+.context-evidence-management summary { cursor: pointer; }
+.edge-context-evidence .evidence-card-grid { grid-template-columns: 1fr; }
+@media (max-width: 900px) {
+  .compound-workspace .compound-list-panel { contain: none; height: auto; max-height: 260px; position: static; }
+}
+
+.lineage-main-panel { scroll-margin-top: calc(var(--topbar-height) + 114px); outline: none; }
+.lineage-main-heading { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.lineage-main-heading h3 { margin: 4px 0 8px; font: 600 1.35rem/1.4 var(--font-serif); }
+.lineage-main-heading p, .lineage-description { margin: 0; color: var(--ink-soft); font-size: .78rem; overflow-wrap: anywhere; }
+.lineage-main-heading button { flex-shrink: 0; }
+.molecular-lineage-graph .lineage-graph { height: 580px; min-height: 480px; display: block; position: relative; background: #f5f7f6; }
+.molecular-lineage-graph.expanded .lineage-graph { height: 80dvh; min-height: 600px; }
+.lineage-graph-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.lineage-graph-toolbar button { padding: 8px 10px; }
+.graph-compound-locator { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: .7rem; }
+.graph-compound-locator select { max-width: 130px; padding: 6px; }
+.graph-help { color: var(--ink-muted); font-size: .72rem; line-height: 1.6; margin: 12px 0; }
+.edge-endpoint-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.edge-compound-card { display: grid; align-content: start; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--line); background: var(--surface); }
+.edge-compound-card header { display: grid; gap: 6px; }
+.edge-compound-card header > span:first-child { color: var(--ink-muted); font-size: .72rem; }
+.edge-compound-card header strong { color: var(--ink); font-size: 1.1rem; }
+.edge-compound-card .status-chip { justify-self: start; }
+.edge-compound-card img { display: block; width: 100%; height: 230px; object-fit: contain; background: #fff; }
+.edge-compound-card p, .edge-compound-card code { overflow-wrap: anywhere; font-size: .76rem; line-height: 1.7; }
+.edge-compound-card details summary { cursor: pointer; font-size: .76rem; color: var(--ink-soft); }
+.endpoint-placeholder { display: grid; place-items: center; min-height: 230px; margin: 0; padding: 16px; color: var(--ink-muted); background: var(--paper); text-align: center; }
+[data-edge-detail] .edge-row { grid-template-columns: minmax(0, 1fr) auto; }
+[data-edge-detail] .edge-row > div:first-child { grid-column: 1 / -1; }
+[data-edge-detail] .edge-row small { white-space: pre-wrap; font-size: .85rem; line-height: 1.8; }
+[data-edge-detail] .edge-row.editing { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 760px) {
+  .edge-endpoint-pair { grid-template-columns: 1fr; }
+  .lineage-main-heading { flex-wrap: wrap; }
+  .molecular-lineage-graph .lineage-graph { height: 480px; }
+  .molecular-lineage-graph > header { align-items: start; flex-direction: column; }
+  .graph-compound-locator { margin-left: 0; }
+  [data-edge-detail] .edge-row, [data-edge-detail] .edge-row.editing { grid-template-columns: 1fr; }
+}
+
+.lineage-view-switch { display: flex; gap: 6px; margin-bottom: 12px; }
+.lineage-view-switch button[aria-pressed="true"] { color: var(--surface-raised); background: var(--teal); border-color: var(--teal); }
+
+.lineage-group-switch { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0 .7rem; }
+.lineage-group-switch button { display: flex; align-items: center; gap: .5rem; }
+.lineage-group-switch button[aria-pressed="true"] { border-color: var(--teal); background: var(--teal-pale); box-shadow: inset 0 -2px 0 var(--teal); }
+.lineage-group-switch button span { font-size: .8em; opacity: .75; }
+.lineage-group-description { color: var(--ink-muted); line-height: 1.7; margin-bottom: 1rem; }

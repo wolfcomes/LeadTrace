@@ -82,13 +82,58 @@ def test_empty_postgresql_database_upgrades_to_single_alembic_head(
         engine.dispose()
 
 
+def test_preview_receipt_revision_adds_identity_and_idempotency_contract(
+    empty_postgresql_database_url: str,
+) -> None:
+    config = _alembic_config(empty_postgresql_database_url)
+    command.upgrade(config, "head")
+
+    engine = create_database_engine(empty_postgresql_database_url)
+    try:
+        schema = inspect(engine)
+        marker_columns = {
+            column["name"] for column in schema.get_columns("preview_markers")
+        }
+        assert marker_columns >= {
+            "id",
+            "instance_id",
+            "baseline_sha256",
+            "schema_revision",
+            "created_at",
+        }
+        receipt_columns = {
+            column["name"]
+            for column in schema.get_columns("preview_application_receipts")
+        }
+        assert receipt_columns >= {
+            "id",
+            "instance_id",
+            "application_id",
+            "idempotency_key",
+            "request_digest",
+            "candidate_sha256",
+            "payload_sha256",
+            "source_sha256",
+            "entity_map",
+            "initial_snapshot",
+            "committed_at",
+        }
+        unique_constraints = {
+            tuple(item["column_names"])
+            for item in schema.get_unique_constraints("preview_application_receipts")
+        }
+        assert ("instance_id", "idempotency_key") in unique_constraints
+    finally:
+        engine.dispose()
+
+
 def test_legacy_admin_review_workflow_revision_contract(
     empty_postgresql_database_url: str,
 ) -> None:
     config = _alembic_config(empty_postgresql_database_url)
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "0025_ai_prefill_runs"
+    assert script.get_current_head() == "0027_lineage_type"
     reviewer_revision = script.get_revision("0018_reviewer_scientific_workspace")
     assert reviewer_revision is not None
     assert reviewer_revision.down_revision == "0017_unique_active_review_task"
@@ -894,3 +939,43 @@ def test_guarded_migration_rejects_a_different_connected_database(
 
     with pytest.raises(RuntimeError, match="expected database"):
         command.upgrade(config, "head")
+
+
+def test_preview_revision_downgrades_to_existing_ai_schema_and_reupgrades(
+    empty_postgresql_database_url: str,
+) -> None:
+    config = _alembic_config(empty_postgresql_database_url)
+    command.upgrade(config, "0025_ai_prefill_runs")
+    command.upgrade(config, "0026_ai_prefill_preview_receipts")
+    command.downgrade(config, "0025_ai_prefill_runs")
+    engine = create_database_engine(empty_postgresql_database_url)
+    try:
+        schema = inspect(engine)
+        assert schema.has_table("ai_extraction_runs")
+        assert not schema.has_table("preview_markers")
+        assert not schema.has_table("preview_application_receipts")
+        assert _database_revision(empty_postgresql_database_url) == "0025_ai_prefill_runs"
+        command.upgrade(config, "head")
+        assert inspect(engine).has_table("preview_application_receipts")
+        assert _database_revision(empty_postgresql_database_url) == "0026_ai_prefill_preview_receipts"
+    finally:
+        engine.dispose()
+
+
+def test_lineage_type_migration_defaults_checks_and_downgrades(empty_postgresql_database_url):
+    config = _alembic_config(empty_postgresql_database_url)
+    command.upgrade(config, "0026_ai_prefill_preview_receipts")
+    command.upgrade(config, "head")
+    engine = create_database_engine(empty_postgresql_database_url)
+    try:
+        schema = inspect(engine)
+        column = next(item for item in schema.get_columns("lineages") if item["name"] == "lineage_type")
+        assert column["nullable"] is False
+        assert "unspecified" in column["default"]
+        constraints = {item["name"]: item["sqltext"] for item in schema.get_check_constraints("lineages")}
+        assert "synthesis" in constraints["ck_lineages_type"]
+        command.downgrade(config, "0026_ai_prefill_preview_receipts")
+        assert "lineage_type" not in {item["name"] for item in inspect(engine).get_columns("lineages")}
+        command.upgrade(config, "head")
+    finally:
+        engine.dispose()

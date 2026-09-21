@@ -220,7 +220,7 @@ def test_submission_allows_explicit_unresolved_and_not_reported_and_is_idempoten
         assert session.scalar(select(func.count()).select_from(ChangeEvent)) == 1
 
 
-def test_submission_rejects_confirmed_edge_without_supporting_evidence(
+def test_submission_allows_confirmed_edge_without_supporting_evidence(
     workspace_fixture,
 ):
     fixture = workspace_fixture
@@ -239,10 +239,10 @@ def test_submission_rejects_confirmed_edge_without_supporting_evidence(
         edge = _add_supported_edge(session, fixture, compound)
         edge.review_status = LineageEdgeReviewStatus.REVIEWER_CONFIRMED
         result = service.validate(session, workspace_id=fixture.workspace_id)
-        assert any(item.code == "EDGE_SUPPORTING_EVIDENCE_REQUIRED" for item in result.blockers)
+        assert result.valid
 
 
-def test_submission_rejects_empty_supporting_evidence(workspace_fixture):
+def test_submission_empty_evidence_does_not_replace_edge_review(workspace_fixture):
     fixture = workspace_fixture
     service = SubmissionService()
     with fixture.session_factory.begin() as session:
@@ -257,6 +257,7 @@ def test_submission_rejects_empty_supporting_evidence(workspace_fixture):
         session.add(compound)
         session.flush()
         edge = _add_supported_edge(session, fixture, compound)
+        edge.review_status = LineageEdgeReviewStatus.DRAFT
         evidence = Evidence(
             paper_id=fixture.paper_id,
             workspace_id=fixture.workspace_id,
@@ -281,11 +282,7 @@ def test_submission_rejects_empty_supporting_evidence(workspace_fixture):
 
         result = service.validate(session, workspace_id=fixture.workspace_id)
 
-        assert any(
-            item.code == "EDGE_SUPPORTING_EVIDENCE_REQUIRED"
-            and item.entity_id == edge.id
-            for item in result.blockers
-        )
+        assert any(item.code == "EDGE_NOT_DISPOSITIONED" and item.entity_id == edge.id for item in result.blockers)
 
 
 def test_submission_requires_edge_disposition_but_allows_explicit_unresolved(
