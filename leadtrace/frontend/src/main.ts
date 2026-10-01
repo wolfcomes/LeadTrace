@@ -6,6 +6,7 @@ import "@fontsource-variable/noto-sans-sc";
 import "@fontsource-variable/noto-serif-sc";
 
 import App from "./App.vue";
+import { restoreLocale } from "./i18n";
 import { createAppRouter } from "./app/router";
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -13,6 +14,7 @@ import "./styles/components.css";
 import "./styles/layouts.css";
 
 
+restoreLocale();
 const application = createApp(App);
 const previewInstance = ref<string | null>(null);
 application.provide(previewInstanceKey, previewInstance);

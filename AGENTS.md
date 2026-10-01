@@ -7,15 +7,27 @@ AI_prefilll / AI prefill), start with `docs/ai-prefill/START_HERE.md`. It is the
 current operational entry point; historical verification reports are evidence,
 not the current runbook. Read the latest run's `HANDOFF.md` before resuming.
 
-- Codex supervises and reports; DeepSeek harness reads original paper text/images.
+- Routine runs are DeepSeek-led through extraction and producer self-check. Codex
+  supervises evaluation runs, improves guidance and handles authorized delivery; it
+  is not a mandatory per-stage gate for routine scientific work. DeepSeek harness
+  reads original paper text/images.
   Do not read source PDFs, extracted page text, original crops, or reasoning logs
   that contain source content unless the user explicitly changes this division.
   Candidate/reviewer outputs and file identity metadata may be inspected.
 - Use `dsh --profile headless` for scientific extraction/review. Codex subagents
   are not substitutes for DeepSeek paper readers. Keep one candidate writer per
-  paper/stage and separate fresh reviewer calls.
-- Use current guides + rerun lessons + delivery self-check; copy the actual files
-  into each new task bundle and hash them. Never rewrite a historical bundle.
+  paper/stage and separate fresh reviewer calls. Producer session continuity does
+  not make its self-check independent review; record actual session metadata and
+  use a structured handoff when native resume is unavailable.
+- Include every source-identifiable numbered/labelled compound with a defined
+  structure, including starting materials and intermediates without Activity or
+  appearing only in Methods. Route-local descriptions do not replace Compound
+  entries. Keep unresolved identities in the required inventory; never invent
+  structures. Report full inventory gaps as well as any user-limited scope.
+- Use the current guide bundle and role-specific reading list; copy/hash the
+  actual files into each new task bundle, but do not require every role to read
+  all operator material. Never rewrite a historical bundle. A scoped repair must
+  preserve unchanged human edits and recheck changes plus their dependencies.
 - The producer must not access Preview credentials or apply data. Supervisor
   Preview operations follow `leadtrace/ops/runbooks/ai_prefill_preview.md` and the
   current local instance descriptor. An explicit request to view imperfect results

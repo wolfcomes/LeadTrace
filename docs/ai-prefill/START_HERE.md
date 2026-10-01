@@ -1,127 +1,55 @@
-# 新对话执行 AI_prefill：从这里开始
+# AI_prefill：选择入口并恢复实际状态
 
-流程版本 `deepseek-supervised-v2+self-check-v1-20260921`。本文件是操作者入口；先执行用户已授权的任务，不重复询问已确定的操作。默认单篇或2–3篇并发，科学内容提取/源审查由DeepSeek，Codex只做监督、确定性检查、反馈组织与报告。
+当前流程 `deepseek-led-v3-20260923`，CandidateEnvelope 仍为 v1。日常任务由 DeepSeek 连续完成科学生产和自检；测试/指南评估时由 Codex 观察表现、检查确定性产物并调整指南。两种模式采用相同科学标准；生产者自检不能代替新的 DeepSeek 独立审查。
 
-## 1. 先辨认任务与当前状态
+## 1. 先确定任务、来源和状态
 
-1. `git status --short`、`git branch --show-current`、`git worktree list`：区分main和保留的开发工作区。不要在两个工作树同时修改同一功能。只跑预填无需改业务代码。
-2. 用户说“继续”时，先读运行目录 `HANDOFF.md`、`run-state.json`、各阶段 `process.json` 和已保存产物；不因新对话就重新提取或重新apply。
-3. 用户给论文时，从catalog/manifest按paper key＋DOI确认具体源文件；标题或“最后三篇”不能代替确定的任务列表。可核对hash、bytes、page count，不把原文文本/图像输出给Codex。
-4. 独立运行目录必须在本checkout外的持久 `leadtrace-data/<run-id>/` 中或显式指定的安全位置。恢复路径取自HANDOFF，不猜最后修改时间最新的目录就是当前任务。
-5. 用户只要求提取/比较时，默认交付文件；请求写入Preview时才进入应用步骤。已有“写入这批Preview”的授权有效，不再要求重复确认。代码合并不等于生产部署授权。
+- 核对 `git status --short`、当前分支和 worktree；使用指定 checkout，不覆盖其他任务改动。只运行预填无需修改业务代码。
+- 恢复任务先读运行目录 `HANDOFF.md`、`run-state.json`、任务状态及已有产物。路径取自交接，不按修改时间猜当前运行，不因新对话而重新提取/apply。
+- 以外部 catalog/manifest 的 paper key＋DOI 确定源文件，再核对 SHA-256、bytes、pages。DeepSeek 实际读取 PDF 核验题名/DOI；Codex 不读 PDF、源裁图、提取原文或可能含原文的推理日志。
+- 新任务目录在忽略的持久 `leadtrace-data/<run-id>/`，保留历史任务包。用户已授权的任务继续执行，不重复索要授权；代码合并不授权生产部署或科学数据导入。
+- 质量优先派发前按运行指南核实实际模型、图像能力、thinking/effort 和运行上限，冻结脱敏配置；不凭模型名称或提示词声称“性能开到最高”。从零重跑使用新 source-only 包，保留旧候选和 Preview，不能清空工作区绕过 initial apply。
 
-当前这台机器的持久数据根是 `/data/home/zhangzhiyong/lead_optimization_collection/leadtrace-data/`。保留开发工作树是其相邻 `.worktrees/ai-prefill-tools`，有已安装依赖。当前Preview描述符是数据根下 `ai-prefill-preview-20260920.C191Fl/current-instance.json`，其 `HANDOFF.md` 记录最近刷新。只把这些当定位线索，操作前仍须验证实例与实际状态；不要打印runtime/credentials内容。换机器时必须提供新的数据根/描述符，不能执行这些旧绝对路径。
+## 2. 两个入口、两种模式
 
-## 2. 文件与代码职责
+日常基线是一次生成（含有界自检/内部修正）＋一次新上下文独立检查。独立检查只报告，不会修好候选；有可修错误时才追加一次定向修补＋一次新上下文增量复核，实际共四次 harness 调用。两次调用不是两次 API 请求，也不保证全篇正确。预算只允许基线时，如实交付缺陷/未决；详见 [调用边界](deepseek-supervised-runbook.md#日常调用边界与停止条件)。
 
-```text
-repo/
-  AGENTS.md                          新Codex自动发现的规则
-  docs/ai-prefill/START_HERE.md       当前流程入口
-  docs/ai-prefill/prompts/            派发、修订、独立审查模板
-  docs/ai-prefill/templates/          自检、质量、运行状态、交接模板
-  leadtrace/ops/ai_prefill/            操作者CLI
-  leadtrace/backend/app/ai_prefill/   契约/验证/覆盖/自检/Preview/导出
-  leadtrace/frontend/src/review/paper/ 化合物、活性、SAR/合成图审阅UI
-
-persistent-data/<run-id>/            不提交Git
-  run-state.json                     机器可读的本批范围与逐篇阶段
-  HANDOFF.md                         给下一次对话看的当前事实/下一步
-  bundle-manifest.json               实际指南/prompt/schema等文件hash
-  <paper-key>/
-    survey/                          源清单、代表结构、measurement inventory
-    core-review/                     新harness源图审查、supervisor gate
-    extract/                         candidate、自检、覆盖/结构/路线sidecars
-    audit/                           冻结抽样、独立源审查、逐项C/E/U/M
-    revision-1/                      如需修订保留父版本，不覆盖旧产物
-  preview/                           快照、receipt或明确的更新journal、核验
-  report.md                          汇总、具体缺陷、成本与局限
-```
-
-目录名是约定，不是已经实现的持久队列。`run-state.json`记录中使用实际绝对路径和完整UTC时间；缺失model/token/金额为null，不能填预计模型名作实际值。
-
-## 3. 准备实际输入包
-
-在仓库根目录用现有Python检查CLI，例：
-
-```bash
-.venv/bin/python -m leadtrace.ops.ai_prefill doctor
-.venv/bin/python -m leadtrace.ops.ai_prefill contract export --output /absolute/job/candidate-schema.json
-```
-
-main没有`.venv`时，使用保留工作树的Python并设 `PYTHONPATH=/absolute/selected-checkout`，或按 `leadtrace/README.md` 创建环境。必须确保实际导入模块来自所选checkout，不能只看Python路径判断代码版本。
-
-每篇拷贝只读源、真实input、外部manifest对照的source-identity-check，以及：
-
-- extraction-guide.md、deepseek-supervised-runbook.md、deepseek-quality-checklist.md；
-- quality-audit-protocol.md、quality-pitfalls.md、deepseek-self-check-guide.md；
-- candidate-schema.json、通用candidate example、[compound inventory schema](schemas/compound-inventory-v1.json)；
-- [source self-review schema](schemas/source-self-review-v1.json)（与自检模板一起分发）；
-- templates/deepseek-quality-record.json → quality-record-template.json；
-- templates/deepseek-self-review.json → self-review-template.json；
-- 填好所有占位符的任务prompt、运行预算及runtime-metadata.json。
-
-`input prepare`生成的正式InputPackage字段是 `target`（SourceIdentity）、`source_locator`、`guide_version`、`recipe`。它不会自动打包指南/PDF，也不会核实实际源身份。candidate_id可放 `recipe.candidate_id` 并明确写入prompt；预期标题和DOI写入独立source-identity-check。历史实验的自定义input可能使用 `source`，不能直接与正式InputPackage混用。派发前检查所用脚本和prompt读的是哪种格式，不往严格schema塞未知字段。
-
-源身份以外部catalog/manifest为参照核对sha256/bytes/pages/DOI；DeepSeek再读PDF确认题名/DOI。冻结所有实际输入文件hash。旧CSV、旧候选答案和旧审查结论不进入新提取目录；复跑时明确是否同文回归，避免误称盲测。
-
-## 4. 分阶段执行与恢复
-
-| 阶段 | DeepSeek负责 | Codex验收后才能继续 |
+| 入口 | 适用情况 | 行为 |
 |---|---|---|
-| survey | 全文范围清单、参考物/对照、表/图/正文测量清单、不同骨架代表 | inventory合法、身份匹配、scope和未决明确；不是完整candidate |
-| core-review | 新进程实际源图检查代表骨架/区域/立体/连接点 | 逐项已核验核心才允许扩展；未决不伪装pass |
-| extract | 全量candidate、原图locators、activity、两类lineage及route-local中间体 | 周期保存；不根据旧答案或编号范围凑数 |
-| producer self-check | 按自检指南先程序检查、再源回查、限次修正 | 自检绑定最终文件hash；未决或缺项交partial |
-| independent audit | 新进程按冻结样本逐项核查；不得直接修candidate | 重新统计C/E/U/M、缺失/重复slot、实体ref、hash；检查审查自身矛盾 |
-| revision（可选） | 根据精确反馈修订及扩大同类缺陷检查 | 保留父版本及差异，复验受影响项目；默认最多两轮 |
-| handoff/Preview | 只交文件；不持有Preview写权限 | 报告精确结果；获授权后由监督者执行应用与交付核验 |
+| `task prefill` | 从头预填 | 源清点→各结构家族代表核实→全量提取→程序及源自检，保存完整候选与未决 |
+| `task selfcheck` | 已有候选检查/修补 | 验证父候选、源 inventory 和现状；确定增量及依赖；检查/修补并保存新候选，保留未变内容 |
 
-通过Python `subprocess.Popen(['dsh', '--profile', 'headless', prompt_text], cwd=stage_dir, stdout=log, stderr=err, start_new_session=True)`启动已安装harness，避免把prompt拼成shell代码。先核实 `dsh --version` 和实际headless配置可用，不输出配置中的密钥。每阶段调用保存PID、开始时间、命令身份、预算、退出码、结束时间和产物路径。需要外部timeout时，只结束该run拥有且核实身份的进程组；日志/产物保留。示例是启动方式，不是通用runner实现。
+`--mode routine` 是日常模式：DeepSeek 在一次有界生产调用内推进，不等待 Codex 在每个保存点放行。`--mode evaluation` 用于评测：Codex 监督实际输出、返工和成本；需要冻结中间结果时明确写入任务，不默认复制整套多阶段昂贵流程。独立审查使用新的 DeepSeek 上下文，两种模式都不能省略其交付边界。任务目录的 `task.json`/`prompt.md` 保存实际参数和阅读清单，`state.json`/`process.json` 保存执行状态，`inputs/`/`bundle/` 为冻结输入，`outputs/`/`checks/` 为产物与程序检查；run-state/HANDOFF 是上层运行交接。
 
-默认2–3个独立论文进程并发；不要多写者争同一candidate。用户明确要求新窗口时用可用终端/任务窗口承载；headless子进程本身不等于新Codex对话。日志可能含原文内容，Codex只监控大小/更新时间/进程状态，不直接dump推理日志。科学审查结果是允许读取的产物。
-
-开始下一阶段前核实上一阶段真实退出和产物；超时或工具wait报错先恢复已有状态，不盲目重跑。每项审查立即保存，预算到达就交未决。活动Codex对话结束不保证有持续监督；交接时列出仍在运行的进程及恢复方法。
-
-## 5. 必跑检查与统计边界
+在工作树根目录运行，绝对路径示例需替换为本次任务值：
 
 ```bash
-.venv/bin/python -m leadtrace.ops.ai_prefill candidate validate /absolute/job/candidate.json
-.venv/bin/python -m leadtrace.ops.ai_prefill candidate coverage /absolute/job/candidate.json --inventory /absolute/job/compound-inventory.json
-.venv/bin/python -m leadtrace.ops.ai_prefill candidate self-check /absolute/job/candidate.json --inventory /absolute/job/compound-inventory.json --self-review /absolute/job/self-review.json --output /absolute/job/self-check.json
+.venv/bin/python -m leadtrace.ops.ai_prefill task prefill --input /absolute/input.json --output /absolute/new-job --mode routine
+.venv/bin/python -m leadtrace.ops.ai_prefill task selfcheck --input /absolute/input.json --output /absolute/new-repair --candidate /absolute/current.json --inventory /absolute/inventory.json --feedback /absolute/feedback.json --mode routine
+.venv/bin/python -m leadtrace.ops.ai_prefill task run /absolute/new-job --timeout-seconds 1800
+.venv/bin/python -m leadtrace.ops.ai_prefill task status /absolute/new-job
 ```
 
-`validate`的needs_review可退出0；`coverage`退出4代表required身份缺失/歧义；`self-check`退出4代表确定问题或源自检未完成，退出0仅ready_for_independent_review。所有0都不代表科学批准。自检首次不带self-review为preflight，预期报缺少源自检。
+`--feedback` 可省略。两入口可提供 `--previous-task /absolute/old-job` 或 `--handoff /absolute/handoff.json` 携带结构化上下文；已产生候选的续修应使用 selfcheck，prefill 仍不提供旧候选/答案作为清点分母。selfcheck 的已有工作区可成对提供 `--workspace-id UUID --workspace-version N` 记录基线，这不会自动联网核验或更新工作区。正式 InputPackage 使用 `target`、`source_locator`、`guide_version`、`recipe`；操作者派发前仍需外部身份对照，可在 recipe 记录预期题名/DOI 与 catalog 来源，不能把旧自定义 `source` 输入当正式包。
 
-当前机器检查：契约/引用/可解析性、标签coverage、dose误作终点、S.I.单位、重复Activity、lineage分类、自检完整性/hash/真实edge ref。源测量tuple穷尽、原图语义、立体化学、合成条件仍需DeepSeek核实。SAR允许无text evidence；合成路径必须有真实前体关系，中间体可route-local。compound目录以正文/SAR为范围，不能把Methods-only化学形式硬塞入主目录。
+`task run` 是一次有界 headless **生产调用**，每个 job 只运行一次，续修建新 job；本机同一 paper_key（即使 source 不同）保持单写者。它不自动调度独立审查、批准科学结果或 apply。完整流程和产物契约见 [运行指南](deepseek-supervised-runbook.md)。
 
-每篇固定审查样本在看结果前保存；样本外扩展检查另列。总体分母未知填null；不要从候选自身定义分母，不把SD未核对的数值匹配当整行正确，不把ND当漏提或0。reviewer的“all correct”也须按逐项记录核验。新的源审查进程仍属AI审查，不能叫人工gold。
+## 3. 恢复生产会话与交接
 
-## 6. Preview写入与可查看状态
+```bash
+.venv/bin/python -m leadtrace.ops.ai_prefill session inspect --run-dir /absolute/job --dsh-home /absolute/dsh-home --output /absolute/session-metadata.json
+```
 
-Preview数据不导入正式库；代码合并和正式网站更新均不授权复制Preview科学数据。
+`--dsh-home` 使用实际子进程环境中的 `DSH_HOME` 对应目录，不假设总是 `~/.dsh`。该命令检查会话身份和可获得的 usage 元数据，不把推理内容提供给 Codex。记录真实原生产会话用于追踪。当前 headless CLI 没有原生 resume 参数，继续任务用新 job＋结构化 handoff；不得把新会话写成已恢复旧会话，也不要为恢复而开放 nativeWeb 端口。
 
-先读 [Preview runbook](../../leadtrace/ops/runbooks/ai_prefill_preview.md)，由当前descriptor获取profile；检查registry/database实例身份、health、源hash和workspace版本。凭据只由监督者使用，不复制入DeepSeek目录，不打印在日志/最终答复。
+`task status` 显示保存的 checkpoint，并报告 `leader_identity_matches`，不是完整实时进程状态。若协调进程退出却遗留 running，执行 `task recover /absolute/job`；它取得同一 paper 锁并核对 boot/PID/start ticks/session 无活进程后才标记 interrupted，不终止进程或重跑。之后引用旧产物建立新 job。
 
-- **空白工作区：** candidate import/validation后通过Preview专用API apply，稳定幂等键，保存真实ApplicationReceipt。`candidate import`本身不会写入工作区。
-- **已有工作区：** initial apply不支持覆盖；不得清空/重置版本以绕过。局部编辑用已授权Reviewer接口，逐请求版本检查、留前后快照与journal。整篇替换需针对现状制定并执行可恢复方案，确认未覆盖人工编辑；不能机械复制历史实验脚本或伪造新receipt。用户明确要求当前结果写入时，不重复索要授权，但仍须完成这些核验。
-- **待修订结果预览：** 用户可明确授权展示带已知缺陷的候选。记录精确hash、问题与授权上下文，所有数据保持draft/needs_revision；“可查看”不等于“科学通过”。没有相应授权时，默认先完成确定性错误修正。
+结束前更新 [run-state](templates/run-state.json) 与 [HANDOFF](templates/run-handoff.md)：实际进程/会话状态、输入/候选 hash、已完成范围、独立审查状态、唯一下一步、Preview 版本/回执或 journal、禁止重跑事项、费用未知项。退出 0 和候选文件存在都不代表科学完成。
 
-写入后核对实际workspace数据与候选、活动分页、edge草稿、重绘与原图资源可读取；计数和HTTP成功不能代替科学图像验证。旧receipt的changed_since_apply是编辑后的真实状态，后续更新应另留journal/快照。生产环境部署、迁移、发表不属于Preview操作。
+## 4. 阅读与交付边界
 
-## 7. 对话结束前的固定交接
+- 科学规则唯一入口：[提取指南](extraction-guide.md)；生产者按阶段读取 [自检指南](deepseek-self-check-guide.md)，审查者读取 [审查协议](quality-audit-protocol.md)。实际 bundle 完整冻结，角色只读运行指南指定的必要文件，不反复阅读全部操作材料。
+- 默认交付文件。写入 Preview 由受信操作者按 [Preview runbook](../../leadtrace/ops/runbooks/ai_prefill_preview.md) 处理；生产者不持有凭据。已有工作区保留人工修改，版本检查＋快照＋差异 journal，不能清空或重置来绕过 initial apply 的空白限制。
+- 全文编号/标签身份清点；能找到或合理推导完整结构才写入 Compound。有依据但不确定/冲突的已收录项用统一 review_hint（⚠ 需核对），无法推导的留 inventory required＋omissions，不建空结构卡；测量、结构、SAR、合成分别报告。带缺陷草稿经用户授权可显示，但不能标为科学批准。科学数据、资产和数据库不从 Preview 导入生产。
 
-使用 [HANDOFF模板](templates/run-handoff.md) 写实际状态，并更新 [run-state](templates/run-state.json)：
-
-- 本轮论文/源身份、实际代码revision和dirty状态、指南版本与bundle hash；
-- 每篇当前阶段、候选路径及文件hash、阶段进程是否已退出、自检/审查状态；
-- 已完成结果、具体未决项、下一步**唯一需要执行的动作**与其输入；
-- Preview是否已应用、精确实例/工作区版本、receipt或journal、可访问URL；
-- 禁止重跑的构建/apply脚本、已存在的人工修改，以及恢复前必须复核的条件；
-- tests/实际usage/费用及未知项，清楚区分partial、ready_for_review、needs_revision和accepted。
-
-报告链接到持久目录文件，不能只说“见上一段聊天”。目录有候选不表示已交付，进程exit0不表示科学完成。
-
-## 新对话可直接使用的请求
-
-> 请按仓库AGENTS.md及docs/ai-prefill/START_HERE.md执行AI_prefill。先读取本轮HANDOFF与run-state恢复状态；若新任务则建立独立运行目录。Codex不读原始论文，由DeepSeek harness完成survey、核心审查、提取、交付自检和独立审查。目标论文是[paper keys/DOIs]，运行目录是[绝对路径]。请持续监督至[候选与报告/写入指定Preview并验收]完成，保存跨对话交接文件。
+本机定位线索：持久根 `/data/home/zhangzhiyong/lead_optimization_collection/leadtrace-data/`，保留 worktree `.worktrees/ai-prefill-tools`，Preview descriptor `ai-prefill-preview-20260920.C191Fl/current-instance.json`。操作前验证当前实例和交接；换机器不执行旧绝对路径，不输出 credentials。

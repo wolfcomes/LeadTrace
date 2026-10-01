@@ -1,8 +1,11 @@
 .application-shell { min-height: 100vh; color: var(--ink); background: var(--paper); }
 
-.preview-environment + .application-shell .sidebar { top: 40px; }
-.preview-environment + .application-shell .topbar { top: 40px; }
-.preview-environment + .application-shell .paper-workspace-tabs { top: calc(var(--topbar-height) + 40px); }
+.language-toolbar + .application-shell .sidebar { top: 38px; }
+.language-toolbar + .application-shell .topbar { top: 38px; }
+.language-toolbar + .application-shell .paper-workspace-tabs { top: calc(var(--topbar-height) + 38px); }
+.preview-environment + .language-toolbar + .application-shell .sidebar { top: 78px; }
+.preview-environment + .language-toolbar + .application-shell .topbar { top: 78px; }
+.preview-environment + .language-toolbar + .application-shell .paper-workspace-tabs { top: calc(var(--topbar-height) + 78px); }
 
 .sidebar {
   position: fixed;

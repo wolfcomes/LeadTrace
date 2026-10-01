@@ -22,6 +22,7 @@ class ActivityCreateRequest(WorkspaceVersionRequest):
     value: Decimal
     unit: str | None = Field(default=None, max_length=128)
     context: str | None = Field(default=None, max_length=10_000)
+    review_hint: str | None = Field(default=None, max_length=1000)
 
 
 class ActivityUpdateRequest(WorkspaceVersionRequest):
@@ -32,6 +33,7 @@ class ActivityUpdateRequest(WorkspaceVersionRequest):
     value: Decimal | None = None
     unit: str | None = Field(default=None, max_length=128)
     context: str | None = Field(default=None, max_length=10_000)
+    review_hint: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
     def require_update(self) -> Self:
@@ -43,6 +45,7 @@ class ActivityUpdateRequest(WorkspaceVersionRequest):
             "value",
             "unit",
             "context",
+            "review_hint",
         }
         if not (fields & self.model_fields_set):
             raise ValueError("At least one Activity field is required")
@@ -62,6 +65,7 @@ class ActivityUpdateRequest(WorkspaceVersionRequest):
                 "value",
                 "unit",
                 "context",
+                "review_hint",
             )
             if field in self.model_fields_set
         }
@@ -84,6 +88,7 @@ class ActivityResponse(BaseModel):
     value: Decimal
     unit: str | None
     context: str | None
+    review_hint: str | None = None
     sort_order: int
 
 

@@ -95,6 +95,7 @@ class Activity(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     value: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     unit: Mapped[str | None] = mapped_column(String(128), nullable=True)
     context: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_by_kind: Mapped[ChangeActorKind] = mapped_column(
         Enum(

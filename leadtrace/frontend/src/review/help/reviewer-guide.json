@@ -1,0 +1,179 @@
+{
+  "version": "2026-09-28",
+  "sections": [
+    {
+      "title_zh": "先核对文章与完整覆盖",
+      "title_en": "Start with identity and coverage",
+      "zh": "核对题名、DOI 和 PDF。收录所有有编号或标签且结构可确定的 Compound，包括无活性数据的原料、中间体和对照。示例仅演示格式，不应复制为论文事实。",
+      "en": "Verify title, DOI and PDF. Include every numbered or labelled Compound with a determinable structure, including starting materials, intermediates and controls without activity data. Examples illustrate format and are not paper facts."
+    },
+    {
+      "title_zh": "Compound 与 Structure",
+      "title_en": "Compound and Structure",
+      "zh": "Compound label 保留原文编号（例：24、7a）；显示名称可为空。每个 Compound 维护一个 Structure；SMILES/结构编辑器输入后核对连接、取代位置和立体化学。不能确定时说明原因并明确 unresolved，不虚构结构。",
+      "en": "Keep source labels such as 24 or 7a; display name is optional. Each Compound has one Structure. Verify connectivity, substitution and stereochemistry after entering SMILES or using the structure editor. Explain unresolved identity rather than inventing a structure."
+    },
+    {
+      "title_zh": "文章级研究起点与论文优选",
+      "title_en": "Article starting points and prioritized compounds",
+      "zh": "在文章信息页关联本篇 Compound 与已有 Evidence，记录研究起点或论文优选、适用系列/范围及作者选择理由。每类可有多个分子，同一分子可兼任。先在 Evidence 库保存原文依据；标注卡片保留 PDF 页码与原文。研究起点不等于每条合成路线的原料；论文优选不等于所有 terminal 或最低 IC50。待审核、已确认、待解决分别显示，阅读不会自动确认；未记录不代表文章没有此类分子。修改理由、身份或来源后重新核对，需核对提示要显式清除。",
+      "en": "On the article information page, link a Compound and existing Evidence, record its study-start or paper-prioritized role, study/series scope and author rationale. Multiple compounds and both roles are allowed. Save source support in the Evidence library first; cards retain the PDF page and quotation. A study start is not every synthesis reagent; a prioritized compound is not every terminal or the lowest IC50. Draft, confirmed and unresolved states remain visible. Viewing never confirms; unrecorded does not mean absent. Recheck after changing identity, rationale or source, and explicitly clear resolved verification hints."
+    },
+    {
+      "title_zh": "组织 Lineage",
+      "title_en": "Organize Lineages",
+      "zh": "SAR 记录设计和结构比较，synthesis 记录实际合成路线；不要仅凭编号顺序连边。同一逻辑路线的节点属于同一 Lineage；独立路线可分开。root 是路线起点，intermediate 为途中节点，terminal 为路线终点；terminal 不自动表示最佳活性或作者最终候选。作者研究起点与优选分子在文章级标注中记录。孤立对照不必强行连边，在 Compound 描述说明其用途及不入 lineage 的理由。",
+      "en": "SAR describes design and structural comparison; synthesis describes chemical routes. Never connect compounds solely by label order. Keep one logical route together; separate independent routes. Root starts a route, intermediate is internal, terminal ends it. Terminal does not automatically mean best activity or nominated lead; record author starting points and prioritized compounds in article annotations. Do not force isolated controls into a lineage: document their purpose and exclusion in the Compound description."
+    },
+    {
+      "title_zh": "图、Compound、Edge 三个视图",
+      "title_en": "Graph, Compound and Edge views",
+      "zh": "三个页签切换。图上“新增 Node”选择本篇已有 Compound；找不到时先到化合物页创建。“新增 Edge”依次选择起点和终点，再填写关系表单。拖动节点或菱形控制点调整形状，点击“保存布局”；点线图与结构图独立保存。重新载入布局会丢弃该模式未保存的布局。表单仍是完整编辑入口。",
+      "en": "Switch between three tabs. Add Node selects an existing Compound from this paper; create missing Compounds on the compound page first. Add Edge selects source then target before opening the relationship form. Drag nodes or diamond control handles and Save layout. Point and structure modes save separately. Reload layout discards unsaved layout in that mode. Full forms remain available."
+    },
+    {
+      "title_zh": "Edge 与 Evidence",
+      "title_en": "Edge and Evidence",
+      "zh": "关系类型、起终点、修改摘要都要核对。例（虚构格式）：Me → OMe，比较亲脂性变化；该关系由结构比较推断，未见作者明确说明。区分原文支持与推断，不把表格并列当优化顺序。Evidence 保留逐字引文、PDF 实际页码和区域；supports/contradicts/contextual 表示证据作用。阅读不自动把 draft 改为 reviewer_confirmed。",
+      "en": "Verify relationship type, endpoints and modification summary. Fictional format example: Me → OMe, comparing lipophilicity; relationship inferred from structures, not explicitly stated by the authors. Distinguish source support from inference; table order is not optimization order. Evidence retains exact quotations, actual PDF page and region. supports/contradicts/contextual describe evidence roles. Viewing never changes draft to reviewer_confirmed."
+    },
+    {
+      "title_zh": "Activity 格式",
+      "title_en": "Activity format",
+      "zh": "例（虚构）：Assay = human MAO-B inhibition；Metric = IC50；Operator = <；Value = 10；Unit = nM；Context 写明测定条件。不要把 <10 nM 全部塞进 Value，不混合不同 assay 的数值。保留原单位与限制条件。",
+      "en": "Fictional example: Assay = human MAO-B inhibition; Metric = IC50; Operator = <; Value = 10; Unit = nM; Context records assay conditions. Do not put <10 nM entirely in Value or combine different assays. Preserve units and qualifiers."
+    },
+    {
+      "title_zh": "Abstract 与 PDB",
+      "title_en": "Abstract and PDB",
+      "zh": "Abstract 保存原文摘要及来源，不使用 AI 总结冒充。PDB ID 支持传统四字符与 pdb_ 前缀扩展格式；ATP 等三字符配体代码不是 PDB ID。区分本文结构、引用结构、用途待核对；记录页码和上下文。仅来源明确时关联 Compound。空白只代表未记录，不能自动判定文章未报告。",
+      "en": "Store the original abstract with provenance, not an AI summary. PDB IDs support legacy four-character and extended pdb_ formats. Three-character ligand codes such as ATP are not PDB IDs. Distinguish this-work structures, cited structures and unknown usage; record page and context. Pair with a Compound only when explicit in the source. Empty means unrecorded, not proven absent."
+    },
+    {
+      "title_zh": "已查看、需核对与提交",
+      "title_en": "Viewed, needs verification and submission",
+      "zh": "只在 Compound 和 Lineage 两层记录已查看。主动选择 Compound 或 Lineage（含打开其 Edge 详情）后记录；后台加载和浏览整张图不批量确认所有组。Compound 包含基本信息、结构、来源图、活性及关联证据；Lineage 包含成员、成员化合物内容、Edge 及关联证据。相关内容变化使所属组已读失效，无关组不受影响；可以标记未读。只显示这两类计数，结构、Activity、Edge、Evidence 不再分别打勾。文章信息保留人工区段确认；无归属 Evidence 在证据库查看，由最终整篇确认覆盖。旧细粒度回执不自动升级为整组阅读，需要重新打开当前组。颜色仅辅助，文字为准。已查看不是科学批准，不清空“需核对”，不自动确认 Structure/Edge。无内容区段仍需明确未报告，最后须人工勾选整篇确认并提交，Admin 再审批。",
+      "en": "Viewing is recorded only for Compound and Lineage groups. Explicitly select a Compound or Lineage (including opening its Edge details); background loading or viewing the graph does not mark every group. A Compound includes its fields, structure, source images, activities and linked evidence. A Lineage includes members, their Compound content, edges and linked evidence. Related edits invalidate the affected groups; unrelated groups remain unchanged. Groups can be marked unread. Only these two counts are shown; Structures, Activities, Edges and Evidence have no separate viewing checkmarks. Article information retains its manual section confirmation. Unassigned Evidence remains in the evidence library and is covered by the final whole-paper confirmation. Historical narrow-scope receipts do not establish group viewing: reopen the current group. Text accompanies colors. Viewed is not scientific approval, never clears verification hints, and never confirms Structures or Edges. Empty sections still need an explicit not-reported disposition. Final human confirmation, submission and Admin approval remain required."
+    },
+    {
+      "title_zh": "冲突与保存",
+      "title_en": "Conflicts and saving",
+      "zh": "科学记录保存使用 Workspace 版本；发生冲突时重新读取并核对，不覆盖别人的修改。布局有独立版本，已读不增加科学版本。需要核对的记录可保持提示与草稿；不要为通过提交检查而随意确认。",
+      "en": "Scientific edits use the Workspace version; on conflict reload and reconcile instead of overwriting others. Layout has its own revision; viewing does not increment scientific versions. Keep hints and drafts when unresolved; never confirm merely to pass submission checks."
+    }
+  ],
+  "groups": [
+    {
+      "symbol": "Me",
+      "zh": "甲基",
+      "en": "Methyl",
+      "note_zh": "–CH₃；OMe 含额外的氧连接。",
+      "note_en": "–CH₃; OMe has an additional oxygen linkage."
+    },
+    {
+      "symbol": "Et",
+      "zh": "乙基",
+      "en": "Ethyl",
+      "note_zh": "–CH₂CH₃",
+      "note_en": "–CH₂CH₃"
+    },
+    {
+      "symbol": "n-Pr / i-Pr",
+      "zh": "正丙基 / 异丙基",
+      "en": "n-Propyl / isopropyl",
+      "note_zh": "–CH₂CH₂CH₃ / –CH(CH₃)₂；连接位置不同。",
+      "note_en": "–CH₂CH₂CH₃ / –CH(CH₃)₂; attachment differs."
+    },
+    {
+      "symbol": "n-Bu / i-Bu / s-Bu / t-Bu",
+      "zh": "丁基异构体",
+      "en": "Butyl isomers",
+      "note_zh": "分别为正丁基、异丁基、仲丁基、叔丁基；不能互换。",
+      "note_en": "n-Butyl, isobutyl, sec-butyl, tert-butyl; not interchangeable."
+    },
+    {
+      "symbol": "Ph",
+      "zh": "苯基",
+      "en": "Phenyl",
+      "note_zh": "–C₆H₅；直接通过芳环连接。",
+      "note_en": "–C₆H₅; attached directly through the aromatic ring."
+    },
+    {
+      "symbol": "Bn",
+      "zh": "苄基",
+      "en": "Benzyl",
+      "note_zh": "–CH₂C₆H₅；比 Ph 多一个亚甲基。",
+      "note_en": "–CH₂C₆H₅; one methylene more than Ph."
+    },
+    {
+      "symbol": "Be",
+      "zh": "铍（元素符号）",
+      "en": "Beryllium (element symbol)",
+      "note_zh": "不是标准苄基或苯基缩写；不得自动纠正为 Bn/Ph，先核对原文定义或印刷。",
+      "note_en": "Not a standard benzyl or phenyl abbreviation. Check the source definition or typography; do not silently replace with Bn/Ph."
+    },
+    {
+      "symbol": "OMe / OEt / OBn",
+      "zh": "甲氧基 / 乙氧基 / 苄氧基",
+      "en": "Methoxy / ethoxy / benzyloxy",
+      "note_zh": "通过 O 连接；不同于 Me/Et/Bn。",
+      "note_en": "Attached through O; distinct from Me/Et/Bn."
+    },
+    {
+      "symbol": "Ac",
+      "zh": "乙酰基",
+      "en": "Acetyl",
+      "note_zh": "–C(=O)CH₃；OAc 为乙酰氧基，保留连接原子。",
+      "note_en": "–C(=O)CH₃; OAc is acetoxy. Preserve the attachment atom."
+    },
+    {
+      "symbol": "Boc",
+      "zh": "叔丁氧羰基",
+      "en": "tert-Butoxycarbonyl",
+      "note_zh": "常见氨基保护基；记录结构中实际连接位置。",
+      "note_en": "Common amine protecting group; preserve the actual attachment."
+    },
+    {
+      "symbol": "Cbz / Z",
+      "zh": "苄氧羰基",
+      "en": "Benzyloxycarbonyl",
+      "note_zh": "保护基，不等于 Bn。",
+      "note_en": "Protecting group; not Bn."
+    },
+    {
+      "symbol": "Fmoc",
+      "zh": "芴甲氧羰基",
+      "en": "Fluorenylmethoxycarbonyl",
+      "note_zh": "保护基；按图核对连接。",
+      "note_en": "Protecting group; verify attachment in the drawing."
+    },
+    {
+      "symbol": "Ts / Ms / Tf",
+      "zh": "对甲苯磺酰基 / 甲磺酰基 / 三氟甲磺酰基",
+      "en": "Tosyl / mesyl / triflyl",
+      "note_zh": "与 OTs/OMs/OTf 的连接原子不同；注意盐和共价基团的区别。",
+      "note_en": "Distinguish from OTs/OMs/OTf and distinguish salts from covalent groups."
+    },
+    {
+      "symbol": "Ar / HetAr",
+      "zh": "芳基 / 杂芳基（泛指）",
+      "en": "Aryl / heteroaryl (generic)",
+      "note_zh": "不是唯一结构；结合具体定义和取代位置。",
+      "note_en": "Not a unique structure; resolve the definition and substitution positions."
+    },
+    {
+      "symbol": "R / R¹ / R²",
+      "zh": "变量基团",
+      "en": "Variable substituents",
+      "note_zh": "只有在该化合物的取代表中明确后才能展开。",
+      "note_en": "Expand only when assigned in the substituent table for that compound."
+    },
+    {
+      "symbol": "o- / m- / p-",
+      "zh": "邻位 / 间位 / 对位",
+      "en": "Ortho / meta / para",
+      "note_zh": "二取代苯环通常对应 1,2 / 1,3 / 1,4；仍核对编号体系。",
+      "note_en": "Usually 1,2 / 1,3 / 1,4 on disubstituted benzene; verify numbering."
+    }
+  ]
+}

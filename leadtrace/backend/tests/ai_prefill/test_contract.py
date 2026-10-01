@@ -165,3 +165,37 @@ def test_rejects_cross_reference_before_database_write(
 
     with pytest.raises(ValidationError, match=message):
         AiPrefillPayload.model_validate(candidate)
+
+
+def test_review_hints_round_trip_and_preserve_legacy_serialization() -> None:
+    original = complete_payload()
+    legacy = AiPrefillPayload.model_validate(original).model_dump(mode='json')
+    hinted = deepcopy(original)
+    records = [hinted['compounds'][0], hinted['activities'][0], hinted['lineages'][0]['edges'][0]]
+    for item in records:
+        item['review_hint'] = '  Source-supported candidate; verify correspondence.  '
+    payload = AiPrefillPayload.model_validate(hinted)
+    encoded = payload.model_dump(mode='json')
+    for item in [encoded['compounds'][0], encoded['activities'][0], encoded['lineages'][0]['edges'][0]]:
+        assert item.pop('review_hint') == 'Source-supported candidate; verify correspondence.'
+    assert encoded == legacy
+    for item in records:
+        item['review_hint'] = '   '
+    assert AiPrefillPayload.model_validate(hinted).model_dump(mode='json') == legacy
+    assert 'review_hint' not in legacy['compounds'][1]
+
+
+@pytest.mark.parametrize('structure', [None, {}, {'smiles': None, 'molfile': None}])
+def test_review_hint_does_not_allow_structureless_compounds(structure) -> None:
+    candidate = complete_payload()
+    candidate['compounds'][0]['review_hint'] = 'No structure found'
+    candidate['compounds'][0]['structure'] = structure
+    with pytest.raises(ValidationError):
+        AiPrefillPayload.model_validate(candidate)
+
+
+def test_review_hints_are_short() -> None:
+    candidate = complete_payload()
+    candidate['activities'][0]['review_hint'] = 'x' * 1001
+    with pytest.raises(ValidationError):
+        AiPrefillPayload.model_validate(candidate)

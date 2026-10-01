@@ -63,6 +63,7 @@ class Compound(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     compound_label: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_by_kind: Mapped[ChangeActorKind] = mapped_column(
         Enum(
@@ -76,4 +77,30 @@ class Compound(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
-__all__ = ["Compound"]
+__all__ = ["Compound", "CompoundHighlight"]
+
+
+class CompoundHighlight(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "compound_highlights"
+    __table_args__ = (
+        ForeignKeyConstraint(["compound_id", "paper_id", "workspace_id"],
+            ["compounds.id", "compounds.paper_id", "compounds.workspace_id"], ondelete="RESTRICT"),
+        ForeignKeyConstraint(["evidence_id", "paper_id", "workspace_id"],
+            ["evidence.id", "evidence.paper_id", "evidence.workspace_id"], ondelete="RESTRICT"),
+        UniqueConstraint("workspace_id", "compound_id", "role", "scope", name="uq_compound_highlights_identity"),
+        CheckConstraint("role IN ('study_start', 'paper_selected')", name="ck_highlight_role"),
+        CheckConstraint("review_status IN ('draft', 'reviewer_confirmed', 'unresolved')", name="ck_highlight_review"),
+        CheckConstraint("btrim(scope) <> '' AND btrim(rationale) <> ''", name="ck_highlight_required"),
+        CheckConstraint("created_by_kind IN ('reviewer','admin','ai','system')", name="ck_highlight_creator"),
+        Index("ix_compound_highlights_workspace", "workspace_id"),
+    )
+    paper_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    workspace_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    compound_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    evidence_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope: Mapped[str] = mapped_column(String(512), nullable=False)
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+    review_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    created_by_kind: Mapped[str] = mapped_column(String(16), nullable=False)

@@ -64,25 +64,38 @@ def check_compound_coverage(candidate: CandidateEnvelope, inventory: CompoundInv
     for compound in candidate.payload.compounds:
         by_label.setdefault(compound.compound_label.strip(), []).append(compound.ref)
     matched, missing, ambiguous, excluded = [], [], [], []
+    all_matched, all_missing, all_ambiguous = [], [], []
     known_labels = set()
     for entry in inventory.entries:
         labels = [entry.label, *entry.aliases]
         known_labels.update(labels)
         if not entry.required:
             excluded.append(entry.model_dump(mode="json"))
-            continue
         refs = [ref for label in labels for ref in by_label.get(label, [])]
         if not refs:
-            missing.append(entry.label)
+            all_missing.append(entry.label)
+            if entry.required:
+                missing.append(entry.label)
         elif len(refs) != 1:
-            ambiguous.append({"label": entry.label, "candidate_refs": refs})
+            match = {"label": entry.label, "candidate_refs": refs}
+            all_ambiguous.append(match)
+            if entry.required:
+                ambiguous.append(match)
         else:
-            matched.append({"label": entry.label, "candidate_ref": refs[0]})
+            match = {"label": entry.label, "candidate_ref": refs[0]}
+            all_matched.append(match)
+            if entry.required:
+                matched.append(match)
     return {
         "status": "incomplete" if missing or ambiguous else "complete_for_declared_scope",
         "candidate_id": candidate.candidate_id,
         "candidate_sha256": computed_hashes(candidate).candidate_sha256,
         "inventory_sha256": hashlib.sha256(canonical_json_bytes(inventory.model_dump(mode="json"))).hexdigest(),
+        # These bind normalized content, not the formatting of the input files.
+        "hash_kinds": {
+            "candidate_sha256": "canonical_candidate_content",
+            "inventory_sha256": "canonical_inventory_content",
+        },
         "scope": inventory.scope,
         "reviewed_by": inventory.reviewed_by,
         "inventory_count": len(inventory.entries),
@@ -92,7 +105,13 @@ def check_compound_coverage(candidate: CandidateEnvelope, inventory: CompoundInv
         "missing_labels": missing,
         "ambiguous_matches": ambiguous,
         "excluded_entries": excluded,
+        "all_inventory_coverage": {
+            "inventory_count": len(inventory.entries),
+            "covered_count": len(all_matched),
+            "missing_labels": all_missing,
+            "ambiguous_matches": all_ambiguous,
+        },
         "extra_candidate_labels": sorted(set(by_label) - known_labels),
         "scientific_identity_verified": False,
-        "note": "Label coverage only; inventory provenance, structures, activities and crops need independent review. Omissions never satisfy required entries.",
+        "note": "Label coverage only; inventory provenance, structures, activities and crops need independent review. Omissions never satisfy required entries. Status reflects required entries only; also report all_inventory_coverage and review every exclusion. Neither denominator proves the source inventory is exhaustive.",
     }

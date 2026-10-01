@@ -24,8 +24,8 @@ from .test_contract import complete_payload
 from .test_preview_application import make_candidate
 
 
-def _apply(context, settings):
-    parent = make_candidate(AiPrefillPayload.model_validate(complete_payload()))
+def _apply(context, settings, payload=None):
+    parent = make_candidate(AiPrefillPayload.model_validate(payload or complete_payload()))
     with context.session_factory.begin() as session:
         result = PreviewApplicationService(settings=settings).apply(
             session, instance_id=settings.preview_instance_id,
@@ -271,3 +271,50 @@ def test_export_maps_new_human_lineage_evidence_and_locator_refs(preview_ai_cont
     assert any(link.edge_ref == human_lineage.edges[0].ref and link.evidence_ref == human_evidence.ref
         and link.role == "contextual" for link in payload.edge_evidence_links)
     assert first_export.candidate.hashes.payload_sha256 == second_export.candidate.hashes.payload_sha256
+
+
+def test_export_preserves_hints_and_explicit_clearing(preview_ai_context, preview_settings):
+    from app.lineages.models import LineageEdge
+    from app.lineages.service import LineageService
+    context = preview_ai_context
+    raw = complete_payload()
+    for row in [raw['compounds'][0], raw['activities'][0], raw['lineages'][0]['edges'][0]]:
+        row['review_hint'] = 'Source-supported but pairing needs checking'
+    parent, application_id = _apply(context, preview_settings, raw)
+    with context.session_factory.begin() as session:
+        first = _export(session, parent, application_id, preview_settings)
+    assert first.candidate.payload.compounds[0].review_hint == raw['compounds'][0]['review_hint']
+    assert first.candidate.payload.activities[0].review_hint == raw['activities'][0]['review_hint']
+    assert first.candidate.payload.lineages[0].edges[0].review_hint == raw['lineages'][0]['edges'][0]['review_hint']
+    actor = Principal(context.reviewer_id, UserRole.REVIEWER)
+    with context.session_factory.begin() as session:
+        edge = session.scalar(select(LineageEdge))
+        LineageService().update_edge(session, edge_id=edge.id, expected_version=2,
+            actor=actor, updates={'review_hint': None})
+    with context.session_factory.begin() as session:
+        second = _export(session, parent, application_id, preview_settings, version=3)
+    assert second.candidate.payload.lineages[0].edges[0].review_hint is None
+    assert second.candidate.payload.compounds[0].review_hint
+    assert parent.payload.lineages[0].edges[0].review_hint
+
+
+def test_highlights_roundtrip_as_draft_with_separate_review_metadata(preview_ai_context, preview_settings):
+    from app.compounds.models import CompoundHighlight
+    from app.ai_prefill.assistance_verification import verify_application_receipt
+    from app.ai_prefill.preview_models import ApplicationReceipt
+    payload = complete_payload()
+    payload['compound_highlights'] = [{'ref':'highlight:start', 'compound_ref':payload['compounds'][0]['ref'],
+        'evidence_ref':payload['evidence'][0]['ref'], 'role':'study_start', 'scope':'Series A', 'rationale':'Synthetic author statement',
+        'review_hint':'Verify attribution'}]
+    context = preview_ai_context
+    parent, application_id = _apply(context, preview_settings, payload)
+    with context.session_factory.begin() as session:
+        row = session.scalar(select(CompoundHighlight))
+        assert row.review_status == 'draft' and row.created_by_kind == 'ai'
+        receipt = session.scalar(select(ApplicationReceipt).where(ApplicationReceipt.application_id == application_id))
+        assert verify_application_receipt(session, receipt).status == 'committed'
+        exported = _export(session, parent, application_id, preview_settings)
+        assert exported.candidate.payload.compound_highlights == parent.payload.compound_highlights
+        assert any(x.get('path') == 'compound_highlights/highlight:start' and x.get('review_status') == 'draft' for x in exported.review_metadata)
+        assert str(row.id) in exported.entity_refs
+        assert 'review_status' not in exported.candidate.payload.model_dump(mode='json')['compound_highlights'][0]

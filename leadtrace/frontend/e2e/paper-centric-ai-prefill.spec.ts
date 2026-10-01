@@ -174,6 +174,8 @@ test("AI prefill becomes ordinary Reviewer-owned records without overwrite", asy
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const method = request.method();
+    if (path.endsWith('/review-progress')) return json(route, {}, 404);
+    if (path.includes('/layouts/')) return json(route, {revision:0,mode:path.split('/').at(-1),positions:{},edge_controls:{}});
 
     if (path === "/api/v1/auth/session" && method === "GET") {
       if (!signedInAs) {
@@ -241,6 +243,14 @@ test("AI prefill becomes ordinary Reviewer-owned records without overwrite", asy
       await json(route, { workspace_id: ids.workspace, workspace_version: workspaceVersion, items: [compound], total: 1 });
       return;
     }
+    if (path === `/api/v2/workspaces/${ids.workspace}/evidence` && method === "GET") {
+      await json(route, { workspace_id: ids.workspace, workspace_version: workspaceVersion, items: [], total: 0 });
+      return;
+    }
+    if (path === `/api/v2/compounds/${ids.compound}/activities` && method === "GET") {
+      await json(route, { compound_id: ids.compound, workspace_version: workspaceVersion, items: [], total: 0 });
+      return;
+    }
     if (path === `/api/v2/compounds/${ids.compound}/structure`) {
       if (method === "GET") {
         await json(route, { structure, workspace_version: workspaceVersion });
@@ -283,6 +293,7 @@ test("AI prefill becomes ordinary Reviewer-owned records without overwrite", asy
       return;
     }
 
+    if (method === 'GET' && path.endsWith('/compound-highlights')) return json(route,{workspace_id:path.split('/').at(-2),workspace_version:workspaceVersion,items:[],total:0});
     throw new Error(`Unexpected ${method} request: ${path}`);
   });
 

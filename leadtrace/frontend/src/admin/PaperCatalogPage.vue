@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, locale } from "../i18n";
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
@@ -152,98 +153,96 @@ watch(() => route.fullPath, load, { immediate: true });
     <header class="page-heading">
       <div>
         <p class="eyebrow">ADMIN · PAPER CATALOG</p>
-        <h1>文章目录</h1>
-        <p>管理试点文章与 Source PDF 的一一映射，并将文章直接分配给 Reviewer。</p>
+        <h1>{{ t("文章目录") }}</h1>
+        <p>{{ t("管理试点文章与 Source PDF 的一一映射，并将文章直接分配给 Reviewer。") }}</p>
       </div>
-      <div v-if="payload" class="catalog-total" aria-label="目录文章数">
-        <strong>{{ payload.total }}</strong><span>篇文章</span>
+      <div v-if="payload" class="catalog-total" :aria-label="t('目录文章数')">
+        <strong>{{ payload.total }}</strong><span>{{ t("篇文章") }}</span>
       </div>
     </header>
 
     <form class="catalog-toolbar filter-toolbar" data-admin-paper-filters @submit.prevent="applySearch">
-      <label class="form-field catalog-search">
-        搜索目录
-        <input v-model="search" type="search" placeholder="标题、文章 ID、期刊或 DOI">
+      <label class="form-field catalog-search"> {{ t("搜索目录") }} <input v-model="search" type="search" :placeholder="t('标题、文章 ID、期刊或 DOI')">
       </label>
       <div class="filter-actions">
-        <button class="button-primary" type="submit">搜索</button>
-        <button class="button-secondary" type="button" @click="clearSearch">清除</button>
+        <button class="button-primary" type="submit">{{ t("搜索") }}</button>
+        <button class="button-secondary" type="button" @click="clearSearch">{{ t("清除") }}</button>
       </div>
     </form>
 
     <section v-if="state === 'loading'" class="page-state" aria-live="polite">
-      <span class="state-spinner" aria-hidden="true"></span><p>正在读取文章目录…</p>
+      <span class="state-spinner" aria-hidden="true"></span><p>{{ t("正在读取文章目录…") }}</p>
     </section>
     <section v-else-if="state === 'error'" class="page-state error" role="alert">
-      <span class="state-symbol is-error">!</span><h2>暂时无法读取文章目录</h2>
-      <p>请稍后重试。</p><small v-if="requestId">请求编号 · {{ requestId }}</small>
-      <button class="button-secondary" type="button" @click="load">重新加载</button>
+      <span class="state-symbol is-error">!</span><h2>{{ t("暂时无法读取文章目录") }}</h2>
+      <p>{{ t("请稍后重试。") }}</p><small v-if="requestId">{{ t("请求编号 ·") }} {{ requestId }}</small>
+      <button class="button-secondary" type="button" @click="load">{{ t("重新加载") }}</button>
     </section>
 
     <template v-else-if="payload">
       <div class="result-heading">
-        <strong>共 {{ payload.total }} 篇</strong>
-        <span v-if="totalPages">第 {{ currentPage }} / {{ totalPages }} 页</span>
+        <strong>{{ t("共 {count} 篇", { count: payload.total }) }}</strong>
+        <span v-if="totalPages">{{ t("第 {page} / {total} 页", { page: currentPage, total: totalPages }) }}</span>
       </div>
       <section v-if="payload.items.length" class="admin-panel table-wrap" data-paper-catalog>
         <table class="data-table catalog-table">
           <thead>
             <tr>
-              <th>文章</th><th>期刊信息</th><th>Source PDF</th><th>Reviewer</th>
-              <th>区段进度</th><th>提交状态</th><th>AI 预填</th><th><span class="sr-only">操作</span></th>
+              <th>{{ t("文章") }}</th><th>{{ t("期刊信息") }}</th><th>Source PDF</th><th>Reviewer</th>
+              <th>{{ t("区段进度") }}</th><th>{{ t("提交状态") }}</th><th>{{ t("AI 预填") }}</th><th><span class="sr-only">{{ t("操作") }}</span></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="paper in payload.items" :key="paper.id" :data-paper-id="paper.id">
-              <th scope="row" data-label="文章">
+              <th scope="row" :data-label="t('文章')">
                 <code>{{ paper.paper_key }}</code>
                 <RouterLink
                   data-paper-detail
                   :to="{ name: 'admin-paper-detail', params: { paperId: paper.id }, query: route.query }"
                 >{{ paper.title }}</RouterLink>
-                <small>{{ paper.doi || "无 DOI" }}</small>
+                <small>{{ paper.doi || t("无 DOI") }}</small>
               </th>
-              <td data-label="期刊信息">
+              <td :data-label="t('期刊信息')">
                 <strong>{{ paper.journal }}</strong>
                 <small>{{ paper.publication_year }} · Volume {{ paper.volume }} · Issue {{ paper.issue }}</small>
               </td>
               <td data-label="Source PDF">
-                <span class="status-chip" :data-status="paper.source.integrity_state">{{ sourceLabel(paper) }}</span>
-                <small>{{ paper.source.page_count }} 页</small>
+                <span class="status-chip" :data-status="paper.source.integrity_state">{{ t(sourceLabel(paper)) }}</span>
+                <small>{{ t("{count} 页", { count: paper.source.page_count }) }}</small>
               </td>
               <td data-label="Reviewer">
                 <strong v-if="paper.review">{{ paper.review.assignee_display_name }}</strong>
-                <span v-else class="muted">未分配</span>
+                <span v-else class="muted">{{ t("未分配") }}</span>
               </td>
-              <td data-label="区段进度">
+              <td :data-label="t('区段进度')">
                 <strong>{{ paper.review?.sections_resolved ?? 0 }} / {{ paper.review?.sections_total ?? 6 }}</strong>
-                <small>已处置</small>
+                <small>{{ t("已处置") }}</small>
               </td>
-              <td data-label="提交状态">
-                <span class="status-chip" :data-status="paper.review?.submission_state ?? 'not_submitted'">{{ submissionLabel(paper) }}</span>
+              <td :data-label="t('提交状态')">
+                <span class="status-chip" :data-status="paper.review?.submission_state ?? 'not_submitted'">{{ t(submissionLabel(paper)) }}</span>
               </td>
-              <td data-label="AI 预填">
+              <td :data-label="t('AI 预填')">
                 <AiPrefillStatus :paper-id="paper.id" :status="paper.ai_prefill" compact />
               </td>
-              <td class="actions table-actions" data-label="操作">
+              <td class="actions table-actions" :data-label="t('操作')">
                 <button
                   class="button-secondary compact-action"
                   data-assign
                   type="button"
                   :disabled="!canAssign(paper)"
-                  :title="sourceHealthy(paper) ? assignmentLabel(paper) : 'Source PDF 完整性异常，不能分配'"
+                  :title="t(sourceHealthy(paper) ? assignmentLabel(paper) : 'Source PDF 完整性异常，不能分配')"
                   @click="assignmentPaper = paper"
-                >{{ assignmentLabel(paper) }}</button>
+                >{{ t(assignmentLabel(paper)) }}</button>
               </td>
             </tr>
           </tbody>
         </table>
       </section>
-      <section v-else class="page-state compact"><span>0</span><h2>没有匹配的文章</h2><p>请调整搜索词后重试。</p></section>
-      <nav v-if="totalPages" class="pagination" aria-label="文章目录分页">
-        <button class="button-secondary" data-previous-page type="button" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">上一页</button>
-        <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
-        <button class="button-secondary" data-next-page type="button" :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">下一页</button>
+      <section v-else class="page-state compact"><span>0</span><h2>{{ t("没有匹配的文章") }}</h2><p>{{ t("请调整搜索词后重试。") }}</p></section>
+      <nav v-if="totalPages" class="pagination" :aria-label="t('文章目录分页')">
+        <button class="button-secondary" data-previous-page type="button" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">{{ t("上一页") }}</button>
+        <span>{{ t("第 {page} / {total} 页", { page: currentPage, total: totalPages }) }}</span>
+        <button class="button-secondary" data-next-page type="button" :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">{{ t("下一页") }}</button>
       </nav>
     </template>
 

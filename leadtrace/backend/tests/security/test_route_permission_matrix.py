@@ -306,7 +306,7 @@ def test_retired_v1_product_urls_return_not_found(
             or route.path.startswith("/api/v2/workspaces/")
         )
     ]
-    assert len(workspace_routes) == 14
+    assert len(workspace_routes) == 18
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION
@@ -319,6 +319,10 @@ def test_retired_v1_product_urls_return_not_found(
         for route in workspace_routes
     }
     assert actions == {
+        ("GET", "/api/v2/workspaces/{workspace_id}/compound-highlights"): Action.READ_DRAFT,
+        ("POST", "/api/v2/workspaces/{workspace_id}/compound-highlights"): Action.EDIT_DRAFT,
+        ("GET", "/api/v2/workspaces/{workspace_id}/review-progress"): Action.READ_DRAFT,
+        ("POST", "/api/v2/workspaces/{workspace_id}/views"): Action.EDIT_DRAFT,
         ("GET", "/api/v2/review/tasks"): Action.READ_DRAFT,
         ("GET", "/api/v2/workspaces/{workspace_id}"): Action.READ_DRAFT,
         (
@@ -427,10 +431,11 @@ def test_retired_v1_product_urls_return_not_found(
                 "/api/v2/evidence/",
                 "/api/v2/edge-evidence-links/",
                 "/api/v2/activities/",
+                "/api/v2/compound-highlights/",
             )
         )
     ]
-    assert len(science_record_routes) == 20
+    assert len(science_record_routes) == 24
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION
@@ -442,6 +447,10 @@ def test_retired_v1_product_urls_return_not_found(
         )
         for route in science_record_routes
     } == {
+        ("PATCH", "/api/v2/compound-highlights/{highlight_id}"): Action.EDIT_DRAFT,
+        ("DELETE", "/api/v2/compound-highlights/{highlight_id}"): Action.EDIT_DRAFT,
+        ("GET", "/api/v2/lineages/{lineage_id}/layouts/{mode}"): Action.READ_DRAFT,
+        ("PUT", "/api/v2/lineages/{lineage_id}/layouts/{mode}"): Action.EDIT_DRAFT,
         ("PATCH", "/api/v2/lineages/{lineage_id}"): Action.EDIT_DRAFT,
         ("DELETE", "/api/v2/lineages/{lineage_id}"): Action.EDIT_DRAFT,
         ("GET", "/api/v2/lineages/{lineage_id}/members"): Action.READ_DRAFT,

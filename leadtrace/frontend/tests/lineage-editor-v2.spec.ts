@@ -8,7 +8,7 @@ describe("Lineage editor", () => {
   beforeEach(installReviewer);
   afterEach(() => vi.unstubAllGlobals());
 
-  it("shows multiple Lineages, multiple roots and terminals, and a read-only branching graph", async () => {
+  it("shows multiple Lineages, multiple roots and terminals, and an editable branching graph", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://leadtrace.test");
       if (url.pathname.endsWith("/compounds")) return response({ workspace_id: ids.workspace, workspace_version: 1, items: compounds, total: compounds.length });
@@ -23,7 +23,7 @@ describe("Lineage editor", () => {
     expect(wrapper.findAll("[data-member-role='terminal']")).toHaveLength(2);
     expect(wrapper.get("[data-lineage-graph]").attributes("data-node-count")).toBe("4");
     expect(wrapper.get("[data-lineage-graph]").attributes("data-edge-count")).toBe("3");
-    expect(wrapper.get("[data-lineage-graph]").attributes("data-read-only")).toBe("true");
+    expect(wrapper.get("[data-lineage-graph]").attributes("data-read-only")).toBe("false");
   });
 
   it("creates a repeatable Lineage and deletes an Edge with versioned CSRF requests", async () => {

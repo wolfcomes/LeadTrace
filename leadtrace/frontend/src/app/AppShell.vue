@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, locale } from "../i18n";
 import {
   Activity,
   BookOpenText,
@@ -56,37 +57,37 @@ async function signOut(): Promise<void> {
 
 <template>
   <div class="application-shell" data-app-shell>
-    <a class="skip-link" href="#main-content">{{ zhCN.navigation.skip }}</a>
-    <aside class="sidebar" data-app-sidebar :aria-label="zhCN.brand.name">
+    <a class="skip-link" href="#main-content">{{ t(zhCN.navigation.skip) }}</a>
+    <aside class="sidebar" data-app-sidebar :aria-label="t(zhCN.brand.name)">
       <RouterLink class="brand" to="/papers" aria-label="LeadTrace">
         <span class="brand-mark" aria-hidden="true">LT<i></i></span>
         <span class="brand-copy">
-          <strong>{{ zhCN.brand.name }}</strong>
-          <small>{{ zhCN.brand.descriptor }}</small>
+          <strong>{{ t(zhCN.brand.name) }}</strong>
+          <small>{{ t(zhCN.brand.descriptor) }}</small>
         </span>
       </RouterLink>
 
-      <nav data-navigation :aria-label="zhCN.navigation.primary">
+      <nav data-navigation :aria-label="t(zhCN.navigation.primary)">
         <template v-for="section in ['published', 'review', 'admin'] as const" :key="section">
           <p v-if="visibleNavigation.some((item) => item.section === section)" class="nav-section">
-            {{ zhCN.shell.sections[section] }}
+            {{ t(zhCN.shell.sections[section]) }}
           </p>
           <RouterLink
             v-for="item in visibleNavigation.filter((entry) => entry.section === section)"
             :key="item.to"
             :to="item.to"
             class="nav-link"
-            :title="item.label"
+            :title="t(item.label)"
           >
             <component :is="item.icon" class="nav-icon" data-navigation-icon :size="16" aria-hidden="true" />
-            <span data-navigation-label>{{ item.label }}</span>
+            <span data-navigation-label>{{ t(item.label) }}</span>
           </RouterLink>
         </template>
       </nav>
 
       <div class="sidebar-footer">
         <span class="secure-dot" aria-hidden="true"></span>
-        <span>{{ zhCN.shell.protectedWorkspace }}</span>
+        <span>{{ t(zhCN.shell.protectedWorkspace) }}</span>
       </div>
     </aside>
 
@@ -94,18 +95,18 @@ async function signOut(): Promise<void> {
       <header class="topbar" data-app-topbar>
         <div class="release-state">
           <span aria-hidden="true"></span>
-          {{ zhCN.shell.publicationState }}
+          {{ t(zhCN.shell.publicationState) }}
         </div>
         <div v-if="auth.user" class="account" data-account>
           <span class="avatar" aria-hidden="true">{{ initials }}</span>
           <span class="account-copy">
             <strong>{{ auth.user.display_name }}</strong>
-            <small>{{ zhCN.roles[auth.user.role] }}</small>
+            <small>{{ t(zhCN.roles[auth.user.role]) }}</small>
           </span>
           <RouterLink class="account-action" data-change-password to="/change-password">
-            {{ zhCN.auth.changePassword }}
+            {{ t(zhCN.auth.changePassword) }}
           </RouterLink>
-          <button class="sign-out" type="button" :disabled="auth.credentialMutationInProgress" @click="signOut">{{ zhCN.auth.signOut }}</button>
+          <button class="sign-out" type="button" :disabled="auth.credentialMutationInProgress" @click="signOut">{{ t(zhCN.auth.signOut) }}</button>
         </div>
       </header>
       <div
@@ -114,13 +115,13 @@ async function signOut(): Promise<void> {
         data-session-notice
         role="alert"
       >
-        <span>{{ auth.sessionNotice }}</span>
+        <span>{{ t(auth.sessionNotice) }}</span>
         <button
           class="icon-button"
           data-dismiss-session-notice
           type="button"
-          :aria-label="zhCN.auth.dismissSessionNotice"
-          :title="zhCN.auth.dismissSessionNotice"
+          :aria-label="t(zhCN.auth.dismissSessionNotice)"
+          :title="t(zhCN.auth.dismissSessionNotice)"
           @click="auth.dismissSessionNotice"
         >
           <X :size="16" aria-hidden="true" />

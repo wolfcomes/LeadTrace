@@ -368,6 +368,7 @@ def test_paper_centric_schema_enforces_the_fixed_workflow_contract(
             column["name"] for column in schema.get_columns("papers")
         }
         assert paper_columns == {
+            "abstract", "abstract_source", "pdb_references",
             "id",
             "paper_key",
             "source_id",

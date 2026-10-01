@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { t } from "../i18n";
+import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 
 import { normalizePdfRegionBounds, type PdfRegionBounds } from "./geometry";
 import RegionOverlay, { type PdfRegion } from "./RegionOverlay.vue";
@@ -28,7 +29,8 @@ const emit = defineEmits<{
   "rotation-change": [rotation: number];
 }>();
 
-const currentPage = ref(Math.min(props.pageCount, Math.max(1, props.page ?? 1)));
+function clampPage(value: number): number { return Math.min(Math.max(1, props.pageCount), Math.max(1, Number.isFinite(value) ? Math.trunc(value) : 1)); }
+const currentPage = ref(clampPage(props.page ?? 1));
 const zoom = ref(1);
 const rotation = ref(0);
 const search = ref("");
@@ -38,7 +40,17 @@ const draft = ref<PdfRegionBounds | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
 const renderedPage = ref(false);
 const renderError = ref<string | null>(null);
-let pdfDocument: { getPage: (page: number) => Promise<any> } | null = null;
+let generation = 0;
+let loadingTask: import("pdfjs-dist").PDFDocumentLoadingTask | null = null;
+let documentUrl = "";
+let renderTask: import("pdfjs-dist").RenderTask | null = null;
+function cancelDrawing(): void { drawing.value = null; draft.value = null; }
+function disposeDocument(): void {
+  const task = loadingTask;
+  loadingTask = null;
+  documentUrl = "";
+  if (task) void task.destroy().catch(() => {});
+}
 
 const pageRegions = computed(() => props.regions.filter((region) => (
   region.pageNumber === currentPage.value
@@ -56,7 +68,7 @@ function point(event: PointerEvent): { x: number; y: number } {
 }
 
 function beginDraw(event: PointerEvent): void {
-  if (props.readOnly || !props.selectionMode) return;
+  if (props.readOnly || !props.selectionMode || !renderedPage.value || rotation.value !== 0) return;
   (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
   drawing.value = point(event);
   draft.value = { x0: drawing.value.x, y0: drawing.value.y, x1: drawing.value.x, y1: drawing.value.y };
@@ -74,7 +86,7 @@ function updateDraw(event: PointerEvent): void {
 }
 
 function finishDraw(event: PointerEvent): void {
-  if (props.readOnly || !props.selectionMode) return;
+  if (props.readOnly || !props.selectionMode || !renderedPage.value || rotation.value !== 0) return;
   if (!drawing.value || !draft.value) return;
   updateDraw(event);
   const finished = draft.value;
@@ -87,11 +99,12 @@ function finishDraw(event: PointerEvent): void {
 }
 
 function changePage(page: number): void {
-  currentPage.value = Math.min(props.pageCount, Math.max(1, page));
+  currentPage.value = clampPage(page);
   emit("page-change", currentPage.value);
 }
 
 function regionGeometry(kind: "move-region" | "resize-region", payload: RegionGeometry): void {
+  if (!renderedPage.value || props.readOnly || !props.selectionMode || rotation.value !== 0) return;
   const region = props.regions.find((item) => item.id === payload.id);
   const geometry = {
     ...payload,
@@ -114,90 +127,114 @@ function setRotation(value: number): void {
 }
 
 async function renderPdfPage(): Promise<void> {
+  const request = ++generation;
+  const url = props.pdfUrl, pageNumber = currentPage.value, scale = zoom.value;
   renderedPage.value = false;
   renderError.value = null;
+  cancelDrawing();
+  renderTask?.cancel();
+  renderTask = null;
   if (typeof window === "undefined" || !canvas.value) return;
   try {
     const pdfjs = await import("pdfjs-dist");
+    if (request !== generation) return;
     pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url,
+      "pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url,
     ).toString();
-    if (!pdfDocument) {
-      pdfDocument = await pdfjs.getDocument({ url: props.pdfUrl }).promise;
+    if (!loadingTask || documentUrl !== url) {
+      disposeDocument();
+      documentUrl = url;
+      loadingTask = pdfjs.getDocument({ url });
     }
-    const page = await pdfDocument.getPage(currentPage.value);
-    const viewport = page.getViewport({ scale: zoom.value });
-    const context = canvas.value.getContext("2d");
+    const document = await loadingTask.promise;
+    if (request !== generation) return;
+    const page = await document.getPage(pageNumber);
+    if (request !== generation) return;
+    const viewport = page.getViewport({ scale });
+    // Each request renders off screen; a cancelled task cannot paint a newer page.
+    const buffer = window.document.createElement("canvas");
+    buffer.width = Math.ceil(viewport.width);
+    buffer.height = Math.ceil(viewport.height);
+    const context = buffer.getContext("2d");
     if (!context) throw new Error("Canvas is unavailable");
-    canvas.value.width = Math.ceil(viewport.width);
-    canvas.value.height = Math.ceil(viewport.height);
-    await page.render({ canvasContext: context, viewport }).promise;
+    const task = page.render({ canvasContext: context, viewport });
+    renderTask = task;
+    await task.promise;
+    if (request !== generation || !canvas.value) return;
+    const visibleContext = canvas.value.getContext("2d");
+    if (!visibleContext) throw new Error("Canvas is unavailable");
+    canvas.value.width = buffer.width;
+    canvas.value.height = buffer.height;
+    visibleContext.drawImage(buffer, 0, 0);
+    renderTask = null;
     renderedPage.value = true;
   } catch {
-    // Keep the protected PDF URL visible as a fallback when PDF.js cannot load.
-    renderError.value = "PDF 页面暂时无法渲染";
+    if (request === generation) renderError.value = "PDF 页面暂时无法渲染";
   }
 }
 
 watch(() => props.pdfUrl, () => {
-  pdfDocument = null;
+  disposeDocument();
   void renderPdfPage();
-});
+}, { flush: "sync" });
 watch(() => props.page, (page) => {
   if (page !== undefined && page !== currentPage.value) {
-    currentPage.value = Math.min(props.pageCount, Math.max(1, page));
+    currentPage.value = clampPage(page);
   }
 });
 watch(() => props.selectedRegionId, (regionId) => {
   if (regionId) selectedId.value = regionId;
 }, { immediate: true });
-watch([currentPage, zoom], () => { void renderPdfPage(); });
+watch([currentPage, zoom], () => { void renderPdfPage(); }, { flush: "sync" });
+watch(rotation, cancelDrawing, { flush: "sync" });
+watch(() => [props.selectionMode, props.readOnly], cancelDrawing, { flush: "sync" });
+watch(() => props.pageCount, () => { currentPage.value = clampPage(currentPage.value); });
+onBeforeUnmount(() => { generation++; renderTask?.cancel(); disposeDocument(); });
 onMounted(() => { void renderPdfPage(); });
 </script>
 
 <template>
-  <section class="pdf-review-canvas" aria-label="PDF 区域核查">
+  <section class="pdf-review-canvas" :aria-label='t("PDF 区域核查")'>
     <header class="canvas-toolbar workspace-toolbar">
-      <label class="form-field">页码 <input class="form-control" aria-label="页码" type="number" :min="1" :max="pageCount" :value="currentPage" @change="changePage(Number(($event.target as HTMLInputElement).value))"></label>
+      <label class="form-field">{{ t("页码") }}<input class="form-control" :aria-label='t("页码")' type="number" :min="1" :max="pageCount" :value="currentPage" @change="changePage(Number(($event.target as HTMLInputElement).value))"></label>
       <span>/ {{ pageCount }}</span>
-      <button class="button-quiet" type="button" aria-label="上一页" :disabled="currentPage <= 1" @click="changePage(currentPage - 1)">上一页</button>
-      <button class="button-quiet" type="button" aria-label="下一页" :disabled="currentPage >= pageCount" @click="changePage(currentPage + 1)">下一页</button>
-      <label class="form-field">搜索 <input v-model="search" class="form-control" type="search" aria-label="区域搜索"></label>
-      <button class="button-quiet" type="button" aria-label="缩小" title="缩小" @click="setZoom(zoom - .1)">-</button>
-      <output aria-label="缩放">{{ Math.round(zoom * 100) }}%</output>
-      <button class="button-quiet" type="button" aria-label="放大" title="放大" @click="setZoom(zoom + .1)">+</button>
-      <button class="button-quiet" type="button" aria-label="旋转" :disabled="!allowRotation" @click="setRotation(rotation + 90)">旋转</button>
+      <button class="button-quiet" type="button" :aria-label='t("上一页")' :disabled="currentPage <= 1" @click="changePage(currentPage - 1)">{{ t("上一页") }}</button>
+      <button class="button-quiet" type="button" :aria-label='t("下一页")' :disabled="currentPage >= pageCount" @click="changePage(currentPage + 1)">{{ t("下一页") }}</button>
+      <label class="form-field">{{ t("搜索") }}<input v-model="search" class="form-control" type="search" :aria-label='t("区域搜索")'></label>
+      <button class="button-quiet" type="button" :aria-label='t("缩小")' :title='t("缩小")' @click="setZoom(zoom - .1)">-</button>
+      <output :aria-label='t("缩放")'>{{ Math.round(zoom * 100) }}%</output>
+      <button class="button-quiet" type="button" :aria-label='t("放大")' :title='t("放大")' @click="setZoom(zoom + .1)">+</button>
+      <button class="button-quiet" type="button" :aria-label='t("旋转")' :disabled="!allowRotation" @click="setRotation(rotation + 90)">{{ t("旋转") }}</button>
     </header>
-    <nav class="page-thumbnails" aria-label="页面缩略图">
-      <button v-for="page in pageCount" :key="page" type="button" :class="['button-quiet', { active: page === currentPage }]" :aria-label="`第 ${page} 页`" @click="changePage(page)">{{ page }}</button>
+    <nav class="page-thumbnails" :aria-label='t("页面缩略图")'>
+      <button v-for="page in pageCount" :key="page" type="button" :class="['button-quiet', { active: page === currentPage }]" :aria-label="t('第 {p0} 页', { p0: page })" @click="changePage(page)">{{ page }}</button>
     </nav>
     <div class="pdf-page-shell" :class="{ 'is-rendered': renderedPage }">
       <div
         class="pdf-page"
         data-pdf-page
         :data-page-number="currentPage"
-        :data-selection-mode="selectionMode ? 'true' : 'false'"
+        :data-selection-mode="selectionMode && renderedPage && rotation === 0 ? 'true' : 'false'"
         :style="{ transform: `rotate(${rotation}deg)` }"
         @pointerdown="beginDraw"
         @pointermove="updateDraw"
         @pointerup="finishDraw"
-        @pointercancel="finishDraw"
+        @pointercancel="cancelDrawing"
       >
-        <canvas ref="canvas" data-pdf-canvas aria-label="PDF 页面"></canvas>
+        <canvas ref="canvas" data-pdf-canvas :aria-label='t("PDF 页面")'></canvas>
         <iframe
           v-if="!renderedPage"
           class="pdf-fallback"
           :src="`${pdfUrl}#page=${currentPage}`"
-          title="PDF 页面"
+          :title='t("PDF 页面")'
         ></iframe>
-        <p v-if="renderError" class="render-error">{{ renderError }}</p>
+        <p v-if="renderError" class="render-error">{{ t(renderError) }}</p>
         <RegionOverlay
-          v-for="region in pageRegions"
+          v-for="region in (renderedPage ? pageRegions : [])"
           :key="region.id"
           :region="region"
           :selected="(selectedRegionId ?? selectedId) === region.id"
-          :read-only="readOnly || !selectionMode"
+          :read-only="readOnly || !selectionMode || rotation !== 0"
           @select="(id) => { selectedId = id; emit('select', id); }"
           @duplicate="(id) => emit('duplicate', id)"
           @move="regionGeometry('move-region', $event)"
@@ -216,8 +253,8 @@ onMounted(() => { void renderPdfPage(); });
 .page-thumbnails { display: flex; gap: 6px; overflow-x: auto; }
 .page-thumbnails button.active { border-color: var(--teal); color: white; background: var(--teal); }
 .pdf-page-shell { width: 800px; max-width: 100%; transform-origin: top left; }
-.pdf-page { position: relative; width: 800px; max-width: 100%; min-height: 400px; border: 1px solid var(--line-strong); background-color: var(--surface); touch-action: none; overflow: hidden; }
-.pdf-page canvas { display: block; width: 100%; height: auto; min-height: 400px; object-fit: contain; }
+.pdf-page { position: relative; width: 800px; max-width: 100%; outline: 1px solid var(--line-strong); background-color: var(--surface); touch-action: none; overflow: hidden; }
+.pdf-page canvas { display: block; width: 100%; height: auto;  }
 .pdf-fallback { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--surface); }
 .render-error { position: absolute; inset: 12px auto auto 12px; margin: 0; padding: 5px 8px; color: var(--amber-deep); background: color-mix(in srgb, var(--amber-pale) 92%, transparent); font-size: 12px; }
 .draft-region { position: absolute; border: 2px dashed var(--coral-deep); background: color-mix(in srgb, var(--coral) 12%, transparent); pointer-events: none; }

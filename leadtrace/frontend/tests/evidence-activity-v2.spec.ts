@@ -183,6 +183,8 @@ describe("Evidence and Activity editor", () => {
 
   it("edits AI-prefilled Evidence and Activity records in place", async () => {
     let currentVersion = 1;
+    let currentEvidence = { ...evidence };
+    const currentActivities = activities.map((item) => ({ ...item }));
     const calls: Array<{ url: URL; init?: RequestInit }> = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://leadtrace.test");
@@ -192,9 +194,10 @@ describe("Evidence and Activity editor", () => {
       if (url.pathname === `/api/v2/evidence/${ids.evidence[0]}` && init?.method === "PATCH") {
         currentVersion += 1;
         const body = JSON.parse(String(init.body));
-        return response({ evidence: { ...evidence, quoted_text: body.quoted_text }, workspace_version: currentVersion });
+        currentEvidence = { ...currentEvidence, quoted_text: body.quoted_text };
+        return response({ evidence: currentEvidence, workspace_version: currentVersion });
       }
-      if (url.pathname.endsWith("/evidence")) return response({ workspace_id: ids.workspace, workspace_version: currentVersion, items: [evidence], total: 1 });
+      if (url.pathname.endsWith("/evidence")) return response({ workspace_id: ids.workspace, workspace_version: currentVersion, items: [currentEvidence], total: 1 });
       if (url.pathname.includes("/evidence-links")) {
         const edgeId = url.pathname.split("/")[4];
         const items = links.filter((link) => link.edge_id === edgeId);
@@ -204,11 +207,12 @@ describe("Evidence and Activity editor", () => {
       if (url.pathname === `/api/v2/activities/${ids.activities[0]}` && init?.method === "PATCH") {
         currentVersion += 1;
         const body = JSON.parse(String(init.body));
-        return response({ activity: { ...activities[0], value: body.value }, workspace_version: currentVersion });
+        currentActivities[0]!.value = body.value;
+        return response({ activity: currentActivities[0], workspace_version: currentVersion });
       }
       if (url.pathname.endsWith("/activities")) {
         const compoundId = url.pathname.split("/")[4];
-        const items = compoundId === ids.compounds[0] ? activities : [];
+        const items = compoundId === ids.compounds[0] ? currentActivities : [];
         return response({ compound_id: compoundId, workspace_version: currentVersion, items, total: items.length });
       }
       throw new Error(`Unexpected request: ${url.pathname}`);

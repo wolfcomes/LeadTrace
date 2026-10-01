@@ -106,6 +106,13 @@ class SubmissionService:
         context.task.status = ReviewTaskState.SUBMITTED
         context.task.version += 1
         snapshot = build_paper_snapshot(session, workspace_id)
+        from app.workspaces.review_progress import get_progress
+        progress = get_progress(session, workspace_id, reviewer_id)
+        if progress['tracking_started']:
+            snapshot['review_progress'] = progress
+            for section in snapshot['sections']:
+                if section['state'] == 'pending' and any(x['section_key'] == section['section_key'] and x['complete'] for x in progress['sections']):
+                    section['state'] = 'completed'
         content_hash = canonical_snapshot_hash(snapshot)
         submission = PaperSubmission(
             paper_id=context.workspace.paper_id,

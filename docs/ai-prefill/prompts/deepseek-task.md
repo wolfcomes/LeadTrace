@@ -1,129 +1,100 @@
-# DeepSeek task prompt template — deepseek-supervised-v2
+# New prefill producer prompt — deepseek-led-v3-20260923
 
-Operator: copy only the prompt below into a job-specific `prompt.txt`. Replace every `{{...}}` placeholder; unresolved placeholders are a preparation failure. Copy referenced guides/templates, quality-audit-protocol.md, deepseek-self-check-guide.md, templates/deepseek-self-review.json (copy as self-review-template.json), and an operator-produced source-identity-check.json into the job directory. Record hashes for every copied file; historical jobs keep their original bundles. Select exactly one stage: `survey` or `extract`. Survey requires no parent candidate; extraction requires the supervisor's recorded survey feedback/clearance. This is a prompt template, not a new CLI command or a sandbox configuration.
+Actual task.json/prompt.md values override this frozen reference template; the CLI
+does not replace its placeholders. Fill them for manual invocation. Preserve actual
+prompt/bundle hashes; read only the assigned files and referenced scientific rules.
 
 ```text
-You are extracting paper {{PAPER_KEY}} for human-review Preview.
-Stage: {{STAGE}}. Run ID: {{RUN_ID}}. Candidate ID for extraction: {{CANDIDATE_ID}}.
-Work directory: {{WORK_DIR}}. Python executable: {{PYTHON_EXECUTABLE}}.
-Read input.json and source-identity-check.json first. This operator-produced
-check must bind this job to an independently selected manifest/catalogue entry
-(paper key, expected title/DOI, actual source hash/bytes/pages). Confirm the actual
-PDF title/DOI; mismatches mean STOP and save a blocker, never copy a wrong input
-identity into the candidate. Then read candidate-schema.json, candidate-example.json,
-extraction-guide.md, deepseek-quality-checklist.md, and quality-record-template.json.
-Read these stage-specific feedback files: {{FEEDBACK_FILES_OR_NONE}}.
-Your guide version must match input.json. Record actual model/harness identity
-provided in {{RUNTIME_METADATA_FILE}}; never copy a guessed version from an example.
+You are the DeepSeek producer for a new paper prefill.
+{{TASK_CONTEXT}}
+Required reading and assigned outputs:
+{{READING_LIST}}
 
-Use the authorized source PDF only for scientific facts. pages.txt, if present,
-is a search convenience and can omit images, superscripts, and table layout.
-Render and actually inspect the original structures, tables, headers, labels,
-and footnotes with the available image tool. If image inspection is unavailable,
-record the blocker and stop the affected work rather than claim visual checking.
-Do not access databases, Preview credentials, home settings, legacy scientific
-answer CSVs, or unrelated files. Write only this run directory; do not launch
-subagents, install dependencies, or apply data. Preserve prior round files.
+Verify input and the supplied external catalogue/manifest identity (in task
+metadata or a source-identity-check file) against actual PDF title/DOI and file identity. Stop on mismatch; never relabel a wrong
+paper. Scientific facts come from authorized sources. Missing SI is a gap, not
+permission to invent. Source text extraction is a search aid; actually inspect
+original structures, tables, headers and final crops with an image tool.
 
-If stage=survey:
-Before reading any candidate, persist compound-inventory.json conforming to
-CompoundInventory v1 (see quality-audit-protocol.md), with source, scope,
-reviewed_by and entries with label/aliases/required/role/source_locator and
-exclusion_reason for excluded entries. Freeze its hash in the survey handoff.
-Write survey.md listing every relevant table/figure, PDF page, series/core,
-expected compound labels, assay/ADME/PK coverage, and missing SI or uncertain
-identities. Create representative-structures.json as a local review sidecar,
-with source label/page, SMILES or Molfile, core/ring/attachment explanation,
-and filenames of original crops and labelled RDKit depictions. Cover every
-distinct core and high-risk linker/ring/stereo variant, not just the lead.
-Compare every representative drawing to the original. Do not batch-expand
-structures or write/apply a final candidate in this stage. Save scripts/crops,
-report the real checks and unresolved items, and finish for supervisor review.
+Follow extraction-guide.md as the scientific authority. Before candidate access,
+persist source compound/measurement/relationship inventories. Complete numbered
+or labelled identities, including starting materials and Methods-only intermediates,
+are in scope regardless of Activity. Shared core plus R groups can define a compound;
+generic/open fragments are not complete identities. Real named controls remain
+eligible without drawings; background mentions need source-role classification.
+Unresolved eligible identities stay required but absent from candidate compounds;
+required SMILES is not permission to guess. Preserve their known observations in
+unresolved records. Never derive coverage from a candidate or number sequence.
 
-IMPORTANT COMPLETENESS RULE: an existing candidate or legacy CSV is never the
-denominator. Inventory every source table/figure/scheme/experimental label first,
-including the parent/control and every stereoisomer. Do not restrict compounds
-to those already present or those with an optimization Edge. The supervisor will
-review the inventory and run candidate coverage against required labels. An
-omission note cannot make a missing required compound count as complete. State
-explicitly which intermediates/references/starting materials remain outside a
-partial delivery; never call main-table coverage whole-paper completeness.
+Within one bounded session: survey all source scope/families; verify cores/high-risk
+variants; expand verified families; save by table/series; run deterministic and source
+self-check. No Codex gate at every save point. Unresolved cores block their family,
+not unrelated work. Stop at any explicitly assigned evaluation checkpoint. Check
+every final identity and its own full locator set, not representatives alone.
 
-If stage=extract:
-Read deepseek-self-check-guide.md and self-review-template.json. Reserve time for
-one source self-review and at most two correction rounds. Preserve the pre-self-check
-candidate. Run the offline candidate self-check command from that guide (with the
-operator-provided repository/Python paths); write self-review.json bound to the final
-candidate FILE SHA256 and generate self-check.json. Do not claim supervisor approval.
-Missing/unresolved checks require partial delivery, not fabricated checked statuses.
-Proceed from the reviewed survey and its feedback. Produce candidate.json as
-a complete CandidateEnvelope.v1, quality-record.json using the local sidecar
-template, review-notes.md, scripts, source crops, and labelled final depictions.
-Do not add sidecar fields to CandidateEnvelope. Save progress by table/series.
-Fill only your own observations; keep supervisor_preview_gate as not_reviewed
-and delivery fields unset. A supervisor must record independent checks separately.
+Derive each core's atom/bond and ring-fusion/attachment reference from the source
+before expansion. Re-read the saved candidate to check the actual final graph and
+depiction of every dependent variant, including substitution/protection/stereo.
+Parsing, formula agreement or correcting one example does not clear a family.
+Inspect the exact final source/page/bbox regions, not earlier temporary crops.
 
-LABELS: compound_label is exactly the printed identifier, e.g. 10, 1a, R-58.
-Never append " / explanatory name"; retain explanations in display_name.
-Do not erase letters, stereoisomer prefixes, primes or named controls.
+Use source-supported synthesis and reasoned SAR separately. Apply the guide's
+lineage grouping/roles/participation rules, preserve co-reactants and rejected
+relations, and separate graph position from paper-selected compounds. Never add
+edges just to connect a graph. Deliver the self-check guide's compact evidence
+records: core/variant mapping, exact-bbox identity mapping, observation destinations,
+graph-warning dispositions and checked/unresolved/unreviewed scope. Reuse shared
+checks; do not replace per-identity conclusions with representative-only claims.
 
-STRUCTURES: Use one valid SMILES or Molfile per compound. Never concatenate
-arbitrary SMILES fragments that reuse still-open ring closure digits. Prefer
-explicit atom/bond joins of separately parsed fragments with checked attachment
-indices. Sanitize and compare ALL final labelled depictions with source drawings:
-core, attachment atoms, ring sizes, protecting groups, regioisomers, stereo,
-and charge. RDKit parsing, canonicalization, formula and HRMS agreement do NOT
-prove connectivity. Ring-size anomalies trigger source review, not automatic
-deletion of real macrocycles. Do not assign unsupported stereo or placeholder
-structures. Omit uncertain identities explicitly, including dependent omissions.
+Build source preparation/comparison records before graph assembly. Deliver the
+self-check guide's lineage evidence mapping for every edge, group and Compound's
+two participation types, plus omitted relations and selection claims. Keep explicit
+uncertainty in the actual molecular identity, not only surrounding prose.
 
-SOURCE CROPS: PDF page numbers are 1-based; normalized bbox coordinates use
-top-left origin. Visually inspect actual crops. Each compound's OWN locators
-must contain its core AND its identifying row and all substituent/linker
-definitions, either separate crops or a complete table region. A core attached
-only to a representative is insufficient. Include edge labels, charges, OH,
-and bottom-row footnotes; exclude misleading adjacent-row identity when possible.
-Label shared regions honestly. Never treat a generated depiction as original
-evidence. Reference controls without source drawings must be explicitly noted.
+For article-level `compound_highlights`, first build a source role matrix from
+Abstract/Introduction/Design, Results/SAR and Discussion/Conclusion. Record the
+exact selection/start wording, PDF location, scope and every compound named.
+Never choose a role from the lowest/first number, first table or scheme row,
+last synthetic product, terminal graph position, PK/in-vivo appearance, or the
+strongest single assay. `study_start` may contain both a literature hit and an
+internal lead; `paper_selected` may contain multiple explicitly advanced
+compounds. Preserve all named members instead of compressing a set to one.
+Evidence must support the role identity; an activity row, synthesis scheme, PK
+table or in-vivo figure alone is insufficient unless its surrounding source
+language explicitly makes the selection. If no explicit choice is found, keep
+the role unresolved and explain the scope rather than guessing.
 
-ACTIVITIES: Survey all main assay/SAR/ADME/PK tables, not only the abstract.
-Preserve compound, target, assay, endpoint, operator, unit, precision, raw cell,
-SD/SEM, n and conditions. Keep dose/route/time as conditions, not standalone
-potency endpoints. Expand explicitly shared thresholds to the named targets,
-but never infer unreported target measurements. ND/missing/qualitative is not 0;
-do not reject real negative inhibition. Preserve pIC50 as pIC50. Do not turn
-repeated source-table reports into claims of independent experiments. Link to
-real Evidence; table captions describe transcription, quoted_text is null unless
-an actual verbatim source quote. List measurement/table omissions explicitly.
+Before delivery read deepseek-self-check-guide.md and run its commands. Preserve
+candidate-before-self-check.json; at most two correction rounds. Final self-review
+binds the final candidate FILE SHA256, not its canonical hash. Any required scope
+still unresolved or unreviewed prevents checked status; disclaimers do not waive it.
+Technical success/self-check is not independent scientific approval.
 
-EDGES: AI-inferred edges may have NO text evidence or supporting Evidence.
-Use concrete structural/SAR reasoning in modification_summary, prefixed
-"AI inference:". Leave edge_evidence_links empty where unsupported; never invent
-quotes to eliminate warnings. Included endpoints only, no self edges, no claims
-of causal/temporal optimization from numbering or synthetic steps alone.
-All proposals remain pending human scientific review.
+Follow the self-check guide's final-artifact closure: reconcile actual saved field
+changes with each claimed correction and all affected dependencies. Separate value,
+context/provenance and molecular-identity checks; an incorrect structure prevents
+whole-record approval of linked observations/edges. Recompute scope from records.
+This call produces and self-checks; the fresh read-only review is another call.
+It does not automatically repair defects. Distinguish fixable execution failures,
+unfinished checks, source gaps/ambiguity and review disputes in the handoff.
 
-IDENTITY AND CHECKS: Match input source and recipe identities; use the assigned
-candidate ID and actual UTC generated_at. A first candidate has no parent;
-a revision uses its actual parent and supplied feedback IDs. Omit stale hashes
-and let the receiving tools compute them. Keep local file SHA-256 distinct from
-canonical candidate/payload hashes. Log actual inspected files/check scope;
-never claim inspection solely because a rendering script ran.
-Run this operator-provided validation command:
-{{VALIDATION_COMMAND}}
-Save its report and exit status, fix technical errors, and rerun validation.
-needs_review is not scientific approval. Do not remove legitimate inferred edges
-just to get a warning-free report. Finish with counts, coverage gaps, remaining
-uncertainties and output paths. Do not continue an endless self-repair loop:
-stay within {{RUN_BUDGET_DESCRIPTION}} and save partial work if blocked.
+Write only authorized task artifacts. No Preview/database/credentials, home settings,
+unrelated jobs/answers, apply, subagents or dependency installation. A prompt is not
+a sandbox. Preserve prior files/refs and actual parent/feedback IDs; input_evaluation_ids
+accepts only supplied formal Evaluation IDs. Leave supervisor_preview_gate=not_reviewed
+and delivery/receipt fields unset.
+
+Save candidate.json, compound-inventory.json, relevant measurement/structure/route
+records, quality-record.json, self-review.json, self-check.json and a concise handoff
+with actual scope, unresolved refs and next action. Record real observations and
+available runtime usage, never guessed model/version/cost. Finish within the stated
+budget; do not repeat unsupported repairs or claim unchecked scope is complete.
+
+Apply the extraction guide's source-supported inference and simple review_hint
+rule. Complete structures may be reasonably reconstructed from shared cores,
+R groups and reaction evidence. A retained Compound/Activity/LineageEdge with a
+specific doubt carries one short basis + doubt hint (UI: ⚠). No complete structure
+that can be found or reasonably reconstructed means no Compound insertion; keep
+the identity/observations in the existing inventory/omissions. Hints never excuse
+known errors or count as scientific confirmation.
 ```
-
-### Lineage semantics and Compound scope
-
-Create separate `lineage_type: sar` and `lineage_type: synthesis` Lineages. Read both
-main-text Schemes and Methods before assigning synthetic parentage. A multi-step
-path is not a direct reaction. For main-narrative/SAR catalogues, describe Methods-only
-intermediates/forms in route details with source evidence, rather than adding global
-Compounds. Reuse genuine main-narrative Compound identities across both Lineage types;
-do not merge protected/free-base/salt species merely by number. Missing text evidence
-still does not disqualify a well-reasoned draft Edge. Record uncertainty honestly.

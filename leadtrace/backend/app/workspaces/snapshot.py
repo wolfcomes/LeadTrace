@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.activities.models import Activity
 from app.catalog.models import PaperSource
-from app.compounds.models import Compound
+from app.compounds.models import Compound, CompoundHighlight
 from app.evidence.models import EdgeEvidenceLink, Evidence
 from app.lineages.models import Lineage, LineageEdge, LineageMember, LineageType
 from app.papers.models import Paper
@@ -36,7 +36,15 @@ def _value(value: Any) -> Any:
 
 
 def _row(row: Any, fields: tuple[str, ...]) -> dict[str, Any]:
-    return {field: _value(getattr(row, field)) for field in fields}
+    data = {field: _value(getattr(row, field)) for field in fields}
+    if isinstance(row, (Compound, Activity, LineageEdge)) and row.review_hint:
+        data["review_hint"] = row.review_hint
+    if isinstance(row, Paper):
+        for field in ('abstract', 'abstract_source', 'pdb_references'):
+            value = getattr(row, field)
+            if value:
+                data[field] = _value(value)
+    return data
 
 
 def build_paper_snapshot(session: Session, workspace_id: UUID) -> dict[str, Any]:
@@ -123,7 +131,12 @@ def build_paper_snapshot(session: Session, workspace_id: UUID) -> dict[str, Any]
         )
     )
 
+    highlights = list(session.scalars(select(CompoundHighlight).where(
+        CompoundHighlight.workspace_id == workspace_id).order_by(CompoundHighlight.id)))
+    highlight_fields = ("id", "paper_id", "workspace_id", "compound_id", "evidence_id", "role", "scope",
+                        "rationale", "review_hint", "review_status", "created_by_kind")
     return {
+        **({"compound_highlights": [_row(row, highlight_fields) for row in highlights]} if highlights else {}),
         "schema_version": 1,
         "paper": _row(
             paper,

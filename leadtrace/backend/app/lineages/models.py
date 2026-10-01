@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
     CheckConstraint,
+    DateTime,
+    func,
     Enum,
     ForeignKey,
     ForeignKeyConstraint,
@@ -14,7 +17,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
+from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -264,6 +267,7 @@ class LineageEdge(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     relation_type: Mapped[str] = mapped_column(String(128), nullable=False)
     modification_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
     review_status: Mapped[LineageEdgeReviewStatus] = mapped_column(
         Enum(
             LineageEdgeReviewStatus,
@@ -296,3 +300,16 @@ __all__ = [
     "LineageMember",
     "LineageMemberRole",
 ]
+
+
+class LineagePresentation(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = 'lineage_presentations'
+    __table_args__ = (UniqueConstraint('lineage_id', 'mode', name='uq_lineage_presentation_mode'),)
+    workspace_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey('paper_workspaces.id', ondelete='CASCADE'), nullable=False)
+    lineage_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey('lineages.id', ondelete='CASCADE'), nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    positions: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    edge_controls: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    updated_by_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

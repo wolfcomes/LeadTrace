@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, locale } from "../i18n";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { ApiError } from "../api/client";
@@ -29,6 +30,7 @@ const auth = useAuthStore();
 const current = ref<AiPrefillStatus>(props.status);
 const busy = ref(false);
 const errorMessage = ref<string>();
+const errorRequestId = ref<string>();
 let pollAttempts = 0;
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -92,10 +94,12 @@ async function start(): Promise<void> {
         can_start: false,
         blocked_reason: "Workspace has already been modified",
       };
-      errorMessage.value = `Workspace 已发生变化，AI 预填未启动。${error.requestId ? `请求编号 · ${error.requestId}` : ""}`;
+      errorMessage.value = "Workspace 已发生变化，AI 预填未启动。";
+      errorRequestId.value = error.requestId;
     } else {
       const requestId = error instanceof ApiError ? error.requestId : undefined;
-      errorMessage.value = `暂时无法启动 AI 预填。${requestId ? `请求编号 · ${requestId}` : ""}`;
+      errorMessage.value = "暂时无法启动 AI 预填。";
+      errorRequestId.value = requestId;
     }
   } finally {
     busy.value = false;
@@ -115,7 +119,7 @@ onBeforeUnmount(stopPolling);
 <template>
   <div :class="['ai-prefill-status', { compact }]" data-ai-prefill-status>
     <span class="status-chip" :data-status="runStatus ?? (current.can_start ? 'ready' : 'unavailable')">
-      {{ statusLabel }}
+      {{ t(statusLabel) }}
     </span>
     <small v-if="!compact && current.run">{{ current.run.engine }} · {{ current.run.engine_version }}</small>
     <small v-if="!compact && current.blocked_reason">{{ current.blocked_reason }}</small>
@@ -125,11 +129,11 @@ onBeforeUnmount(stopPolling);
       data-ai-prefill-start
       type="button"
       :disabled="busy || !current.can_start"
-      :title="current.blocked_reason ?? actionLabel"
+      :title="current.blocked_reason ?? t(actionLabel)"
       @click="start"
-    >{{ actionLabel }}</button>
+    >{{ t(actionLabel) }}</button>
     <p v-if="errorMessage" class="inline-feedback is-error" data-ai-prefill-error role="alert">
-      {{ errorMessage }}
+      {{ t(errorMessage) }} <small v-if="errorRequestId">{{ t("请求编号：{requestId}", { requestId: errorRequestId }) }}</small>
     </p>
   </div>
 </template>

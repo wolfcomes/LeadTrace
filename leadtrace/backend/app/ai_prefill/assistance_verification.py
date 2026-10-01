@@ -15,7 +15,7 @@ from app.ai_prefill.assistance_contracts import (
 from app.ai_prefill.assistance_validation import validate_candidate
 from app.ai_prefill.models import AiExtractionRun, AiExtractionRunStatus
 from app.activities.models import Activity
-from app.compounds.models import Compound
+from app.compounds.models import Compound, CompoundHighlight
 from app.evidence.models import EdgeEvidenceLink, Evidence
 from app.lineages.models import Lineage, LineageEdge, LineageMember
 from app.structure_images.models import StructureSourceImage
@@ -42,6 +42,7 @@ class ReceiptVerification:
 
 _ENTITY_MODELS: tuple[tuple[str, type[object]], ...] = (
     ("/compounds/", Compound),
+    ("/compound_highlights/", CompoundHighlight),
     ("/structure_locators/", StructureSourceImage),
     ("/lineages/", Lineage),
     ("/evidence/", Evidence),

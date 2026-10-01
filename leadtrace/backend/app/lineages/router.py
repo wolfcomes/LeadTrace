@@ -77,6 +77,7 @@ def _edge_response(row: LineageEdge) -> LineageEdgeResponse:
         child_compound_id=row.child_compound_id,
         relation_type=row.relation_type,
         modification_summary=row.modification_summary,
+        review_hint=row.review_hint,
         review_status=row.review_status,
         sort_order=row.sort_order,
     )
@@ -517,6 +518,7 @@ def create_lineages_router(settings: Settings) -> APIRouter:
                     child_compound_id=payload.child_compound_id,
                     relation_type=payload.relation_type,
                     modification_summary=payload.modification_summary,
+                    review_hint=payload.review_hint,
                     review_status=payload.review_status,
                 )
                 return LineageEdgeMutationResponse(

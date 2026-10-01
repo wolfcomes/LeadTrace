@@ -63,6 +63,7 @@ def activity_snapshot(row: Activity) -> dict[str, object]:
         "value": str(row.value),
         "unit": row.unit,
         "context": row.context,
+        "review_hint": row.review_hint,
         "sort_order": row.sort_order,
         "created_by_kind": row.created_by_kind.value,
     }
@@ -127,6 +128,7 @@ class ActivityService:
         value: Decimal,
         unit: str | None,
         context_value: str | None,
+        review_hint: str | None = None,
     ) -> ActivityMutation:
         workspace_id = self._workspace_id_for(session, Compound, compound_id)
         created: dict[str, Activity] = {}
@@ -161,6 +163,7 @@ class ActivityService:
                 value=value,
                 unit=_clean_optional(unit),
                 context=_clean_optional(context_value),
+                review_hint=_clean_optional(review_hint),
                 sort_order=int(maximum if maximum is not None else -1) + 1,
             )
             session.add(row)
@@ -225,6 +228,8 @@ class ActivityService:
                 row.unit = _clean_optional(updates["unit"])  # type: ignore[arg-type]
             if "context" in updates:
                 row.context = _clean_optional(updates["context"])  # type: ignore[arg-type]
+            if "review_hint" in updates:
+                row.review_hint = _clean_optional(updates["review_hint"])  # type: ignore[arg-type]
             changed["value"] = row
             return MutationChange(
                 "activity",

@@ -1,61 +1,70 @@
-# DeepSeek revision prompt and feedback template
+# Existing candidate self-check / repair prompt — deepseek-led-v3-20260923
 
-版本 `deepseek-supervised-v2`。以下为离线指导格式，不宣称符合正式 Evaluation schema。反馈 ID 可以随实际输入记录进入候选来源链；对工作区的正式 Evaluation 应由模块绑定真实快照生成。
-
-监督者先填写以下反馈正文，再将末尾提示词交给 harness：
-
-```text
-Feedback ID: {{FEEDBACK_ID}}
-Parent candidate ID: {{PARENT_CANDIDATE_ID}}
-Parent file SHA-256: {{PARENT_FILE_SHA256}}
-Source PDF SHA-256: {{SOURCE_SHA256}}
-Decision: needs_revision
-Reviewer identity/type: {{ACTUAL_REVIEWER_AND_AI_OR_HUMAN}}
-
-Issue: {{CHECK_LABEL}}
-Observed: {{CONCRETE_ACTUAL_DEFECT}}
-Entities and scope: {{REFS_AND_ENTIRE_SERIES_OR_TABLE_AFFECTED}}
-Source: {{PDF_PAGE_TABLE_ROW_AND_LOCAL_CROP}}
-Required correction: {{WHAT_MUST_CHANGE}}
-Verification evidence: {{SOURCE_COMPARISON_AND_OUTPUTS_REQUIRED}}
-Preserve: {{UNAFFECTED_SECTIONS}}
-Uncertainty: {{UNRESOLVED_SOURCE_CONFLICT_OR_NONE}}
-
-Repeat the issue block for additional issues. Do not include guessed source
-answers. If the reviewer and candidate disagree, re-open the original source.
-```
-
-可复用修订提示词：
+Prepare a new job with the current candidate, frozen inventory, compact handoff and
+feedback: parent/source hashes, issue ID, affected refs/dependencies, observed defect,
+source position, required checks, protected edits and uncertainty. Do not guess source
+answers or formal Evaluation/application/snapshot IDs. Actual task.json/prompt.md
+override this unchanged reference template; fill placeholders for manual invocation.
 
 ```text
-Revise {{PARENT_CANDIDATE_PATH}} into a NEW candidate at {{NEW_OUTPUT_PATH}},
-ID {{NEW_CANDIDATE_ID}}, following input.json and {{FEEDBACK_PATH}}.
-Check the parent file SHA-256 and source identity before editing, including the
-external manifest/catalogue mapping and actual source byte size. A source
-identity mismatch is not repaired by renaming a candidate or changing only its
-DOI. Stop for corrected inputs. For label-only repairs, assert every other payload
-field and every ref/ordering is unchanged and rerun compound coverage. Read the
-same extraction guide and quality checklist as the parent plus supplied changes.
-Preserve the parent and all previous reports. Use the actual parent_candidate_id
-and supplied input_evaluation_ids; do not fabricate application/snapshot IDs.
+You are the DeepSeek producer checking/repairing an existing candidate.
+{{TASK_CONTEXT}}
+Required reading and assigned outputs:
+{{READING_LIST}}
 
-Address every feedback item and inspect the full affected series/table. An
-example of one bad graph does not mean only that graph needs repair. For ring
-closure collisions, rebuild correct connectivity and compare original drawings;
-canonicalization or formula agreement is not a fix. For crop corrections,
-inspect each actual final PNG and every affected compound's own source set.
+Verify current parent/source identity. Read inventory, handoff, feedback, the
+self-check guide and affected extraction-guide sections, not the whole report chain.
+A candidate is not the coverage denominator. Prior session metadata is provenance;
+a new headless invocation is neither native resume nor independent review.
 
-Keep unaffected scientific sections unchanged unless source inspection reveals
-another concrete error; report any additional change and its evidence. If a
-host reference value conflicts, zoom the PDF and resolve it rather than copy
-the feedback blindly. Do not manufacture missing source data or Evidence.
+Freeze the proposed changes and their dependency scope. Check deterministic reports
+first, then inspect the relevant original source. Expand a common defect to the
+whole affected family/table/crop, not the whole paper by default. Reuse an earlier
+source check only when its actual source/content/dependency hashes and scope remain
+applicable, naming that evidence. Tooling does not automatically prove inheritance.
+Unchanged unreviewed scope remains unresolved; do not mark whole-paper checks passed
+because a local repair succeeded. New/missing source scope requires inventory work.
 
-Deliver the new complete candidate, updated quality-record.json/review-notes.md,
-and change-log.md mapping each feedback ID/issue to changed refs, source evidence,
-real checks and unresolved items. Include before/after graph checks where needed.
-Reset supervisor_preview_gate to not_reviewed for the new candidate; do not copy
-the parent's clearance or fill in supervisor checks or delivery receipts yourself.
-Run {{VALIDATION_COMMAND}} and save the result. The supervisor will compare
-parent and child independently. Finish within {{RUN_BUDGET_DESCRIPTION}};
-if unresolved, preserve work and explain the exact remaining blocker.
+Preserve unaffected records, refs, evidence and human edits. Workspace drift requires
+reconciliation, never a reset or replacement with the original prefill. A recorded
+version is not a live check. Additional scientific changes need observed defects and
+source evidence; recheck disagreements rather than copying feedback blindly.
+
+Apply current Compound scope and lineage rules. New complete precursors belong in
+Compound even without Activity; generic/open fragments do not become guessed
+molecules. Review edges after coverage changes. After edge moves/deletions, recheck
+group scope, members, roles and per-type participation. Preserve multi-substrate
+context, comparisons' limits, paper selection evidence and rejected relations.
+For crop changes inspect final crops and every dependent compound's locator set.
+Pure organization changes are not fresh verification of all scientific content.
+
+Rebuild affected source-event/comparison records before editing relations, then
+close the self-check guide's per-edge/group/participation mappings. A newly added
+Compound also requires checking its observations and locators. Apply the guide's
+source-supported inference and review_hint rule: retain a defensible complete
+reconstruction with basis + doubt; never disguise an unsupported guess, known error
+or absent structure with a caveat. Preserve excluded identities/observations in
+existing inventory/omissions and flag any workspace reconciliation needed.
+
+Write a NEW complete candidate with assigned ID, actual parent_candidate_id and
+only supplied formal input_evaluation_ids. Retain the parent and previous reports.
+Provide changed refs and the self-check guide's compact scope/evidence records,
+including affected dependencies, inherited proof, unresolved and unreviewed refs.
+Re-read the saved parent and final artifacts: record each issue's actual field
+before/after, source check and disposition. A claim without the expected saved
+change is not a repair. Match Activity observations by compound, assay/target/
+endpoint, conditions and source, retaining both indices; aggregated compound diffs
+alone cannot prove row-level closure. Verify all variants of a changed core and
+all dependents of a final crop. Update identity-dependent Activity/Edge verdicts,
+not only the representative structure or a summary. Recompute closure counts.
+Eligible unresolved identities stay required and absent from candidate compounds;
+never guess SMILES because the schema requires structure. Run final checks with
+self-review bound to the file SHA256, not canonical hash. At most two corrections;
+unresolved required scope prevents checked even when caveats appear in notes.
+
+No Preview credentials, database access, apply, dependency installation, subagents,
+unrelated jobs or writes outside this task. Leave supervisor_preview_gate as
+not_reviewed and delivery/receipt fields unset. A fresh independent DeepSeek reader
+will assess the frozen changes; your self-check cannot replace that review.
+Finish with exact output paths, changed counts, remaining limitations and handoff.
 ```

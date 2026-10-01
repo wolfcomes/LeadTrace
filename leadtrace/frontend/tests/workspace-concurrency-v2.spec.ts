@@ -51,6 +51,9 @@ describe("paper Workspace concurrency", () => {
     let reads = 0;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://leadtrace.test");
+      if (url.pathname.endsWith("/review-progress")) return response({},404);
+      // Supporting lists are tested in their own components; count aggregate navigation here.
+      if ((!init?.method||init.method==='GET')&&['/compound-highlights','/evidence','/compounds'].some(x=>url.pathname.endsWith(x))) return response({workspace_id:ids.workspace,workspace_version:1,items:[],total:0});
       calls.push({ url, init });
       if (init?.method === "PUT") {
         return response({
@@ -93,6 +96,9 @@ describe("paper Workspace concurrency", () => {
     let reads = 0;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://leadtrace.test");
+      if (url.pathname.endsWith("/review-progress")) return response({},404);
+      // Supporting lists are tested in their own components; count aggregate navigation here.
+      if ((!init?.method||init.method==='GET')&&['/compound-highlights','/evidence','/compounds'].some(x=>url.pathname.endsWith(x))) return response({workspace_id:ids.workspace,workspace_version:1,items:[],total:0});
       calls.push({ url, init });
       if (init?.method === "PUT") return response(workspace(2));
       reads += 1;
@@ -121,6 +127,9 @@ describe("paper Workspace concurrency", () => {
     });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://leadtrace.test");
+      if (url.pathname.endsWith("/review-progress")) return response({},404);
+      // Supporting lists are tested in their own components; count aggregate navigation here.
+      if ((!init?.method||init.method==='GET')&&['/compound-highlights','/evidence','/compounds'].some(x=>url.pathname.endsWith(x))) return response({workspace_id:ids.workspace,workspace_version:1,items:[],total:0});
       calls.push({ url, init });
       if (init?.method === "PUT") return pendingMutation;
       const result = workspace(url.pathname.endsWith(secondWorkspaceId) ? 7 : 1);

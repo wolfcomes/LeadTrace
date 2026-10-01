@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, onMounted, ref, watch } from "vue";
 
 import { ApiError } from "../../api/client";
@@ -138,10 +139,10 @@ onMounted(load);
 <template>
   <section class="structure-source-images" data-structure-source-images>
     <header class="section-heading compact-heading">
-      <div><p class="eyebrow">STRUCTURE SOURCE IMAGES</p><h3>分子结构原图</h3></div>
-      <button class="button-secondary" data-capture-source-image type="button" :disabled="readOnly || busy" @click="capture = !capture">{{ capture ? "取消框选" : "从 PDF 框选" }}</button>
+      <div><p class="eyebrow">STRUCTURE SOURCE IMAGES</p><h3>{{ t("分子结构原图") }}</h3></div>
+      <button class="button-secondary" data-capture-source-image type="button" :disabled="readOnly || busy" @click="capture = !capture">{{ capture ? t("取消框选") : t("从 PDF 框选") }}</button>
     </header>
-    <p v-if="error" class="inline-feedback is-error" role="alert">{{ error }}</p>
+    <p v-if="error" class="inline-feedback is-error" role="alert">{{ t(error) }}</p>
 
     <PdfReviewCanvas
       v-if="capture"
@@ -154,23 +155,23 @@ onMounted(load);
       @create-region="captureRegion"
     />
 
-    <p v-if="loading" class="workspace-empty-copy">正在读取原图…</p>
+    <p v-if="loading" class="workspace-empty-copy">{{ t("正在读取原图…") }}</p>
     <div v-else class="structure-comparison" data-structure-comparison>
       <article class="evidence-preview-frame">
-        <header><strong>RDKit 重绘</strong><small>数据库当前 Structure</small></header>
-        <img v-if="structure?.depiction_asset_id" :src="structureDepictionUrl(compoundId)" :alt="`${compoundId} 的 RDKit 图`">
-        <p v-else>尚无可用的 RDKit 图。</p>
+        <header><strong>{{ t("RDKit 重绘") }}</strong><small>{{ t("数据库当前 Structure") }}</small></header>
+        <img v-if="structure?.depiction_asset_id" :src="structureDepictionUrl(compoundId)" :alt="t('{p0} 的 RDKit 图', { p0: compoundId })">
+        <p v-else>{{ t("尚无可用的 RDKit 图。") }}</p>
       </article>
       <article v-for="image in images" :key="image.id" class="evidence-preview-frame" :data-source-image-id="image.id">
-        <header><strong>Source crop · p{{ image.page_number }}</strong><small>{{ image.label || "未命名区域" }}</small></header>
-        <img v-if="image.crop_status === 'ready'" :src="structureSourceImageContentUrl(image.id)" :alt="`第 ${image.page_number} 页的结构原图`">
-        <p v-else-if="image.crop_status === 'failed'">生成失败；PDF locator 已保留。</p>
-        <p v-else>正在生成 crop…</p>
+        <header><strong>Source crop · p{{ image.page_number }}</strong><small>{{ image.label || t("未命名区域") }}</small></header>
+        <img v-if="image.crop_status === 'ready'" :src="structureSourceImageContentUrl(image.id)" :alt="t('第 {p0} 页的结构原图', { p0: image.page_number })">
+        <p v-else-if="image.crop_status === 'failed'">{{ t("生成失败；PDF locator 已保留。") }}</p>
+        <p v-else>{{ t("正在生成 crop…") }}</p>
         <p v-if="image.source_context" data-source-context>{{ image.source_context }}</p>
-        <a v-if="image.crop_status === 'ready'" data-open-source-crop :href="structureSourceImageContentUrl(image.id)" target="_blank" rel="noopener">查看原图大图 ↗</a>
+        <a v-if="image.crop_status === 'ready'" data-open-source-crop :href="structureSourceImageContentUrl(image.id)" target="_blank" rel="noopener">{{ t("查看原图大图 ↗") }}</a>
         <footer v-if="!readOnly" class="editor-actions">
-          <button v-if="image.crop_status === 'failed'" class="button-secondary" data-retry-crop type="button" :disabled="busy" @click="retry(image)">重试 crop</button>
-          <button class="button-quiet" type="button" :disabled="busy" @click="remove(image)">删除</button>
+          <button v-if="image.crop_status === 'failed'" class="button-secondary" data-retry-crop type="button" :disabled="busy" @click="retry(image)">{{ t("重试 crop") }}</button>
+          <button class="button-quiet" type="button" :disabled="busy" @click="remove(image)">{{ t("删除") }}</button>
         </footer>
       </article>
     </div>

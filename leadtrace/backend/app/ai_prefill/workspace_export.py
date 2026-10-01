@@ -147,8 +147,11 @@ def _payload_from_snapshot(
         "compounds": [], "structure_locators": [], "lineages": [], "evidence": [],
         "edge_evidence_links": [], "activities": [],
     }
+    for field in ('abstract', 'abstract_source', 'pdb_references'):
+        if snapshot['paper'].get(field) or initial_paper.get(field):
+            payload['bibliography'][field] = snapshot['paper'].get(field, [] if field == 'pdb_references' else None)
     for name, value in payload["bibliography"].items():
-        if value is None and (name not in initial_paper or initial_paper[name] is not None):
+        if name not in ('abstract', 'abstract_source', 'pdb_references') and value is None and (name not in initial_paper or initial_paper[name] is not None):
             issue(f"bibliography/{name}", "Candidate v1 cannot express clearing a baseline value; a known null baseline is required")
     for compound in compounds:
         structure = structures.get(compound["id"])
@@ -162,7 +165,7 @@ def _payload_from_snapshot(
         use_molfile = structure["input_method"] == "structure_editor" or not structure["smiles"]
         representation = {"molfile": structure["molfile"]} if use_molfile else {"smiles": structure["smiles"]}
         payload["compounds"].append({"ref": compound_refs[compound["id"]],
-            **fields(compound, ("compound_label", "display_name", "description")), "structure": representation})
+            **fields(compound, ("compound_label", "display_name", "description")), "review_hint": compound.get("review_hint"), "structure": representation})
         review_metadata.append({"path": path, **fields(structure, ("status", "input_method"))})
     for image in locators:
         if image["reviewer_note"]:
@@ -186,7 +189,7 @@ def _payload_from_snapshot(
             edges.append({"ref": edge_refs[row["id"]],
                 "parent_compound_ref": reference(compound_refs, row["parent_compound_id"], "lineage_edges"),
                 "child_compound_ref": reference(compound_refs, row["child_compound_id"], "lineage_edges"),
-                **fields(row, ("relation_type", "modification_summary"))})
+                **fields(row, ("relation_type", "modification_summary")), "review_hint": row.get("review_hint")})
         payload["lineages"].append({"ref": lineage_refs[lineage["id"]], **fields(lineage, ("lineage_label", "description")), "lineage_type": lineage.get("lineage_type", "unspecified"), "members": members, "edges": edges})
     for row in evidence:
         if row["reviewer_note"]:
@@ -202,7 +205,18 @@ def _payload_from_snapshot(
         payload["activities"].append({
             "compound_ref": reference(compound_refs, row["compound_id"], "activities"),
             "evidence_ref": reference(evidence_refs, row["evidence_id"], "activities") if row["evidence_id"] else None,
-            **fields(row, ("assay_name", "metric", "operator", "value", "unit", "context"))})
+            **fields(row, ("assay_name", "metric", "operator", "value", "unit", "context")), "review_hint": row.get("review_hint")})
+    highlights = snapshot.get('compound_highlights', [])
+    highlight_refs = refs(highlights, parent.payload.compound_highlights, '/compound_highlights', 'highlight')
+    if highlights:
+        payload['compound_highlights'] = []
+    for row in highlights:
+        ref = highlight_refs[row['id']]
+        payload['compound_highlights'].append({'ref': ref,
+            'compound_ref': reference(compound_refs, row['compound_id'], 'compound_highlights'),
+            'evidence_ref': reference(evidence_refs, row['evidence_id'], 'compound_highlights'),
+            **fields(row, ('role','scope','rationale')), 'review_hint': row.get('review_hint')})
+        review_metadata.append({'path': f'compound_highlights/{ref}', 'review_status': row['review_status']})
     review_metadata.extend({"path": f"sections/{row['section_key']}", **fields(row, ("state", "note"))} for row in snapshot["sections"])
     if issues:
         raise WorkspaceExportUnrepresentableError(issues)

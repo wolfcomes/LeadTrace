@@ -133,7 +133,7 @@ export function installReviewer(): void {
   });
 }
 
-export async function mountWorkspace(tab: "lineages" | "evidence" | "submit", entity?: string) {
+export async function mountWorkspace(tab: "compounds" | "bibliography" | "lineages" | "evidence" | "submit", entity?: string) {
   const router = createAppRouter(createMemoryHistory());
   const entityQuery = entity ? `&entity=${encodeURIComponent(entity)}` : "";
   await router.push(`/review/papers/${ids.paper}?workspace=${ids.workspace}&tab=${tab}${entityQuery}`);

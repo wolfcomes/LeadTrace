@@ -395,3 +395,15 @@ __all__ = [
     "ReviewTaskState",
     "WorkspaceState",
 ]
+
+
+class WorkspaceViewReceipt(UUIDPrimaryKeyMixin, Base):
+    """A user's explicit viewing of one content signature, never approval."""
+    __tablename__ = 'workspace_view_receipts'
+    __table_args__ = (UniqueConstraint('workspace_id', 'reviewer_id', 'kind', 'entity_id', name='uq_workspace_view_receipt'),)
+    workspace_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey('paper_workspaces.id', ondelete='CASCADE'), nullable=False)
+    reviewer_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    signature: Mapped[str] = mapped_column(String(64), nullable=False)
+    viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

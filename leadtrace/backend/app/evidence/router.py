@@ -120,6 +120,7 @@ def _domain_error(error: Exception) -> APIError:
             details={
                 "edge_references": error.edge_references,
                 "activity_references": error.activity_references,
+                **({"highlight_references": error.highlight_references} if error.highlight_references else {}),
             },
         )
     if isinstance(error, (EvidenceConflictError, IntegrityError)):

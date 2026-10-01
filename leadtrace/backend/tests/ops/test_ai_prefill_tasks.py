@@ -1,0 +1,256 @@
+import hashlib
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+from app.ai_prefill.assistance_inputs import prepare_input_package
+from app.ai_prefill.assistance_contracts import SourceIdentity
+from leadtrace.ops.ai_prefill.tasks import prepare_task, recover_task, run_task, task_status
+
+
+ROOT = Path(__file__).resolve().parents[4]
+
+
+def inputs(tmp_path):
+    source = tmp_path / 'source.pdf'
+    source.write_bytes(b'harmless synthetic source; no scientific content')
+    identity = SourceIdentity(paper_key='synthetic-paper', source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                              byte_size=source.stat().st_size, page_count=1)
+    package = prepare_input_package(experiment_id='synthetic', source=identity,
+                                    guide_version='old-guide', source_path=source)
+    inp = tmp_path / 'input.json'
+    inp.write_text(package.model_dump_json())
+    c = json.loads((ROOT / 'docs/ai-prefill/examples/candidate-v1.json').read_text())
+    c.update(source=identity.model_dump(), hashes=None, experiment_id='synthetic')
+    c['payload'] = {'schema_version': 1, 'compounds': [
+        {'ref': 'c1', 'compound_label': '1', 'structure': {'smiles': 'CCO'}}], 'activities': [], 'lineages': []}
+    candidate = tmp_path / 'current.json'
+    candidate.write_text(json.dumps(c))
+    inv = tmp_path / 'inventory.json'
+    inv.write_text(json.dumps({'inventory_version': 1, 'source': identity.model_dump(), 'scope': 'synthetic',
+                              'reviewed_by': 'synthetic', 'entries': [{'label': '1', 'required': True,
+                              'role': 'assayed', 'source_locator': 'synthetic p1'}]}))
+    return inp, source, candidate, inv
+
+
+def test_prefill_freezes_actual_guides_and_source_and_refuses_overwrite(tmp_path):
+    inp, source, _, _ = inputs(tmp_path)
+    task = tmp_path / 'task'
+    prepare_task(entry='prefill', input_path=inp, output=task)
+    assert task_status(task)['state']['status'] == 'prepared'
+    manifest = json.loads((task / 'bundle-manifest.json').read_text())
+    for path, digest in manifest['files'].items():
+        assert hashlib.sha256((task / path).read_bytes()).hexdigest() == digest
+    assert (task / 'inputs/source.pdf').read_bytes() == source.read_bytes()
+    assert 'extraction-guide.md' in (task / 'prompt.md').read_text()
+    assert json.loads((task / 'inputs/input.json').read_text())['guide_version'] == 'deepseek-led-v3-20260923'
+    with pytest.raises(ValueError, match='exists'):
+        prepare_task(entry='prefill', input_path=inp, output=task)
+
+
+def test_repair_requires_current_candidate_identity_and_binds_baseline(tmp_path):
+    inp, _, candidate, inv = inputs(tmp_path)
+    with pytest.raises(ValueError, match='candidate'):
+        prepare_task(entry='selfcheck', input_path=inp, output=tmp_path / 'missing')
+    with pytest.raises(ValueError, match='together'):
+        prepare_task(entry='selfcheck', input_path=inp, output=tmp_path / 'workspace',
+                     candidate_path=candidate, inventory_path=inv, workspace_version=10)
+    prepare_task(entry='selfcheck', input_path=inp, output=tmp_path / 'good',
+                 candidate_path=candidate, inventory_path=inv,
+                 workspace_id='11111111-1111-1111-1111-111111111111', workspace_version=10)
+    task = json.loads((tmp_path / 'good/task.json').read_text())
+    assert task['baseline']['candidate_file_sha256'] == hashlib.sha256(candidate.read_bytes()).hexdigest()
+    assert task['baseline']['workspace_version'] == 10
+    c = json.loads(candidate.read_text()); c['source']['paper_key'] = 'different'; candidate.write_text(json.dumps(c))
+    with pytest.raises(ValueError, match='identity'):
+        prepare_task(entry='selfcheck', input_path=inp, output=tmp_path / 'bad', candidate_path=candidate, inventory_path=inv)
+
+
+def test_source_mismatch_and_frozen_bundle_tamper_stop_before_execution(tmp_path):
+    inp, source, _, _ = inputs(tmp_path)
+    source.write_bytes(b'changed')
+    with pytest.raises(ValueError, match='source'):
+        prepare_task(entry='prefill', input_path=inp, output=tmp_path / 'bad')
+    inp, source, _, _ = inputs(tmp_path)
+    task = tmp_path / 'task'; prepare_task(entry='prefill', input_path=inp, output=task)
+    (task / 'prompt.md').chmod(0o600); (task / 'prompt.md').write_text('tampered')
+    with pytest.raises(ValueError, match='changed'):
+        run_task(task, timeout_seconds=5, executable='never-run-this')
+
+
+def fake_harness(tmp_path, body):
+    script = tmp_path / 'fake-dsh'
+    script.write_text('#!/usr/bin/env python3\n' + body)
+    script.chmod(0o700)
+    return str(script)
+
+
+def test_runner_checks_outputs_and_never_replays_or_reads_logs(tmp_path):
+    inp, _, candidate, inv = inputs(tmp_path)
+    task = tmp_path / 'task'
+    prepare_task(entry='selfcheck', input_path=inp, output=task, candidate_path=candidate, inventory_path=inv)
+    fake = fake_harness(tmp_path, '''import json, hashlib, pathlib
+p=pathlib.Path('.')
+t=json.loads((p/'task.json').read_text())
+c=json.loads((p/'inputs/current-candidate.json').read_text())
+c['parent_candidate_id']=c['candidate_id']; c['candidate_id']=t['candidate_id']; c['recipe']['guide_version']=t['guide_version']
+(p/'outputs/candidate.json').write_text(json.dumps(c))
+(p/'outputs/compound-inventory.json').write_bytes((p/'inputs/compound-inventory.json').read_bytes())
+checks=['compound_scope','measurement_coverage','activity_semantics','structure_identity','source_crops','sar_reasoning','synthesis_paths']
+r={'self_review_version':1,'candidate_file_sha256':hashlib.sha256((p/'outputs/candidate.json').read_bytes()).hexdigest(),'reviewer_type':'producer_self_check','checks':[{'check_id':s,'status':'checked','details':'synthetic fixture','source_locations':['synthetic p1']} for s in checks]}
+(p/'outputs/self-review.json').write_text(json.dumps(r))
+print('SENSITIVE_REASONING_SENTINEL')
+''')
+    result = run_task(task, timeout_seconds=5, executable=fake, lock_root=tmp_path / 'locks')
+    assert result['state']['status'] == 'ready_for_independent_review'
+    assert result['scientific_approval'] is False
+    assert 'SENSITIVE_REASONING_SENTINEL' not in json.dumps(result)
+    assert (task / 'checks/self-check.json').exists()
+    assert json.loads((task / 'checks/candidate-diff.json').read_text())['payload_changed'] is False
+    with pytest.raises(ValueError, match='already'):
+        run_task(task, timeout_seconds=5, executable=fake, lock_root=tmp_path / 'locks')
+
+
+def test_exit_zero_without_candidate_is_partial_and_timeout_is_saved(tmp_path):
+    inp, _, _, _ = inputs(tmp_path)
+    task = tmp_path / 'task'; prepare_task(entry='prefill', input_path=inp, output=task)
+    result = run_task(task, timeout_seconds=5, executable=fake_harness(tmp_path, 'pass\n'), lock_root=tmp_path / 'locks')
+    assert result['state']['status'] == 'partial'
+    next_task = tmp_path / 'timeout'; prepare_task(entry='prefill', input_path=inp, output=next_task)
+    result = run_task(next_task, timeout_seconds=0.1, executable=fake_harness(tmp_path, 'import time\ntime.sleep(20)\n'), lock_root=tmp_path / 'locks')
+    assert result['state']['status'] == 'timed_out'
+    assert result['state']['exit_code'] is not None
+
+
+def test_continuation_checks_paper_and_does_not_claim_native_resume(tmp_path):
+    inp, _, candidate, inv = inputs(tmp_path)
+    old = tmp_path / 'old'; prepare_task(entry='prefill', input_path=inp, output=old)
+    new = tmp_path / 'new'
+    prepare_task(entry='selfcheck', input_path=inp, output=new, candidate_path=candidate, inventory_path=inv, previous_task=old)
+    metadata = json.loads((new / 'task.json').read_text())
+    assert metadata['continuation']['strategy'] == 'structured_handoff_new_session'
+    c = json.loads(inp.read_text()); c['target']['paper_key'] = 'other'; inp.write_text(json.dumps(c))
+    with pytest.raises(ValueError, match='identity'):
+        prepare_task(entry='prefill', input_path=inp, output=tmp_path / 'bad', previous_task=old)
+
+
+def test_shared_paper_lock_prevents_two_writers(tmp_path):
+    import fcntl
+    inp, _, _, _ = inputs(tmp_path)
+    task = tmp_path / 'task'; prepare_task(entry='prefill', input_path=inp, output=task)
+    lock_root = tmp_path / 'locks'; lock_root.mkdir()
+    key = hashlib.sha256(b'synthetic-paper').hexdigest()
+    with (lock_root / (key + '.lock')).open('w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(ValueError, match='writer'):
+            run_task(task, timeout_seconds=5, executable='never-run-this', lock_root=lock_root)
+    assert task_status(task)['state']['status'] == 'prepared'
+
+
+def test_timeout_kills_child_even_if_leader_exits_on_term(tmp_path):
+    inp, _, _, _ = inputs(tmp_path)
+    task = tmp_path / 'task'; prepare_task(entry='prefill', input_path=inp, output=task)
+    fake = fake_harness(tmp_path, '''import os, signal, time, pathlib
+pid=os.fork()
+if pid == 0:
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    pathlib.Path('child.pid').write_text(str(os.getpid()))
+    time.sleep(20)
+else:
+    time.sleep(20)
+''')
+    try:
+        result = run_task(task, timeout_seconds=0.3, executable=fake, lock_root=tmp_path / 'locks')
+        assert result['state']['status'] == 'timed_out'
+        child = int((task / 'child.pid').read_text())
+        import time
+        for _ in range(20):
+            proc = Path(f'/proc/{child}/stat')
+            if not proc.exists() or proc.read_text().rsplit(')', 1)[1].split()[0] == 'Z':
+                break
+            time.sleep(0.01)
+        else:
+            pytest.fail('Timed-out descendant still executing')
+    finally:
+        if (task / 'child.pid').exists():
+            import signal
+            try:
+                os.kill(int((task / 'child.pid').read_text()), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+def test_runner_uses_actual_dsh_home(tmp_path, monkeypatch):
+    from leadtrace.ops.ai_prefill import harness_sessions
+    inp, _, _, _ = inputs(tmp_path)
+    task = tmp_path / 'task'; prepare_task(entry='prefill', input_path=inp, output=task)
+    actual_home = tmp_path / 'private-harness'
+    monkeypatch.setenv('DSH_HOME', str(actual_home))
+    calls = []
+    monkeypatch.setattr(harness_sessions, 'find_sessions_for_cwd', lambda cwd, home: calls.append(home) or [])
+    run_task(task, timeout_seconds=5, executable=fake_harness(tmp_path, 'pass\n'), lock_root=tmp_path / 'locks')
+    assert calls and all(x == actual_home for x in calls)
+
+
+def test_session_binding_excludes_existing_same_directory_session(tmp_path, monkeypatch):
+    from leadtrace.ops.ai_prefill import harness_sessions
+    inp, _, _, _ = inputs(tmp_path)
+    task = tmp_path / 'task'; prepare_task(entry='prefill', input_path=inp, output=task)
+    responses = iter([[{'session_id': 'old'}], [{'session_id': 'old'}, {'session_id': 'new'}]])
+    monkeypatch.setattr(harness_sessions, 'find_sessions_for_cwd', lambda cwd, home: next(responses))
+    result = run_task(task, timeout_seconds=5, executable=fake_harness(tmp_path, 'pass\n'), lock_root=tmp_path / 'locks')
+    assert result['state']['producer_session_ids'] == ['new']
+    assert result['state']['session_binding'] == 'new_exact_cwd_match'
+
+
+def test_recover_requires_no_active_writer_and_preserves_artifacts(tmp_path):
+    import fcntl
+    inp, _, candidate, inv = inputs(tmp_path)
+    task = tmp_path / 'task'; prepare_task(entry='prefill', input_path=inp, output=task)
+    locks = tmp_path / 'locks'; locks.mkdir()
+    state = json.loads((task / 'state.json').read_text())
+    state.update(status='running', process_id=None, lock_root=str(locks))
+    (task / 'state.json').write_text(json.dumps(state))
+    key = hashlib.sha256(b'synthetic-paper').hexdigest()
+    with (locks / (key + '.lock')).open('w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(ValueError, match='writer'):
+            recover_task(task)
+    (task / 'outputs/partial.txt').write_text('preserved')
+    result = recover_task(task)
+    assert result['state']['status'] == 'interrupted'
+    assert (task / 'outputs/partial.txt').read_text() == 'preserved'
+    prepare_task(entry='selfcheck', input_path=inp, output=tmp_path / 'continued',
+                 candidate_path=candidate, inventory_path=inv, previous_task=task)
+
+
+def test_recovery_refuses_live_process_even_with_free_lock(tmp_path):
+    from leadtrace.ops.ai_prefill.tasks import _process_identity
+    inp, _, _, _ = inputs(tmp_path)
+    task = tmp_path / 'task'; prepare_task(entry='prefill', input_path=inp, output=task)
+    state = json.loads((task / 'state.json').read_text())
+    state.update(status='running', process_id=os.getpid(), process_identity=_process_identity(os.getpid()),
+                 lock_root=str(tmp_path / 'locks'))
+    (task / 'state.json').write_text(json.dumps(state))
+    with pytest.raises(ValueError, match='active'):
+        recover_task(task)
+    assert task_status(task)['state']['status'] == 'running'
+
+
+def test_cli_two_entries_and_session_export_never_overwrites(tmp_path, capsys):
+    from leadtrace.ops.ai_prefill.cli import main
+    inp, _, candidate, inv = inputs(tmp_path)
+    task = tmp_path / 'cli-task'
+    assert main(['task', 'selfcheck', '--input', str(inp), '--candidate', str(candidate),
+                 '--inventory', str(inv), '--output', str(task)]) == 0
+    assert json.loads(capsys.readouterr().out)['task']['entry'] == 'selfcheck'
+    assert main(['task', 'status', str(task)]) == 0
+    assert json.loads(capsys.readouterr().out)['state']['status'] == 'prepared'
+    out = tmp_path / 'sessions.json'
+    assert main(['session', 'inspect', '--run-dir', str(task), '--dsh-home', str(tmp_path / 'dsh'), '--output', str(out)]) == 0
+    capsys.readouterr()
+    before = out.read_bytes()
+    assert main(['session', 'inspect', '--run-dir', str(task), '--dsh-home', str(tmp_path / 'dsh'), '--output', str(out)]) != 0
+    assert before == out.read_bytes()

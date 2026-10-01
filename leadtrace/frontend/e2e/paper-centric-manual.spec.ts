@@ -340,6 +340,8 @@ test("blank manual Paper flows from assignment through immutable publication", a
     const url = new URL(request.url());
     const path = url.pathname;
     const method = request.method();
+    if (path.endsWith('/review-progress')) return json(route, {}, 404);
+    if (path.includes('/layouts/')) return json(route, {revision:0,mode:path.split('/').at(-1),positions:{},edge_controls:{}});
 
     if (path === "/api/v1/auth/session" && method === "GET") {
       if (!signedInAs) {
@@ -750,6 +752,7 @@ test("blank manual Paper flows from assignment through immutable publication", a
       return;
     }
 
+    if (method === 'GET' && path.endsWith('/compound-highlights')) return json(route,{workspace_id:path.split('/').at(-2),workspace_version:workspaceVersion,items:[],total:0});
     throw new Error(`Unexpected ${method} request: ${path}`);
   });
 
@@ -798,6 +801,7 @@ test("blank manual Paper flows from assignment through immutable publication", a
   await page.getByLabel("描述").fill("Lead 1 to Compound 18");
   await page.locator("[data-save-lineage]").click();
   await expect(page.locator(`[data-lineage-id='${publicationIds.lineage}']`)).toHaveClass(/selected/);
+  await page.locator('[data-lineage-view-tab="compounds"]').click();
   const memberEditor = page.locator(".member-editor");
   await memberEditor.getByLabel("Compound").selectOption(publicationIds.compoundA);
   await memberEditor.getByLabel("角色").selectOption("root");
@@ -807,6 +811,7 @@ test("blank manual Paper flows from assignment through immutable publication", a
   await memberEditor.getByLabel("角色").selectOption("terminal");
   await memberEditor.getByRole("button", { name: "添加 Member" }).click();
   await expect(page.locator("[data-member-role='terminal']")).toContainText("Compound 18");
+  await page.locator('[data-lineage-view-tab="edges"]').click();
   const edgeEditor = page.locator(".edge-create-form");
   await edgeEditor.getByLabel("Parent").selectOption(publicationIds.compoundA);
   await edgeEditor.getByLabel("Child").selectOption(publicationIds.compoundB);
@@ -815,16 +820,17 @@ test("blank manual Paper flows from assignment through immutable publication", a
   await edgeEditor.getByRole("button", { name: "添加 Edge" }).click();
   await expect(page.locator(`[data-edge-id='${publicationIds.edge}']`)).toContainText("Lead 1 → Compound 18");
 
-  await page.getByRole("button", { name: "证据与活性" }).click();
+  await page.locator("summary").filter({ hasText: "全文证据库 / 未关联证据" }).click();
   await page.locator("[data-add-evidence]").click();
   await page.locator("[data-evidence-page]").fill("4");
   await page.locator("[data-evidence-quote]").fill("Lead 1 was optimized to compound 18.");
   await page.locator("[data-evidence-edge-choice]").check();
   await page.locator("[data-save-evidence]").click();
-  await expect(page.locator("[data-edge-evidence-link]")).toContainText("supports");
+  await expect(page.locator(`[data-edge-id='${publicationIds.edge}'] [data-edge-evidence-link]`)).toContainText("supports");
+  await page.getByRole("button", { name: "化合物与结构" }).click();
+  await page.locator(`[data-compound-id='${publicationIds.compoundB}']`).getByRole("button", { name: "Compound 18 Optimized compound" }).click();
   await page.locator("[data-add-activity]").click();
   const activityForm = page.locator(".activity-create-form");
-  await activityForm.getByLabel("Compound").selectOption(publicationIds.compoundB);
   await activityForm.getByLabel("Assay").fill("Cell potency");
   await activityForm.getByLabel("Value").fill("12.5");
   await activityForm.getByLabel("Unit").fill("nM");

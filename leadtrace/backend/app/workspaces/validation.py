@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.activities.models import Activity
-from app.compounds.models import Compound
+from app.compounds.models import Compound, CompoundHighlight
 from app.evidence.models import EdgeEvidenceLink, Evidence
 from app.lineages.models import Lineage, LineageEdge, LineageMember, LineageEdgeReviewStatus, LineageMemberRole
 from app.structure_images.models import StructureSourceImage
@@ -17,6 +17,7 @@ from app.workspaces.models import (
     PaperSectionReview,
     PaperSectionState,
     PaperWorkspace,
+    ReviewTask,
 )
 
 
@@ -53,6 +54,7 @@ def _boundary_blockers(session: Session, workspace_id: UUID) -> list[SubmissionB
     workspace_paper_id = workspace.paper_id
     models = (
         (Compound, "compound"),
+        (CompoundHighlight, "compound_highlight"),
         (Structure, "structure"),
         (StructureSourceImage, "structure_source_image"),
         (Lineage, "lineage"),
@@ -92,9 +94,16 @@ def validate_submission(session: Session, workspace_id: UUID) -> SubmissionValid
             )
         )
     }
+    from app.workspaces.review_progress import get_progress, SECTION_VIEW_GROUP
+    workspace = session.get(PaperWorkspace, workspace_id)
+    task = session.get(ReviewTask, workspace.review_task_id) if workspace else None
+    progress = get_progress(session, workspace_id, task.assigned_reviewer_id) if task else None
+    progress_sections = {x['section_key']: x for x in progress['sections']} if progress else {}
     for section_key in PaperSection:
         row = sections.get(section_key)
-        if row is None or row.state is PaperSectionState.PENDING:
+        coverage = progress_sections.get(SECTION_VIEW_GROUP.get(section_key.value))
+        auto_complete = coverage and coverage['complete']
+        if row is None or (row.state is PaperSectionState.PENDING and not auto_complete):
             blockers.append(
                 SubmissionBlocker(
                     "SECTION_PENDING",
@@ -104,6 +113,20 @@ def validate_submission(session: Session, workspace_id: UUID) -> SubmissionValid
                     section_key,
                 )
             )
+
+    if progress and progress['tracking_started']:
+        for item in progress['items']:
+            if not item['viewed']:
+                blockers.append(SubmissionBlocker(
+                    'RECORD_NOT_VIEWED', 'Open the current record before submitting',
+                    {'edge': 'lineage_edge', 'structure': 'compound'}.get(item['kind'], item['kind']),
+                    UUID(item['entity_id']), PaperSection(item['section_key'])))
+
+    for highlight in session.scalars(select(CompoundHighlight).where(CompoundHighlight.workspace_id == workspace_id)):
+        if highlight.review_status == 'draft':
+            blockers.append(SubmissionBlocker('COMPOUND_HIGHLIGHT_NOT_REVIEWED',
+                'Article selection must be confirmed or explicitly unresolved', 'compound_highlight',
+                highlight.id, PaperSection.BIBLIOGRAPHY))
 
     compounds = list(
         session.scalars(

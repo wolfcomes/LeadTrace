@@ -1,3 +1,5 @@
+import { highlightSchema, publishedHighlightSchema } from "./highlights";
+import { articleMetadataFields, progressSchema } from "./workbench";
 import { z } from "zod";
 
 
@@ -265,6 +267,7 @@ export const reviewTaskListSchema = z.object({
 });
 
 export const bibliographySchema = z.object({
+  ...articleMetadataFields,
   paper_id: uuidSchema,
   paper_key: z.string().min(1),
   title: z.string().min(1),
@@ -319,6 +322,7 @@ export const changeEventSchema = z.object({
 });
 
 const snapshotPaperSchema = z.object({
+  ...articleMetadataFields,
   id: uuidSchema,
   paper_key: z.string().min(1),
   title: z.string().min(1),
@@ -336,6 +340,7 @@ const snapshotSourceSchema = workspaceSourceSchema.extend({
 }).strict();
 
 export const compoundSchema = z.object({
+  review_hint: z.string().max(1000).nullable().optional(),
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -404,6 +409,7 @@ export const lineageMemberSchema = z.object({
 }).strict();
 
 export const lineageEdgeSchema = z.object({
+  review_hint: z.string().max(1000).nullable().optional(),
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -443,6 +449,7 @@ export const edgeEvidenceLinkSchema = z.object({
 }).strict();
 
 export const activitySchema = z.object({
+  review_hint: z.string().max(1000).nullable().optional(),
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -458,7 +465,9 @@ export const activitySchema = z.object({
 }).strict();
 
 export const frozenPaperSnapshotSchema = z.object({
+  compound_highlights: z.array(highlightSchema).optional(),
   schema_version: z.literal(1),
+  review_progress: progressSchema.optional(),
   paper: snapshotPaperSchema,
   source: snapshotSourceSchema,
   workspace_version: z.number().int().positive(),
@@ -496,6 +505,7 @@ export const paperSubmissionSchema = z.object({
   }
   const aggregateRows = [
     ...value.snapshot.compounds,
+    ...(value.snapshot.compound_highlights ?? []),
     ...value.snapshot.structures,
     ...value.snapshot.structure_source_images,
     ...value.snapshot.lineages,
@@ -587,7 +597,9 @@ const publishedEdgeEvidenceLinkSchema = edgeEvidenceLinkSchema.omit({
 const publishedActivitySchema = activitySchema.omit({ paper_id: true, workspace_id: true }).strict();
 
 export const publishedPaperSnapshotSchema = z.object({
+  compound_highlights: z.array(publishedHighlightSchema).optional(),
   schema_version: z.literal(1),
+  review_progress: progressSchema.optional(),
   paper: publishedPaperSchema,
   source: publishedSourceSchema,
   sections: publishedSectionListSchema,

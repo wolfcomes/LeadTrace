@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, locale } from "../i18n";
 import { ref, watch } from "vue";
 import { useRoute } from "vue-router";
 
@@ -95,14 +96,14 @@ watch(() => route.params.paperId, load, { immediate: true });
 
 <template>
   <div class="detail-page admin-page review-workspace">
-    <RouterLink class="back-link" :to="{ name: 'admin-papers', query: route.query }">← 返回文章目录</RouterLink>
+    <RouterLink class="back-link" :to="{ name: 'admin-papers', query: route.query }">{{ t("← 返回文章目录") }}</RouterLink>
 
-    <section v-if="state === 'loading'" class="page-state"><span class="state-spinner"></span><p>正在读取文章信息…</p></section>
-    <section v-else-if="state === 'not-found'" class="page-state"><span>404</span><h1>未找到文章</h1></section>
+    <section v-if="state === 'loading'" class="page-state"><span class="state-spinner"></span><p>{{ t("正在读取文章信息…") }}</p></section>
+    <section v-else-if="state === 'not-found'" class="page-state"><span>404</span><h1>{{ t("未找到文章") }}</h1></section>
     <section v-else-if="state === 'error'" class="page-state" role="alert">
-      <span class="state-symbol is-error">!</span><h1>暂时无法读取文章</h1>
-      <small v-if="requestId">请求编号 · {{ requestId }}</small>
-      <button class="button-secondary" type="button" @click="load">重新加载</button>
+      <span class="state-symbol is-error">!</span><h1>{{ t("暂时无法读取文章") }}</h1>
+      <small v-if="requestId">{{ t("请求编号 ·") }} {{ requestId }}</small>
+      <button class="button-secondary" type="button" @click="load">{{ t("重新加载") }}</button>
     </section>
 
     <template v-else-if="paper">
@@ -112,34 +113,34 @@ watch(() => route.params.paperId, load, { immediate: true });
           <h1>{{ paper.title }}</h1>
           <p>{{ paper.journal }} · {{ paper.publication_year }} · Volume {{ paper.volume }} · Issue {{ paper.issue }}</p>
         </div>
-        <span class="status-chip" :data-status="paper.source.integrity_state">{{ sourceLabel(paper) }}</span>
+        <span class="status-chip" :data-status="paper.source.integrity_state">{{ t(sourceLabel(paper)) }}</span>
       </header>
 
       <section class="catalog-detail-grid">
         <div class="main-column">
           <section class="panel catalog-metadata">
-            <div class="section-heading"><div><p class="eyebrow">BIBLIOGRAPHY</p><h2>目录基础信息</h2></div></div>
+            <div class="section-heading"><div><p class="eyebrow">BIBLIOGRAPHY</p><h2>{{ t("目录基础信息") }}</h2></div></div>
             <dl>
               <div><dt>Paper ID</dt><dd><code>{{ paper.id }}</code></dd></div>
-              <div><dt>期刊</dt><dd>{{ paper.journal }}</dd></div>
-              <div><dt>年份</dt><dd>{{ paper.publication_year }}</dd></div>
+              <div><dt>{{ t("期刊") }}</dt><dd>{{ paper.journal }}</dd></div>
+              <div><dt>{{ t("年份") }}</dt><dd>{{ paper.publication_year }}</dd></div>
               <div><dt>Volume</dt><dd>{{ paper.volume }}</dd></div>
               <div><dt>Issue</dt><dd>{{ paper.issue }}</dd></div>
-              <div><dt>DOI</dt><dd>{{ paper.doi || "未登记" }}</dd></div>
+              <div><dt>DOI</dt><dd>{{ paper.doi || t("未登记") }}</dd></div>
             </dl>
           </section>
 
           <section class="panel source-panel">
             <div>
-              <p class="eyebrow">SOURCE PDF</p><h2>原始文献</h2>
-              <p>{{ paper.source.source_key }} · {{ paper.source.page_count }} 页 · {{ paper.source.byte_size.toLocaleString("zh-CN") }} bytes</p>
+              <p class="eyebrow">SOURCE PDF</p><h2>{{ t("原始文献") }}</h2>
+              <p>{{ paper.source.source_key }} · {{ paper.source.page_count }} {{ t("页 ·") }} {{ paper.source.byte_size.toLocaleString(locale) }} bytes</p>
             </div>
-            <a class="button-secondary" data-source-pdf :href="`/api/v2/papers/${paper.id}/source-pdf`" target="_blank" rel="noopener">打开 PDF ↗</a>
+            <a class="button-secondary" data-source-pdf :href="`/api/v2/papers/${paper.id}/source-pdf`" target="_blank" rel="noopener">{{ t("打开 PDF ↗") }}</a>
           </section>
 
           <section class="panel ai-prefill-panel" data-ai-prefill-panel>
             <div class="section-heading">
-              <div><p class="eyebrow">OPTIONAL PREFILL</p><h2>AI 预填</h2></div>
+              <div><p class="eyebrow">OPTIONAL PREFILL</p><h2>{{ t("AI 预填") }}</h2></div>
             </div>
             <AiPrefillStatus
               :paper-id="paper.id"
@@ -152,23 +153,23 @@ watch(() => route.params.paperId, load, { immediate: true });
         </div>
 
         <aside class="review-panel panel">
-          <p class="eyebrow">REVIEW WORKFLOW</p><h2>Reviewer 工作流</h2>
+          <p class="eyebrow">REVIEW WORKFLOW</p><h2>{{ t("Reviewer 工作流") }}</h2>
           <template v-if="paper.review">
             <dl class="review-summary">
               <div><dt>Reviewer</dt><dd>{{ paper.review.assignee_display_name }}</dd></div>
-              <div><dt>区段进度</dt><dd>{{ paper.review.sections_resolved }} / {{ paper.review.sections_total }}</dd></div>
-              <div><dt>提交状态</dt><dd>{{ submissionLabel(paper) }}</dd></div>
+              <div><dt>{{ t("区段进度") }}</dt><dd>{{ paper.review.sections_resolved }} / {{ paper.review.sections_total }}</dd></div>
+              <div><dt>{{ t("提交状态") }}</dt><dd>{{ t(submissionLabel(paper)) }}</dd></div>
             </dl>
             <RouterLink
               v-if="paper.review.task_status !== 'approved'"
               class="button-primary full"
               :to="{ path: `/review/papers/${paper.id}`, query: { workspace: paper.review.workspace_id } }"
-            >查看 Reviewer Workspace</RouterLink>
+            >{{ t("查看 Reviewer Workspace") }}</RouterLink>
           </template>
-          <p v-else>尚未分配。Reviewer 可从空白 Workspace 开始，不需要先运行 AI。</p>
-          <p v-if="!sourceHealthy(paper)" class="inline-feedback is-error">Source PDF 完整性异常，修复前不能分配。</p>
+          <p v-else>{{ t("尚未分配。Reviewer 可从空白 Workspace 开始，不需要先运行 AI。") }}</p>
+          <p v-if="!sourceHealthy(paper)" class="inline-feedback is-error">{{ t("Source PDF 完整性异常，修复前不能分配。") }}</p>
           <button class="button-primary full" data-assign type="button" :disabled="!canAssign(paper)" @click="showAssignment = true">
-            {{ paper.review?.task_status === "approved" ? "再次分配" : paper.review ? "已分配" : "分配 Reviewer" }}
+            {{ t(paper.review?.task_status === "approved" ? "再次分配" : paper.review ? "已分配" : "分配 Reviewer") }}
           </button>
         </aside>
       </section>

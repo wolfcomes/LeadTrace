@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../i18n";
 import { computed, ref } from "vue";
 
 import { normalizePdfRegionBounds, type PdfRegionBounds } from "./geometry";
@@ -141,7 +142,7 @@ function finishInteraction(event: PointerEvent): void {
     :data-region-id="region.id"
     role="button"
     tabindex="0"
-    :aria-label="`区域 ${region.regionKey ?? region.id}`"
+    :aria-label="t('区域 {p0}', { p0: region.regionKey ?? region.id })"
     @click.stop="emit('select', region.id)"
     @dblclick.stop="emit('duplicate', region.id)"
     @keydown.enter.stop="emit('select', region.id)"
@@ -160,7 +161,7 @@ function finishInteraction(event: PointerEvent): void {
         :class="`resize-handle--${handle}`"
         :data-resize-handle="handle"
         type="button"
-        :aria-label="`调整区域 ${region.regionKey ?? region.id} ${handle}`"
+        :aria-label="t('调整区域 {p0} {p1}', { p0: region.regionKey ?? region.id, p1: handle })"
         @click.stop
         @dblclick.stop
         @pointerdown.stop="beginResize(handle, $event)"

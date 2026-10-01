@@ -3,14 +3,34 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class BibliographyCorrection(StrictModel):
+class ReviewHintModel(StrictModel):
+    review_hint: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("review_hint")
+    @classmethod
+    def clean_review_hint(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_serialization(self, handler):
+        # Absent hints must not change hashes of frozen v1 candidates.
+        data = handler(self)
+        if self.review_hint is None:
+            data.pop("review_hint", None)
+        return data
+
+
+from app.papers.metadata import ArticleMetadata
+
+
+class BibliographyCorrection(ArticleMetadata, StrictModel):
     title: str | None = Field(default=None, min_length=1, max_length=1024)
     journal: str | None = Field(default=None, min_length=1, max_length=255)
     publication_year: int | None = Field(default=None, ge=1000, le=9999)
@@ -43,12 +63,28 @@ class AiStructure(StrictModel):
         return self
 
 
-class AiCompound(StrictModel):
+class AiCompound(ReviewHintModel):
     ref: str = Field(min_length=1, max_length=255)
     compound_label: str = Field(min_length=1, max_length=255)
     display_name: str | None = Field(default=None, max_length=512)
     description: str | None = Field(default=None, max_length=10_000)
     structure: AiStructure
+
+
+class AiCompoundHighlight(ReviewHintModel):
+    ref: str = Field(min_length=1, max_length=255)
+    compound_ref: str = Field(min_length=1, max_length=255)
+    evidence_ref: str = Field(min_length=1, max_length=255)
+    role: Literal["study_start", "paper_selected"]
+    scope: str = Field(min_length=1, max_length=512)
+    rationale: str = Field(min_length=1, max_length=10_000)
+
+    @field_validator("scope", "rationale")
+    @classmethod
+    def required_text(cls, value):
+        if not value.strip():
+            raise ValueError("Nonblank text is required")
+        return value.strip()
 
 
 class AiStructureLocator(StrictModel):
@@ -65,7 +101,7 @@ class AiLineageMember(StrictModel):
     role: Literal["root", "intermediate", "terminal", "unspecified"]
 
 
-class AiLineageEdge(StrictModel):
+class AiLineageEdge(ReviewHintModel):
     ref: str = Field(min_length=1, max_length=255)
     parent_compound_ref: str = Field(min_length=1, max_length=255)
     child_compound_ref: str = Field(min_length=1, max_length=255)
@@ -112,7 +148,7 @@ class AiEdgeEvidenceLink(StrictModel):
     role: Literal["supports", "contradicts", "contextual"]
 
 
-class AiActivity(StrictModel):
+class AiActivity(ReviewHintModel):
     compound_ref: str = Field(min_length=1, max_length=255)
     evidence_ref: str | None = Field(default=None, min_length=1, max_length=255)
     assay_name: str = Field(min_length=1, max_length=512)
@@ -139,6 +175,14 @@ class AiPrefillPayload(StrictModel):
     evidence: list[AiEvidence] = Field(default_factory=list)
     edge_evidence_links: list[AiEdgeEvidenceLink] = Field(default_factory=list)
     activities: list[AiActivity] = Field(default_factory=list)
+    compound_highlights: list[AiCompoundHighlight] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_serialization(self, handler):
+        data = handler(self)
+        if not self.compound_highlights:
+            data.pop("compound_highlights", None)
+        return data
 
     @model_validator(mode="after")
     def validate_references(self) -> "AiPrefillPayload":
@@ -201,6 +245,13 @@ class AiPrefillPayload(StrictModel):
                 raise ValueError(
                     f"Link references unknown Evidence: {link.evidence_ref}"
                 )
+        _require_unique([h.ref for h in self.compound_highlights], "Compound highlight ref")
+        identities = [(h.compound_ref, h.role, h.scope) for h in self.compound_highlights]
+        if len(set(identities)) != len(identities):
+            raise ValueError("Duplicate Compound highlight identity")
+        for highlight in self.compound_highlights:
+            if highlight.compound_ref not in compounds or highlight.evidence_ref not in evidence:
+                raise ValueError("Compound highlight references unknown Compound or Evidence")
         for activity in self.activities:
             if activity.compound_ref not in compounds:
                 raise ValueError(

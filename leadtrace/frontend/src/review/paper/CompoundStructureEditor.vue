@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { t } from "../../i18n";
+import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 
 import { ApiError } from "../../api/client";
 import { useAuthStore } from "../../auth/store";
@@ -13,6 +14,7 @@ const props = defineProps<{
   workspaceVersion: number;
   source: PaperWorkspace["source"];
   readOnly?: boolean;
+  viewRequested?: boolean;
 }>();
 const emit = defineEmits<{ mutated: [workspaceVersion: number]; conflict: [] }>();
 const auth = useAuthStore();
@@ -24,14 +26,29 @@ const loadedMolfile = ref("");
 const localVersion = ref(props.workspaceVersion);
 const showKetcher = ref(false);
 const ketcherOutputReady = ref(false);
+let initialized = false;
 const loading = ref(true);
+const contentVersion = ref(props.workspaceVersion);
+const documentVisible = ref(typeof document === 'undefined' || document.visibilityState === 'visible');
+function visibilityChanged() { documentVisible.value = document.visibilityState === 'visible'; }
+onMounted(() => document.addEventListener('visibilitychange',visibilityChanged));
+onBeforeUnmount(() => document.removeEventListener('visibilitychange',visibilityChanged));
 const saving = ref(false);
 const error = ref("");
 
 watch(() => props.workspaceVersion, (version) => {
   if (version > localVersion.value) localVersion.value = version;
+  if (initialized && props.viewRequested && !dirty.value && !saving.value && !showKetcher.value && version !== contentVersion.value) void load();
 });
 watch(() => props.compound.id, () => { void load(); });
+
+watch(() => [props.viewRequested, loading.value, documentVisible.value, contentVersion.value], () => {
+  if (!props.viewRequested || !documentVisible.value || loading.value || error.value) return;
+  if (contentVersion.value !== props.workspaceVersion) {
+    if (!dirty.value && !showKetcher.value && !saving.value) void load();
+    return;
+  }
+}, { flush: 'post' });
 
 const dirty = computed(() => smiles.value !== loadedSmiles.value || molfile.value !== loadedMolfile.value);
 const canConfirm = computed(() => Boolean(
@@ -62,12 +79,16 @@ function apply(result: Structure | null): void {
 }
 
 async function load(): Promise<void> {
-  loading.value = true;
+  const wasInitialized = initialized;
+  if (!initialized) loading.value = true;
   error.value = "";
   try {
     const result = await getCompoundStructure(props.compound.id);
+    if (wasInitialized && (dirty.value || showKetcher.value || saving.value)) return;
     localVersion.value = result.workspace_version;
+    contentVersion.value = result.workspace_version;
     apply(result.structure);
+    initialized = true;
   } catch {
     error.value = "Structure 暂时无法读取。";
   } finally {
@@ -88,6 +109,7 @@ async function save(inputMethod: "manual_smiles" | "structure_editor", status: "
       molfile: inputMethod === "structure_editor" ? molfile.value || null : null,
     }, auth.csrfToken);
     localVersion.value = result.workspace_version;
+    contentVersion.value = result.workspace_version;
     apply(result.structure);
     emit("mutated", result.workspace_version);
   } catch (reason) {
@@ -117,6 +139,7 @@ async function markNoStructure(status: "unresolved" | "not_reported"): Promise<v
       molfile: null,
     }, auth.csrfToken);
     localVersion.value = result.workspace_version;
+    contentVersion.value = result.workspace_version;
     apply(result.structure);
     emit("mutated", result.workspace_version);
   } catch (reason) {
@@ -159,29 +182,29 @@ onMounted(load);
 <template>
   <section class="compound-structure-editor" data-structure-editor>
     <header class="section-heading compact-heading">
-      <div><p class="eyebrow">SINGLE CURRENT STRUCTURE</p><h3>{{ compound.compound_label }} · {{ compound.display_name || "未命名 Compound" }}</h3></div>
-      <div class="structure-meta"><span data-structure-status class="status-chip">{{ statusLabel }}</span><small data-structure-input-method>{{ inputMethodLabel }}</small></div>
+      <div><p class="eyebrow">SINGLE CURRENT STRUCTURE</p><h3>{{ compound.compound_label }} · {{ compound.display_name || t("未命名 Compound") }}</h3></div>
+      <div class="structure-meta"><span data-structure-status class="status-chip">{{ t(statusLabel) }}</span><small data-structure-input-method>{{ t(inputMethodLabel) }}</small></div>
     </header>
-    <p v-if="error" class="inline-feedback is-error" role="alert">{{ error }}</p>
-    <p v-if="loading" class="workspace-empty-copy">正在读取 Structure…</p>
+    <p v-if="error" class="inline-feedback is-error" role="alert">{{ t(error) }}</p>
+    <p v-if="loading" class="workspace-empty-copy">{{ t("正在读取 Structure…") }}</p>
     <template v-else>
       <div class="structure-form-grid">
-        <label class="form-field">SMILES<textarea v-model="smiles" data-smiles-input class="form-control" rows="4" :disabled="readOnly || saving" placeholder="输入 SMILES"></textarea></label>
+        <label class="form-field">SMILES<textarea v-model="smiles" data-smiles-input class="form-control" rows="4" :disabled="readOnly || saving" :placeholder='t("示例：CCO（乙醇）；请填写实际化合物结构")'></textarea></label>
         <div class="structure-identifiers">
-          <dl><div><dt>Canonical SMILES</dt><dd><code>{{ structure?.canonical_smiles || "待 RDKit 解析" }}</code></dd></div><div><dt>InChIKey</dt><dd><code>{{ structure?.inchikey || "—" }}</code></dd></div></dl>
-          <p data-structure-guidance>{{ canConfirm ? "RDKit 已解析，可确认当前 Structure。" : "先保存 Draft；RDKit 成功解析且无未保存修改后才能确认。" }}</p>
+          <dl><div><dt>Canonical SMILES</dt><dd><code>{{ structure?.canonical_smiles || t("待 RDKit 解析") }}</code></dd></div><div><dt>InChIKey</dt><dd><code>{{ structure?.inchikey || "—" }}</code></dd></div></dl>
+          <p data-structure-guidance>{{ canConfirm ? t("RDKit 已解析，可确认当前 Structure。") : t("先保存 Draft；RDKit 成功解析且无未保存修改后才能确认。") }}</p>
         </div>
       </div>
       <div class="editor-actions structure-actions">
-        <button class="button-primary" data-save-structure type="button" :disabled="readOnly || saving || !smiles.trim()" @click="save('manual_smiles')">保存 SMILES Draft</button>
-        <button class="button-secondary" data-confirm-structure type="button" :disabled="!canConfirm" @click="save(structure?.input_method === 'structure_editor' ? 'structure_editor' : 'manual_smiles', 'reviewer_confirmed')">确认 Structure</button>
-        <button class="button-secondary" data-open-ketcher type="button" :disabled="readOnly || saving" @click="toggleKetcher">{{ showKetcher ? "关闭 Ketcher" : "用 Ketcher 编辑" }}</button>
-        <button class="button-quiet" data-mark-structure="unresolved" type="button" :disabled="readOnly || saving" @click="markNoStructure('unresolved')">标记无法解析</button>
-        <button class="button-quiet" data-mark-structure="not_reported" type="button" :disabled="readOnly || saving" @click="markNoStructure('not_reported')">文章未报告结构</button>
+        <button class="button-primary" data-save-structure type="button" :disabled="readOnly || saving || !smiles.trim()" @click="save('manual_smiles')">{{ t("保存 SMILES Draft") }}</button>
+        <button class="button-secondary" data-confirm-structure type="button" :disabled="!canConfirm" @click="save(structure?.input_method === 'structure_editor' ? 'structure_editor' : 'manual_smiles', 'reviewer_confirmed')">{{ t("确认 Structure") }}</button>
+        <button class="button-secondary" data-open-ketcher type="button" :disabled="readOnly || saving" @click="toggleKetcher">{{ showKetcher ? t("关闭 Ketcher") : t("用 Ketcher 编辑") }}</button>
+        <button class="button-quiet" data-mark-structure="unresolved" type="button" :disabled="readOnly || saving" @click="markNoStructure('unresolved')">{{ t("标记无法解析") }}</button>
+        <button class="button-quiet" data-mark-structure="not_reported" type="button" :disabled="readOnly || saving" @click="markNoStructure('not_reported')">{{ t("文章未报告结构") }}</button>
       </div>
       <section v-if="showKetcher" class="ketcher-panel">
         <KetcherEditor :model-value="molfile" :disabled="readOnly" @update:model-value="handleKetcherOutput" @error="error = $event" />
-        <button class="button-primary" data-save-ketcher type="button" :disabled="readOnly || saving || !ketcherOutputReady" @click="save('structure_editor')">保存 Ketcher Draft</button>
+        <button class="button-primary" data-save-ketcher type="button" :disabled="readOnly || saving || !ketcherOutputReady" @click="save('structure_editor')">{{ t("保存 Ketcher Draft") }}</button>
       </section>
       <StructureSourceImages
         :compound-id="compound.id"

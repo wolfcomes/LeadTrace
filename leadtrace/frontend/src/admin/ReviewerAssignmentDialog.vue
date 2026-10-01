@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, locale } from "../i18n";
 import { X } from "lucide-vue-next";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 
@@ -125,9 +126,9 @@ onBeforeUnmount(() => {
       <header>
         <div>
           <p class="eyebrow">REVIEW ASSIGNMENT</p>
-          <h2 id="assignment-title">分配 Reviewer</h2>
+          <h2 id="assignment-title">{{ t("分配 Reviewer") }}</h2>
         </div>
-        <button class="icon-button" type="button" title="关闭" aria-label="关闭" @click="close">
+        <button class="icon-button" type="button" :title="t('关闭')" :aria-label="t('关闭')" @click="close">
           <X :size="18" aria-hidden="true" />
         </button>
       </header>
@@ -136,10 +137,8 @@ onBeforeUnmount(() => {
         <strong>{{ paper.title }}</strong>
       </div>
       <form data-assignment-form @submit.prevent="submit">
-        <label class="form-field">
-          Reviewer
-          <select ref="reviewerSelect" v-model="reviewerId" required :disabled="loading || saving">
-            <option value="" disabled>{{ loading ? "正在读取…" : "请选择 Reviewer" }}</option>
+        <label class="form-field"> Reviewer <select ref="reviewerSelect" v-model="reviewerId" required :disabled="loading || saving">
+            <option value="" disabled>{{ t(loading ? "正在读取…" : "请选择 Reviewer") }}</option>
             <option
               v-for="reviewer in enabledReviewers"
               :key="reviewer.id"
@@ -150,17 +149,15 @@ onBeforeUnmount(() => {
             </option>
           </select>
         </label>
-        <p v-if="!loading && enabledReviewers.length === 0 && !errorMessage" class="inline-feedback is-error" role="alert">
-          当前没有可用的 Reviewer 账号。
-        </p>
+        <p v-if="!loading && enabledReviewers.length === 0 && !errorMessage" class="inline-feedback is-error" role="alert"> {{ t("当前没有可用的 Reviewer 账号。") }} </p>
         <p v-if="errorMessage" class="inline-feedback is-error" role="alert">
-          {{ errorMessage }}
-          <small v-if="requestId">请求编号 · {{ requestId }}</small>
+          {{ t(errorMessage) }}
+          <small v-if="requestId">{{ t("请求编号 ·") }} {{ requestId }}</small>
         </p>
         <div class="dialog-actions">
-          <button class="button-secondary" type="button" :disabled="saving" @click="close">取消</button>
+          <button class="button-secondary" type="button" :disabled="saving" @click="close">{{ t("取消") }}</button>
           <button class="button-primary" type="submit" :disabled="loading || saving || !reviewerId">
-            {{ saving ? "正在分配…" : "确认分配" }}
+            {{ t(saving ? "正在分配…" : "确认分配") }}
           </button>
         </div>
       </form>

@@ -50,6 +50,7 @@ def _compound_response(compound: Compound) -> CompoundResponse:
         compound_label=compound.compound_label,
         display_name=compound.display_name,
         description=compound.description,
+        review_hint=compound.review_hint,
         sort_order=compound.sort_order,
         created_by_kind=compound.created_by_kind,
     )
@@ -104,6 +105,7 @@ def _domain_error(error: Exception) -> APIError:
             details={
                 "lineage_references": error.lineage_references,
                 "activity_references": error.activity_references,
+                **({"highlight_references": error.highlight_references} if error.highlight_references else {}),
             },
         )
     if isinstance(error, CompoundValidationError):
@@ -173,6 +175,7 @@ def create_compounds_router(settings: Settings) -> APIRouter:
                     compound_label=payload.compound_label,
                     display_name=payload.display_name,
                     description=payload.description,
+                    review_hint=payload.review_hint,
                 )
                 return CompoundMutationResponse(
                     compound=_compound_response(result.compound),

@@ -11,9 +11,10 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
+from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -70,6 +71,9 @@ class Paper(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     volume: Mapped[str] = mapped_column(String(64), nullable=False)
     issue: Mapped[str] = mapped_column(String(64), nullable=False)
     doi: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    abstract: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    abstract_source: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    pdb_references: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default='[]')
     catalog_state: Mapped[PaperCatalogState] = mapped_column(
         Enum(
             PaperCatalogState,

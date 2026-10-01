@@ -11,7 +11,7 @@
   "identity": {
     "source_file_sha256": null,
     "input_file_sha256": null,
-    "guide_version": "deepseek-supervised-v2",
+    "guide_version": "deepseek-led-v3-20260923",
     "guide_file_sha256": null,
     "prompt_file_sha256": null,
     "schema_file_sha256": null,
@@ -86,7 +86,8 @@
     "reviewer": null,
     "candidate_file_sha256": null,
     "reason": null,
-    "human_scientific_review": "pending"
+    "human_scientific_review": "pending",
+    "notice": "Trusted delivery operator only; producer leaves not_reviewed. Independent science review and Preview authorization remain separate."
   },
   "delivery": {
     "application_id": null,
@@ -119,7 +120,19 @@
     "matched_labels": null,
     "missing_labels": [],
     "extra_labels": [],
-    "unknown_identity_labels": []
+    "unknown_identity_labels": [],
+    "all_inventory_count": null,
+    "all_inventory_covered_count": null,
+    "all_inventory_missing_labels": [],
+    "all_inventory_ambiguous_matches": [],
+    "excluded_entries": [],
+    "explicit_user_scope_limit": null,
+    "numbered_label_coverage": {
+      "observed_labels": [],
+      "matched_labels": [],
+      "missing_labels": [],
+      "note": "Observed source labels only; never interpolate numeric ranges. Include named/lettered controls in total coverage."
+    }
   },
   "audit_metrics": {
     "activity": {
@@ -193,5 +206,23 @@
       "record_path": null
     }
   },
-  "audit_metrics_notice": "C+E+U=N; confirmed_fraction=C/N. Unknown population accuracy stays null. Fresh AI review is not human gold. Locator existence is not visual identity coverage."
+  "audit_metrics_notice": "C+E+U=N; confirmed_fraction=C/N. Unknown population accuracy stays null. Fresh AI review is not human gold. Locator existence is not visual identity coverage.",
+  "workflow_entry": "prefill",
+  "execution_mode": "routine",
+  "session": {
+    "metadata_path": null,
+    "producer_session_id": null,
+    "previous_task_directory": null,
+    "continuation_kind": "new_session",
+    "structured_handoff_path": null,
+    "independent_reviewer_session_id": null,
+    "notice": "Current headless lacks native resume; source-reading logs are not supervisor inputs."
+  },
+  "review_scope": {
+    "changed_refs": [],
+    "affected_dependencies": [],
+    "unchanged_unreviewed_scope": [],
+    "inherited_checks": [],
+    "inheritance_notice": "Each inherited record needs source/content/dependency hashes, original scope, conclusion and provenance; not automatically validated."
+  }
 }

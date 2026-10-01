@@ -22,6 +22,12 @@ The PostgreSQL schema treats one Paper as the scientific ownership boundary:
 - an Admin must request changes or approve the frozen submission; and
 - approval publishes an immutable Paper Version visible from the Paper library.
 
+Compound, Activity and LineageEdge records may carry one optional review hint.
+The same ⚠ disclosure shows its explanation in draft, submission and published
+views. Reviewers resolve it through existing edits and explicitly clear the text;
+confirming a record does not silently remove a hint. Prefill still requires a
+complete source-supported structure, including a reasonable reconstruction.
+
 AI prefill is optional. It writes through the same scientific service boundary
 as the Reviewer UI, but only into a blank untouched Workspace. The complete AI
 payload is applied in one PostgreSQL transaction, never overwrites human work,
@@ -32,11 +38,19 @@ implement the same versioned payload contract.
 PostgreSQL is the only business-data authority. Redis is delivery state for
 Celery and may be rebuilt from PostgreSQL-backed jobs and extraction runs.
 
-## Supervised AI Prefill
+## Interface language
+
+The page-top language selector switches between the existing Chinese interface
+and English, including the login page. The browser remembers the choice; switching
+preserves unsaved editor state. Scientific records, source quotations and user
+text remain in their original language. UI messages live in `frontend/src/i18n/`.
+
+## AI Prefill and self-check
 
 For a new or resumed Codex/DeepSeek prefill task, start with
 [AI Prefill START_HERE](../docs/ai-prefill/START_HERE.md). It describes source-reader
-separation, per-paper stages, delivery self-check, independent audit, Preview
+separation, DeepSeek-led routine and Codex-observed evaluation modes, prefill/repair
+task entries, delivery self-check, independent audit, Preview
 operations and the persistent handoff. Code/docs are tracked; paper-run artifacts
 and local Preview state remain in ignored `leadtrace-data/`.
 
@@ -174,3 +188,45 @@ Health endpoints:
 
 The complete pilot procedure and evidence checklist are in
 `docs/acceptance/leadtrace-paper-centric-pilot.md`.
+
+## Reviewer workbench
+
+Reviewers can switch a Lineage between Graph, Compound and Edge views. Graph Add
+Node selects a Compound already registered in the same paper. Graph Add Edge
+selects endpoints before opening the existing relation form. Node positions and
+edge curves have separate versions for point and structure modes; Save layout
+persists presentation without changing scientific workspace versions.
+
+Article information supports a source abstract and structured PDB mentions.
+Metadata uses ordinary workspace version checks and is frozen on submission.
+Optional new AI bibliography fields preserve the serialized shape of older inputs.
+
+Viewing progress records only Compound and Lineage groups. Compound signatures
+include structures, source images, activities and linked evidence; Lineage
+signatures include member Compound content, edges and linked evidence. Changes
+invalidate related groups, while layouts and unrelated groups remain independent.
+Only these two groups have viewed badges/counts. Child scientific dispositions and
+review hints remain explicit human decisions. Group coverage satisfies related
+section reading requirements; bibliography keeps manual section confirmation and
+unassigned Evidence remains covered by the final whole-paper confirmation.
+Historical narrow-scope receipts are retained but never promoted to group viewing.
+The final human submission confirmation and server scientific checks remain
+mandatory. Existing manual section dispositions are preserved. Once group tracking
+starts, its current assignee must view all current groups before submission.
+
+The Chinese and English reviewer guides and group-abbreviation reference use one
+source, `frontend/src/review/help/reviewer-guide.json`, exposed in the workbench.
+Portable guides: [中文](../docs/reviewer/reviewer-guide.zh.md) and
+[English](../docs/reviewer/reviewer-guide.en.md). Regenerate with
+`python leadtrace/ops/reviewer/render_guide.py`; CI/local check uses `--check`.
+
+Article information also supports evidence-backed Compound highlights: study
+starting points and paper-prioritized compounds. These are independent of local
+Lineage topology. Multiple roles/scopes are supported, with explicit draft,
+reviewer-confirmed or unresolved dispositions. Viewing does not confirm a role;
+editing an assertion requires a new disposition. Annotation changes invalidate
+related Compound/Lineage viewing signatures. Draft annotations block submission.
+Highlights are versioned, frozen, projected on publication and exported with
+separate review metadata; AI apply always creates drafts. Legacy candidates and
+snapshots without highlights retain their serialized shape. Empty means
+unrecorded, not a scientific claim that no compound was prioritized.

@@ -173,6 +173,7 @@ export function createCompound(
   workspaceId: string,
   payload: {
     expected_workspace_version: number;
+    review_hint?: string | null;
     compound_label: string;
     display_name?: string | null;
     description?: string | null;
@@ -190,6 +191,7 @@ export function updateCompound(
   compoundId: string,
   payload: {
     expected_workspace_version: number;
+    review_hint?: string | null;
     compound_label?: string;
     display_name?: string | null;
     description?: string | null;
@@ -347,6 +349,7 @@ export function createLineageEdge(
   lineageId: string,
   payload: {
     expected_workspace_version: number;
+    review_hint?: string | null;
     parent_compound_id: string;
     child_compound_id: string;
     relation_type: string;
@@ -362,6 +365,7 @@ export function updateLineageEdge(
   edgeId: string,
   payload: {
     expected_workspace_version: number;
+    review_hint?: string | null;
     parent_compound_id?: string;
     child_compound_id?: string;
     review_status?: "draft" | "reviewer_confirmed" | "unresolved";
@@ -443,6 +447,7 @@ export function createActivity(
   compoundId: string,
   payload: {
     expected_workspace_version: number;
+    review_hint?: string | null;
     evidence_id?: string | null;
     assay_name: string;
     metric: string;
@@ -460,6 +465,7 @@ export function updateActivity(
   activityId: string,
   payload: {
     expected_workspace_version: number;
+    review_hint?: string | null;
     evidence_id?: string | null;
     assay_name?: string;
     metric?: string;

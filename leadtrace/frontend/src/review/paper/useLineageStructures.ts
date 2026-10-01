@@ -41,10 +41,13 @@ export function useLineageStructures(workspaceId: () => string, compoundIds: Ref
     load(compoundIds.value);
   });
   watch(compoundIds, load, { immediate: true });
+  function invalidate(): void {
+    epoch++; active=0; queue=[]; records.value={}; load(compoundIds.value);
+  }
   function retry(id: string): void {
     if (records.value[id]?.status !== 'error') return;
     delete records.value[id]; load([id]);
   }
   onBeforeUnmount(() => { disposed = true; epoch++; queue = []; });
-  return { records, retry };
+  return { records, retry, invalidate };
 }

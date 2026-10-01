@@ -79,9 +79,9 @@ def prepare_input_package(
             "Read the source through the authorized read-only locator.",
             "Return CandidateEnvelope.v1 and record omissions instead of guessing.",
             "Follow docs/ai-prefill/START_HERE.md and the actual frozen guide bundle; this input package does not bundle guides or verify the PDF.",
-            "Survey an independent compound inventory and complete core review before full extraction.",
+            "Survey a source-derived compound inventory and verify representative cores before family expansion; producer self-check is not independent audit.",
             "Run candidate validate, candidate coverage, and candidate self-check with the final source self-review before independent audit.",
-            "Only the supervisor may request Preview application; self-check is not scientific approval.",
+            "Use DeepSeek-led routine mode or Codex-observed evaluation mode from the current guide; only the trusted delivery coordinator may apply an authorized Preview draft.",
         ],
     )
 

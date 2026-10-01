@@ -17,14 +17,14 @@ class AssistanceRequestModel(BaseModel):
 class CandidateCreateRequest(AssistanceRequestModel):
     candidate: CandidateEnvelope = Field(description=(
         "At most 5000 scientific objects: Compounds and their Structures each count once; "
-        "locators, Lineages, members, edges, Evidence, links and Activities also count once."
+        "locators, Lineages, members, edges, Evidence, links, Activities and Compound highlights also count once."
     ))
 
     @model_validator(mode="after")
     def limit_scientific_objects(self) -> CandidateCreateRequest:
         payload = self.candidate.payload
         count = sum(len(getattr(payload, name)) for name in (
-            "compounds", "structure_locators", "lineages", "evidence", "edge_evidence_links", "activities",
+            "compounds", "structure_locators", "lineages", "evidence", "edge_evidence_links", "activities", "compound_highlights",
         ))
         count += len(payload.compounds)  # One Structure per Compound.
         count += sum(len(lineage.members) + len(lineage.edges) for lineage in payload.lineages)

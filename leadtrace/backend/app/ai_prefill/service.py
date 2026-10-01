@@ -12,7 +12,8 @@ from app.activities.service import activity_snapshot
 from app.ai_prefill.contracts import AiPrefillPayload
 from app.ai_prefill.models import AiExtractionRun, AiExtractionRunStatus
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
-from app.compounds.models import Compound
+from app.compounds.models import Compound, CompoundHighlight
+from app.compounds.highlights import highlight_snapshot
 from app.compounds.service import compound_snapshot, structure_snapshot
 from app.evidence.models import EdgeEvidenceLink, Evidence, EvidenceKind, EvidenceRole
 from app.evidence.service import evidence_snapshot, link_snapshot
@@ -93,12 +94,16 @@ def _paper_snapshot(paper: Paper) -> dict[str, object]:
         "issue": paper.issue,
         "doi": paper.doi,
         "catalog_state": paper.catalog_state.value,
+        "abstract": paper.abstract,
+        "abstract_source": paper.abstract_source,
+        "pdb_references": paper.pdb_references,
     }
 
 
 class AiPrefillService:
     _science_models = (
         Compound,
+        CompoundHighlight,
         Structure,
         StructureSourceImage,
         Lineage,
@@ -409,6 +414,14 @@ class AiPrefillService:
     ) -> dict[str, str]:
         before_paper = _paper_snapshot(paper)
         bibliography = payload.bibliography
+        for field in ('abstract', 'abstract_source', 'pdb_references'):
+            if field in bibliography.model_fields_set:
+                value = getattr(bibliography, field)
+                if field == 'pdb_references':
+                    if any(x.source_page and x.source_page > source.page_count for x in value):
+                        raise ValueError('PDB source page is outside article')
+                    value = [x.model_dump(mode='json') for x in value]
+                setattr(paper, field, value)
         if bibliography.title is not None:
             paper.title = _clean_required(bibliography.title, "title")
         if bibliography.journal is not None:
@@ -442,6 +455,7 @@ class AiPrefillService:
                 workspace_id=workspace.id,
                 compound_label=_clean_required(item.compound_label, "compound_label"),
                 display_name=_clean_optional(item.display_name),
+                review_hint=item.review_hint,
                 description=_clean_optional(item.description),
                 sort_order=sort_order,
                 created_by_kind=ChangeActorKind.AI,
@@ -596,6 +610,7 @@ class AiPrefillService:
                         edge_item.modification_summary
                     ),
                     review_status=LineageEdgeReviewStatus.DRAFT,
+                    review_hint=edge_item.review_hint,
                     sort_order=edge_order,
                     created_by_kind=ChangeActorKind.AI,
                 )
@@ -646,6 +661,19 @@ class AiPrefillService:
                 )
             )
 
+        highlights = {}
+        for item in payload.compound_highlights:
+            row = CompoundHighlight(paper_id=run.paper_id, workspace_id=workspace.id,
+                compound_id=compounds[item.compound_ref].id, evidence_id=evidence_by_ref[item.evidence_ref].id,
+                role=item.role, scope=item.scope, rationale=item.rationale, review_hint=item.review_hint,
+                review_status='draft', created_by_kind='ai')
+            session.add(row)
+            highlights[item.ref] = row
+        session.flush()
+        for row in highlights.values():
+            session.add(self._event(run, entity_type='compound_highlight', entity_id=row.id,
+                action='compound_highlight.create', after_value=highlight_snapshot(row)))
+
         links: list[EdgeEvidenceLink] = []
         for item in payload.edge_evidence_links:
             link = EdgeEvidenceLink(
@@ -690,6 +718,7 @@ class AiPrefillService:
                 value=item.value,
                 unit=_clean_optional(item.unit),
                 context=_clean_optional(item.context),
+                review_hint=item.review_hint,
                 sort_order=sort_order,
                 created_by_kind=ChangeActorKind.AI,
             )
@@ -752,6 +781,8 @@ class AiPrefillService:
             entity_map[f"/edge_evidence_links/{index}"] = str(link.id)
         for index, activity in enumerate(activities):
             entity_map[f"/activities/{index}"] = str(activity.id)
+        for ref, row in highlights.items():
+            entity_map[f"/compound_highlights/{ref}"] = str(row.id)
         return entity_map
 
 

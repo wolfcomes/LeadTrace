@@ -1,156 +1,129 @@
-# DeepSeek 受监督预填运行指南
+# DeepSeek 主导的预填与修补运行指南
 
-适用范围：由 Codex 组织多个 DeepSeek harness，生成供人工复核的 CandidateEnvelope.v1，并通过现有 AI Prefill 模块写入隔离 Preview。工作流版本和新任务入口以 [START_HERE.md](START_HERE.md) 为准。
+流程 `deepseek-led-v3-20260923`，入口见 [START_HERE](START_HERE.md)。日常科学工作交给 DeepSeek；Codex 在 evaluation 模式监督、校准指南和报告。已有授权范围内由受信操作者交付 Preview。该分工降低昂贵监督的重复劳动，不降低源审查标准。
 
-本指南与 [质量规则](quality-pitfalls.md)、[交付自检指南](deepseek-self-check-guide.md) 共同组成当前指导。科学准确率和成本改善必须由独立审查及实际费用记录支持，不能从进程正常退出或技术验证通过推导。
+## 职责、模式和实际能力
 
-## 推荐分工与并发
+| 角色 | 负责 | 边界 |
+|---|---|---|
+| DeepSeek 生产者 | 源清点、代表结构、提取、自检、有限修补、结构化交接 | 单篇单写者；不读凭据、不 apply；自检不是独立审查 |
+| 新 DeepSeek 审查者 | 冻结范围的独立源核验，报告逐项结论 | 不继承生产者推理，不修改候选；仍是 AI 复核 |
+| 受信操作者/任务工具 | 任务身份、打包、限时执行、确定性检查、状态和交付 | 不替模型宣称完成科学检查；凭据不进入生产目录 |
+| Codex（evaluation） | 检查源阅读者表现、差异、统计、返工与指南效果 | 不读原始论文/源裁图/含源内容日志；不做重复科学提取 |
 
-| 方式 | 收益 | 主要代价 | 使用建议 |
-| --- | --- | --- | --- |
-| 单 harness 全流程、结束后检查 | 操作简单 | 共用错误骨架可能污染整篇；发现问题晚 | 小型探索可用 |
-| 多 harness 各负责一篇，Codex 分阶段验收 | 并行提取，检查方法统一，集中处理疑点 | 需要监督容量与可靠状态记录 | 推荐，先保持 2–3 篇并发 |
-| 每篇双模型独立提取再比较 | 可发现部分不一致 | 推理费用更高；同源偏差仍可能一致 | 仅用于高风险骨架、立体化学和关键数据复核 |
+`routine` 默认让生产者连续推进；`evaluation` 记录额外监督/固定样本。两者的可交付质量条件相同。风险可触发独立代表结构检查，例如高风险立体骨架、源冲突、已发生可扩散错误；不要把每个中间文件保存点都变成新会话。
 
-单篇是默认写入边界：同一篇同一阶段只有一个候选写者，不让多个 harness 修改同一个 candidate 文件。Codex 可以在一个 harness 提取时检查另一个已交付的候选。监督积压达到当前并发数时，先暂停派发新论文，消化检查与反馈。
+CLI `task prefill` / `task selfcheck` 生成新任务包；`task run DIR --timeout-seconds 1800` 运行一次有界 `dsh --profile headless` 生产调用并保存状态；`task status DIR` 查看状态。每个 job 只运行一次，重试/续修建立新 job 并引用父产物。任务锁按 paper_key 防止本机同论文并发写候选，即使 source 不同也互斥。当前没有全自动独立审查调度、科学批准、持久后台队列或 Preview 应用服务；不能把生产调用正常退出当流程完成。
 
-当前活动任务内，Codex 可以启动并监控多个进程、读取产物、发送下一轮提示词并通过已有 API 应用结果。用户要求监督者不读原文时，Codex 只检查文件身份、候选、指标和审查产物；源文核验交给新的 DeepSeek 审查进程，报告必须称为独立进程的 AI 复核，不能称为 Codex 原文核验或人工金标准。活动任务结束后，不能假设 Codex 会持续后台值守。跨会话自动恢复、定时唤醒与无人值守调度需要额外的持久协调机制；本轮文档没有实现这些功能。
+## 输入包与最小阅读
 
-## 输入与阶段验收要求
+每次新任务复制真实当前指南、prompt、schema、模板和授权源，冻结文件 hash；历史包保持原样。包中有文件不代表模型必须全部读取，模型按以下清单读取，其余仅遇到对应风险时打开：
 
-执行 [覆盖与准确性审查协议](quality-audit-protocol.md)；新增 [独立源文审查提示词](prompts/deepseek-audit.md)。派发前核对外部 manifest 身份，不再仅核对 input/candidate。调查必须产出合法 inventory 与代表结构阶段验收，避免只在 prompt 写“survey”却一口气生成全部候选。实际包必须含当前指南与文件 hashes；历史实验保留原指南版本。
+| 阶段/角色 | 必读 |
+|---|---|
+| 新预填生产 | 实际 task/input 与外部来源身份记录、candidate schema、extraction-guide、task prompt；生成后读 self-check guide/template |
+| 自检/修补生产 | input、当前候选/源 inventory、结构化 handoff 与反馈、self-check guide、revision prompt；extraction-guide 中受影响科学章节 |
+| 独立审查 | 实际源身份、冻结审查范围/候选 hash、audit protocol/prompt；受影响科学章节 |
+| 操作者/Codex | START_HERE、本文、实际 HANDOFF/state、质量清单；Preview 操作时才读 Preview runbook |
 
-对共享结构/表格发现的错误按整个系列/列扩大复查：本次 013 重复环编号冲突，010 区域位置误读，005 新表漏填。先修正生成策略/行列映射并验收代表，再批量展开。不要用反复提醒同一句规则代替阶段产物。
+`quality-pitfalls.md` 是按风险查阅的错误模式表，不是每个调用的额外必读。完整原候选和历史证据可作只读后备；默认给修补者紧凑 handoff、准确当前版本和差异，不要求重读全部旧报告。共享图像/解析产物可按源 hash 复用；不能把缓存存在当实际视觉检查。
 
-## 投入前准备
+源身份从外部 catalog/manifest 选定，记录 paper key、DOI/题名、SHA-256、bytes、pages；DeepSeek 核对实际 PDF。SI 单独列身份与可用性，不把正文 Experimental 称为 SI。input prepare/task prepare 不会自动证明源选对。操作者在派发前核对 catalog，可在 input.recipe 保存 expected_title/expected_doi/catalog provenance；提供独立 source-identity-check 文件时才要求模型读取它。记录真实模型/harness、指南文件 hash 和提示词；未知 usage/费用为 null。
 
-每篇建立独立目录，每轮使用新子目录。任务包中提供以下文件：
+## 运行前核实模型和推理配置
 
-- `input.json`：真实 source identity、授权 PDF locator、guide_version、父候选和反馈 IDs。
-- 原文 PDF；可选 `pages.txt`，只作为搜索辅助。SI 若另有文件，记录其独立身份；不要把 SI 页码伪装成主 PDF 页码。当前候选的 source 和 locator 以所选源为准，无法表示的外部来源留待明确的扩展流程。
-- `candidate-schema.json`、`candidate-example.json`、`extraction-guide.md`、本指南和 `deepseek-quality-checklist.md`。
-- 从 [任务提示词模板](prompts/deepseek-task.md) 填好的本轮 `prompt.txt`，以及 [质量记录模板](templates/deepseek-quality-record.json)。
+质量优先不等于在提示词里写“尽力”。操作者应核实实际 `dsh --version`、
+`headless` profile、provider/model、thinking、reasoning effort、单请求输出上限、
+上下文及图像处理限制。区分默认配置、配置覆盖和实际请求元数据；没有实际记录
+时不能声称历史运行使用了最高档。`--dump-config` 可能含敏感配置，禁止原样
+输出或放进生产包；仅保存脱敏白名单及配置文件 hash，不读取推理/源内容日志。
 
-复制模板不等于接入完成。监督者必须确认工作目录里确实存在文件，提示词引用的路径正确，`input.guide_version` 与实际指南版本一致，并保存输入、指南、prompt 和 schema 的文件 SHA-256。不通过修改全局默认 guide_version 来改写历史实验。
+查阅当时官方能力说明和安装版本的适配器。读取化学结构图的生产者/审查者
+必须使用支持图像的模型；更昂贵或名称含 Pro 不自动意味着适用于本任务。
+质量优先时显式选择适配器和服务端共同支持的最高 reasoning effort，冻结
+本轮独立 overlay，避免修改全局用户配置。提高输出上限不保证更好科学结论，
+墙钟限时也不是推理档位。确认图像没有被当作纯文本或低清缩略图；对细节
+使用可辨认的局部原图，而非只增大整页图像。
 
-运行前实际计算 PDF SHA-256、字节数和页数，与 input 对照。`input prepare` 接收调用者传入的身份；不能把成功生成 JSON 当作已验证 PDF。纯离线 CLI `candidate validate` 也不能证明声明的 source hash 对应真实文件。复制包和 Preview 选中的 PDF 要分别核验。
+使用不含论文内容/凭据的请求元数据或合成图像探针核验配置生效，再启动
+科学任务；模型自述不是证据。记录请求模型、thinking/effort、max tokens、
+图像输入是否实际发送、HTTP 状态及失败/截断。不要保存 headers、消息文本、
+原图字节或 reasoning。服务端内部算力和科学准确率不能由这些参数证明。
 
-任务目录写权限、只读 PDF、无数据库/Preview 凭据是推荐执行边界。提示词本身不是操作系统沙箱。当前 `dsh --profile headless` 的启动方式不应被描述为已实现强制目录隔离；需要强隔离时用受限账户或容器实际限制文件、网络与凭据访问。
+## 从零重跑与指南对照
 
-## 阶段与放行条件
+先保留原始/修补候选、审查、当前 Preview 工作区快照及 hash，再建立新的
+`prefill` 任务。新生产包只含源和通用新指南，不含旧候选、旧错误清单、
+由旧答案导出的 inventory 或 Preview 数据；生产者从源自行建立分母。
+重新提取不要求清空已有 Preview。已有工作区仍按版本化更新规则处理，
+需要并排展示时使用独立空白实例，不通过删除/重置绕过 initial apply。
 
-下列状态是监督者的运行约定，不是现有 CLI 已提供的队列状态。状态和每次转移原因写入单独的运行记录。
+派发前冻结检查范围、遗漏检查、结构/locator/Activity/关系的逐项分母和
+独立审查规则。复用已诊断论文是回归实验，不是新论文泛化验证；同时改变
+指南和模型/effort/预算时，只能评价整套配置，不把差异归因于指南一项。
+汇总前以实际逐项记录校验覆盖和分母；端点正确但条件、描述或证据错误的边
+不能计为整条正确。源歧义、诚实未决、遗漏和错误正向断言分别报告。
 
-| 阶段 | DeepSeek 输出 | Codex 检查与下一步 |
-| --- | --- | --- |
-| 准备 | 已读取任务包、身份一致 | 检查源文件与输入版本，才能启动 |
-| 论文调查与骨架试做 | `survey.md`、代表结构及原图、表格/化合物清单 | 检查每个不同核心、环大小、连接点和高风险变体；发现共性错误先修核心 |
-| 全量提取 | 新 `candidate.json`、`quality-record.json`、`review-notes.md`、脚本和重绘 | 技术验证，然后做独立科学检查；禁止直接由 harness apply |
-| 需要修订 | 保留父版本，读取精确反馈 | 下一轮只针对反馈与发现的同类缺陷修改；记录全部实际变化 |
-| 可进入预览 | 精确候选 hash、检查结果、未解决项 | 由监督者应用，检查目标工作区版本和应用回执 |
-| 预览验收 | 页面、图片、分页、草稿 Edge 与数据核对 | 验收通过才交付给人工复核；仍不是科学批准 |
-| 暂停待处理 | 超预算、反复无进展、源文件缺失或不可解结构 | 保存产物及原因，停止自动循环；针对缺口升级处理 |
+## 新预填：一个生产循环
 
-每阶段可以使用独立的 headless 调用，依赖磁盘文件恢复，不依赖模型记住上一轮。调查阶段的代表结构不是完整 CandidateEnvelope，不交给 candidate import。调查清单可以存在不确定项，但明显错误的共享核心不能带入全量生成。
+### 日常调用边界与停止条件
 
-### 调查阶段：优先阻断可扩散错误
+| 阶段 | 调用和责任 | 结束条件 |
+|---|---|---|
+| 基线生成 | 一次生产者 harness 调用，含源清点、提取、自检与最多两次内部修正 | 保存最终候选和实际检查证据；未完成/未解决如实标记 |
+| 基线独立检查 | 一次新的只读 reviewer 调用，按冻结范围先形成源判断再对照候选 | 交付逐字段/依赖结论与未查范围；不修改候选 |
+| 条件追加 | 有证据可修的问题：一次新修补调用＋一次新的增量复核调用 | 只修问题及受影响依赖；两次追加后仍未解则交 needs_revision/partial |
 
-先列出所有正文表格、结构图、药理/ADME/PK 章节和缺失 SI。按原文标签列出目标化合物，标记共享骨架、独立画图、控制药、未确定身份。
+因此基线是两次 harness 调用，追加闭环后是四次；每次会话可包含多个模型请求/工具调用，不把它们称为两次 API 请求。独立源清点、仲裁或代表结构预审若另建会话，也分别计费/计数，不暗藏在“两轮”中。当前工具没有自动编排这些步骤，仍由操作者派发。
 
-每个不同核心至少提供一个代表结构；此外必须覆盖环扩张/收缩、连接基改变、区域异构、糖基或其他立体化学变体。提供原文区域、带标签重绘、结构表示、环大小/核心说明。源图审查者核对实际图像、提供逐项记录后，监督者才让同类结构批量展开；监督者遵守用户对原文访问的限制。
+生产者先形成源清单，审查者在自己的调用内独立核验其覆盖及排除理由；不默认再加一个全篇清点会话。隔离强度与源先行的实际安排按 [审查协议](quality-audit-protocol.md#1-冻结身份范围和检查计划) 记录。抽样通过只支持已查范围，未查字段不能因此获得全篇通过。
 
-PfPKG 004 的漏填修复进一步要求：先建立独立标签清单，再运行 `candidate coverage candidate.json --inventory compound-inventory.json`。不能用已有候选定义提取范围，也不能只收录已经有 Edge 的 Compound。真实例子见 [39 个主表化合物清单](examples/compound-inventory-pfpkg-004.json)。该命令已实现，缺少必填标签时退出 4；记录 omissions 不会使覆盖通过。它是监督者写入前必须执行的检查，尚未自动强制到 Preview API。
+将剩余项区分为可修提取/编码错误、尚未完成的检查、缺少来源/真实歧义、审查争议。前两类不包装成“原文无解”；后两类无新证据时不循环返工。审查争议先核对实际字段及审查依据。预算仅允许基线时保留问题交付，不把独立检查写成“已订正”；条件追加后停止，进一步工作需明确的新证据或新的限定任务。
 
-这一阶段旨在提前发现问题，不能代替全量结构逐一对照。RDKit 环集合在稠环体系中未必等于直觉的“环数”，环签名仅作异常筛查，不能硬编码“所有大环都是错误”。
+### 生产步骤
 
-### 全量阶段：要求可检查的中间产物
+1. **调查并保存。** 未读旧候选先清点全部可用源内完整身份、测量、SAR/合成关系；记录缺失 SI/未决。每个不同结构家族和高风险连接/立体变体都给代表结构、源定位和实际重绘比较，不只核实最终 lead。
+2. **代表核实后扩展。** 生产者先解决共性核心错误再生成全系列；未决家族可保留缺口，继续独立部分。每个最终结构和自身 locator 集合仍须视觉核查。按表/系列保存，避免预算末尾一次性写文件。
+3. **程序检查和源自检。** 按 [自检指南](deepseek-self-check-guide.md) 执行；先修低成本可发现问题，再做科学检查。默认一次系统检查、最多两轮修正。无新证据的缺失 SI/原文冲突不重复派发。
+   最终检查必须重新读已落盘候选：共核/变体映射、精确裁图、反馈对应的字段差异及依赖结论；不得用计划、临时对象或“已修复”自述替代产物。
+4. **交付。** 完整候选、inventory、测量/结构/路线核验、最终 hash 绑定 self-review、自检报告、变更/未决与 handoff。状态区分 partial、needs_revision、ready_for_independent_review，不由生产者填写批准或 application receipt。
+5. **独立审查。** 新 reader 按冻结风险范围和固定样本核验，见 [审查协议](quality-audit-protocol.md)。共性错误扩大到整系列/列；局部问题精确反馈到下一修补 job，不默认重跑全文。
 
-按表格或系列持续保存进度，结束时提交完整候选。质量记录必须列出每个源表的预期行标签、已提取标签、遗漏及原因；结构定位覆盖按不同 compound 统计，不能用 locator 总数替代。
+## 已有候选：自检/修补入口
 
-DeepSeek 在扩展到全量前应采用经检查的片段组装策略。不能将含未闭合环编号的任意 SMILES 子串直接嵌套拼接。每个最终结构仍需 sanitize、重绘、对照原文，检查保护基、取代位置、连接点、立体化学和电荷。
+先固定当前父候选、源 inventory、已审查证据、反馈及 workspace 基线。已应用草稿须由操作者导出现状/核查人工改动，不能以原始预填 candidate 代替当前工作区。传入 workspace ID/version 只是记录，CLI 不联网保证它仍然有效。
 
-所有新增 Activity 按原始 compound/assay/target/endpoint/context 记录；剂量留在条件中，重复表格上下文不伪装成独立重复实验。原文数值的检查参照必须独立读取 PDF，不能从 candidate 自动回填“参考答案”。
+原生产会话可用于追踪和未来续接；当前 headless 无 resume，实际使用新会话读取结构化 handoff。session inspect 只读取身份与 usage 元数据，显式 `--dsh-home` 应对应实际子进程环境的 DSH_HOME，不能把 terminal session ID/PID 当模型对话 ID。原生产者无论是否续接都不能成为独立审查者。
 
-### 检查与反馈阶段
+先列变更及受影响依赖：改结构核心影响全部变体及结构/SAR理由；改 crop 检查共享该区域的所有身份；改边检查相关组的成员、角色、非参与说明；改标签检查所有引用。未改变且有适用审查记录的项目保留；不凭文件版本变化重做所有检查。
 
-使用 [质量检查清单](deepseek-quality-checklist.md)。可解析不等于身份正确，图片加载不等于裁剪完整，退出码 0 不等于科学检查通过。
+复用审查须人工核实源 hash、实体内容 hash、检查范围和依赖 hash 均适用，保留原记录 provenance；当前工具不自动验证继承。仅改描述不能让结构审查失效，改共享骨架也不能只查一个代表。当前七项 source-self-review 无增量豁免：无有效继承的未查范围保持 unresolved，不把局部修补包装成全篇通过。
 
-检查分为提取者自检、独立审查进程的源文复核、监督者的确定性与交付核验。新的 DeepSeek 会话与提取者隔离上下文，仍可能共享模型偏差；它不是独立人工金标准。Codex 未读原文时不得填写自己完成了源图/数值核验。发现一个共性结构错误或表格错列，要扩大检查到全部受影响系列/列，不能只修举例的一行。
+输出完整新候选及精确差异，保留原 IDs/refs 和未受影响内容；新 candidate ID、真实 parent 与实际 feedback IDs。运行器对修补输出保存 `checks/candidate-diff.json`，按实体 ref 汇总变化（Activity 按 compound_ref 聚合，不是逐测量身份匹配）；模型/操作者仍须检查意外改动。重写全部候选不是重新提取全部内容的理由。
 
-模板中的 supervisor_preview_gate 由监督者独立填写，DeepSeek 输出时保留 not_reviewed；修订后也必须重置。监督者不把模型写出的 pass 或放行字段当作授权依据，应另存自己生成的、绑定精确候选 hash 的检查记录。
+## 审查与记录效率
 
-反馈使用 [反馈模板](prompts/deepseek-revision.md)，必须指明候选版本与文件 hash、实体/表格/页面、已观察到的错误、受影响范围、预期修复证据和不应变动的部分。反馈文件是运行侧记录，不自动等于模块的正式 Evaluation。已应用工作区的正式反馈需要 `evaluation record` 绑定真实应用和快照；不得伪造 application/snapshot 身份来使离线反馈看似通过正式契约。
+- 结构记录共享核心一次，每个变体记录自己的取代/连接/立体差异与结论；每个制备事件记录底物、产物、条件、源位置一次，关联其二元边。压缩重复文字，不减少逐项覆盖。
+- 候选校验、标签 coverage、自检先运行；self-check 的图诊断现已报告分量、孤点、环、合成角色冲突和逐 Compound 两类未参与，仅给 review 提示，不自动拆组/加边/批准。图含义、非参与理由和测量穷尽仍需源核验。
+- 科学 disagreement 回源核查 expected 与 observed；审查者也可能错，不能盲改正确候选。已否定边不能为连图恢复。
+- 冻结源清单/审查样本与候选 hash，独立审查声明其实际范围。用任务包隔离/清单元数据证明阶段边界，不要求 Codex 读 reasoning logs；单靠提示词的顺序约束仅称 procedural separation。
 
-每篇默认允许全量后的两次修订尝试，这是起始运行策略，不是已测出的最佳参数。同一缺陷两轮无改善则停止自动重试，由授权的源文审查者重查源图、改用局部专项检查，或保留明确遗漏。预算不足时保存部分结果，不能用补猜满足数量目标。
+## 有界运行、恢复和费用
 
-### Preview 应用与交付
+运行器记录实际 process/session identity、开始结束 UTC、退出/超时和产物。只终止本任务拥有且身份核实的进程组。工具 wait 报错先查持久状态，不盲目重跑；活动 Codex 结束不等于后台仍有人监督。跨论文可先保持 2–3 并发；避免大量轮询或重复读长报告。
 
-DeepSeek 只交文件。监督者独立验证源身份、候选 hash、报告及工作区，再通过 Preview 专用 API 应用。保持稳定幂等键：同一请求恢复使用原键；不同内容不能复用旧键冒充同一次应用。请求超时先查询已有应用和工作区，不能盲目重发新键。
+`task status` 返回持久 checkpoint 和 leader_identity_matches，不能推断整个进程组实时状态。遗留 running 用 `task recover DIR`：只接受 running 状态，取得原 paper 锁并核对 boot/PID/start ticks/session 无活进程后标 interrupted；不终止/重跑，后续建新 job。锁默认位于 `~/.local/state/leadtrace/ai-prefill/locks`，可用 `LEADTRACE_PREFILL_LOCK_ROOT` 统一操作者；不同锁根不互斥。这是同机协作锁，不是分布式协调或文件访问沙箱。
 
-科学检查放行应绑定精确 candidate 文件 SHA-256；模块另有 canonical candidate/payload hash，二者用途不同，记录字段要区分。候选任何改变都会使旧的科学放行失效。
+timeout 是墙钟限时，不是模型 token/金额硬限额。提示词预算、最多修订轮数和停止条件仍需检查，当前未实现自动依赖继承验证或 token 费用强制预算。记录 DeepSeek/Codex 各自调用数、输入/输出/缓存 token、超时/返工、工具费用和人工分钟；未知留 null，缓存 token 不自动与总输入相加。session inspect 能提取的 usage 以实际字段与来源为准，不估算不存在的账单。
 
-现有 Preview apply 只接收 version=1、空白、无 reviewer/admin 编辑历史的 editing workspace；`expected_workspace_version` 是并发保护，不是 replacement 开关。已有数据的工作区不能直接重新 apply。仅 label 等局部修正时，核对候选差异、保留前快照/原 receipt，使用指派 reviewer 的现有字段 PATCH API，逐请求版本保护并保存每次响应。Admin 管理权限不等于 draft 编辑权限。请求被 403/409 拒绝时先检查角色/业务约束，不清空科学实体、不回退版本、不伪造新 apply receipt；旧 receipt 的 `changed_since_apply` 可是合法编辑的结果。完整候选替换需独立规划与授权，不由此指南假装已有能力。工作区版本发生变化时先检查是否已有人工编辑，不覆盖或重置。三篇试验的 `apply_reviewed.py` 是含具体试验身份的脚本，不是通用调度器；复制前必须移除旧目标、核验新身份和版本。
+评价改进须比较相同源范围、独立审查标准下的准确性/覆盖、交付后缺陷、返工、总成本和墙钟时间；文档缩短、模型更便宜或调用次数减少都不能单独证明效果。
 
-验收包括应用回执 committed、活动字段与候选一致、图片实际解码、逐化合物来源覆盖、页面可读性、分页/筛选、草稿 Edge 和原有工作区未被意外修改。没有文字或支持 Evidence 的 Edge 可以保留，但应有具体 AI 推断理由；不要为通过检查造 Evidence。数值 Activity 仍应追溯到对应原文表格/文字；不要把 Edge 的允许规则推广成无需记录测量来源。
+评估指南时冻结相同模型/effort/预算/来源/审查口径，分别比较基线两次调用后和条件追加后的结果。统计身份与测量覆盖、分字段正确/错误/未决、漏检/误报、共性错误和实际返工成本；不混成一个总准确率。已用于改指南的论文只作回归样本，另用未参与修改的论文检查泛化。一次新旧结果差异不能排除随机波动；没有实际对照不声称正确率提高。
 
-## 现有工具与待补能力
+## Preview 与跨任务交付
 
-| 能力 | 当前状态 | 使用边界 |
-| --- | --- | --- |
-| `doctor`、`contract export`、`input prepare` | 已实现 | doctor 是离线可用性说明；输入身份需独立核验 |
-| `candidate validate/import/compare` | 已实现 | 格式、引用、解析和差异；不证明分子身份或科学覆盖 |
-| Preview candidates / validations / applications API | 已实现 | Preview 专用，登录及 CSRF，校验实例、源与工作区身份 |
-| `evaluation record`、`candidate export-workspace` | 已实现 | 绑定实际 Preview 快照和版本；见现有 runbook |
-| 并发运行、反馈修订、源图审查、页面验收 | 三篇试验中已实际执行 | 当前依靠任务内监督和试验专用脚本 |
-| 持久队列、独占任务租约、统一重试与超时、重启恢复 | 尚未形成通用服务 | 后续调度器应补齐，不由文档假装实现 |
-| 骨架错误、裁剪语义完整性、全量科学正确性自动判定 | 没有通用可靠判定器 | 确定性检查辅助，仍需源图对照与疑点升级 |
-| 完整 token/费用与人工时间统计、质量趋势面板 | 本次未完整采集 | 下一批按统一口径记录，缺失值写 null |
+生产者只交文件。受信操作者按 [Preview runbook](../../leadtrace/ops/runbooks/ai_prefill_preview.md) 核对 source/实例/候选 hash/授权/角色/workspace 版本。空白工作区才使用 initial apply；已有数据用版本化 Reviewer 更新，前后快照与 journal 保留人工编辑，409/403 时核查约束，不清空/回退版本绕过。旧 receipt 的 changed_since_apply 可是合法编辑，不能伪造新 receipt。
 
-可在仓库根目录运行以下已存在的离线命令（命令参数中的路径必须替换为实际任务文件）：
+用户授权查看未完善结果时保持 draft/needs_revision，明确未决；可查看不等于科学通过。写入后核对实际数据、分页、边、生成结构和资源可读取，计数/HTTP 成功不是科学验证。Preview 科学记录/候选/资产不导入生产；合并源码不授权生产部署。
 
-```bash
-.venv/bin/python -m leadtrace.ops.ai_prefill doctor
-.venv/bin/python -m leadtrace.ops.ai_prefill candidate validate /absolute/job/round-1/candidate.json
-.venv/bin/python -m leadtrace.ops.ai_prefill candidate compare /absolute/job/round-1/candidate.json /absolute/job/round-2/candidate.json
-.venv/bin/python -m leadtrace.ops.ai_prefill candidate import /absolute/job/round-2/candidate.json --artifact-root /absolute/managed-artifacts
-```
-
-`candidate import` 保存候选，不是应用到科学工作区。API 和审核反馈命令参见 [操作 CLI](../../leadtrace/ops/ai_prefill/README.md) 与 [Preview runbook](../../leadtrace/ops/runbooks/ai_prefill_preview.md)。
-
-## 多 harness 监控记录
-
-每个调用至少记录：run ID、paper key、阶段、轮次、输入/prompt/指南 hash、运行时模型和 harness 版本、工作目录、PID、实际开始/退出时间、退出码、最后日志/文件进展时间、产物文件 hash、技术/科学检查状态、反馈次数及剩余预算。
-
-PID 只是进程定位信息，恢复时还需核对启动时间和命令，避免误认复用 PID。`session_id` 用于终端 `write_stdin`，执行工具的 `cell_id` 用于 `functions.wait`；只有工具返回“Script running with cell ID”时才调用后者。任何等待工具错误，先检查进程与持久产物，不据此宣称 harness 失败或重跑整批。
-
-逐任务实际完成时间必须在各进程退出时记录。按顺序 `wait()` 后计算的 elapsed 会高估后面已结束任务的耗时，本次 `run-results*.json` 就有这个局限。
-
-起始策略：2–3 篇并发，每个阶段调用设显式时间预算，全量阶段可参考本次使用的 30 分钟上限，但按篇幅调整。日志暂时不更新不能直接判死；结合进程、工具调用和文件进展判断。超时只停止属于该 run 的进程组，保留文件和退出原因；不用全局 kill 命令。重启时先恢复已有候选与状态，再决定续跑哪一阶段。
-
-这套记录规范本轮尚未接入自动心跳。若需要跨会话自动运行，应先实现持久任务状态、任务锁、独立退出回收、幂等应用和按事件通知，再扩大并发。
-
-## 如何证明降本增效
-
-比较对象必须采用相同交付标准，例如“进入待人工审核 Preview 且通过同一源图/数值检查”，不能把生成 JSON 与完成审核比较。固定已审核回归集用于防回归，另留新论文评估泛化；旧 CSV 答案不进入新论文提取输入。
-
-下一批建议 6–10 篇，覆盖共享骨架、独立结构图、立体化学、密集 ADME/PK 表和扫描/图像表格。在样本足够前保持 2–3 并发。建议记录：
-
-| 指标 | 分子 / 分母或口径 |
-| --- | --- |
-| 首轮结构准确率 | 经独立审查正确的结构 / 被审查结构，明确是否全量；疑点单列，不算正确 |
-| 修订后结构准确率 | 同上，另列修订仍遗留的问题和遗漏 |
-| 数值与条件准确率 | 核对正确的测量项 / 核对项；标明是否包含单位、符号、SD 和条件 |
-| 化合物与测量覆盖率 | 已提取身份或原文测量 / 预先调查确认的源项目；不要用候选自身计数作分母 |
-| 原图身份覆盖率 | 自身图片足以核对身份的化合物 / 原文存在结构来源的化合物；无图控制药另列 |
-| 返工量 | 修订次数、改变的结构/测量/裁剪数量、监督用时、人工复核用时 |
-| 单篇总成本 | DeepSeek 各轮 + Codex 监督 + 工具费用 + 人工时间成本；缺少单价或 usage 时不报精确金额 |
-| 单位有效产出成本 | 总成本 / 通过相同交付标准的篇数，或经核验的化合物/测量数量 |
-| 耗时与吞吐 | 单篇独立起止、监督分钟数、整批墙钟时间、交付篇数；并行时间与劳动时间分开 |
-
-默认科学放行条件：无已知未处理的结构连接错误、无已知错列/单位/符号错误、无伪造来源、无未声明的覆盖缺口；所有保留疑点对审核者可见。用户明确要求查看当前带缺陷结果时，可由监督者按授权写入草稿Preview，绑定候选hash并保留问题记录，仍为needs_revision，不算科学放行。无法确认结构就明确遗漏并连带记录未提取测量/关系，不能用占位 SMILES。疑点可被有说明地交付预览，但不能计为已确认正确。
-
-“出色”的目标应由后续同口径复核和成本数据证明。文档、早期骨架检查、局部反馈和缓存原文渲染有望减少返工；若监督仍需逐单元格重做整篇，费用较低的提取模型也未必降低总成本。
-
-## 交付前 producer 自检
-
-按 [交付前自检指南](deepseek-self-check-guide.md)执行新离线命令 `candidate self-check`。任务包必须复制指南和 `templates/deepseek-self-review.json`，冻结实际文件hash；不改历史任务包。先程序preflight，再DeepSeek逐项回查源文，最后以最终candidate文件hash绑定self-review并复跑。最多两轮修正，未决交partial。退出0仅ready_for_independent_review，不能代替独立审查或Preview批准。该检查尚未强制接入Preview API。
+用 [HANDOFF](templates/run-handoff.md) 与 [run-state](templates/run-state.json) 保存实际完成范围、产物 hash、会话/进程、检查/审查/交付各自状态、禁止重跑事项与唯一下一动作。能力边界和受限网页 broker 方案统一见 [MAINTENANCE](MAINTENANCE.md)。

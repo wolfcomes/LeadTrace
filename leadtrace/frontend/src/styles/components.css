@@ -1108,3 +1108,48 @@
 .lineage-group-switch button[aria-pressed="true"] { border-color: var(--teal); background: var(--teal-pale); box-shadow: inset 0 -2px 0 var(--teal); }
 .lineage-group-switch button span { font-size: .8em; opacity: .75; }
 .lineage-group-description { color: var(--ink-muted); line-height: 1.7; margin-bottom: 1rem; }
+
+/* A single disclosure for uncertainty on retained scientific records. */
+.review-hint { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; vertical-align: middle; }
+.review-hint-toggle { border: 1px solid currentColor; border-radius: 4px; color: var(--amber-deep); background: var(--amber-pale); cursor: pointer; font: inherit; line-height: 1.2; padding: 0.15rem 0.35rem; }
+.review-hint-message { max-width: 44ch; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--amber-deep); font-size: 0.9rem; }
+.compound-list-panel article:has(> .review-hint) { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+.compound-list-panel article > .review-hint { display: contents; }
+.compound-list-panel article > .review-hint > .review-hint-toggle { grid-column: 2; grid-row: 1; }
+.compound-list-panel article > .review-hint > .review-hint-message { grid-column: 1 / -1; grid-row: 2; min-width: 0; max-width: none; padding: 0 14px 12px; }
+
+/* Reviewer workbench: presentation and viewed state remain separate from approval. */
+.reviewer-help { margin: 1rem 0; border: 1px solid var(--line-strong); border-radius: 12px; padding: .8rem 1rem; background: var(--surface-raised); }
+.reviewer-help summary, .record-detail > summary { cursor: pointer; font-weight: 600; padding: .5rem 0; }
+.reviewer-help-content { max-height: 70vh; overflow: auto; padding: 1rem; }
+.reviewer-help-content table { width: 100%; border-collapse: collapse; }
+.reviewer-help-content th, .reviewer-help-content td { text-align: left; padding: .65rem; border-bottom: 1px solid var(--line-strong); vertical-align: top; }
+.reviewer-help-content details { margin: .7rem 0; }
+.view-state { display: inline-flex; gap: .35rem; align-items: center; border-radius: 6px; padding: .2rem .5rem; background: #f3eee3; color: #71614a; font-size: .8rem; }
+.view-state.is-viewed, .section-status-control.is-viewed { background: #eef5f1; color: #416557; }
+.view-state .button-quiet { padding: 0 .25rem; min-height: auto; }
+.review-progress-sections { display: flex; flex-wrap: wrap; gap: .5rem; margin: .7rem 0; }
+.review-progress-summary { padding: 1rem; border: 1px solid var(--line-strong); border-radius: 10px; margin-bottom: 1rem; }
+.review-progress-summary details button { margin: .3rem; }
+.record-detail { margin: .8rem 0; }
+.lineage-view-tabs { position: sticky; top: 0; z-index: 2; background: var(--surface-raised); }
+.lineage-view-tabs [aria-selected=true] { background: var(--teal-pale); color: var(--ink); font-weight: 700; }
+.lineage-main-panel > [data-lineage-view] { max-height: 78vh; overflow: auto; padding: .7rem .25rem; }
+.graph-compound-picker { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 24px; }
+.graph-compound-picker h4, .graph-compound-picker p { margin: 0; overflow-wrap: anywhere; }
+.graph-compound-picker .form-field { min-width: 0; }
+.graph-compound-picker input, .graph-compound-picker select { width: 100%; min-width: 0; box-sizing: border-box; }
+.graph-compound-picker .dialog-actions { flex-wrap: wrap; }
+.graph-compound-picker .dialog-actions button { white-space: nowrap; }
+.bibliography-edit-form { display: grid; gap: 1rem; }
+.metadata-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: .8rem; padding: .8rem; }
+.article-metadata { margin: 1rem 0; max-width: 100%; overflow-wrap: anywhere; }
+.preserve-lines { white-space: pre-wrap; line-height: 1.65; }
+@media (max-width: 800px) { .lineage-main-panel > [data-lineage-view] { max-height: none; } .reviewer-help-content { padding: .2rem; } }
+.lineage-main-panel > [data-lineage-view="graph"] { max-height: none; overflow: visible; }
+.lineage-list-panel { max-height: 80vh; overflow: auto; }
+.lineage-member-summary { max-height: 12rem; overflow: auto; }
+.molecular-lineage-graph .lineage-graph { height: clamp(360px, 52vh, 620px); min-height: 360px; }
+.graph-compound-dialog { width: min(680px, 90vw); max-height: 85vh; overflow: auto; border: 1px solid var(--line-strong); border-radius: 14px; padding: 0; background: var(--surface-raised, white); color: var(--ink); }
+.graph-compound-dialog::backdrop { background: rgb(18 37 49 / 35%); }
+.graph-compound-dialog .graph-compound-picker { margin: 0; border: 0; }

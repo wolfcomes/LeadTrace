@@ -55,6 +55,23 @@ def test_complete_source_inventory_passes_with_extra_intermediate(tmp_path, caps
     assert len(report["inventory_sha256"]) == 64
 
 
+def test_coverage_hashes_identify_canonical_content_not_file_bytes(tmp_path, capsys):
+    import hashlib
+    c, inv = files(tmp_path, ("1", "12a", "12b"))
+    _, before = run(c, inv, capsys)
+    c.write_text(json.dumps(json.loads(c.read_text()), indent=4) + "\n")
+    inv.write_text(json.dumps(json.loads(inv.read_text()), indent=4) + "\n")
+    _, after = run(c, inv, capsys)
+    assert before["candidate_sha256"] == after["candidate_sha256"]
+    assert before["inventory_sha256"] == after["inventory_sha256"]
+    assert after["candidate_sha256"] != hashlib.sha256(c.read_bytes()).hexdigest()
+    assert after["inventory_sha256"] != hashlib.sha256(inv.read_bytes()).hexdigest()
+    assert after["hash_kinds"] == {
+        "candidate_sha256": "canonical_candidate_content",
+        "inventory_sha256": "canonical_inventory_content",
+    }
+
+
 def test_prefix_match_does_not_hide_stereoisomer_gap(tmp_path, capsys):
     c, inv = files(tmp_path, ("1", "12a racemate", "12b"))
     code, report = run(c, inv, capsys)
@@ -93,13 +110,34 @@ def test_exclusion_requires_reason_and_is_visible(tmp_path, capsys):
     data = json.loads(inv.read_text()); data["entries"][2]["required"] = False
     inv.write_text(json.dumps(data))
     assert run(c, inv, capsys)[0] == 2
-    data["entries"][2]["exclusion_reason"] = "Source identity not resolved; explicitly outside this pass"
+    data["entries"][2]["exclusion_reason"] = "User explicitly limited this pass to 1 and 12a"
     inv.write_text(json.dumps(data))
     code, report = run(c, inv, capsys)
     assert code == 0
     assert report["excluded_entries"][0]["label"] == "12b"
     assert report["inventory_count"] == 3
     assert report["required_count"] == 2
+
+
+def test_report_exposes_full_inventory_gap_beyond_declared_exclusions(tmp_path, capsys):
+    """A narrowed required scope must not hide source-inventory omissions."""
+    c, inv = files(tmp_path, ("1", "12a"))
+    data = json.loads(inv.read_text())
+    data["entries"][2]["required"] = False
+    data["entries"][2]["exclusion_reason"] = "Legacy run narrowed scope"
+    inv.write_text(json.dumps(data))
+
+    code, report = run(c, inv, capsys)
+
+    assert code == 0
+    assert report["required_count"] == 2
+    assert report["covered_count"] == 2
+    assert report["all_inventory_coverage"] == {
+        "inventory_count": 3,
+        "covered_count": 2,
+        "missing_labels": ["12b"],
+        "ambiguous_matches": [],
+    }
 
 
 def test_two_candidate_aliases_are_ambiguous_not_double_coverage(tmp_path, capsys):
@@ -130,3 +168,44 @@ def test_pfpkg_source_inventory_detects_the_real_33_compound_gap(tmp_path, capsy
     assert (report["covered_count"], report["required_count"]) == (6, 39)
     assert len(report["missing_labels"]) == 33
     assert {"1", "23", "38", "50", "51", "52", "53", "54"} <= set(report["missing_labels"])
+
+
+@pytest.mark.parametrize(
+    "labels,covered,ambiguous",
+    [
+        (("1", "12a", "alias12b", "extra"), 3, []),
+        (("1", "12a", "12b", "alias12b"), 2,
+         [{"label": "12b", "candidate_refs": ["c2", "c3"]}]),
+    ],
+)
+def test_full_inventory_resolves_excluded_aliases_without_double_counting(
+    tmp_path, capsys, labels, covered, ambiguous,
+):
+    c, inv = files(tmp_path, labels)
+    data = json.loads(inv.read_text())
+    data["entries"][2].update(
+        required=False, aliases=["alias12b"],
+        exclusion_reason="User explicitly limited this pass to 1 and 12a",
+    )
+    inv.write_text(json.dumps(data))
+
+    code, report = run(c, inv, capsys)
+
+    assert code == 0  # Required-scope exit semantics remain backward compatible.
+    assert report["covered_count"] == 2
+    assert report["all_inventory_coverage"] == {
+        "inventory_count": 3,
+        "covered_count": covered,
+        "missing_labels": [],
+        "ambiguous_matches": ambiguous,
+    }
+    assert report["extra_candidate_labels"] == (["extra"] if "extra" in labels else [])
+
+
+def test_full_inventory_matches_required_scope_without_exclusions(tmp_path, capsys):
+    code, report = run(*files(tmp_path), capsys)
+    assert code == 4
+    full = report["all_inventory_coverage"]
+    assert full["inventory_count"] == report["required_count"]
+    for key in ("covered_count", "missing_labels", "ambiguous_matches"):
+        assert full[key] == report[key]

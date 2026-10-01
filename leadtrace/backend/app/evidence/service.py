@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.compounds.models import CompoundHighlight
 from app.activities.models import Activity
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
 from app.evidence.models import EdgeEvidenceLink, Evidence, EvidenceKind, EvidenceRole
@@ -27,10 +28,11 @@ class EvidenceConflictError(RuntimeError):
 
 
 class EvidenceReferencedError(RuntimeError):
-    def __init__(self, *, edge_references: int, activity_references: int) -> None:
+    def __init__(self, *, edge_references: int, activity_references: int, highlight_references: int = 0) -> None:
         super().__init__("Evidence is referenced by scientific records")
         self.edge_references = edge_references
         self.activity_references = activity_references
+        self.highlight_references = highlight_references
 
 
 @dataclass(frozen=True, slots=True)
@@ -343,6 +345,9 @@ class EvidenceService:
                 )
                 or 0
             )
+            highlight_references = session.scalar(select(func.count()).select_from(CompoundHighlight).where(CompoundHighlight.evidence_id == row.id)) or 0
+            if highlight_references:
+                raise EvidenceReferencedError(edge_references=edge_references, activity_references=activity_references, highlight_references=highlight_references)
             if edge_references or activity_references:
                 raise EvidenceReferencedError(
                     edge_references=edge_references,

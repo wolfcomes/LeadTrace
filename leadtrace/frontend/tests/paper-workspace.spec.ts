@@ -108,6 +108,9 @@ describe("paper-centric Reviewer workspace", () => {
     const requests: URL[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://leadtrace.test");
+      if (url.pathname.endsWith("/review-progress")) return response({},404);
+      // Supporting lists are tested in their own components; count aggregate navigation here.
+      if (['/compound-highlights','/evidence','/compounds'].some(x=>url.pathname.endsWith(x))) return response({workspace_id:ids.workspace,workspace_version:1,items:[],total:0});
       requests.push(url);
       if (url.pathname.endsWith("/compounds")) {
         return response({ workspace_id: ids.workspace, workspace_version: 1, items: [], total: 0 });
@@ -122,7 +125,6 @@ describe("paper-centric Reviewer workspace", () => {
 
     expect(requests.map((url) => url.pathname)).toEqual([
       `/api/v2/workspaces/${ids.workspace}`,
-      `/api/v2/workspaces/${ids.workspace}/compounds`,
     ]);
     expect(wrapper.get("[data-paper-workspace]").classes()).toContain("paper-workspace-shell");
     expect(wrapper.findAll("[data-workspace-tab]")).toHaveLength(4);
@@ -148,6 +150,9 @@ describe("paper-centric Reviewer workspace", () => {
     const requests: URL[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://leadtrace.test");
+      if (url.pathname.endsWith("/review-progress")) return response({},404);
+      // Supporting lists are tested in their own components; count aggregate navigation here.
+      if (['/compound-highlights','/evidence','/compounds'].some(x=>url.pathname.endsWith(x))) return response({workspace_id:ids.workspace,workspace_version:1,items:[],total:0});
       requests.push(url);
       return response(url.pathname === "/api/v2/review/tasks" ? taskList : workspace());
     }));
@@ -193,6 +198,9 @@ describe("paper-centric Reviewer workspace", () => {
     const requests: URL[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://leadtrace.test");
+      if (url.pathname.endsWith("/review-progress")) return response({},404);
+      // Supporting lists are tested in their own components; count aggregate navigation here.
+      if (['/compound-highlights','/evidence','/compounds'].some(x=>url.pathname.endsWith(x))) return response({workspace_id:ids.workspace,workspace_version:1,items:[],total:0});
       requests.push(url);
       const result = workspace(url.pathname.endsWith(secondWorkspaceId) ? 7 : 1);
       if (url.pathname.endsWith(secondWorkspaceId)) {

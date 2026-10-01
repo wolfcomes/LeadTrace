@@ -134,6 +134,7 @@ def edge_snapshot(edge: LineageEdge) -> dict[str, object]:
         "child_compound_id": str(edge.child_compound_id),
         "relation_type": edge.relation_type,
         "modification_summary": edge.modification_summary,
+        "review_hint": edge.review_hint,
         "review_status": edge.review_status.value,
         "sort_order": edge.sort_order,
         "created_by_kind": edge.created_by_kind.value,
@@ -701,6 +702,7 @@ class LineageService:
         relation_type: str,
         modification_summary: str | None,
         review_status: LineageEdgeReviewStatus,
+        review_hint: str | None = None,
     ) -> EdgeMutation:
         workspace_id = self._workspace_id_for(session, Lineage, lineage_id)
         created: dict[str, LineageEdge] = {}
@@ -734,6 +736,7 @@ class LineageService:
                 child_compound_id=child_compound_id,
                 relation_type=_clean_required(relation_type, "relation_type"),
                 modification_summary=_clean_optional(modification_summary),
+                review_hint=_clean_optional(review_hint),
                 review_status=review_status,
                 sort_order=int(maximum if maximum is not None else -1) + 1,
             )
@@ -800,6 +803,8 @@ class LineageService:
                 )
             if "review_status" in updates:
                 edge.review_status = updates["review_status"]  # type: ignore[assignment]
+            if "review_hint" in updates:
+                edge.review_hint = _clean_optional(updates["review_hint"])  # type: ignore[arg-type]
             changed["value"] = edge
             return MutationChange(
                 "lineage_edge",

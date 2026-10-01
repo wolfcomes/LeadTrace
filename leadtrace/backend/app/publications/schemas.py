@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer
 
 from app.activities.models import ActivityOperator
 from app.evidence.models import EvidenceKind, EvidenceRole
@@ -142,7 +142,10 @@ class PublishedSnapshotProjection(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
-class PublishedSnapshotBibliography(PublishedSnapshotProjection):
+from app.papers.metadata import ArticleMetadata
+
+
+class PublishedSnapshotBibliography(ArticleMetadata, PublishedSnapshotProjection):
     id: UUID
     paper_key: str
     title: str
@@ -164,6 +167,7 @@ class PublishedSection(PublishedSnapshotProjection):
 
 
 class PublishedCompound(PublishedSnapshotProjection):
+    review_hint: str | None = None
     id: UUID
     compound_label: str
     display_name: str | None
@@ -216,6 +220,7 @@ class PublishedLineageMember(PublishedSnapshotProjection):
 
 
 class PublishedLineageEdge(PublishedSnapshotProjection):
+    review_hint: str | None = None
     id: UUID
     lineage_id: UUID
     parent_compound_id: UUID
@@ -248,6 +253,7 @@ class PublishedEdgeEvidenceLink(PublishedSnapshotProjection):
 
 
 class PublishedActivity(PublishedSnapshotProjection):
+    review_hint: str | None = None
     id: UUID
     compound_id: UUID
     evidence_id: UUID | None
@@ -260,11 +266,30 @@ class PublishedActivity(PublishedSnapshotProjection):
     sort_order: int
 
 
+class PublishedCompoundHighlight(PublishedSnapshotProjection):
+    id: UUID
+    compound_id: UUID
+    evidence_id: UUID
+    role: Literal['study_start', 'paper_selected']
+    scope: str
+    rationale: str
+    review_hint: str | None = None
+    review_status: Literal['draft', 'reviewer_confirmed', 'unresolved']
+
+
 class PublishedPaperSnapshotResponse(PublishedSnapshotProjection):
     schema_version: Literal[1]
     paper: PublishedSnapshotBibliography
     source: PublishedSource
     sections: list[PublishedSection]
+    @model_serializer(mode="wrap")
+    def omit_empty_highlights(self, handler):
+        data = handler(self)
+        if not self.compound_highlights:
+            data.pop("compound_highlights", None)
+        return data
+
+    compound_highlights: list[PublishedCompoundHighlight] = Field(default_factory=list)
     compounds: list[PublishedCompound]
     structures: list[PublishedStructure]
     structure_source_images: list[PublishedStructureSourceImage]

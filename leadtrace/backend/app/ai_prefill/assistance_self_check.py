@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.ai_prefill.assistance_contracts import CandidateEnvelope, computed_hashes
 from app.ai_prefill.assistance_coverage import CompoundInventory, check_compound_coverage
 from app.ai_prefill.assistance_validation import validate_candidate
+from app.ai_prefill.assistance_lineage import diagnose_lineages
 
 SOURCE_REVIEW_CHECKS = (
     'compound_scope', 'measurement_coverage', 'activity_semantics',
@@ -67,7 +68,8 @@ def self_check_candidate(
     file_hash = hashlib.sha256(candidate_file_bytes).hexdigest()
     validation = validate_candidate(candidate)
     coverage = check_compound_coverage(candidate, inventory)
-    issues: list[dict] = []
+    lineage_diagnostics = diagnose_lineages(candidate)
+    issues: list[dict] = list(lineage_diagnostics['issues'])
 
     def add(code, severity, path, message, **details):
         issues.append(dict(code=code, severity=severity, path=path, message=message, details=details))
@@ -150,6 +152,7 @@ def self_check_candidate(
         'scientific_approval': False, 'whole_population_accuracy': None,
         'issue_counts': {'blocking': counts['blocking'], 'review': counts['review']},
         'issues': issues, 'compound_coverage': coverage,
+        'lineage_diagnostics': lineage_diagnostics,
         'self_review_counts': dict(Counter(x.status for x in self_review.checks)) if self_review else {},
         'limitations': [
             'Offline: no original source text/images read; declared source review is not independently verified.',

@@ -70,6 +70,7 @@ def _bibliography(snapshot: dict[str, object]) -> BibliographyResponse:
             "volume": paper["volume"],
             "issue": paper["issue"],
             "doi": paper.get("doi"),
+            **{k: paper[k] for k in ("abstract", "abstract_source", "pdb_references") if k in paper},
         }
     )
 

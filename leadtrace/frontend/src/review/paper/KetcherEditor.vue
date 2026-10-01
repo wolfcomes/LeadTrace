@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { createSetMoleculeMessage, parseChildMessage } from "./ketcherProtocol";
@@ -198,12 +199,12 @@ defineExpose({
 </script>
 
 <template>
-  <section class="ketcher-island" data-ketcher-editor aria-label="Ketcher 化学结构编辑器">
-    <p v-if="disabled" class="workspace-empty-copy">当前 Workspace 为只读，Ketcher 已停用。</p>
+  <section class="ketcher-island" data-ketcher-editor :aria-label='t("Ketcher 化学结构编辑器")'>
+    <p v-if="disabled" class="workspace-empty-copy">{{ t("当前 Workspace 为只读，Ketcher 已停用。") }}</p>
     <template v-else>
-      <p v-if="failed" class="ketcher-failed" role="alert">Ketcher 编辑器未能载入，请关闭后重试。</p>
-      <p v-else-if="!ready" class="ketcher-loading" aria-live="polite">正在载入本地 Ketcher 编辑器…</p>
-      <iframe ref="frame" class="ketcher-frame" src="/ketcher.html" title="Ketcher 化学结构编辑器"></iframe>
+      <p v-if="failed" class="ketcher-failed" role="alert">{{ t("Ketcher 编辑器未能载入，请关闭后重试。") }}</p>
+      <p v-else-if="!ready" class="ketcher-loading" aria-live="polite">{{ t("正在载入本地 Ketcher 编辑器…") }}</p>
+      <iframe ref="frame" class="ketcher-frame" src="/ketcher.html" :title='t("Ketcher 化学结构编辑器")'></iframe>
     </template>
   </section>
 </template>

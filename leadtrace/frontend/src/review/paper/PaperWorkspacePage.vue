@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { t } from "../../i18n";
+import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { lineageTypeSchema, type LineageType } from "../../v2/types";
 import { listActivities, listCompounds, listLineages } from "../../v2/api";
 
 import { useAuthStore } from "../../auth/store";
+import { provideReviewProgress } from "./useReviewProgress";
+import BibliographyEditor from "./BibliographyEditor.vue";
+import { provideHighlights } from "./useHighlights";
+import HighlightEditor from "./HighlightEditor.vue";
+import ReviewerHelp from "./ReviewerHelp.vue";
 import CompoundList from "./CompoundList.vue";
 import LineageEditor from "./LineageEditor.vue";
 import SectionStatusControl from "./SectionStatusControl.vue";
@@ -35,6 +41,10 @@ const canEdit = computed(() => (
   && workspaceState.workspace.value?.state === "editing"
 ));
 const readOnly = computed(() => !canEdit.value);
+const progress = provideReviewProgress(() => workspaceState.workspace.value ?? undefined, () => canEdit.value);
+provideHighlights(() => workspaceState.workspace.value ?? undefined);
+const visitedTabs = ref(new Set<string>());
+watch(activeTab, tab => visitedTabs.value.add(tab), { immediate: true });
 
 function selectTab(tab: TabKey): void {
   void router.replace({ path: route.path, query: { ...route.query, tab } });
@@ -106,17 +116,19 @@ watch(
 
 <template>
   <div class="review-page paper-workspace-shell" data-paper-workspace>
-    <section v-if="workspaceState.state.value === 'loading'" class="page-state" aria-live="polite"><span class="state-spinner" aria-hidden="true"></span><p>正在读取 Paper Workspace…</p></section>
-    <section v-else-if="workspaceState.state.value === 'not-found'" class="page-state"><span class="state-symbol">404</span><h1>未找到分配任务</h1><p>请从“我的任务”重新进入。</p></section>
-    <section v-else-if="workspaceState.state.value === 'error'" class="page-state" role="alert"><span class="state-symbol is-error">!</span><h1>暂时无法读取 Workspace</h1><small v-if="workspaceState.requestId.value">请求编号 · {{ workspaceState.requestId.value }}</small><button class="button-secondary" type="button" @click="workspaceState.open">重新加载</button></section>
+    <section v-if="workspaceState.state.value === 'loading'" class="page-state" aria-live="polite"><span class="state-spinner" aria-hidden="true"></span><p>{{ t("正在读取 Paper Workspace…") }}</p></section>
+    <section v-else-if="workspaceState.state.value === 'not-found'" class="page-state"><span class="state-symbol">404</span><h1>{{ t("未找到分配任务") }}</h1><p>{{ t("请从“我的任务”重新进入。") }}</p></section>
+    <section v-else-if="workspaceState.state.value === 'error'" class="page-state" role="alert"><span class="state-symbol is-error">!</span><h1>{{ t("暂时无法读取 Workspace") }}</h1><small v-if="workspaceState.requestId.value">{{ t("请求编号 ·") }}{{ workspaceState.requestId.value }}</small><button class="button-secondary" type="button" @click="workspaceState.open">{{ t("重新加载") }}</button></section>
 
     <template v-else-if="workspaceState.workspace.value">
       <WorkspaceHeader :workspace="workspaceState.workspace.value" />
-      <p v-if="auth.user?.role === 'admin'" class="inline-feedback is-warning" data-admin-readonly>Admin 查看模式：此 Workspace 只读。</p>
-      <p v-if="workspaceState.concurrencyMessage.value" class="inline-feedback is-warning" data-concurrency-alert role="alert">{{ workspaceState.concurrencyMessage.value }}</p>
-      <p v-if="workspaceState.actionError.value" class="inline-feedback is-error" role="alert">{{ workspaceState.actionError.value }}</p>
+      <ReviewerHelp />
+      <p v-if="progress.error.value" class="inline-feedback is-warning" role="status">{{ t(progress.error.value) }} <button type="button" class="button-quiet" @click="progress.refresh">{{ t('重试') }}</button></p>
+      <p v-if="auth.user?.role === 'admin'" class="inline-feedback is-warning" data-admin-readonly>{{ t("Admin 查看模式：此 Workspace 只读。") }}</p>
+      <p v-if="workspaceState.concurrencyMessage.value" class="inline-feedback is-warning" data-concurrency-alert role="alert">{{ t(workspaceState.concurrencyMessage.value) }}</p>
+      <p v-if="workspaceState.actionError.value" class="inline-feedback is-error" role="alert">{{ t(workspaceState.actionError.value) }}</p>
 
-      <section class="workspace-section-status" aria-label="六个固定区段状态">
+      <section class="workspace-section-status" :aria-label='t("六个固定区段状态")'>
         <SectionStatusControl
           v-for="section in workspaceState.workspace.value.sections"
           :key="section.section_key"
@@ -128,16 +140,16 @@ watch(
       </section>
 
       <nav class="workspace-tabs paper-workspace-tabs" data-workspace-tabs aria-label="Paper Workspace">
-        <button v-for="tab in tabs" :key="tab.key" type="button" data-workspace-tab :aria-current="activeTab === tab.key ? 'page' : undefined" @click="selectTab(tab.key)">{{ tab.label }}</button>
+        <button v-for="tab in tabs" :key="tab.key" type="button" data-workspace-tab :aria-current="activeTab === tab.key ? 'page' : undefined" @click="selectTab(tab.key)">{{ t(tab.label) }}</button>
       </nav>
 
       <section class="workspace-editor-surface panel">
-        <template v-if="activeTab === 'bibliography'">
-          <div class="section-heading"><div><p class="eyebrow">BIBLIOGRAPHY</p><h2>文章信息</h2></div><button class="button-secondary" type="button" :disabled="readOnly">编辑基础信息</button></div>
-          <dl class="workspace-bibliography"><div><dt>标题</dt><dd>{{ workspaceState.workspace.value.bibliography.title }}</dd></div><div><dt>期刊</dt><dd>{{ workspaceState.workspace.value.bibliography.journal }}</dd></div><div><dt>DOI</dt><dd>{{ workspaceState.workspace.value.bibliography.doi || "未报告" }}</dd></div><div><dt>卷 / 期</dt><dd>{{ workspaceState.workspace.value.bibliography.volume }} / {{ workspaceState.workspace.value.bibliography.issue }}</dd></div></dl>
-        </template>
-        <template v-else-if="activeTab === 'compounds'">
-          <CompoundList
+        <div v-if="visitedTabs.has('bibliography')" v-show="activeTab === 'bibliography'">
+        <BibliographyEditor :workspace="workspaceState.workspace.value" :read-only="readOnly" @mutated="refreshWorkspace" @conflict="workspaceState.handleConflict()" />
+        <HighlightEditor :workspace="workspaceState.workspace.value" :read-only="readOnly" @mutated="refreshWorkspace" @conflict="workspaceState.handleConflict()" />
+        </div>
+        <div v-if="visitedTabs.has('compounds')" v-show="activeTab === 'compounds'">
+          <CompoundList :active="activeTab === 'compounds'"
             :key="`${workspaceState.workspace.value.id}:${workspaceState.refreshEpoch.value}`"
             :workspace="workspaceState.workspace.value"
             :selected-compound-id="typeof route.query.entity === 'string' ? route.query.entity : undefined"
@@ -146,9 +158,9 @@ watch(
             @mutated="refreshWorkspace"
             @conflict="workspaceState.handleConflict()"
           />
-        </template>
-        <template v-else-if="activeTab === 'lineages'">
-          <LineageEditor
+        </div>
+        <div v-if="visitedTabs.has('lineages')" v-show="activeTab === 'lineages'">
+          <LineageEditor :active="activeTab === 'lineages'"
             :key="`${workspaceState.workspace.value.id}:lineages:${workspaceState.refreshEpoch.value}`"
             :selected-group-type="lineageTypeSchema.safeParse(route.query.lineage_group).data"
             :workspace="workspaceState.workspace.value"
@@ -158,8 +170,8 @@ watch(
             @mutated="refreshWorkspace"
             @conflict="workspaceState.handleConflict()"
           />
-        </template>
-        <template v-else>
+        </div>
+        <template v-if="activeTab === 'submit'">
           <SubmissionChecklist
             :key="`${workspaceState.workspace.value.id}:submission:${workspaceState.refreshEpoch.value}`"
             :workspace="workspaceState.workspace.value"

@@ -53,6 +53,7 @@ def _activity_response(row: Activity) -> ActivityResponse:
         value=row.value,
         unit=row.unit,
         context=row.context,
+        review_hint=row.review_hint,
         sort_order=row.sort_order,
     )
 
@@ -166,6 +167,7 @@ def create_activities_router(settings: Settings) -> APIRouter:
                     value=payload.value,
                     unit=payload.unit,
                     context_value=payload.context,
+                    review_hint=payload.review_hint,
                 )
                 return ActivityMutationResponse(
                     activity=_activity_response(result.activity),

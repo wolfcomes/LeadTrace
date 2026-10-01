@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.papers.metadata import ArticleMetadata, PdbReference
+
 from app.workspaces.models import (
     PaperSection,
     PaperSectionReview,
@@ -83,7 +85,7 @@ class WorkspaceSourceResponse(WorkspaceProjection):
     page_count: int = Field(ge=1)
 
 
-class BibliographyResponse(WorkspaceProjection):
+class BibliographyResponse(ArticleMetadata, WorkspaceProjection):
     paper_id: UUID
     paper_key: str
     title: str
@@ -123,7 +125,7 @@ class WorkspaceResponse(WorkspaceProjection):
     sections: list[PaperSectionReviewResponse]
 
 
-class BibliographyUpdateRequest(WorkspaceProjection):
+class BibliographyUpdateRequest(ArticleMetadata, WorkspaceProjection):
     expected_workspace_version: int = Field(ge=1)
     title: str | None = Field(default=None, max_length=1024)
     journal: str | None = Field(default=None, max_length=255)
@@ -142,25 +144,25 @@ class BibliographyUpdateRequest(WorkspaceProjection):
 
     @model_validator(mode="after")
     def validate_updates(self) -> "BibliographyUpdateRequest":
-        editable = {"title", "journal", "publication_year", "volume", "issue", "doi"}
+        editable = {"title", "journal", "publication_year", "volume", "issue", "doi", "abstract", "abstract_source", "pdb_references"}
         changed = self.model_fields_set & editable
         if not changed:
             raise ValueError("At least one bibliography field is required")
-        nonnullable = changed - {"doi"}
+        nonnullable = changed - {"doi", "abstract", "abstract_source"}
         if any(getattr(self, field) is None for field in nonnullable):
             raise ValueError("Bibliography fields except DOI cannot be null or blank")
         return self
 
     def updates(self) -> dict[str, str | int | None]:
         return {
-            field: getattr(self, field)
+            field: ([x.model_dump(mode="json") for x in self.pdb_references] if field == "pdb_references" else getattr(self, field))
             for field in (
                 "title",
                 "journal",
                 "publication_year",
                 "volume",
                 "issue",
-                "doi",
+                "doi", "abstract", "abstract_source", "pdb_references",
             )
             if field in self.model_fields_set
         }

@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App.vue";
 import { createAppRouter } from "../src/app/router";
 import { useAuthStore } from "../src/auth/store";
+import CompoundStructureEditor from "../src/review/paper/CompoundStructureEditor.vue";
+import type { Compound } from "../src/v2/types";
 
 
 const ids = {
@@ -124,6 +126,32 @@ describe("Compound and single-Structure editor", () => {
     return wrapper;
   }
 
+  it("preserves typing started while a background structure refresh is in flight", async () => {
+    let reads = 0;
+    let resolveRefresh!: (value: Response) => void;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://leadtrace.test").pathname;
+      if (path.endsWith("/structure")) {
+        if (++reads === 1) return response({ structure: structure(), workspace_version: 1 });
+        return new Promise<Response>((resolve) => { resolveRefresh = resolve; });
+      }
+      return response({ compound_id: ids.compound, workspace_version: 1, items: [], total: 0 });
+    }));
+    const wrapper = mount(CompoundStructureEditor, {
+      props: { compound: compound as Compound, workspaceVersion: 1, source: workspace().source, viewRequested: true },
+      global: { stubs: { StructureSourceImages: true, KetcherEditor: KetcherStub } },
+    });
+    await flushPromises();
+    await wrapper.setProps({ workspaceVersion: 2 });
+    expect(reads).toBe(2);
+    await wrapper.get("[data-smiles-input]").setValue("CCN");
+    resolveRefresh(response({ structure: structure({ smiles: "CCC" }), workspace_version: 2 }));
+    await flushPromises();
+    expect((wrapper.get("[data-smiles-input]").element as HTMLTextAreaElement).value).toBe("CCN");
+    expect(wrapper.get("[data-confirm-structure]").attributes("disabled")).toBeDefined();
+    wrapper.unmount();
+  });
+
   it("edits one AI-prefilled Structure in place without candidates or confidence", async () => {
     const calls = mockApi();
     const wrapper = await mountWorkspace();
@@ -191,6 +219,7 @@ describe("Compound and single-Structure editor", () => {
       compound_label: "7b",
       display_name: "Reviewed lead",
       description: null,
+      review_hint: null,
     });
     expect(new Headers(write?.init?.headers).get("X-CSRF-Token")).toBe("reviewer-csrf");
     expect(wrapper.get("[data-structure-editor] h3").text()).toContain("7b");
@@ -344,7 +373,8 @@ describe("Compound and single-Structure editor", () => {
     await flushPromises();
 
     expect(workspaceReads).toBe(2);
-    expect(structureReads).toBe(2);
+    // An open detail may also refresh while the conflict recovery remounts it.
+    expect(structureReads).toBeGreaterThanOrEqual(2);
     expect(wrapper.get("[data-concurrency-alert]").text()).toContain("已重新载入最新版本");
     expect(wrapper.get("[data-workspace-version]").text()).toContain("v2");
 

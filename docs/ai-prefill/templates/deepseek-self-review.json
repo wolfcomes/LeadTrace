@@ -6,7 +6,7 @@
     {
       "check_id": "compound_scope",
       "status": "not_checked",
-      "details": "REPLACE: actual inspected scope, unresolved labels/indices/refs and results",
+      "details": "REPLACE: source-observed numbered/labelled structures incl. precursors, Methods-only, shared scaffold/R groups and named controls; required AND full-inventory gaps/exclusions; no Activity is not exclusion; unresolved identities remain required",
       "source_locations": [],
       "checked_edge_refs": []
     },
@@ -41,14 +41,14 @@
     {
       "check_id": "sar_reasoning",
       "status": "not_checked",
-      "details": "REPLACE: actual inspected scope, unresolved labels/indices/refs and results",
+      "details": "REPLACE: actual source checks and edge refs; group scope/components/isolated members; baseline or graph entry vs optimization; per-compound SAR participation reasons/status; paper-selection support or unknown; rejected relations and unresolved comparisons",
       "source_locations": [],
       "checked_edge_refs": []
     },
     {
       "check_id": "synthesis_paths",
       "status": "not_checked",
-      "details": "REPLACE: actual inspected scope, unresolved labels/indices/refs and results",
+      "details": "REPLACE: actual source checks and edge refs; precursor/direct/multistep/co-reactant semantics; meaningful groups and cross-Scheme continuity; components/isolated members/role-degree conflicts; per-compound synthesis participation reasons/status; preserve rejected relations and source limitations",
       "source_locations": [],
       "checked_edge_refs": []
     }

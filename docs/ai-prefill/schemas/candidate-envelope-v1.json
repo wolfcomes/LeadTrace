@@ -3,22 +3,10 @@
     "AiActivity": {
       "additionalProperties": false,
       "properties": {
-        "assay_name": {
-          "maxLength": 512,
-          "minLength": 1,
-          "title": "Assay Name",
-          "type": "string"
-        },
-        "compound_ref": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Compound Ref",
-          "type": "string"
-        },
-        "context": {
+        "review_hint": {
           "anyOf": [
             {
-              "maxLength": 10000,
+              "maxLength": 1000,
               "type": "string"
             },
             {
@@ -26,7 +14,13 @@
             }
           ],
           "default": null,
-          "title": "Context"
+          "title": "Review Hint"
+        },
+        "compound_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Compound Ref",
+          "type": "string"
         },
         "evidence_ref": {
           "anyOf": [
@@ -41,6 +35,12 @@
           ],
           "default": null,
           "title": "Evidence Ref"
+        },
+        "assay_name": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Assay Name",
+          "type": "string"
         },
         "metric": {
           "maxLength": 128,
@@ -60,6 +60,18 @@
           "title": "Operator",
           "type": "string"
         },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Value"
+        },
         "unit": {
           "anyOf": [
             {
@@ -73,17 +85,18 @@
           "default": null,
           "title": "Unit"
         },
-        "value": {
+        "context": {
           "anyOf": [
             {
-              "type": "number"
+              "maxLength": 10000,
+              "type": "string"
             },
             {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-              "type": "string"
+              "type": "null"
             }
           ],
-          "title": "Value"
+          "default": null,
+          "title": "Context"
         }
       },
       "required": [
@@ -99,16 +112,10 @@
     "AiCompound": {
       "additionalProperties": false,
       "properties": {
-        "compound_label": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Compound Label",
-          "type": "string"
-        },
-        "description": {
+        "review_hint": {
           "anyOf": [
             {
-              "maxLength": 10000,
+              "maxLength": 1000,
               "type": "string"
             },
             {
@@ -116,7 +123,19 @@
             }
           ],
           "default": null,
-          "title": "Description"
+          "title": "Review Hint"
+        },
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "compound_label": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Compound Label",
+          "type": "string"
         },
         "display_name": {
           "anyOf": [
@@ -131,11 +150,18 @@
           "default": null,
           "title": "Display Name"
         },
-        "ref": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Ref",
-          "type": "string"
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
         },
         "structure": {
           "$ref": "#/$defs/AiStructure"
@@ -147,6 +173,72 @@
         "structure"
       ],
       "title": "AiCompound",
+      "type": "object"
+    },
+    "AiCompoundHighlight": {
+      "additionalProperties": false,
+      "properties": {
+        "review_hint": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Hint"
+        },
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "compound_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Compound Ref",
+          "type": "string"
+        },
+        "evidence_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Evidence Ref",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "study_start",
+            "paper_selected"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "scope": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 10000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "compound_ref",
+        "evidence_ref",
+        "role",
+        "scope",
+        "rationale"
+      ],
+      "title": "AiCompoundHighlight",
       "type": "object"
     },
     "AiEdgeEvidenceLink": {
@@ -185,29 +277,11 @@
     "AiEvidence": {
       "additionalProperties": false,
       "properties": {
-        "bbox": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/NormalizedBBox"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "caption": {
-          "anyOf": [
-            {
-              "maxLength": 10000,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Caption"
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
         },
         "kind": {
           "enum": [
@@ -224,6 +298,17 @@
           "title": "Page Number",
           "type": "integer"
         },
+        "bbox": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NormalizedBBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "quoted_text": {
           "anyOf": [
             {
@@ -237,11 +322,18 @@
           "default": null,
           "title": "Quoted Text"
         },
-        "ref": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Ref",
-          "type": "string"
+        "caption": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caption"
         }
       },
       "required": [
@@ -255,6 +347,28 @@
     "AiLineage": {
       "additionalProperties": false,
       "properties": {
+        "lineage_type": {
+          "default": "unspecified",
+          "enum": [
+            "sar",
+            "synthesis",
+            "unspecified"
+          ],
+          "title": "Lineage Type",
+          "type": "string"
+        },
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "lineage_label": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Lineage Label",
+          "type": "string"
+        },
         "description": {
           "anyOf": [
             {
@@ -268,29 +382,6 @@
           "default": null,
           "title": "Description"
         },
-        "edges": {
-          "items": {
-            "$ref": "#/$defs/AiLineageEdge"
-          },
-          "title": "Edges",
-          "type": "array"
-        },
-        "lineage_label": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Lineage Label",
-          "type": "string"
-        },
-        "lineage_type": {
-          "default": "unspecified",
-          "enum": [
-            "sar",
-            "synthesis",
-            "unspecified"
-          ],
-          "title": "Lineage Type",
-          "type": "string"
-        },
         "members": {
           "items": {
             "$ref": "#/$defs/AiLineageMember"
@@ -298,11 +389,12 @@
           "title": "Members",
           "type": "array"
         },
-        "ref": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Ref",
-          "type": "string"
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/AiLineageEdge"
+          },
+          "title": "Edges",
+          "type": "array"
         }
       },
       "required": [
@@ -315,10 +407,41 @@
     "AiLineageEdge": {
       "additionalProperties": false,
       "properties": {
+        "review_hint": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Hint"
+        },
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "parent_compound_ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Parent Compound Ref",
+          "type": "string"
+        },
         "child_compound_ref": {
           "maxLength": 255,
           "minLength": 1,
           "title": "Child Compound Ref",
+          "type": "string"
+        },
+        "relation_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Relation Type",
           "type": "string"
         },
         "modification_summary": {
@@ -333,24 +456,6 @@
           ],
           "default": null,
           "title": "Modification Summary"
-        },
-        "parent_compound_ref": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Parent Compound Ref",
-          "type": "string"
-        },
-        "ref": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Ref",
-          "type": "string"
-        },
-        "relation_type": {
-          "maxLength": 128,
-          "minLength": 1,
-          "title": "Relation Type",
-          "type": "string"
         }
       },
       "required": [
@@ -392,12 +497,10 @@
     "AiPrefillPayload": {
       "additionalProperties": false,
       "properties": {
-        "activities": {
-          "items": {
-            "$ref": "#/$defs/AiActivity"
-          },
-          "title": "Activities",
-          "type": "array"
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
         },
         "bibliography": {
           "$ref": "#/$defs/BibliographyCorrection"
@@ -409,18 +512,11 @@
           "title": "Compounds",
           "type": "array"
         },
-        "edge_evidence_links": {
+        "structure_locators": {
           "items": {
-            "$ref": "#/$defs/AiEdgeEvidenceLink"
+            "$ref": "#/$defs/AiStructureLocator"
           },
-          "title": "Edge Evidence Links",
-          "type": "array"
-        },
-        "evidence": {
-          "items": {
-            "$ref": "#/$defs/AiEvidence"
-          },
-          "title": "Evidence",
+          "title": "Structure Locators",
           "type": "array"
         },
         "lineages": {
@@ -430,16 +526,32 @@
           "title": "Lineages",
           "type": "array"
         },
-        "schema_version": {
-          "const": 1,
-          "title": "Schema Version",
-          "type": "integer"
-        },
-        "structure_locators": {
+        "evidence": {
           "items": {
-            "$ref": "#/$defs/AiStructureLocator"
+            "$ref": "#/$defs/AiEvidence"
           },
-          "title": "Structure Locators",
+          "title": "Evidence",
+          "type": "array"
+        },
+        "edge_evidence_links": {
+          "items": {
+            "$ref": "#/$defs/AiEdgeEvidenceLink"
+          },
+          "title": "Edge Evidence Links",
+          "type": "array"
+        },
+        "activities": {
+          "items": {
+            "$ref": "#/$defs/AiActivity"
+          },
+          "title": "Activities",
+          "type": "array"
+        },
+        "compound_highlights": {
+          "items": {
+            "$ref": "#/$defs/AiCompoundHighlight"
+          },
+          "title": "Compound Highlights",
           "type": "array"
         }
       },
@@ -452,19 +564,6 @@
     "AiStructure": {
       "additionalProperties": false,
       "properties": {
-        "molfile": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Molfile"
-        },
         "smiles": {
           "anyOf": [
             {
@@ -477,6 +576,19 @@
           ],
           "default": null,
           "title": "Smiles"
+        },
+        "molfile": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Molfile"
         }
       },
       "title": "AiStructure",
@@ -485,8 +597,11 @@
     "AiStructureLocator": {
       "additionalProperties": false,
       "properties": {
-        "bbox": {
-          "$ref": "#/$defs/NormalizedBBox"
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
         },
         "compound_ref": {
           "maxLength": 255,
@@ -494,29 +609,13 @@
           "title": "Compound Ref",
           "type": "string"
         },
-        "label": {
-          "anyOf": [
-            {
-              "maxLength": 512,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Label"
-        },
         "page_number": {
           "exclusiveMinimum": 0,
           "title": "Page Number",
           "type": "integer"
         },
-        "ref": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Ref",
-          "type": "string"
+        "bbox": {
+          "$ref": "#/$defs/NormalizedBBox"
         },
         "source_context": {
           "anyOf": [
@@ -530,6 +629,19 @@
           ],
           "default": null,
           "title": "Source Context"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
         }
       },
       "required": [
@@ -544,11 +656,10 @@
     "BibliographyCorrection": {
       "additionalProperties": false,
       "properties": {
-        "doi": {
+        "abstract": {
           "anyOf": [
             {
-              "maxLength": 255,
-              "minLength": 1,
+              "maxLength": 30000,
               "type": "string"
             },
             {
@@ -556,12 +667,33 @@
             }
           ],
           "default": null,
-          "title": "Doi"
+          "title": "Abstract"
         },
-        "issue": {
+        "abstract_source": {
           "anyOf": [
             {
-              "maxLength": 64,
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Abstract Source"
+        },
+        "pdb_references": {
+          "items": {
+            "$ref": "#/$defs/PdbReference"
+          },
+          "maxItems": 100,
+          "title": "Pdb References",
+          "type": "array"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
               "minLength": 1,
               "type": "string"
             },
@@ -570,7 +702,7 @@
             }
           ],
           "default": null,
-          "title": "Issue"
+          "title": "Title"
         },
         "journal": {
           "anyOf": [
@@ -600,20 +732,6 @@
           "default": null,
           "title": "Publication Year"
         },
-        "title": {
-          "anyOf": [
-            {
-              "maxLength": 1024,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Title"
-        },
         "volume": {
           "anyOf": [
             {
@@ -627,6 +745,34 @@
           ],
           "default": null,
           "title": "Volume"
+        },
+        "issue": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issue"
+        },
+        "doi": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Doi"
         }
       },
       "title": "BibliographyCorrection",
@@ -635,12 +781,12 @@
     "CandidateHashes": {
       "additionalProperties": false,
       "properties": {
-        "candidate_sha256": {
-          "title": "Candidate Sha256",
-          "type": "string"
-        },
         "payload_sha256": {
           "title": "Payload Sha256",
+          "type": "string"
+        },
+        "candidate_sha256": {
+          "title": "Candidate Sha256",
           "type": "string"
         }
       },
@@ -690,20 +836,6 @@
     "CandidateRecipe": {
       "additionalProperties": false,
       "properties": {
-        "config_digest": {
-          "anyOf": [
-            {
-              "maxLength": 64,
-              "minLength": 64,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Config Digest"
-        },
         "guide_version": {
           "maxLength": 255,
           "minLength": 1,
@@ -723,6 +855,20 @@
           ],
           "default": null,
           "title": "Prompt Digest"
+        },
+        "config_digest": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Config Digest"
         }
       },
       "required": [
@@ -748,20 +894,6 @@
           ],
           "title": "X0"
         },
-        "x1": {
-          "anyOf": [
-            {
-              "maximum": 1.0,
-              "minimum": 0.0,
-              "type": "number"
-            },
-            {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-              "type": "string"
-            }
-          ],
-          "title": "X1"
-        },
         "y0": {
           "anyOf": [
             {
@@ -775,6 +907,20 @@
             }
           ],
           "title": "Y0"
+        },
+        "x1": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "X1"
         },
         "y1": {
           "anyOf": [
@@ -800,9 +946,96 @@
       "title": "NormalizedBBox",
       "type": "object"
     },
+    "PdbReference": {
+      "additionalProperties": false,
+      "properties": {
+        "pdb_id": {
+          "maxLength": 12,
+          "title": "Pdb Id",
+          "type": "string"
+        },
+        "usage": {
+          "default": "unknown",
+          "enum": [
+            "this_work",
+            "cited_structure",
+            "unknown"
+          ],
+          "title": "Usage",
+          "type": "string"
+        },
+        "source_page": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Page"
+        },
+        "source_context": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Context"
+        },
+        "compound_label": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compound Label"
+        },
+        "review_hint": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Hint"
+        }
+      },
+      "required": [
+        "pdb_id"
+      ],
+      "title": "PdbReference",
+      "type": "object"
+    },
     "ProducerProvenance": {
       "additionalProperties": false,
       "properties": {
+        "kind": {
+          "enum": [
+            "local",
+            "remote",
+            "human-assisted",
+            "legacy-adapter"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
         "engine": {
           "maxLength": 255,
           "minLength": 1,
@@ -819,16 +1052,6 @@
           "format": "date-time",
           "title": "Generated At",
           "type": "string"
-        },
-        "kind": {
-          "enum": [
-            "local",
-            "remote",
-            "human-assisted",
-            "legacy-adapter"
-          ],
-          "title": "Kind",
-          "type": "string"
         }
       },
       "required": [
@@ -843,9 +1066,26 @@
     "SourceIdentity": {
       "additionalProperties": false,
       "properties": {
+        "paper_key": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Paper Key",
+          "type": "string"
+        },
+        "source_sha256": {
+          "maxLength": 64,
+          "minLength": 64,
+          "title": "Source Sha256",
+          "type": "string"
+        },
         "byte_size": {
           "exclusiveMinimum": 0,
           "title": "Byte Size",
+          "type": "integer"
+        },
+        "page_count": {
+          "exclusiveMinimum": 0,
+          "title": "Page Count",
           "type": "integer"
         },
         "doi": {
@@ -861,23 +1101,6 @@
           ],
           "default": null,
           "title": "Doi"
-        },
-        "page_count": {
-          "exclusiveMinimum": 0,
-          "title": "Page Count",
-          "type": "integer"
-        },
-        "paper_key": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Paper Key",
-          "type": "string"
-        },
-        "source_sha256": {
-          "maxLength": 64,
-          "minLength": 64,
-          "title": "Source Sha256",
-          "type": "string"
         }
       },
       "required": [
@@ -892,16 +1115,16 @@
   },
   "additionalProperties": false,
   "properties": {
+    "envelope_version": {
+      "const": 1,
+      "title": "Envelope Version",
+      "type": "integer"
+    },
     "candidate_id": {
       "maxLength": 128,
       "minLength": 1,
       "title": "Candidate Id",
       "type": "string"
-    },
-    "envelope_version": {
-      "const": 1,
-      "title": "Envelope Version",
-      "type": "integer"
     },
     "experiment_id": {
       "maxLength": 128,
@@ -909,16 +1132,27 @@
       "title": "Experiment Id",
       "type": "string"
     },
-    "hashes": {
+    "source": {
+      "$ref": "#/$defs/SourceIdentity"
+    },
+    "producer": {
+      "$ref": "#/$defs/ProducerProvenance"
+    },
+    "recipe": {
+      "$ref": "#/$defs/CandidateRecipe"
+    },
+    "parent_candidate_id": {
       "anyOf": [
         {
-          "$ref": "#/$defs/CandidateHashes"
+          "maxLength": 128,
+          "type": "string"
         },
         {
           "type": "null"
         }
       ],
-      "default": null
+      "default": null,
+      "title": "Parent Candidate Id"
     },
     "input_evaluation_ids": {
       "items": {
@@ -934,30 +1168,19 @@
       "title": "Omissions",
       "type": "array"
     },
-    "parent_candidate_id": {
+    "payload": {
+      "$ref": "#/$defs/AiPrefillPayload"
+    },
+    "hashes": {
       "anyOf": [
         {
-          "maxLength": 128,
-          "type": "string"
+          "$ref": "#/$defs/CandidateHashes"
         },
         {
           "type": "null"
         }
       ],
-      "default": null,
-      "title": "Parent Candidate Id"
-    },
-    "payload": {
-      "$ref": "#/$defs/AiPrefillPayload"
-    },
-    "producer": {
-      "$ref": "#/$defs/ProducerProvenance"
-    },
-    "recipe": {
-      "$ref": "#/$defs/CandidateRecipe"
-    },
-    "source": {
-      "$ref": "#/$defs/SourceIdentity"
+      "default": null
     }
   },
   "required": [

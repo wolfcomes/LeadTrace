@@ -84,6 +84,7 @@ def _workspace_response(aggregate: WorkspaceAggregate) -> WorkspaceResponse:
             volume=aggregate.paper.volume,
             issue=aggregate.paper.issue,
             doi=aggregate.paper.doi,
+            abstract=aggregate.paper.abstract, abstract_source=aggregate.paper.abstract_source, pdb_references=aggregate.paper.pdb_references,
         ),
         source=WorkspaceSourceResponse(
             asset_id=aggregate.source.asset_id,
@@ -253,6 +254,11 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
         updates = payload.updates()
 
         def mutation(context) -> MutationChange:
+            if "pdb_references" in updates:
+                from app.catalog.models import PaperSource
+                source = session.get(PaperSource, context.paper.source_id)
+                if any(x.get('source_page') and x['source_page'] > source.page_count for x in updates['pdb_references']):
+                    raise APIError(422, 'INVALID_SOURCE_PAGE', 'PDB source page is outside the article')
             before = {field: getattr(context.paper, field) for field in updates}
             for field, value in updates.items():
                 setattr(context.paper, field, value)
@@ -447,6 +453,8 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
         except (WorkspaceForbiddenError, WorkspaceNotFoundError) as error:
             raise _translate_workspace_error(error) from error
 
+    from app.workspaces.workbench import create_workbench_router
+    router.include_router(create_workbench_router(settings))
     return router
 
 

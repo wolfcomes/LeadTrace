@@ -63,6 +63,7 @@ class LineageEdgeCreateRequest(WorkspaceVersionRequest):
     child_compound_id: UUID
     relation_type: str = Field(min_length=1, max_length=128)
     modification_summary: str | None = Field(default=None, max_length=10_000)
+    review_hint: str | None = Field(default=None, max_length=1000)
     review_status: LineageEdgeReviewStatus
 
 
@@ -71,6 +72,7 @@ class LineageEdgeUpdateRequest(WorkspaceVersionRequest):
     child_compound_id: UUID | None = None
     relation_type: str | None = Field(default=None, max_length=128)
     modification_summary: str | None = Field(default=None, max_length=10_000)
+    review_hint: str | None = Field(default=None, max_length=1000)
     review_status: LineageEdgeReviewStatus | None = None
 
     @model_validator(mode="after")
@@ -80,11 +82,12 @@ class LineageEdgeUpdateRequest(WorkspaceVersionRequest):
             "child_compound_id",
             "relation_type",
             "modification_summary",
+            "review_hint",
             "review_status",
         }
         if not (fields & self.model_fields_set):
             raise ValueError("At least one Edge field is required")
-        for field in fields - {"modification_summary"}:
+        for field in fields - {"modification_summary", "review_hint"}:
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} cannot be null")
         return self
@@ -97,6 +100,7 @@ class LineageEdgeUpdateRequest(WorkspaceVersionRequest):
                 "child_compound_id",
                 "relation_type",
                 "modification_summary",
+                "review_hint",
                 "review_status",
             )
             if field in self.model_fields_set
@@ -128,6 +132,7 @@ class LineageEdgeResponse(BaseModel):
     child_compound_id: UUID
     relation_type: str
     modification_summary: str | None
+    review_hint: str | None = None
     review_status: LineageEdgeReviewStatus
     sort_order: int
 
