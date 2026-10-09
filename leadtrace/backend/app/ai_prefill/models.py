@@ -1,4 +1,5 @@
 from __future__ import annotations
+from sqlalchemy.dialects.postgresql import JSONB
 
 from datetime import datetime
 from enum import StrEnum
@@ -119,3 +120,18 @@ class AiExtractionRun(UUIDPrimaryKeyMixin, Base):
 
 
 __all__ = ["AiExtractionRun", "AiExtractionRunStatus"]
+
+
+class AiProvenance(UUIDPrimaryKeyMixin, Base):
+    """Append-only operator attestations; never written by scientific producers."""
+    __tablename__ = 'ai_provenance'
+    __table_args__ = (
+        ForeignKeyConstraint(['workspace_id', 'paper_id'], ['paper_workspaces.id', 'paper_workspaces.paper_id'], ondelete='RESTRICT'),
+        Index('uq_ai_provenance_workspace_run', 'workspace_id', 'run_key', unique=True),
+    )
+    paper_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    workspace_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    run_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    recorded_by_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    record: Mapped[dict] = mapped_column(JSONB, nullable=False)

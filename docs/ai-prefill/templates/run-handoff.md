@@ -7,8 +7,8 @@ Updated UTC: REPLACE. Actual state only, not planned progress.
 - Entry: prefill / selfcheck; mode: routine / evaluation.
 - Paper key / DOI / independently selected source manifest / source hashes:
 - Persistent run / selected checkout / commit + dirty state:
-- Guide version: deepseek-led-v3-20260923; actual bundle-manifest:
-- Scientific source reader: DeepSeek only; evaluation supervisor if used:
+- Guide version: model-neutral-v4-20261008; actual bundle-manifest:
+- Scientific source reader: selected model/runtime only; evaluation supervisor if used:
 - Authorized outcome: files / specified Preview; user scope limitations:
 
 ## Current state
@@ -24,7 +24,7 @@ Updated UTC: REPLACE. Actual state only, not planned progress.
 - Independent reviewer session identity / separation and limitations:
 - Process identity / start time / command / timeout / output paths:
 - Available input/output/cache token and cost metadata; unknown null:
-- Codex evaluation effort and all failed/retried calls, if used:
+- Supervisor evaluation effort and all failed/retried calls, if used:
 - Structured handoff inputs for next job; completed jobs must not be rerun:
 
 Current headless CLI has no native resume. A PID or terminal session ID is not the

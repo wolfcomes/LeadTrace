@@ -159,7 +159,7 @@ onMounted(load);
     <div v-else class="structure-comparison" data-structure-comparison>
       <article class="evidence-preview-frame">
         <header><strong>{{ t("RDKit 重绘") }}</strong><small>{{ t("数据库当前 Structure") }}</small></header>
-        <img v-if="structure?.depiction_asset_id" :src="structureDepictionUrl(compoundId)" :alt="t('{p0} 的 RDKit 图', { p0: compoundId })">
+        <img v-if="structure?.depiction_asset_id" :src="structureDepictionUrl(compoundId, structure.depiction_asset_id)" :alt="t('{p0} 的 RDKit 图', { p0: compoundId })">
         <p v-else>{{ t("尚无可用的 RDKit 图。") }}</p>
       </article>
       <article v-for="image in images" :key="image.id" class="evidence-preview-frame" :data-source-image-id="image.id">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AiProvenance from "../review/paper/AiProvenance.vue";
 import HighlightCards from "../review/paper/HighlightCards.vue";
 import ArticleMetadata from "../review/paper/ArticleMetadata.vue";
 import ReviewHint from "../review/paper/ReviewHint.vue";
@@ -105,6 +106,7 @@ watch(() => route.params.submissionId, load, { immediate: true });
         <dl class="submission-identity"><div><dt>Paper</dt><dd><code>{{ detail.bibliography.paper_key }}</code></dd></div><div><dt>Content hash</dt><dd><code>{{ detail.submission.content_hash }}</code></dd></div><div><dt>{{ t("提交时间") }}</dt><dd>{{ formatDate(detail.submission.submitted_at) }}</dd></div></dl>
       </header>
       <ArticleMetadata v-if="detail" :metadata="detail.bibliography" />
+      <AiProvenance :records="snapshot.ai_provenance ?? []" />
       <HighlightCards :items="snapshot.compound_highlights ?? []" :compounds="snapshot.compounds" :evidence="snapshot.evidence" :depiction="highlightDepiction" />
       <p v-if="detail.submission.reviewer_note" class="reviewer-attestation panel"><strong>{{ t("Reviewer 声明") }}</strong><span>{{ detail.submission.reviewer_note }}</span></p>
       <p v-if="error" class="message inline-feedback is-error" role="alert">{{ t(error ?? "") }} <small v-if="errorRequestId">{{ t("请求编号：{requestId}", { requestId: errorRequestId }) }}</small></p>

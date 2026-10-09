@@ -119,6 +119,8 @@ def create_ai_prefill_router(
                     csrf_token,
                     settings.session_secret.get_secret_value(),
                 )
+                if settings.ai_task_worker_enabled:
+                    raise AiPrefillUnavailableError("Use the Admin AI task console")
                 if settings.environment == "preview":
                     raise AiPrefillUnavailableError(
                         "Preview requires candidate application"

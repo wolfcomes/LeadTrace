@@ -135,7 +135,9 @@ def build_paper_snapshot(session: Session, workspace_id: UUID) -> dict[str, Any]
         CompoundHighlight.workspace_id == workspace_id).order_by(CompoundHighlight.id)))
     highlight_fields = ("id", "paper_id", "workspace_id", "compound_id", "evidence_id", "role", "scope",
                         "rationale", "review_hint", "review_status", "created_by_kind")
+    from app.ai_prefill.provenance import list_provenance
     return {
+        **({"ai_provenance": provenance} if (provenance := list_provenance(session, workspace_id)) else {}),
         **({"compound_highlights": [_row(row, highlight_fields) for row in highlights]} if highlights else {}),
         "schema_version": 1,
         "paper": _row(

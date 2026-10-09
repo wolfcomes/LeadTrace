@@ -278,6 +278,7 @@ class PublishedCompoundHighlight(PublishedSnapshotProjection):
 
 
 class PublishedPaperSnapshotResponse(PublishedSnapshotProjection):
+    ai_provenance: list[dict[str, object]] = Field(default_factory=list)
     schema_version: Literal[1]
     paper: PublishedSnapshotBibliography
     source: PublishedSource
@@ -285,6 +286,8 @@ class PublishedPaperSnapshotResponse(PublishedSnapshotProjection):
     @model_serializer(mode="wrap")
     def omit_empty_highlights(self, handler):
         data = handler(self)
+        if not self.ai_provenance:
+            data.pop("ai_provenance", None)
         if not self.compound_highlights:
             data.pop("compound_highlights", None)
         return data

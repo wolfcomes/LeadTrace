@@ -36,7 +36,7 @@ ambiguous matches; its status is `incomplete`. A successful label check is
 Source drift and invalid inventory return `INVALID_INPUT` / exit `2`.
 
 Scientific mistakes can pass these technical checks. See the
-[DeepSeek quality checklist](deepseek-quality-checklist.md) for observed graph,
+[model quality checklist](quality-checklist.md) for observed graph,
 crop, activity-context and review-reference failures. Its `DS_*` labels are manual
 review categories, not new validator/API error codes. A passing validation report
 must not suppress those checks or be presented as scientific approval.

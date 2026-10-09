@@ -32,6 +32,7 @@ const navigation: readonly NavigationItem[] = [
   { label: zhCN.navigation.articleCatalog, to: "/admin/papers", section: "admin", roles: ["admin"], icon: FileSearch },
   { label: zhCN.navigation.submissions, to: "/admin/submissions", section: "admin", roles: ["admin"], icon: ClipboardCheck },
   { label: zhCN.navigation.files, to: "/admin/files", section: "admin", roles: ["admin"], icon: Files },
+  { label: "AI 任务中心", to: "/admin/ai-tasks", section: "admin", roles: ["admin"], icon: ListTodo },
   { label: zhCN.navigation.jobs, to: "/admin/jobs", section: "admin", roles: ["admin"], icon: ListTodo },
   { label: zhCN.navigation.users, to: "/admin/users", section: "admin", roles: ["admin"], icon: Users },
   { label: zhCN.navigation.audit, to: "/admin/audit", section: "admin", roles: ["admin"], icon: ScrollText },

@@ -7,15 +7,17 @@ AI_prefilll / AI prefill), start with `docs/ai-prefill/START_HERE.md`. It is the
 current operational entry point; historical verification reports are evidence,
 not the current runbook. Read the latest run's `HANDOFF.md` before resuming.
 
-- Routine runs are DeepSeek-led through extraction and producer self-check. Codex
+- Routine runs use the selected model through extraction and producer self-check. Codex
   supervises evaluation runs, improves guidance and handles authorized delivery; it
-  is not a mandatory per-stage gate for routine scientific work. DeepSeek harness
+  is not a mandatory per-stage gate for routine scientific work. The selected scientific runtime
   reads original paper text/images.
-  Do not read source PDFs, extracted page text, original crops, or reasoning logs
+  The supervising agent must not read source PDFs, extracted page text, original crops, or reasoning logs
   that contain source content unless the user explicitly changes this division.
   Candidate/reviewer outputs and file identity metadata may be inspected.
-- Use `dsh --profile headless` for scientific extraction/review. Codex subagents
-  are not substitutes for DeepSeek paper readers. Keep one candidate writer per
+  A task explicitly configured with the Codex adapter authorizes that separate
+  scientific runtime to read its frozen sources; it does not expand supervisor access.
+- Use the frozen task adapter for scientific extraction/review (`dsh --profile headless` or `codex exec`). Codex subagents
+  are not substitutes for the selected scientific paper reader. Keep one candidate writer per
   paper/stage and separate fresh reviewer calls. Producer session continuity does
   not make its self-check independent review; record actual session metadata and
   use a structured handoff when native resume is unavailable.

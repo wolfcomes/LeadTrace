@@ -1,4 +1,4 @@
-# AI Prefill Extraction Guide — deepseek-led-v3-20260923 (CandidateEnvelope v1)
+# AI Prefill Extraction Guide — model-neutral-v4-20261008 (CandidateEnvelope v1)
 
 This guide describes the offline CandidateEnvelope v1 workflow. The source PDF is
 read through the authorized locator in the input package. The locator is an input
@@ -6,8 +6,8 @@ permission, not provenance to copy into a candidate or send to another process.
 
 Scientific rules in this file apply equally to routine and evaluation runs.
 Operational entry points and role-specific reading lists are in
-[START_HERE](START_HERE.md) and the [runbook](deepseek-supervised-runbook.md).
-The workflow is `deepseek-led-v3-20260923`; CandidateEnvelope remains v1.
+[START_HERE](START_HERE.md) and the [runbook](model-runbook.md).
+The workflow is `model-neutral-v4-20261008`; CandidateEnvelope remains v1.
 A frozen task bundle preserves the actual guides and hashes. Read the sections
 needed for the assigned task; copying a guide is not evidence of reading it.
 
@@ -481,7 +481,7 @@ The offline validator does not independently hash the source PDF or prove
 structure identity, table completeness, or crop content. Check the actual source
 file against the input identity, inspect real crops, and record scientific checks
 before requesting Preview application. An exit code of 0 is not scientific
-approval. The optional [quality sidecar](templates/deepseek-quality-record.json)
+approval. The optional [quality sidecar](templates/quality-record.json)
 records these checks outside CandidateEnvelope; it is not a built-in validator
 or formal Evaluation.
 

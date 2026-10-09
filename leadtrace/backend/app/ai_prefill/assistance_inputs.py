@@ -81,7 +81,7 @@ def prepare_input_package(
             "Follow docs/ai-prefill/START_HERE.md and the actual frozen guide bundle; this input package does not bundle guides or verify the PDF.",
             "Survey a source-derived compound inventory and verify representative cores before family expansion; producer self-check is not independent audit.",
             "Run candidate validate, candidate coverage, and candidate self-check with the final source self-review before independent audit.",
-            "Use DeepSeek-led routine mode or Codex-observed evaluation mode from the current guide; only the trusted delivery coordinator may apply an authorized Preview draft.",
+            "Use Model-led routine mode or Codex-observed evaluation mode from the current guide; only the trusted delivery coordinator may apply an authorized Preview draft.",
         ],
     )
 

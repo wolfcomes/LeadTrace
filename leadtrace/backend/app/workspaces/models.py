@@ -27,6 +27,8 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class ReviewTaskState(StrEnum):
+    UNASSIGNED = "unassigned"
+    ARCHIVED = "archived"
     ASSIGNED = "assigned"
     SUBMITTED = "submitted"
     CHANGES_REQUESTED = "changes_requested"
@@ -34,6 +36,7 @@ class ReviewTaskState(StrEnum):
 
 
 class WorkspaceState(StrEnum):
+    ARCHIVED = "archived"
     EDITING = "editing"
     SUBMITTED = "submitted"
     APPROVED = "approved"
@@ -71,11 +74,11 @@ class ReviewTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "uq_review_tasks_active_paper",
             "paper_id",
             unique=True,
-            postgresql_where=text("status <> 'approved'"),
+            postgresql_where=text("status NOT IN ('approved', 'archived')"),
         ),
         CheckConstraint("version > 0", name="ck_review_tasks_positive_version"),
         CheckConstraint(
-            "status IN ('assigned', 'submitted', 'changes_requested', 'approved')",
+            "status IN ('unassigned', 'assigned', 'submitted', 'changes_requested', 'approved', 'archived')",
             name="ck_review_tasks_status",
         ),
     )
@@ -85,10 +88,10 @@ class ReviewTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("papers.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    assigned_reviewer_id: Mapped[UUID] = mapped_column(
+    assigned_reviewer_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     created_by_id: Mapped[UUID] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
@@ -122,7 +125,7 @@ class PaperWorkspace(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         CheckConstraint("version > 0", name="ck_paper_workspaces_positive_version"),
         CheckConstraint(
-            "state IN ('editing', 'submitted', 'approved')",
+            "state IN ('editing', 'submitted', 'approved', 'archived')",
             name="ck_paper_workspaces_state",
         ),
         Index("ix_paper_workspaces_paper_state", "paper_id", "state"),
@@ -407,3 +410,14 @@ class WorkspaceViewReceipt(UUIDPrimaryKeyMixin, Base):
     entity_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
     signature: Mapped[str] = mapped_column(String(64), nullable=False)
     viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ArticleArchive(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "article_archives"
+    paper_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey("papers.id", ondelete="RESTRICT"), nullable=False, index=True)
+    workspace_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey("paper_workspaces.id", ondelete="RESTRICT"), nullable=False, unique=True)
+    created_by_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    relative_path: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
+    manifest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    catalog_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False)

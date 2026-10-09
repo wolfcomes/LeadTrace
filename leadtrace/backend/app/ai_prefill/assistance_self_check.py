@@ -59,7 +59,7 @@ def _norm(text: str | None) -> str:
 
 
 def self_check_candidate(
-    candidate: CandidateEnvelope, inventory: CompoundInventory, *,
+    candidate: CandidateEnvelope, inventory: CompoundInventory | None, *,
     candidate_file_bytes: bytes, self_review: SourceSelfReview | None = None,
 ) -> dict:
     # Bind the report to the actual file, not caller-supplied detached content.
@@ -67,7 +67,8 @@ def self_check_candidate(
         raise ValueError('candidate file bytes differ from parsed candidate')
     file_hash = hashlib.sha256(candidate_file_bytes).hexdigest()
     validation = validate_candidate(candidate)
-    coverage = check_compound_coverage(candidate, inventory)
+    coverage = check_compound_coverage(candidate, inventory) if inventory is not None else {
+        "status": "unknown", "required_count": None, "covered_count": None, "missing_labels": []}
     lineage_diagnostics = diagnose_lineages(candidate)
     issues: list[dict] = list(lineage_diagnostics['issues'])
 

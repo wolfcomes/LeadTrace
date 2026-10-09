@@ -72,7 +72,8 @@ const statusLabel = computed(() => ({
 
 function apply(result: Structure | null): void {
   structure.value = result;
-  smiles.value = result?.smiles ?? "";
+  // Molfile saves return a derived canonical SMILES rather than raw SMILES.
+  smiles.value = result?.smiles ?? result?.canonical_smiles ?? "";
   molfile.value = result?.molfile ?? "";
   loadedSmiles.value = smiles.value;
   loadedMolfile.value = molfile.value;

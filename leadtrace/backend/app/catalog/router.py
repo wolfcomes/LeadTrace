@@ -40,6 +40,8 @@ from app.workspaces.models import (
     PaperSectionState,
     PaperWorkspace,
     ReviewTask,
+    ReviewTaskState,
+    WorkspaceState,
 )
 from app.workspaces.schemas import AssignmentRequest, AssignmentResponse
 
@@ -62,8 +64,8 @@ def _review_summaries(
     task_rows = session.execute(
         select(ReviewTask, PaperWorkspace, User)
         .join(PaperWorkspace, PaperWorkspace.review_task_id == ReviewTask.id)
-        .join(User, User.id == ReviewTask.assigned_reviewer_id)
-        .where(ReviewTask.paper_id.in_(paper_ids))
+        .outerjoin(User, User.id == ReviewTask.assigned_reviewer_id)
+        .where(ReviewTask.paper_id.in_(paper_ids), ReviewTask.status != ReviewTaskState.ARCHIVED)
         .order_by(
             ReviewTask.paper_id,
             ReviewTask.updated_at.desc(),
@@ -101,13 +103,13 @@ def _review_summaries(
             review_task_id=task.id,
             workspace_id=workspace.id,
             assigned_reviewer_id=task.assigned_reviewer_id,
-            assignee_display_name=assignee.display_name,
+            assignee_display_name=assignee.display_name if assignee else None,
             task_status=task.status,
             workspace_state=workspace.state,
             sections_resolved=resolved,
             sections_total=total,
             submission_state=(
-                "not_submitted" if task.status.value == "assigned" else task.status.value
+                "not_submitted" if task.status.value in {"assigned", "unassigned"} else task.status.value
             ),
         )
     return summaries
@@ -121,7 +123,7 @@ def _ai_prefill_summaries(
         return {}
     workspace_rows = session.scalars(
         select(PaperWorkspace)
-        .where(PaperWorkspace.paper_id.in_(paper_ids))
+        .where(PaperWorkspace.paper_id.in_(paper_ids), PaperWorkspace.state != WorkspaceState.ARCHIVED)
         .order_by(
             PaperWorkspace.paper_id,
             PaperWorkspace.created_at.desc(),

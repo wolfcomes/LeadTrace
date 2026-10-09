@@ -97,12 +97,12 @@ function sourceHealthy(paper: PaperCatalogRow): boolean {
 }
 
 function canAssign(paper: PaperCatalogRow): boolean {
-  return sourceHealthy(paper) && (!paper.review || paper.review.task_status === "approved");
+  return sourceHealthy(paper) && (!paper.review || ["approved", "unassigned"].includes(paper.review.task_status));
 }
 
 function assignmentLabel(paper: PaperCatalogRow): string {
   if (!sourceHealthy(paper)) return "Source 异常";
-  if (!paper.review) return "分配 Reviewer";
+  if (!paper.review || paper.review.task_status === "unassigned") return "分配 Reviewer";
   return paper.review.task_status === "approved" ? "再次分配" : "已分配";
 }
 
@@ -211,7 +211,7 @@ watch(() => route.fullPath, load, { immediate: true });
                 <small>{{ t("{count} 页", { count: paper.source.page_count }) }}</small>
               </td>
               <td data-label="Reviewer">
-                <strong v-if="paper.review">{{ paper.review.assignee_display_name }}</strong>
+                <strong v-if="paper.review?.assignee_display_name">{{ paper.review.assignee_display_name }}</strong>
                 <span v-else class="muted">{{ t("未分配") }}</span>
               </td>
               <td :data-label="t('区段进度')">
@@ -225,6 +225,7 @@ watch(() => route.fullPath, load, { immediate: true });
                 <AiPrefillStatus :paper-id="paper.id" :status="paper.ai_prefill" compact />
               </td>
               <td class="actions table-actions" :data-label="t('操作')">
+                <RouterLink data-manage-paper class="button-secondary compact-action" :to="{ name: 'admin-paper-detail', params: { paperId: paper.id }, query: route.query }">{{ t("管理文章") }}</RouterLink>
                 <button
                   class="button-secondary compact-action"
                   data-assign

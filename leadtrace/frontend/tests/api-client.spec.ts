@@ -72,3 +72,9 @@ describe("API client error handlers", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 });
+
+it('preserves the safe server explanation separately from the existing error message contract',async()=>{
+  const original=globalThis.fetch;
+  globalThis.fetch=async()=>new Response(JSON.stringify({code:'WORKSPACE_CHANGED',message:'The draft changed after generation started.',details:{workspace_version:5},request_id:'job-start'}),{status:409,headers:{'Content-Type':'application/json'}});
+  try{const error=await apiRequest('/api/v2/admin/ai-tasks',z.unknown()).catch(value=>value);expect(error).toMatchObject({message:'LeadTrace API request failed (WORKSPACE_CHANGED)',serverMessage:'The draft changed after generation started.',code:'WORKSPACE_CHANGED',requestId:'job-start',details:{workspace_version:5}});}finally{globalThis.fetch=original;}
+});

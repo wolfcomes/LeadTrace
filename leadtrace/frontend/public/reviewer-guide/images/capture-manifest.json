@@ -1,0 +1,63 @@
+{
+  "kind": "real UI with fictional intercepted data",
+  "live_database_access": false,
+  "source_pdf_access": false,
+  "shots": [
+    {
+      "name": "overview",
+      "lang": "zh"
+    },
+    {
+      "name": "compound",
+      "lang": "zh"
+    },
+    {
+      "name": "activity",
+      "lang": "zh"
+    },
+    {
+      "name": "lineage",
+      "lang": "zh"
+    },
+    {
+      "name": "node",
+      "lang": "zh"
+    },
+    {
+      "name": "edge",
+      "lang": "zh"
+    },
+    {
+      "name": "submit",
+      "lang": "zh"
+    },
+    {
+      "name": "overview",
+      "lang": "en"
+    },
+    {
+      "name": "compound",
+      "lang": "en"
+    },
+    {
+      "name": "activity",
+      "lang": "en"
+    },
+    {
+      "name": "lineage",
+      "lang": "en"
+    },
+    {
+      "name": "node",
+      "lang": "en"
+    },
+    {
+      "name": "edge",
+      "lang": "en"
+    },
+    {
+      "name": "submit",
+      "lang": "en"
+    }
+  ]
+}

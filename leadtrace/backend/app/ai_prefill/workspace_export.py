@@ -89,12 +89,31 @@ def _payload_from_snapshot(
 
     def refs(rows, originals, prefix, kind):
         existing = {}
+        mapped = {}
         for original in originals:
             identifier = entity_map.get(f"{prefix}/{original.ref}")
             if identifier:
-                if str(identifier) in existing:
-                    issue(prefix, "Application receipt maps multiple refs to one row")
-                existing[str(identifier)] = original.ref
+                mapped.setdefault(str(identifier), []).append(original)
+        row_ids = {row["id"] for row in rows}
+        for identifier, aliases in mapped.items():
+            # Only source locators may intentionally alias one stored occurrence.
+            # Use the same database precision as apply, not approximate geometry.
+            same_occurrence = False
+            if len(aliases) > 1 and kind == "locator":
+                from app.ai_prefill.occurrences import occurrence_groups
+                same_occurrence = len(occurrence_groups(aliases)) == 1
+            if len(aliases) > 1 and not same_occurrence:
+                issue(prefix, "Application receipt maps multiple refs to one row")
+            existing[identifier] = aliases[0].ref
+            if same_occurrence and identifier in row_ids:
+                review_metadata.append({
+                    "path": f"structure_locators/{aliases[0].ref}",
+                    "locator_aliases": [item.ref for item in aliases],
+                    "original_annotations": [
+                        {"ref": item.ref, "label": item.label, "source_context": item.source_context}
+                        for item in aliases
+                    ],
+                })
         reserved = {original.ref for original in originals}
         result = {}
         for row in rows:

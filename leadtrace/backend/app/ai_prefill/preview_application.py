@@ -282,6 +282,7 @@ class PreviewApplicationService:
             "ai_event_count": int(event_count),
             "entity_count": len(result.entity_map or {}),
             "pending_section_count": int(pending_sections or 0),
+            "delivery_notes": result.delivery_notes,
         }
 
         receipt = ApplicationReceipt(
@@ -390,7 +391,7 @@ class PreviewApplicationService:
         else:
             active_task = session.scalar(select(ReviewTask.id).where(
                 ReviewTask.paper_id == paper.id,
-                ReviewTask.status != ReviewTaskState.APPROVED,
+                ReviewTask.status.notin_([ReviewTaskState.APPROVED, ReviewTaskState.ARCHIVED]),
             ).limit(1))
             if active_task is not None:
                 raise PreviewApplicationConflictError(

@@ -202,6 +202,77 @@ describe("Compound and single-Structure editor", () => {
     });
   });
 
+  it("fills SMILES after Ketcher save and reload without a second write, preserving Molfile confirmation", async () => {
+    let saved = structure();
+    let version = 1;
+    const writes: Array<Record<string, unknown>> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://test").pathname;
+      if (path.endsWith("/structure")) {
+        if (init?.method === "PUT") {
+          const body = JSON.parse(String(init.body));
+          writes.push(body);
+          saved = structure({ smiles: null, molfile: body.molfile, canonical_smiles: "CCN", input_method: "structure_editor", status: body.status });
+          version++;
+        }
+        return response({ structure: saved, workspace_version: version });
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    }));
+    const mountEditor = () => mount(CompoundStructureEditor, {
+      props: { compound: compound as Compound, workspaceVersion: version, source: workspace().source },
+      global: { stubs: { StructureSourceImages: true, KetcherEditor: KetcherStub } },
+    });
+    let wrapper = mountEditor();await flushPromises();
+    await wrapper.get("[data-open-ketcher]").trigger("click");
+    await wrapper.get("[data-ketcher-stub]").trigger("click");
+    await wrapper.get("[data-save-ketcher]").trigger("click");await flushPromises();
+    expect((wrapper.get("[data-smiles-input]").element as HTMLTextAreaElement).value).toBe("CCN");
+    expect(writes).toHaveLength(1);
+    expect(wrapper.get("[data-confirm-structure]").attributes("disabled")).toBeUndefined();
+    wrapper.unmount();wrapper = mountEditor();await flushPromises();
+    expect((wrapper.get("[data-smiles-input]").element as HTMLTextAreaElement).value).toBe("CCN");
+    await wrapper.get("[data-confirm-structure]").trigger("click");await flushPromises();
+    expect(writes[1]).toMatchObject({ expected_workspace_version: 2, input_method: "structure_editor", molfile: "KETCHER MOLFILE", smiles: null, status: "reviewer_confirmed" });
+    wrapper.unmount();
+  });
+
+  it("refreshes the saved depiction after a SMILES edit without changing source crop URLs", async () => {
+    let saved = structure();let version = 1;let failSave = false;
+    const crop = { id: ids.secondStructure, paper_id: ids.paper, workspace_id: ids.workspace, compound_id: ids.compound, source_sha256: "a".repeat(64), page_number: 1, bbox: { x0: 0, y0: 0, x1: 1, y1: 1 }, source_context: null, label: null, reviewer_note: null, crop_status: "ready", crop_asset_id: ids.asset };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://test").pathname;
+      if (path.endsWith("/structure")) {
+        if (init?.method === "PUT") {
+          if (failSave) return response({code:"SAVE_FAILED",message:"Save failed",request_id:"test"},500);
+          const body = JSON.parse(String(init.body));
+          const invalid=body.smiles==='invalid';
+          saved=structure({smiles:body.smiles,canonical_smiles:invalid?null:body.smiles,depiction_asset_id:invalid?null:ids.secondStructure,input_method:'manual_smiles'});version++;
+        }
+        return response({structure:saved,workspace_version:version});
+      }
+      if(path.endsWith('/source-images'))return response({compound_id:ids.compound,workspace_version:version,items:[crop],total:1});
+      throw new Error(`Unexpected request: ${path}`);
+    }));
+    const wrapper=mount(CompoundStructureEditor,{props:{compound:compound as Compound,workspaceVersion:1,source:workspace().source}});await flushPromises();
+    const rdkit=()=>wrapper.get('[data-structure-comparison] article:first-child img');
+    const initial=rdkit().attributes('src');
+    const sourceUrl=wrapper.get('[data-source-image-id] img').attributes('src');
+    await wrapper.get('[data-smiles-input]').setValue('CCN');
+    expect(rdkit().attributes('src')).toBe(initial);
+    await wrapper.get('[data-save-structure]').trigger('click');await flushPromises();
+    const updated=rdkit().attributes('src');expect(updated).not.toBe(initial);
+    expect(wrapper.get('[data-source-image-id] img').attributes('src')).toBe(sourceUrl);
+    failSave=true;await wrapper.get('[data-smiles-input]').setValue('CCC');
+    await wrapper.get('[data-save-structure]').trigger('click');await flushPromises();
+    expect(rdkit().attributes('src')).toBe(updated);
+    expect((wrapper.get('[data-smiles-input]').element as HTMLTextAreaElement).value).toBe('CCC');
+    failSave=false;await wrapper.get('[data-smiles-input]').setValue('invalid');
+    await wrapper.get('[data-save-structure]').trigger('click');await flushPromises();
+    expect(wrapper.find('[data-structure-comparison] article:first-child img').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("edits AI-prefilled Compound metadata in place", async () => {
     const calls = mockApi();
     const wrapper = await mountWorkspace();

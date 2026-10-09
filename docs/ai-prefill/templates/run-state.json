@@ -7,9 +7,9 @@
   "repository_checkout": "REPLACE_ABSOLUTE_PATH",
   "code_commit": null,
   "dirty_code_manifest": null,
-  "guide_version": "deepseek-led-v3-20260923",
+  "guide_version": "model-neutral-v4-20261008",
   "bundle_manifest": "bundle-manifest.json",
-  "source_reader": "deepseek_harness",
+  "source_reader": "selected_scientific_runtime",
   "supervisor": null,
   "authorized_outcome": "candidate_and_report",
   "preview_instance_descriptor": null,
@@ -45,5 +45,5 @@
   "entrypoint": "prefill",
   "mode": "routine",
   "producer_continuation_policy": "structured_handoff_new_session; current headless has no native resume",
-  "usage_notes": "Record actual DeepSeek/Codex/input/output/cache sources separately; no token or monetary hard budget enforcement is implied."
+  "usage_notes": "Record actual scientific model/supervisor/input/output/cache sources separately; no token or monetary hard budget enforcement is implied."
 }

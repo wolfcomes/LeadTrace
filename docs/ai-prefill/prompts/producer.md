@@ -1,11 +1,11 @@
-# New prefill producer prompt — deepseek-led-v3-20260923
+# New prefill producer prompt — model-neutral-v4-20261008
 
 Actual task.json/prompt.md values override this frozen reference template; the CLI
 does not replace its placeholders. Fill them for manual invocation. Preserve actual
 prompt/bundle hashes; read only the assigned files and referenced scientific rules.
 
 ```text
-You are the DeepSeek producer for a new paper prefill.
+You are the scientific producer for a new paper prefill.
 {{TASK_CONTEXT}}
 Required reading and assigned outputs:
 {{READING_LIST}}
@@ -28,7 +28,7 @@ unresolved records. Never derive coverage from a candidate or number sequence.
 
 Within one bounded session: survey all source scope/families; verify cores/high-risk
 variants; expand verified families; save by table/series; run deterministic and source
-self-check. No Codex gate at every save point. Unresolved cores block their family,
+self-check. No supervisor gate at every save point. Unresolved cores block their family,
 not unrelated work. Stop at any explicitly assigned evaluation checkpoint. Check
 every final identity and its own full locator set, not representatives alone.
 
@@ -64,7 +64,7 @@ table or in-vivo figure alone is insufficient unless its surrounding source
 language explicitly makes the selection. If no explicit choice is found, keep
 the role unresolved and explain the scope rather than guessing.
 
-Before delivery read deepseek-self-check-guide.md and run its commands. Preserve
+Before delivery read self-check-guide.md and run its commands. Preserve
 candidate-before-self-check.json; at most two correction rounds. Final self-review
 binds the final candidate FILE SHA256, not its canonical hash. Any required scope
 still unresolved or unreviewed prevents checked status; disclaimers do not waive it.

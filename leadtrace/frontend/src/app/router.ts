@@ -22,6 +22,7 @@ import PaperWorkspacePage from "../review/paper/PaperWorkspacePage.vue";
 import UsersPage from "../admin/UsersPage.vue";
 import FilesPage from "../admin/FilesPage.vue";
 import AuditPage from "../admin/AuditPage.vue";
+import AiTaskCenterPage from "../admin/AiTaskCenterPage.vue";
 import JobsPage from "../admin/JobsPage.vue";
 import SystemPage from "../admin/SystemPage.vue";
 import PaperCatalogPage from "../admin/PaperCatalogPage.vue";
@@ -76,6 +77,7 @@ export function createAppRouter(
           { path: "admin/files", component: FilesPage, meta: { roles: adminRoles } },
           { path: "admin/users", component: UsersPage, meta: { roles: adminRoles } },
           { path: "admin/audit", component: AuditPage, meta: { roles: adminRoles } },
+          { path: "admin/ai-tasks", name: "admin-ai-tasks", component: AiTaskCenterPage, meta: { roles: adminRoles } },
           { path: "admin/jobs", name: "admin-jobs", component: JobsPage, meta: { roles: adminRoles } },
           { path: "admin/system", component: SystemPage, meta: { roles: adminRoles } },
         ],

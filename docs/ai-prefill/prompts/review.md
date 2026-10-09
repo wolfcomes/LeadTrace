@@ -1,19 +1,19 @@
-# Independent source audit prompt — deepseek-led-v3-20260923
+# Independent source audit prompt — model-neutral-v4-20261008
 
-Use a fresh DeepSeek context, not the producer's resumed conversation. Provide the
+Use a fresh model context, not the producer's resumed conversation. Provide the
 frozen candidate/source hashes, scope, predetermined samples and minimum scientific
 reading list. In routine review, establish source scope and core expectations
 before candidate comparison within this fresh call; independently check the
 producer inventory, not treat it as gold. Without a credible inventory, save your
 own source census first. A separately dispatched source-only task is optional
-evaluation overhead and must be counted separately. For repairs reuse valid source
-checks and audit changes plus dependencies. Do not require whole-paper reinventory
+evaluation overhead and must be counted separately. For a combined review/repair task, save the independent baseline judgments first,
+then reuse your source checks to propose supported changes and check their dependencies in this SAME call. Do not require whole-paper reinventory
 for an isolated crop repair. Record actual isolation, not an assumed blind guarantee. Independent audit is not
 started by task run: prepare this separate reviewer invocation, replacing the two
 placeholders with actual task values and the review plan before launch.
 
 ```text
-You are a fresh independent DeepSeek source reviewer, not the candidate producer.
+You are a fresh independent scientific source reviewer, not the candidate producer.
 {{TASK_CONTEXT}}
 Frozen review plan and required reading:
 {{READING_LIST}}
@@ -77,10 +77,24 @@ Reconcile verdict/reason contradictions and cross-record dependency failures bef
 counting. Keep value, context/provenance, identity and coverage results separate.
 
 Read only authorized inputs/sources and write the review outputs in this task.
-No candidate repair, Preview credentials, databases, apply, dependencies, subagents
-or unrelated jobs. Save findings incrementally and stop within budget. Deliver
-per-item results, concise audit conclusion, hashes, actual scope, omissions, source
-conflicts and remaining limitations. Do not fill producer self-check or approvals.
+Never edit the frozen input candidate. No Preview credentials, databases, apply,
+dependency installation, subagents, extra model calls or unrelated jobs. Save the
+baseline audit incrementally and stop within budget. In audit-summary.json,
+item_reports lists JSON files under outputs: prefer "audit-structures.json";
+"outputs/audit-structures.json" is also accepted. Never use absolute or parent paths. Deliver per-item results,
+concise baseline audit statistics, hashes, actual scope, omissions and limitations.
+If task.json review_with_repair is true, continue in this SAME session: read the
+repair prompt and self-check guide, preserve unaffected refs and human content,
+and write the complete revised candidate, inventory and producer_self_check as
+specified by task.json/prompt.md. At most two internal correction cycles share the
+original review time budget. Do not replace baseline findings with revised values.
+Without supported changes, write repair-outcome.json with status no_changes and a
+specific reason; preserve unresolved findings. An unfinished/invalid proposal must
+not discard a valid audit. Candidate payload collections and lineage members/edges
+must be explicit; omitted populated collections never mean deletion.
+For historical/audit-only tasks without that flag, deliver only the audit.
+Your proposal self-check is not independent re-review or scientific approval.
+The Admin accepts saved modifications separately without another model call.
 
 Apply the extraction guide's source-supported inference and simple review_hint
 rule. Complete structures may be reasonably reconstructed from shared cores,

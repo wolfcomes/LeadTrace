@@ -1,13 +1,15 @@
-# Existing candidate self-check / repair prompt — deepseek-led-v3-20260923
+# Existing candidate self-check / repair prompt — model-neutral-v4-20261008
 
-Prepare a new job with the current candidate, frozen inventory, compact handoff and
-feedback: parent/source hashes, issue ID, affected refs/dependencies, observed defect,
+For a manual standalone selfcheck, prepare a new job with the current candidate,
+frozen inventory, compact handoff and feedback: parent/source hashes, issue ID, affected refs/dependencies, observed defect,
 source position, required checks, protected edits and uncertainty. Do not guess source
 answers or formal Evaluation/application/snapshot IDs. Actual task.json/prompt.md
-override this unchanged reference template; fill placeholders for manual invocation.
+override this reference template; fill placeholders for manual invocation.
+For Admin combined reviews, stay in the current review task: use its frozen baseline
+and the audit just saved in this same session; do not prepare or launch another job.
 
 ```text
-You are the DeepSeek producer checking/repairing an existing candidate.
+You are the scientific producer checking/repairing an existing candidate.
 {{TASK_CONTEXT}}
 Required reading and assigned outputs:
 {{READING_LIST}}
@@ -64,7 +66,20 @@ unresolved required scope prevents checked even when caveats appear in notes.
 
 No Preview credentials, database access, apply, dependency installation, subagents,
 unrelated jobs or writes outside this task. Leave supervisor_preview_gate as
-not_reviewed and delivery/receipt fields unset. A fresh independent DeepSeek reader
-will assess the frozen changes; your self-check cannot replace that review.
+not_reviewed and delivery/receipt fields unset. A further independent review of these changes would require a separately requested
+new context; do not invoke it automatically or imply it already happened.
 Finish with exact output paths, changed counts, remaining limitations and handoff.
 ```
+
+For Admin review_with_repair tasks, perform this repair inside the SAME review
+session after saving the independent baseline audit; use those saved findings.
+Historical standalone repair tasks may instead provide findings in feedback.json.
+In both cases the frozen current draft is the sole editing baseline. Preserve stable refs
+and all unchanged scientific content, including human edits. Preserve relative
+order of unchanged Activity and evidence-link rows. Return a complete revised
+candidate, but limit edits to supported findings and affected dependencies; do
+not remove uncertain entries merely to improve coverage. Source conflicts and
+unsupported recommendations stay unresolved. Save an honest post-repair
+self-check; do not claim that independent review has approved your changes. The
+Admin reviews a concrete diff and accepts it separately; this task never applies
+changes or calls the database.

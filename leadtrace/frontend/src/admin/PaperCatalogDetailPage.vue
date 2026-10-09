@@ -5,8 +5,8 @@ import { useRoute } from "vue-router";
 
 import { ApiError } from "../api/client";
 import { getAdminPaper } from "../v2/api";
-import type { AiPrefillStatus as AiPrefillStatusValue, AssignmentResponse, PaperCatalogRow } from "../v2/types";
-import AiPrefillStatus from "./AiPrefillStatus.vue";
+import type { AssignmentResponse, PaperCatalogRow } from "../v2/types";
+import AiTaskConsole from "./AiTaskConsole.vue";
 import ReviewerAssignmentDialog from "./ReviewerAssignmentDialog.vue";
 
 
@@ -24,7 +24,7 @@ function sourceHealthy(value: PaperCatalogRow): boolean {
 }
 
 function canAssign(value: PaperCatalogRow): boolean {
-  return sourceHealthy(value) && (!value.review || value.review.task_status === "approved");
+  return sourceHealthy(value) && (!value.review || ["approved", "unassigned"].includes(value.review.task_status));
 }
 
 function sourceLabel(value: PaperCatalogRow): string {
@@ -86,10 +86,6 @@ function onAssigned(result: AssignmentResponse, reviewerName: string): void {
   showAssignment.value = false;
 }
 
-function onAiPrefillUpdate(status: AiPrefillStatusValue): void {
-  if (!paper.value) return;
-  paper.value = { ...paper.value, ai_prefill: status };
-}
 
 watch(() => route.params.paperId, load, { immediate: true });
 </script>
@@ -138,25 +134,14 @@ watch(() => route.params.paperId, load, { immediate: true });
             <a class="button-secondary" data-source-pdf :href="`/api/v2/papers/${paper.id}/source-pdf`" target="_blank" rel="noopener">{{ t("打开 PDF ↗") }}</a>
           </section>
 
-          <section class="panel ai-prefill-panel" data-ai-prefill-panel>
-            <div class="section-heading">
-              <div><p class="eyebrow">OPTIONAL PREFILL</p><h2>{{ t("AI 预填") }}</h2></div>
-            </div>
-            <AiPrefillStatus
-              :paper-id="paper.id"
-              :status="paper.ai_prefill"
-              interactive
-              poll
-              @update="onAiPrefillUpdate"
-            />
-          </section>
+
         </div>
 
         <aside class="review-panel panel">
           <p class="eyebrow">REVIEW WORKFLOW</p><h2>{{ t("Reviewer 工作流") }}</h2>
           <template v-if="paper.review">
             <dl class="review-summary">
-              <div><dt>Reviewer</dt><dd>{{ paper.review.assignee_display_name }}</dd></div>
+              <div><dt>Reviewer</dt><dd>{{ paper.review.assignee_display_name || t("未分配") }}</dd></div>
               <div><dt>{{ t("区段进度") }}</dt><dd>{{ paper.review.sections_resolved }} / {{ paper.review.sections_total }}</dd></div>
               <div><dt>{{ t("提交状态") }}</dt><dd>{{ t(submissionLabel(paper)) }}</dd></div>
             </dl>
@@ -169,10 +154,11 @@ watch(() => route.params.paperId, load, { immediate: true });
           <p v-else>{{ t("尚未分配。Reviewer 可从空白 Workspace 开始，不需要先运行 AI。") }}</p>
           <p v-if="!sourceHealthy(paper)" class="inline-feedback is-error">{{ t("Source PDF 完整性异常，修复前不能分配。") }}</p>
           <button class="button-primary full" data-assign type="button" :disabled="!canAssign(paper)" @click="showAssignment = true">
-            {{ t(paper.review?.task_status === "approved" ? "再次分配" : paper.review ? "已分配" : "分配 Reviewer") }}
+            {{ t(paper.review?.task_status === "approved" ? "再次分配" : paper.review && paper.review.task_status !== "unassigned" ? "已分配" : "分配 Reviewer") }}
           </button>
         </aside>
       </section>
+      <section class="panel"><AiTaskConsole :key="paper.id" :paper-id="paper.id" @changed="load" /></section>
     </template>
 
     <ReviewerAssignmentDialog

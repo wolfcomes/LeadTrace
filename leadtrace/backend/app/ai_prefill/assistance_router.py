@@ -188,6 +188,20 @@ def create_assistance_router(settings: Settings) -> APIRouter:
                     run_id=request.run_id,
                     expected_workspace_version=request.expected_workspace_version,
                 )
+                if result.applied:
+                    import hashlib
+                    from app.ai_prefill.provenance import ProvenanceInput, append_provenance
+                    from app.workspaces.models import PaperWorkspace
+                    workspace = session.get(PaperWorkspace, result.receipt.workspace_id)
+                    append_provenance(session, workspace=workspace, source_sha256=candidate.source.source_sha256,
+                        actor_id=principal.user_id, record=ProvenanceInput(
+                            run_key='apply:' + str(result.receipt.application_id), stage='prefill',
+                            source_sha256=candidate.source.source_sha256,
+                            candidate_file_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                            verification='unknown', guide_version=candidate.recipe.guide_version,
+                            completed_at=candidate.producer.generated_at, outcome='completed',
+                            applied_workspace_version=workspace.version))
+
         except AiPrefillNotFoundError as error:
             raise HTTPException(status_code=404, detail="Resource not found") from error
         except (PreviewApplicationConflictError, AiPrefillUnavailableError) as error:

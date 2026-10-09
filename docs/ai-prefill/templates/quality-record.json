@@ -1,5 +1,5 @@
 {
-  "record_format": "deepseek-supervised-sidecar-v2",
+  "record_format": "model-quality-sidecar-v3",
   "template_notice": "Local operational sidecar, not CandidateEnvelope, ValidationReport or Evaluation. Replace placeholders and example rows with actual observations. Null means unknown, not zero. No automatic gate is implemented by this file.",
   "run_id": "REPLACE",
   "paper_key": "REPLACE",
@@ -11,7 +11,7 @@
   "identity": {
     "source_file_sha256": null,
     "input_file_sha256": null,
-    "guide_version": "deepseek-led-v3-20260923",
+    "guide_version": "model-neutral-v4-20261008",
     "guide_file_sha256": null,
     "prompt_file_sha256": null,
     "schema_file_sha256": null,
@@ -98,11 +98,11 @@
   },
   "usage_and_cost": {
     "usage_source": null,
-    "deepseek_input_tokens": null,
-    "deepseek_output_tokens": null,
-    "deepseek_cached_input_tokens": null,
-    "deepseek_cost": null,
-    "codex_supervision_cost": null,
+    "scientific_model_input_tokens": null,
+    "scientific_model_output_tokens": null,
+    "scientific_model_cached_input_tokens": null,
+    "scientific_model_cost": null,
+    "supervisor_supervision_cost": null,
     "tool_cost": null,
     "human_review_minutes": null,
     "supervisor_active_minutes": null,

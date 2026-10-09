@@ -136,7 +136,7 @@ function updateImages(): void {
       const node = current.getElementById(id);
       const state = props.structures?.[id];
       const key = `${id}:${state?.structure?.depiction_asset_id || ''}`;
-      const url = structureDepictionUrl(id);
+      const url = structureDepictionUrl(id, state?.structure?.depiction_asset_id);
       if (state?.structure?.depiction_asset_id && loadedImages.has(key)) {
         node.data({ image: url, label: member.label }); imageCount.value++;
       } else {

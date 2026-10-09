@@ -1,3 +1,5 @@
+import { enAiConsole } from './en-ai-console';
+import { enProvenance } from './en-provenance';
 import { ref } from 'vue';
 import { enCommon } from './en-common';
 import { enWorkbench } from './en-workbench';
@@ -6,7 +8,7 @@ import { enReview } from './en-review';
 export type Locale = 'zh-CN' | 'en';
 export const LOCALE_STORAGE_KEY = 'leadtrace.locale';
 export const locale = ref<Locale>('zh-CN');
-const english: Readonly<Record<string, string>> = { ...enCommon, ...enReview, ...enWorkbench };
+const english: Readonly<Record<string, string>> = { ...enCommon, ...enReview, ...enWorkbench, ...enProvenance, ...enAiConsole };
 
 export function setLocale(next: Locale): void {
   if (next !== 'zh-CN' && next !== 'en') return;

@@ -132,7 +132,7 @@ describe("Structure Source Images", () => {
     const wrapper = await mountWorkspace();
 
     const imageSources = wrapper.findAll("[data-structure-comparison] img").map((image) => image.attributes("src"));
-    expect(imageSources).toContain(`/api/v2/compounds/${ids.compound}/structure/depiction`);
+    expect(imageSources).toContain(`/api/v2/compounds/${ids.compound}/structure/depiction?v=${ids.asset}`);
     expect(imageSources).toContain(`/api/v2/structure-source-images/${ids.readyImage}/content`);
     expect(wrapper.get(`[data-source-image-id='${ids.failedImage}']`).text()).toContain("生成失败");
 

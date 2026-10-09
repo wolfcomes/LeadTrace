@@ -26,6 +26,11 @@ const emit = defineEmits<{
 }>();
 const auth = useAuthStore();
 const compounds = ref<Compound[]>([]);
+const sortMode = ref<"default" | "name">("default");
+const nameCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+const displayedCompounds = computed(() => sortMode.value === "name"
+  ? [...compounds.value].sort((a, b) => nameCollator.compare(a.compound_label.trim(), b.compound_label.trim()))
+  : compounds.value);
 const selectedId = ref<string>();
 const structureOpen = ref(true);
 watch(selectedId, () => { structureOpen.value = true; });
@@ -229,7 +234,7 @@ onMounted(load);
       <div><p class="eyebrow">COMPOUNDS & STRUCTURES</p><h2>{{ t("化合物与结构") }}</h2></div>
       <button class="button-primary" data-add-compound type="button" :disabled="readOnly || busy" @click="showCreate = !showCreate">{{ t("添加 Compound") }}</button>
     </header>
-    <FieldExample :section="1" />
+    <FieldExample section="compounds" />
     <form v-if="showCreate" class="inline-create-form" @submit.prevent="create">
       <label class="form-field">Compound label<input v-model="label" :placeholder="t('例如：24 或 7a（保留原文编号）')" class="form-control" required maxlength="255"></label>
       <label class="form-field">{{ t("显示名称") }}<input v-model="displayName" class="form-control" maxlength="512"></label>
@@ -251,7 +256,14 @@ onMounted(load);
     <p v-else-if="compounds.length === 0" class="workspace-empty-copy">{{ t("当前尚无条目。可直接人工新增 Compound，并为每个 Compound 维护一个 Structure。") }}</p>
     <div v-else class="compound-editor-layout">
       <aside class="compound-list-panel" :aria-label='t("Compound 列表")' tabindex="0">
-        <article v-for="compound in compounds" :key="compound.id" data-compound-row :data-compound-id="compound.id" :class="{ selected: compound.id === selectedId }">
+        <div class="compound-sort-toolbar">
+          <label for="compound-sort">{{ t("排序方式") }}</label>
+          <select id="compound-sort" v-model="sortMode" class="form-control" data-compound-sort>
+            <option value="default">{{ t("默认排序") }}</option>
+            <option value="name">{{ t("名称排序") }}</option>
+          </select>
+        </div>
+        <article v-for="compound in displayedCompounds" :key="compound.id" data-compound-row :data-compound-id="compound.id" :class="{ selected: compound.id === selectedId }">
           <button type="button" @click="select(compound)"><code>{{ compound.compound_label }}</code><ViewState compact kind="compound" :entity-id="compound.id" /><span>{{ compound.display_name || t("未命名") }}</span></button><HighlightBadges :compound-id="compound.id" />
           <ReviewHint :hint="compound.review_hint" />
           <button v-if="!readOnly" class="button-quiet" data-edit-compound type="button" :disabled="busy" @click="startEdit(compound)">{{ t("编辑") }}</button>
@@ -279,3 +291,27 @@ onMounted(load);
     </div>
   </section>
 </template>
+
+<style scoped>
+.compound-sort-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-size: .75rem;
+}
+.compound-sort-toolbar select {
+  width: auto;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: .75rem;
+}
+</style>

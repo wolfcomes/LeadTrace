@@ -17,6 +17,7 @@ export class ApiError extends Error {
     readonly requestId: string | undefined,
     readonly kind: ApiFailureKind,
     readonly details: Record<string, unknown> = {},
+    readonly serverMessage: string | undefined = undefined,
   ) {
     super(`LeadTrace API request failed (${code})`);
     this.name = "ApiError";
@@ -106,6 +107,7 @@ export async function apiRequest<T>(
       requestId,
       failureKind(response.status),
       details,
+      parsed.success ? parsed.data.message : undefined,
     );
     if (response.status === 401 && !suppressUnauthorizedHandler) {
       unauthorizedHandler?.(error, {

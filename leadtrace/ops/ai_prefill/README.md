@@ -13,11 +13,11 @@ The CLI is offline by default. `doctor`, `contract export`, `input prepare`,
 candidate validation, comparison, evaluation summaries, and explicit-payload
 `candidate export` do not connect to PostgreSQL or Redis.
 
-For DeepSeek-led routine work or Codex-observed evaluation, use the
-[operating runbook](../../../docs/ai-prefill/deepseek-supervised-runbook.md),
-[quality checklist](../../../docs/ai-prefill/deepseek-quality-checklist.md), and
-[task/revision prompts](../../../docs/ai-prefill/prompts/deepseek-task.md).
-They define two task entries, scientific checks, bounded revisions, fresh independent
+For model-led routine work or supervised evaluation, use the
+[operating runbook](../../../docs/ai-prefill/model-runbook.md),
+[quality checklist](../../../docs/ai-prefill/quality-checklist.md), and
+[task/revision prompts](../../../docs/ai-prefill/prompts/producer.md).
+They define prefill, selfcheck and review task entries, scientific checks, bounded revisions, fresh independent
 review and trusted-operator Preview delivery. The CLI runs a bounded producer job;
 it does not schedule independent audits, approve science, provide a durable queue,
 or automatically apply a job's output.
@@ -84,7 +84,7 @@ candidate contract:
   --source-sha256 <64-lowercase-hex> \
   --byte-size 12345 \
   --page-count 12 \
-  --guide-version deepseek-led-v3-20260923 \
+  --guide-version model-neutral-v4-20261008 \
   --source-path /absolute/source.pdf \
   --output /tmp/prefill-input.json
 ```
@@ -176,7 +176,7 @@ The Compose file is an unsupported scaffold; use native provisioning.
 
 ## Producer delivery self-check
 
-Use [the source self-check guide](../../../docs/ai-prefill/deepseek-self-check-guide.md) after extraction:
+Use [the source self-check guide](../../../docs/ai-prefill/self-check-guide.md) after extraction:
 
 ```bash
 .venv/bin/python -m leadtrace.ops.ai_prefill candidate self-check candidate.json \

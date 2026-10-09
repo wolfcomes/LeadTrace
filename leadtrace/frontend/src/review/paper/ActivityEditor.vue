@@ -247,7 +247,7 @@ onMounted(load);
 <template>
   <section id="workspace-activities" ref="editor" class="activity-editor" tabindex="-1">
     <header class="section-heading"><div><p class="eyebrow">ACTIVITIES</p><h2>{{ t("活性数据") }}</h2></div><button class="button-secondary" data-add-activity type="button" :disabled="readOnly || busy || compounds.length === 0" @click="showCreate = !showCreate">{{ t("添加 Activity") }}</button></header>
-    <FieldExample :section="5" />
+    <FieldExample section="activities" />
     <form v-if="showCreate" class="activity-create-form inline-create-form" @submit.prevent="save">
       <label v-if="!compound" class="form-field">Compound<select v-model="compoundId" :disabled="readOnly || busy"><option v-for="compound in compounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>
       <label class="form-field">Assay<input v-model="assayName" placeholder="human MAO-B inhibition" required maxlength="512" :disabled="readOnly || busy"></label>

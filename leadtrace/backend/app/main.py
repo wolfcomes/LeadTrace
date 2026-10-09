@@ -57,6 +57,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         resources = await run_in_threadpool(database_bootstrap, runtime_settings)
+        ai_coordinator = None
         try:
             if runtime_settings.environment == "preview" and resources is None:
                 raise PreviewIdentityError("Preview requires database resources")
@@ -65,8 +66,14 @@ def create_app(
                     await run_in_threadpool(verify_preview_resources, resources)
                 application.state.database_engine = resources.engine
                 application.state.session_factory = resources.session_factory
+                if runtime_settings.ai_task_worker_enabled:
+                    from app.ai_tasks.coordinator import AiTaskCoordinator
+                    ai_coordinator = AiTaskCoordinator(resources.session_factory, runtime_settings)
+                    ai_coordinator.start()
             yield
         finally:
+            if ai_coordinator is not None:
+                await run_in_threadpool(ai_coordinator.stop)
             if resources is not None:
                 await run_in_threadpool(resources.close)
 
@@ -97,6 +104,10 @@ def create_app(
     )
     application.include_router(create_auth_router(runtime_settings))
     application.include_router(create_users_router(runtime_settings))
+    from app.workspaces.lifecycle_router import create_lifecycle_router
+    application.include_router(create_lifecycle_router(runtime_settings))
+    from app.ai_tasks.router import create_ai_tasks_router
+    application.include_router(create_ai_tasks_router(runtime_settings))
     application.include_router(create_assets_router())
     application.include_router(create_audit_router())
     application.include_router(
@@ -110,6 +121,8 @@ def create_app(
         create_ai_prefill_router(runtime_settings, ai_prefill_dispatch)
     )
     application.include_router(create_assistance_router(runtime_settings))
+    from app.ai_prefill.provenance import create_provenance_router
+    application.include_router(create_provenance_router(runtime_settings))
     application.include_router(create_workspaces_router(runtime_settings))
     application.include_router(create_compounds_router(runtime_settings))
     application.include_router(create_highlights_router(runtime_settings))

@@ -41,10 +41,10 @@ async function login(page: Page, username: "admin" | "reviewer"): Promise<void> 
 test("AI prefill becomes ordinary Reviewer-owned records without overwrite", async ({ page }) => {
   let signedInAs: "admin" | "reviewer" | null = null;
   let workspaceVersion = 1;
-  let aiState: "available" | "queued" | "running" | "succeeded" = "available";
+  let aiState: "available" | "queued" | "running" | "completed" = "available";
   let aiStatusReads = 0;
   let aiPostCount = 0;
-  let staleCatalogProjection = false;
+  let staleManagementProjection = false;
   let structure = {
     id: ids.structure,
     paper_id: ids.paper,
@@ -102,35 +102,35 @@ test("AI prefill becomes ordinary Reviewer-owned records without overwrite", asy
     };
   }
 
-  function run(status: "queued" | "running" | "succeeded") {
+  const preset = {
+    id: "synthetic-model", label: "Synthetic model", adapter: "codex", model: "gpt-test",
+    efforts: ["high"], default_effort: "high", available: true, unavailable_reason: null,
+  };
+
+  function job() {
     return {
-      id: ids.run,
-      paper_id: ids.paper,
-      workspace_id: ids.workspace,
-      starting_workspace_version: 1,
-      status,
-      engine: "legacy_pipeline",
-      engine_version: "pilot-v1",
-      error_summary: null,
-      queued_at: "2026-09-17T06:00:00Z",
-      started_at: status === "queued" ? null : "2026-09-17T06:00:01Z",
-      completed_at: status === "succeeded" ? "2026-09-17T06:00:02Z" : null,
+      id: ids.run, paper_id: ids.paper, paper_key: bibliography.paper_key,
+      paper_title: bibliography.title, workspace_id: ids.workspace, workspace_version: 1,
+      action: "prefill", preset_id: preset.id, model: preset.model, reasoning_effort: "high",
+      state: aiState, stage: aiState,
+      delivery_state: aiState === "completed" ? "applied" : "pending",
+      error_code: null, error_message: null,
+      created_at: "2026-10-09T06:00:00Z",
+      started_at: aiState === "queued" ? null : "2026-10-09T06:00:01Z",
+      finished_at: aiState === "completed" ? "2026-10-09T06:00:02Z" : null,
+      heartbeat_at: "2026-10-09T06:00:02Z", timeout_seconds: 3600,
+      attempt: 1, parent_job_id: null, result_summary: {},
+      can_cancel: aiState === "queued" || aiState === "running", can_retry: false,
     };
   }
 
-  function aiProjection() {
-    if (staleCatalogProjection) {
-      return { run: null, can_start: true, blocked_reason: null };
-    }
-    if (aiState === "available") {
-      return { run: null, can_start: true, blocked_reason: null };
-    }
+  function management() {
     return {
-      run: run(aiState),
-      can_start: false,
-      blocked_reason: aiState === "succeeded"
-        ? "Workspace has already been modified"
-        : "AI prefill is already queued or running",
+      paper_id: ids.paper, paper_key: bibliography.paper_key, workspace_id: ids.workspace,
+      workspace_version: staleManagementProjection ? 1 : workspaceVersion,
+      task_version: 1, assignment_state: "assigned", assigned_reviewer_id: ids.reviewer,
+      counts: { compounds: !staleManagementProjection && workspaceVersion > 1 ? 1 : 0 },
+      archives: [], archive_root: "/test/article-archives",
     };
   }
 
@@ -166,14 +166,16 @@ test("AI prefill becomes ordinary Reviewer-owned records without overwrite", asy
         sections_total: 6,
         submission_state: "not_submitted",
       },
-      ai_prefill: aiProjection(),
+      ai_prefill: { run: null, can_start: false, blocked_reason: "Use the AI task console" },
     };
   }
 
-  await page.route(/\/api\/v[12]\//, async (route) => {
+  await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const method = request.method();
+    if (!path.startsWith("/api/")) return route.continue();
+    if (path === "/api/preview/environment") return json(route, {}, 404);
     if (path.endsWith('/review-progress')) return json(route, {}, 404);
     if (path.includes('/layouts/')) return json(route, {revision:0,mode:path.split('/').at(-1),positions:{},edge_controls:{}});
 
@@ -209,30 +211,39 @@ test("AI prefill becomes ordinary Reviewer-owned records without overwrite", asy
       await json(route, catalogPaper());
       return;
     }
-    if (path === `/api/v2/admin/papers/${ids.paper}/ai-prefill` && method === "POST") {
+    if (path === `/api/v2/admin/papers/${ids.paper}/management` && method === "GET") {
+      await json(route, management());
+      return;
+    }
+    if (path === "/api/v2/admin/ai-tasks" && method === "GET") {
+      aiStatusReads += 1;
+      await json(route, {
+        items: aiState === "available" ? [] : [job()], total: aiState === "available" ? 0 : 1,
+        settings: { max_concurrent: 4 },
+        worker: { online: true, last_seen_at: "2026-10-09T06:00:02Z" }, presets: [preset],
+      });
+      return;
+    }
+    if (path === `/api/v2/admin/papers/${ids.paper}/ai-tasks` && method === "POST") {
       aiPostCount += 1;
       expect(request.headers()["x-csrf-token"]).toBe("admin-csrf");
-      if (workspaceVersion > 2) {
+      const input = request.postDataJSON();
+      expect(input).toMatchObject({
+        action: "prefill", preset_id: preset.id, reasoning_effort: "high",
+        expected_workspace_id: ids.workspace, expected_workspace_version: 1,
+        expected_task_version: 1, auto_review: null,
+      });
+      expect(input.idempotency_key).toMatch(/^[0-9a-f-]{36}$/);
+      if (input.expected_workspace_version !== workspaceVersion) {
         await json(route, {
-          code: "AI_PREFILL_UNAVAILABLE",
-          message: "AI prefill requires a blank, untouched editing Workspace",
-          details: {},
-          request_id: "ai-race-conflict",
+          code: "WORKSPACE_VERSION_CONFLICT",
+          message: "AI prefill requires the unchanged blank Workspace",
+          details: {}, request_id: "ai-race-conflict",
         }, 409);
         return;
       }
       aiState = "queued";
-      await json(route, aiProjection(), 202);
-      return;
-    }
-    if (path === `/api/v2/admin/papers/${ids.paper}/ai-prefill` && method === "GET") {
-      aiStatusReads += 1;
-      if (aiState === "queued") aiState = "running";
-      else if (aiState === "running") {
-        aiState = "succeeded";
-        workspaceVersion = 2;
-      }
-      await json(route, aiProjection());
+      await json(route, job());
       return;
     }
     if (path === `/api/v2/workspaces/${ids.workspace}` && method === "GET") {
@@ -300,12 +311,20 @@ test("AI prefill becomes ordinary Reviewer-owned records without overwrite", asy
   await page.goto(`/admin/papers/${ids.paper}`);
   await expect(page).toHaveURL(/\/login\?redirect=/);
   await login(page, "admin");
-  await expect(page.locator("[data-ai-prefill-status]")).toContainText("可启动");
-  await page.locator("[data-ai-prefill-start]").click();
-  await expect(page.locator("[data-ai-prefill-status]")).toContainText("已排队");
-  await expect(page.locator("[data-ai-prefill-status]")).toContainText("提取中", { timeout: 3_500 });
-  await expect(page.locator("[data-ai-prefill-status]")).toContainText("预填完成", { timeout: 3_500 });
-  expect(aiStatusReads).toBe(2);
+  const consolePanel = page.locator("[data-ai-task-console]");
+  await expect(page.locator("[data-start-prefill]")).toBeEnabled();
+  await page.locator("[data-start-prefill]").click();
+  const taskCard = page.locator(`[data-job-id="${ids.run}"]`);
+  await expect(taskCard.locator('[data-status="queued"]')).toContainText("排队中");
+  aiState = "running";
+  await consolePanel.getByRole("button", { name: "刷新状态", exact: true }).click();
+  await expect(taskCard.locator('[data-status="running"]')).toContainText("模型处理中");
+  aiState = "completed";
+  workspaceVersion = 2;
+  await consolePanel.getByRole("button", { name: "刷新状态", exact: true }).click();
+  await expect(taskCard.locator('[data-status="completed"]')).toContainText("已导入，待审核");
+  await expect(page.locator("[data-start-prefill]")).toBeDisabled();
+  expect(aiStatusReads).toBeGreaterThanOrEqual(4);
   expect(aiPostCount).toBe(1);
 
   await page.locator(".sign-out").click();
@@ -320,18 +339,20 @@ test("AI prefill becomes ordinary Reviewer-owned records without overwrite", asy
   await expect(page.locator("[data-smiles-input]")).toHaveValue("CCN");
   expect(structure.id).toBe(ids.structure);
 
-  staleCatalogProjection = true;
+  staleManagementProjection = true;
   await page.locator(".sign-out").click();
   await login(page, "admin");
   await page.goto(`/admin/papers/${ids.paper}`);
-  await expect(page.locator("[data-ai-prefill-start]")).toBeEnabled();
-  await page.locator("[data-ai-prefill-start]").click();
-  await expect(page.locator("[data-ai-prefill-error]")).toContainText("ai-race-conflict");
-  await page.waitForTimeout(250);
+  await expect(page.locator("[data-start-prefill]")).toBeEnabled();
+  await page.locator("[data-start-prefill]").click();
+  await expect(consolePanel.getByRole("alert")).toContainText("WORKSPACE_VERSION_CONFLICT");
+  await expect(consolePanel.getByRole("alert")).toContainText("ai-race-conflict");
 
   expect(aiPostCount).toBe(2);
   expect(structure.id).toBe(ids.structure);
   expect(structure.smiles).toBe("CCN");
+  expect(workspaceVersion).toBe(3);
+  expect(aiState).toBe("completed");
   await expect(page.locator("body")).not.toContainText("/data/home/");
   await expect(page.locator("body")).not.toContainText("storage_key");
 });

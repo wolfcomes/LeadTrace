@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AiProvenance from "../paper/AiProvenance.vue";
 import { t } from "../../i18n";
 import { computed, onMounted, ref } from "vue";
 
@@ -12,13 +13,13 @@ const payload = ref<ReviewTaskList>();
 const requestId = ref<string>();
 
 const tasks = computed(() => [...(payload.value?.items ?? [])].sort((left, right) => {
-  const rank = { changes_requested: 0, assigned: 1, submitted: 2, approved: 3 } as const;
+  const rank = { changes_requested: 0, assigned: 1, submitted: 2, approved: 3, unassigned: 4, archived: 5 } as const;
   return rank[left.task_status] - rank[right.task_status]
     || left.paper_key.localeCompare(right.paper_key);
 }));
 
 function taskStatusLabel(task: ReviewTask): string {
-  return { assigned: "待填写", submitted: "待 Admin 审批", changes_requested: "需修改", approved: "已批准" }[task.task_status];
+  return { assigned: "待填写", submitted: "待 Admin 审批", changes_requested: "需修改", approved: "已批准", unassigned: "未分配", archived: "已归档" }[task.task_status];
 }
 
 function actionLabel(task: ReviewTask): string {
@@ -56,7 +57,7 @@ onMounted(load);
       <div class="table-wrap"><table class="task-table data-table">
         <thead><tr><th>{{ t("文章") }}</th><th>{{ t("状态") }}</th><th>Workspace</th><th><span class="sr-only">{{ t("操作") }}</span></th></tr></thead>
         <tbody><tr v-for="task in tasks" :key="task.review_task_id" data-review-task>
-          <th scope="row"><code>{{ task.paper_key }}</code><strong>{{ task.title }}</strong></th>
+          <th scope="row"><code>{{ task.paper_key }}</code><strong>{{ task.title }}</strong><AiProvenance compact :records="task.ai_provenance ?? []" /></th>
           <td><span class="status-chip" :data-status="task.task_status">{{ t(taskStatusLabel(task)) }}</span></td>
           <td><span>v{{ task.workspace_version }}</span><small>{{ task.workspace_state }}</small></td>
           <td class="table-actions"><RouterLink class="button-primary compact-action" data-open-workspace :to="{ path: `/review/papers/${task.paper_id}`, query: { workspace: task.workspace_id } }">{{ t(actionLabel(task)) }}</RouterLink></td>

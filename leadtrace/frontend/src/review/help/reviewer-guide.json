@@ -1,65 +1,1201 @@
 {
-  "version": "2026-09-28",
+  "version": "2026-10-08",
   "sections": [
     {
-      "title_zh": "先核对文章与完整覆盖",
-      "title_en": "Start with identity and coverage",
+      "id": "start",
+      "title_zh": "01 · 第一次使用：先走通一篇文章",
+      "title_en": "01 · Your first paper",
+      "zh": "你的任务是把论文中的信息核对成可追溯的数据。AI 预填是草稿；遇到不懂的化学问题可以保留疑点并请教负责人，不需要靠猜测完成。",
+      "en": "Your task is to turn paper content into traceable, checked records. AI prefill is a draft. Keep uncertainty visible and ask your supervisor when chemistry is unclear; do not guess to finish.",
+      "blocks": [
+        {
+          "type": "steps",
+          "zh": [
+            "使用负责人提供的网址和 Reviewer 账号登录，从“我的任务”打开已分配文章。先核对题名与 DOI；Preview 横幅表示预览环境，练习与正式任务要分清。",
+            "先读摘要、主要图表、合成 Scheme 和结论，理解作者研究什么靶点、从哪些分子开始、重点推进哪些分子。第一次不必立刻修改所有字段。",
+            "按“文章信息 → 化合物与结构 → Lineage → 检查与提交”走一遍。先做一个 Compound：核对编号、结构、来源图、Activity；再检查它所在的 Lineage 和 Edge。",
+            "每次只处理一项，保存后确认页面显示新内容。表单中的格式示例不是论文数据；不要直接保存示例。",
+            "完成一组后复查疑点和来源，最后处理整篇覆盖与提交检查。先在负责人提供的教学任务中练习；实际文章里不要新增本手册的虚构分子。"
+          ],
+          "en": [
+            "Sign in with the supplied Reviewer account and open an assigned paper from My tasks. Match the title and DOI. A Preview banner identifies the preview environment; distinguish training from real assignments.",
+            "Read the abstract, main figures/tables, synthesis schemes and conclusion to identify the target, starting compounds and authors’ priorities. You do not need to edit every field immediately.",
+            "Follow Article information → Compounds and structures → Lineage → Review & submit. Start with one Compound: label, structure, source image and Activity; then inspect its Lineage and Edges.",
+            "Work on one item at a time. Save and verify the updated display. Placeholder examples are not paper data and must not be saved as facts.",
+            "Check uncertainties and sources for each group before checking whole-paper coverage and submission. Practise in a training assignment supplied by your supervisor, never by inserting this guide’s fictional molecules into a real paper."
+          ]
+        },
+        {
+          "type": "note",
+          "zh": "本手册截图来自真实工作台界面，但使用虚构教学数据。图中数值、编号和研究结论仅用于学习操作。截图按钮会随中英文切换；正文保留 Compound 等常见字段名称，方便对照。",
+          "en": "Screenshots show the real workbench with fictional teaching data. Values, labels and research statements illustrate operation only. Screenshots match each guide’s interface language; common field names are retained for comparison."
+        },
+        {
+          "type": "figure",
+          "zh": "认清四个主要页签。上方的区段状态、已查看进度和科学审核状态用途不同，后文分别解释。",
+          "en": "Find the four main tabs. Section status, viewing progress and scientific review status serve different purposes, explained below.",
+          "asset": "overview"
+        }
+      ]
+    },
+    {
+      "id": "terms",
+      "title_zh": "02 · 先认识 8 个对象",
+      "title_en": "02 · Eight objects to recognize",
+      "zh": "先把“分子是什么”“测了什么”“分子之间是什么关系”“依据在哪里”分开，就不容易填错位置。",
+      "en": "Separate molecular identity, measurements, relationships and supporting sources before entering data.",
+      "blocks": [
+        {
+          "type": "table",
+          "zh": [
+            [
+              "对象",
+              "通俗解释",
+              "填写在哪里 / 例子"
+            ],
+            [
+              "Paper / Workspace",
+              "论文 / 这篇论文的审核工作区",
+              "同一篇论文的记录放在同一工作区"
+            ],
+            [
+              "Compound",
+              "原文中的一个化合物身份",
+              "编号 7a、24 或作者明确使用的标签"
+            ],
+            [
+              "Structure",
+              "该化合物的化学结构",
+              "原子连接、键、取代位置、立体化学"
+            ],
+            [
+              "Activity",
+              "该分子的一条测定结果",
+              "某种实验中的 IC50、溶解度等"
+            ],
+            [
+              "Lineage",
+              "有共同设计逻辑或合成关系的一组分子",
+              "SAR 优化系列，或一条合成路线"
+            ],
+            [
+              "Node / Member",
+              "某个 Compound 在一个 Lineage 中的成员",
+              "加入已有 Compound，不是复制一份新化合物"
+            ],
+            [
+              "Edge",
+              "组内两个 Compound 之间的一条关系",
+              "A → B 的结构比较或合成转化"
+            ],
+            [
+              "Evidence",
+              "支持或解释记录的来源",
+              "PDF 页码、原文摘录、表格/图区域"
+            ]
+          ],
+          "en": [
+            [
+              "Object",
+              "Plain meaning",
+              "Where it belongs / example"
+            ],
+            [
+              "Paper / Workspace",
+              "A paper / its review workspace",
+              "Keep records for the same paper together"
+            ],
+            [
+              "Compound",
+              "An identified compound in the paper",
+              "Label 7a, 24 or an explicit author label"
+            ],
+            [
+              "Structure",
+              "The chemical structure for that identity",
+              "Atoms, bonds, attachment positions and stereochemistry"
+            ],
+            [
+              "Activity",
+              "One measurement for that molecule",
+              "An IC50, solubility or other assay result"
+            ],
+            [
+              "Lineage",
+              "Compounds grouped by design or synthesis logic",
+              "An SAR series or a synthetic route"
+            ],
+            [
+              "Node / Member",
+              "A Compound participating in a Lineage",
+              "Select an existing Compound, not a duplicate molecule"
+            ],
+            [
+              "Edge",
+              "A relationship between two members",
+              "A → B comparison or synthetic transformation"
+            ],
+            [
+              "Evidence",
+              "Source supporting or explaining a record",
+              "PDF page, exact quotation or table/figure region"
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "zh": "一个 Compound 可以有多条 Activity，也可以参与多个 Lineage。例如同一分子既是合成终产物，也用于 SAR 比较；仍只保留一个对应的 Compound，分别加入需要的组。",
+          "en": "A Compound may have several Activities and participate in several Lineages. The same molecule can be a synthesis product and an SAR comparison member; reuse the Compound in both groups."
+        }
+      ]
+    },
+    {
+      "title_zh": "03 · 先核对文章，再做完整清点",
+      "title_en": "03 · Identify the paper and inventory every compound",
       "zh": "核对题名、DOI 和 PDF。收录所有有编号或标签且结构可确定的 Compound，包括无活性数据的原料、中间体和对照。示例仅演示格式，不应复制为论文事实。",
-      "en": "Verify title, DOI and PDF. Include every numbered or labelled Compound with a determinable structure, including starting materials, intermediates and controls without activity data. Examples illustrate format and are not paper facts."
+      "en": "Verify title, DOI and PDF. Include every numbered or labelled Compound with a determinable structure, including starting materials, intermediates and controls without activity data. Examples illustrate format and are not paper facts.",
+      "id": "identity",
+      "blocks": [
+        {
+          "type": "steps",
+          "zh": [
+            "核对题名、DOI、期刊和年份；打开 Source PDF，确认正文确实属于这篇文章。若打开错文献，先暂停该篇并报告。",
+            "记录 PDF 阅读器的实际页码（从 1 开始），不要把印刷页码 3456 填成 PDF 第 3456 页。正文写“Table 2”时同时记录它在 PDF 的哪一页。",
+            "逐处检查正文、图表、Scheme、实验方法与当前可获得的补充材料。建立清单：原文标签、出现位置、是否有可确定的结构、是否已录入、疑点。",
+            "按编号段检查覆盖，例如发现 24–31 和 55–73，要逐个对照清单。编号连续不证明结构相同；编号有缺口也不证明一定漏记，回原文确认。",
+            "原料、中间体、活性对照和比较分子，只要来源能识别其标签并确定结构，就在 Compound 范围内。没有 Activity 不是排除理由。"
+          ],
+          "en": [
+            "Match the title, DOI, journal and year, and confirm that Source PDF belongs to this paper. Stop work on a mismatched source and report it.",
+            "Use the PDF viewer’s physical page number, starting at 1. A printed journal page such as 3456 is not PDF page 3456. Record the physical page together with Table 2 or Scheme 1.",
+            "Inspect text, tables, figures, schemes, experimental methods and available supplementary material. Inventory each source label, location, determinable structure, presence in the workspace and uncertainty.",
+            "Audit label ranges individually, for example 24–31 and 55–73. Consecutive labels do not imply similar structures; a numbering gap is a reason to inspect the source, not proof of an omission.",
+            "Include identifiable, structurally defined starting materials, intermediates, controls and comparison compounds. Lack of Activity does not exclude a Compound."
+          ]
+        },
+        {
+          "type": "note",
+          "zh": "仅知道编号、完全无法确定结构时，不要复制邻近分子的结构凑数。在核对记录/给负责人的问题清单中保留编号、页码与缺失原因。结构有完整来源支持但仍有某项不确定时，可保留候选并具体说明“需核对”；这与凭空造结构不同。缺少 SI 时记录范围限制，不写“全文已确认无遗漏”。",
+          "en": "If only a label is known and no complete structure can be established, retain the label, source page and gap in your issue log for the supervisor; do not copy a neighboring structure. A complete source-supported candidate with a specific uncertainty may carry a verification hint. Record unavailable SI as a coverage limit rather than claiming exhaustive coverage."
+        }
+      ]
     },
     {
-      "title_zh": "Compound 与 Structure",
-      "title_en": "Compound and Structure",
+      "title_zh": "04 · Compound：编号与身份怎么填",
+      "title_en": "04 · Compound labels and identity",
       "zh": "Compound label 保留原文编号（例：24、7a）；显示名称可为空。每个 Compound 维护一个 Structure；SMILES/结构编辑器输入后核对连接、取代位置和立体化学。不能确定时说明原因并明确 unresolved，不虚构结构。",
-      "en": "Keep source labels such as 24 or 7a; display name is optional. Each Compound has one Structure. Verify connectivity, substitution and stereochemistry after entering SMILES or using the structure editor. Explain unresolved identity rather than inventing a structure."
+      "en": "Keep source labels such as 24 or 7a; display name is optional. Each Compound has one Structure. Verify connectivity, substitution and stereochemistry after entering SMILES or using the structure editor. Explain unresolved identity rather than inventing a structure.",
+      "id": "compounds",
+      "blocks": [
+        {
+          "type": "table",
+          "zh": [
+            [
+              "字段",
+              "应该填什么",
+              "常见错误"
+            ],
+            [
+              "Compound label",
+              "原文标签，保留 7a、(R)-24 等有意义的区别",
+              "用自己编的连续编号替代原标签"
+            ],
+            [
+              "显示名称",
+              "作者别名或清晰的常用名称；没有可留空",
+              "把别名中的数字自动当成 Compound label"
+            ],
+            [
+              "描述",
+              "分子的用途、来源、系列、未加入 Lineage 的理由",
+              "只写“无”，让下一位 reviewer 无法判断"
+            ],
+            [
+              "需核对",
+              "具体疑点＋来源位置＋下一步要核对什么",
+              "只写“AI 可能有错”或未经解决就清空"
+            ]
+          ],
+          "en": [
+            [
+              "Field",
+              "What to enter",
+              "Common mistake"
+            ],
+            [
+              "Compound label",
+              "Keep source labels and meaningful distinctions such as 7a or (R)-24",
+              "Replacing source labels with your own sequence"
+            ],
+            [
+              "Display name",
+              "An author alias or established name; leave blank if absent",
+              "Interpreting a number in an alias as the paper label"
+            ],
+            [
+              "Description",
+              "Purpose, source, series and why no Lineage applies",
+              "Writing only “none” without an explanation"
+            ],
+            [
+              "Verification hint",
+              "Specific uncertainty, source location and what must be checked",
+              "Vague “AI may be wrong” or clearing it before resolution"
+            ]
+          ]
+        },
+        {
+          "type": "steps",
+          "zh": [
+            "从“化合物与结构”左侧选择编号，确认右侧详情也是同一个分子。需要补录时点击“添加 Compound”，先检查清单中是否已有同一标签。",
+            "保存编号后完成结构与来源核对；要补充用途或疑点，使用该条目的“编辑”。先核对结构相同是否意味着同一身份，不要仅凭结构相同就合并作者明确区分的条目。",
+            "立体异构体、盐型、互变异构形式和重用编号容易混淆。以作者标注和明确结构为准；不懂该如何区分时保留说明，请负责人确认，不自行标准化。"
+          ],
+          "en": [
+            "Select a source label on the left and confirm the detail panel shows the same compound. Before Add Compound, check whether the label already exists.",
+            "After saving the label, complete structure and source checks. Use Edit for purpose and uncertainty notes. Identical-looking structures alone do not justify merging author-distinguished identities.",
+            "Stereoisomers, salts, tautomers and reused labels require care. Follow explicit author identity and structure; ask your supervisor before normalizing unfamiliar cases."
+          ]
+        },
+        {
+          "type": "figure",
+          "zh": "左侧是本篇 Compound 清单，右侧是所选分子的结构与来源、Activity。一次核对一个编号，避免看着上一条的图填写下一条。",
+          "en": "The left panel lists this paper’s Compounds; the right panel contains the selected structure, sources and Activities. Check one label at a time to avoid mixing neighboring records.",
+          "asset": "compound"
+        }
+      ]
     },
     {
-      "title_zh": "文章级研究起点与论文优选",
-      "title_en": "Article starting points and prioritized compounds",
-      "zh": "在文章信息页关联本篇 Compound 与已有 Evidence，记录研究起点或论文优选、适用系列/范围及作者选择理由。每类可有多个分子，同一分子可兼任。先在 Evidence 库保存原文依据；标注卡片保留 PDF 页码与原文。研究起点不等于每条合成路线的原料；论文优选不等于所有 terminal 或最低 IC50。待审核、已确认、待解决分别显示，阅读不会自动确认；未记录不代表文章没有此类分子。修改理由、身份或来源后重新核对，需核对提示要显式清除。",
-      "en": "On the article information page, link a Compound and existing Evidence, record its study-start or paper-prioritized role, study/series scope and author rationale. Multiple compounds and both roles are allowed. Save source support in the Evidence library first; cards retain the PDF page and quotation. A study start is not every synthesis reagent; a prioritized compound is not every terminal or the lowest IC50. Draft, confirmed and unresolved states remain visible. Viewing never confirms; unrecorded does not mean absent. Recheck after changing identity, rationale or source, and explicitly clear resolved verification hints."
+      "id": "structures",
+      "title_zh": "05 · 结构复核：画得像还不够",
+      "title_en": "05 · Structure review: check the molecular graph",
+      "zh": "不会手写 SMILES 也可以先学习逐项对照结构图；无法独立判断时不要点“已确认”。结构复核的重点是原子和键的连接关系。",
+      "en": "You can learn to compare drawings before learning to write SMILES. Do not mark a structure confirmed when you cannot assess it. Focus on which atoms and bonds are connected.",
+      "blocks": [
+        {
+          "type": "steps",
+          "zh": [
+            "锁定来源：寻找该编号的结构图，或“共用骨架＋该编号的取代表”。R、R¹、R² 是变量，不是已确定的原子；必须逐个对应本分子的取代基。",
+            "看骨架：沿每个环走一圈数原子，区分五元/六元环；看清稠环共用一条边、螺环共用一个原子、桥环的连接方式。不要靠整体轮廓或名称相似判断。",
+            "看原子：C、N、O、S 是否在正确位置？芳环中一个 N 的位置改变就是另一个结构。未标出的顶点通常是碳，但必须结合规范的骨架式阅读。",
+            "看取代：从骨架连接点沿支链检查 Me/OMe、Ph/Bn、链长、邻间对位。Ph 直接接芳环；Bn 多一个 CH₂；OMe 比 Me 多一个 O。",
+            "看键和状态：单/双/芳香键、羰基位置、形式电荷、标明的氢、盐的组成，以及实楔/虚楔和 E/Z。不要替原文补出未指定的立体化学。",
+            "保存后检查重新生成的结构图。SMILES 字符串可能有多种等价写法；软件能解析只说明格式可读，不证明与原文一致。最后根据实际核对结果选择结构状态。"
+          ],
+          "en": [
+            "Locate the exact labeled drawing or shared scaffold plus the compound-specific substituent row. R, R¹ and R² are variables, not resolved atoms.",
+            "Trace each ring and count atoms; distinguish five- and six-membered rings. Fused rings share an edge, spiro rings one atom, and bridged systems have different connectivity. Overall shape or a similar name is insufficient.",
+            "Check atom identity and position: C, N, O and S. Moving one aromatic N changes the molecule. Unlabeled skeletal vertices usually represent carbon; read the drawing conventions carefully.",
+            "Follow each attachment from the scaffold: Me versus OMe, Ph versus Bn, chain length and ortho/meta/para position. Bn adds CH₂ relative to Ph; OMe adds O relative to Me.",
+            "Check single/double/aromatic bonds, carbonyl location, formal charges, explicit hydrogens, salt components, wedges/dashes and E/Z. Do not assign stereochemistry that the source leaves unspecified.",
+            "Inspect the regenerated drawing after saving. Different SMILES can describe the same structure; parser acceptance establishes readable syntax, not source correctness. Set the structure disposition only after review."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "zh": "两种输入方式都直接保存同一个 Structure。使用 Ketcher 时，完成绘图后点击“保存 Ketcher Draft”；解析成功后，上方 SMILES 会自动显示生成结果，下方 RDKit 重绘会随保存后的结构更新，不需要手动复制或再保存一次 SMILES。若直接修改 SMILES，点击“保存 SMILES Draft”也会更新重绘。图对应已保存的结构，不随尚未保存的输入变化；无效结构草稿没有可用重绘，仍需修订。保存 Draft 不等于科学确认，复核来源后再点“确认 Structure”。",
+          "en": "Both input methods save the same Structure. After drawing in Ketcher, choose Save Ketcher Draft. When parsing succeeds, the SMILES field automatically shows the generated result and the RDKit depiction updates to the saved structure; no manual copy or second SMILES save is needed. Editing SMILES and choosing Save SMILES Draft also updates the depiction. The image represents saved content, not unsaved typing; an invalid draft has no usable depiction and needs correction. Saving a draft is not scientific confirmation: check the source before Confirm Structure."
+        },
+        {
+          "type": "table",
+          "zh": [
+            [
+              "状态",
+              "含义 / 使用时机"
+            ],
+            [
+              "draft",
+              "录入或 AI 预填后尚未完成复核"
+            ],
+            [
+              "reviewer_confirmed",
+              "你已对照来源核实当前结构"
+            ],
+            [
+              "unresolved",
+              "有来源歧义或当前无法解决的问题；写清原因"
+            ],
+            [
+              "not_reported",
+              "来源未报告相应结构信息；先确认是真的未报告，不是找不到或不会画"
+            ]
+          ],
+          "en": [
+            [
+              "Status",
+              "Meaning / when to use"
+            ],
+            [
+              "draft",
+              "Entered or prefilled, not yet fully checked"
+            ],
+            [
+              "reviewer_confirmed",
+              "You verified the current structure against its source"
+            ],
+            [
+              "unresolved",
+              "Source ambiguity or a problem you cannot resolve; explain it"
+            ],
+            [
+              "not_reported",
+              "The source does not report the structure information; do not use merely because you cannot find or draw it"
+            ]
+          ]
+        },
+        {
+          "type": "note",
+          "zh": "新手最容易漏的是环大小、杂原子位置和连接点。若三个细节中有一项无法确定，记录具体问题并保留未决。截图只截到通式骨架时，还必须核对同一编号的 R 基取代表。",
+          "en": "Ring size, heteroatom position and attachment points are frequent beginner errors. Keep a specific unresolved note if any cannot be checked. A generic scaffold crop also requires the matching substituent row."
+        },
+        {
+          "type": "note",
+          "zh": "实际按钮注意：“标记无法解析”和“文章未报告结构”会将当前 SMILES / Molfile 清空并保存为无结构状态。已有完整候选但只是某处存疑时，保留 Draft，在 Compound 核对提示中说明；不要把这两个按钮当作普通警告开关。确需无结构处置时先保留来源与问题记录，并与负责人核对。",
+          "en": "Actual button behavior: Mark unresolved and Structure not reported clear the current SMILES / Molfile and save a no-structure disposition. If a complete candidate has a specific uncertainty, retain the Draft and explain it in the Compound verification hint. These buttons are not simple warning toggles. Preserve sources and an issue record and consult your supervisor before choosing a no-structure disposition."
+        }
+      ]
     },
     {
-      "title_zh": "组织 Lineage",
-      "title_en": "Organize Lineages",
-      "zh": "SAR 记录设计和结构比较，synthesis 记录实际合成路线；不要仅凭编号顺序连边。同一逻辑路线的节点属于同一 Lineage；独立路线可分开。root 是路线起点，intermediate 为途中节点，terminal 为路线终点；terminal 不自动表示最佳活性或作者最终候选。作者研究起点与优选分子在文章级标注中记录。孤立对照不必强行连边，在 Compound 描述说明其用途及不入 lineage 的理由。",
-      "en": "SAR describes design and structural comparison; synthesis describes chemical routes. Never connect compounds solely by label order. Keep one logical route together; separate independent routes. Root starts a route, intermediate is internal, terminal ends it. Terminal does not automatically mean best activity or nominated lead; record author starting points and prioritized compounds in article annotations. Do not force isolated controls into a lineage: document their purpose and exclusion in the Compound description."
-    },
-    {
-      "title_zh": "图、Compound、Edge 三个视图",
-      "title_en": "Graph, Compound and Edge views",
-      "zh": "三个页签切换。图上“新增 Node”选择本篇已有 Compound；找不到时先到化合物页创建。“新增 Edge”依次选择起点和终点，再填写关系表单。拖动节点或菱形控制点调整形状，点击“保存布局”；点线图与结构图独立保存。重新载入布局会丢弃该模式未保存的布局。表单仍是完整编辑入口。",
-      "en": "Switch between three tabs. Add Node selects an existing Compound from this paper; create missing Compounds on the compound page first. Add Edge selects source then target before opening the relationship form. Drag nodes or diamond control handles and Save layout. Point and structure modes save separately. Reload layout discards unsaved layout in that mode. Full forms remain available."
-    },
-    {
-      "title_zh": "Edge 与 Evidence",
-      "title_en": "Edge and Evidence",
-      "zh": "关系类型、起终点、修改摘要都要核对。例（虚构格式）：Me → OMe，比较亲脂性变化；该关系由结构比较推断，未见作者明确说明。区分原文支持与推断，不把表格并列当优化顺序。Evidence 保留逐字引文、PDF 实际页码和区域；supports/contradicts/contextual 表示证据作用。阅读不自动把 draft 改为 reviewer_confirmed。",
-      "en": "Verify relationship type, endpoints and modification summary. Fictional format example: Me → OMe, comparing lipophilicity; relationship inferred from structures, not explicitly stated by the authors. Distinguish source support from inference; table order is not optimization order. Evidence retains exact quotations, actual PDF page and region. supports/contradicts/contextual describe evidence roles. Viewing never changes draft to reviewer_confirmed."
-    },
-    {
-      "title_zh": "Activity 格式",
-      "title_en": "Activity format",
+      "title_zh": "06 · Activity：一条测定拆成哪些字段",
+      "title_en": "06 · Activity: entering a measurement",
       "zh": "例（虚构）：Assay = human MAO-B inhibition；Metric = IC50；Operator = <；Value = 10；Unit = nM；Context 写明测定条件。不要把 <10 nM 全部塞进 Value，不混合不同 assay 的数值。保留原单位与限制条件。",
-      "en": "Fictional example: Assay = human MAO-B inhibition; Metric = IC50; Operator = <; Value = 10; Unit = nM; Context records assay conditions. Do not put <10 nM entirely in Value or combine different assays. Preserve units and qualifiers."
+      "en": "Fictional example: Assay = human MAO-B inhibition; Metric = IC50; Operator = <; Value = 10; Unit = nM; Context records assay conditions. Do not put <10 nM entirely in Value or combine different assays. Preserve units and qualifiers.",
+      "id": "activities",
+      "blocks": [
+        {
+          "type": "table",
+          "zh": [
+            [
+              "字段",
+              "虚构示例",
+              "怎么理解"
+            ],
+            [
+              "Assay",
+              "human enzyme X inhibition",
+              "测的是什么靶点、体系；不要只写“活性”"
+            ],
+            [
+              "Metric",
+              "IC50",
+              "指标名；不同于 Ki、EC50、抑制率"
+            ],
+            [
+              "Operator",
+              "<",
+              "原文是小于；不要丢掉不等号"
+            ],
+            [
+              "Value",
+              "10",
+              "只填数值"
+            ],
+            [
+              "Unit",
+              "nM",
+              "原文单位；1 μM = 1000 nM"
+            ],
+            [
+              "Context",
+              "生化实验；ATP 10 μM；Table 1 脚注 a",
+              "保留条件、重复数、误差和限定说明"
+            ],
+            [
+              "Evidence",
+              "PDF 第 2 页，Table 1，7a 行",
+              "关联能定位到该结果的来源"
+            ]
+          ],
+          "en": [
+            [
+              "Field",
+              "Fictional example",
+              "How to read it"
+            ],
+            [
+              "Assay",
+              "human enzyme X inhibition",
+              "Target and assay system, not just “activity”"
+            ],
+            [
+              "Metric",
+              "IC50",
+              "Endpoint, distinct from Ki, EC50 or percent inhibition"
+            ],
+            [
+              "Operator",
+              "<",
+              "Preserve the reported inequality"
+            ],
+            [
+              "Value",
+              "10",
+              "Numeric value only"
+            ],
+            [
+              "Unit",
+              "nM",
+              "Source unit; 1 μM = 1000 nM"
+            ],
+            [
+              "Context",
+              "Biochemical assay; ATP 10 μM; Table 1 footnote a",
+              "Retain conditions, replicates, uncertainty and qualifiers"
+            ],
+            [
+              "Evidence",
+              "PDF p. 2, Table 1, row 7a",
+              "Link a source that locates this measurement"
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "zh": "IC50 通常指达到 50% 抑制时的浓度；在同一实验体系中数值较小通常表示更强抑制。EC50、Ki、Kd、细胞存活率、溶解度和暴露量回答不同问题，不能混在一起排名。不同靶点、物种、细胞系、时间或测定条件的 IC50 也不能直接当成一次优化前后。",
+          "en": "IC50 usually denotes the concentration producing 50% inhibition; lower values generally indicate stronger inhibition within the same assay. EC50, Ki, Kd, viability, solubility and exposure answer different questions. Even IC50 values from different targets, species, cell lines, times or conditions are not automatically comparable."
+        },
+        {
+          "type": "steps",
+          "zh": [
+            "确认正在编辑的是对应 Compound，再点击“添加 Activity”。同一分子在不同 assay 下的数据分别保存，不用覆盖原有那一条。",
+            "横向检查行标签、列标题、单位和脚注。看到 12 ± 3 nM，Value 填 12，误差“±3”及其 SD/SEM 定义保留到 Context；不要自行猜误差类型。",
+            "ND、NT、inactive 等文字不是数值 0。保留原文含义和条件，在说明/证据中记录；当前数值表单无法准确表达时请负责人确定处理方式，不编造数字。",
+            "保存后点开证据检查截图，确认确实是本编号、本指标、正确单位的那一格。"
+          ],
+          "en": [
+            "Confirm the selected Compound before Add Activity. Save separate records for separate assays rather than overwriting a different measurement.",
+            "Read the row label, column heading, units and footnotes together. For 12 ± 3 nM, enter 12 as Value and preserve ±3 and its stated SD/SEM meaning in Context; never guess the error type.",
+            "ND, NT and inactive are not numeric zero. Preserve their reported meaning and conditions in notes/evidence; ask your supervisor if the numeric form cannot represent them faithfully.",
+            "After saving, open the evidence and verify the crop contains the right compound, endpoint and units."
+          ]
+        },
+        {
+          "type": "figure",
+          "zh": "虚构的 <10 nM 示例：运算符、数值和单位分别填写，Context 记录实验条件；Evidence 指向来源。",
+          "en": "Fictional <10 nM example: enter operator, number and unit separately, retain conditions in Context and link source Evidence.",
+          "asset": "activity"
+        }
+      ]
     },
     {
-      "title_zh": "Abstract 与 PDB",
-      "title_en": "Abstract and PDB",
+      "title_zh": "07 · Evidence 与截图：让别人能复核",
+      "title_en": "07 · Evidence and crops: make records traceable",
+      "zh": "关系类型、起终点、修改摘要都要核对。例（虚构格式）：Me → OMe，比较亲脂性变化；该关系由结构比较推断，未见作者明确说明。区分原文支持与推断，不把表格并列当优化顺序。Evidence 保留逐字引文、PDF 实际页码和区域；supports/contradicts/contextual 表示证据作用。阅读不自动把 draft 改为 reviewer_confirmed。",
+      "en": "Verify relationship type, endpoints and modification summary. Fictional format example: Me → OMe, comparing lipophilicity; relationship inferred from structures, not explicitly stated by the authors. Distinguish source support from inference; table order is not optimization order. Evidence retains exact quotations, actual PDF page and region. supports/contradicts/contextual describe evidence roles. Viewing never changes draft to reviewer_confirmed.",
+      "id": "evidence",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "zh": "Evidence 是可复核的出处。quoted text 放逐字原文；Caption 用来标明 Table/Figure/Scheme；Reviewer note 放你的解释、翻译或推断。不要把你的推断写成带引号的作者结论。",
+          "en": "Evidence provides a checkable source. Use quoted text for verbatim wording, Caption for Table/Figure/Scheme identification, and Reviewer note for interpretation, translation or inference. Do not present your interpretation as an author quotation."
+        },
+        {
+          "type": "steps",
+          "zh": [
+            "从当前 Activity 的证据入口或 Lineage 的“添加 / 编辑关系证据”打开 Evidence；可复用已有证据，不必为同一原文反复新建。",
+            "确认 PDF 页码和页面方向，再框选区域。Activity 表格尽量包含化合物行标签、列标题、单位及关键脚注；区域过大看不清，过小无法判断。",
+            "保存后检查实际生成的截图，别只看框选动作是否成功。逐一核对编号、指标、数值、单位、脚注有没有截错行/列。",
+            "若截图为空、偏移或截到了相邻结果，重新核对页码和区域后修正来源记录；有“重试”时可重试生成，但错误坐标不会因为重试自动变正确。",
+            "Edge 证据选择 supports / contradicts / contextual，分别表示支持、反驳、提供背景。同一段文字可能只支持某一条关系，不要不加区分地关联整张图的所有边。"
+          ],
+          "en": [
+            "Open Evidence from the Activity area or Add / edit relationship evidence in a Lineage. Reuse existing evidence where appropriate.",
+            "Check the PDF page and orientation before selecting a region. For an Activity table, include the compound row label, endpoint heading, unit and relevant footnote. Avoid illegibly broad or context-free tiny crops.",
+            "Inspect the generated image after saving, not just the selection rectangle. Verify label, endpoint, value, unit and footnote against the intended row and column.",
+            "For blank, shifted or neighboring-result crops, correct the source page/region. Retry generation when offered, but retrying cannot repair incorrect coordinates.",
+            "For Edge evidence, supports, contradicts and contextual mean support, contradiction and background. A passage may support only one relationship; do not automatically attach it to every edge."
+          ]
+        },
+        {
+          "type": "note",
+          "zh": "暂时没有生成图片不等于原文没有数据；有一张图片也不等于数据已经核对正确。跨页表格可能需要结合多个来源位置阅读，Reviewer note 应写明需要一起看的位置。",
+          "en": "A missing generated crop does not mean missing source data; an existing image does not prove correctness. A table spanning pages may require several source locations, which should be identified in the reviewer note."
+        }
+      ]
+    },
+    {
+      "title_zh": "08 · Lineage：先分清 SAR 与合成",
+      "title_en": "08 · Lineage: distinguish SAR from synthesis",
+      "zh": "SAR 记录设计和结构比较，synthesis 记录实际合成路线；不要仅凭编号顺序连边。同一逻辑路线的节点属于同一 Lineage；独立路线可分开。root 是路线起点，intermediate 为途中节点，terminal 为路线终点；terminal 不自动表示最佳活性或作者最终候选。作者研究起点与优选分子在文章级标注中记录。孤立对照不必强行连边，在 Compound 描述说明其用途及不入 lineage 的理由。",
+      "en": "SAR describes design and structural comparison; synthesis describes chemical routes. Never connect compounds solely by label order. Keep one logical route together; separate independent routes. Root starts a route, intermediate is internal, terminal ends it. Terminal does not automatically mean best activity or nominated lead; record author starting points and prioritized compounds in article annotations. Do not force isolated controls into a lineage: document their purpose and exclusion in the Compound description.",
+      "id": "lineages",
+      "blocks": [
+        {
+          "type": "table",
+          "zh": [
+            [
+              "类别",
+              "回答什么问题",
+              "可以依据什么",
+              "不能怎样做"
+            ],
+            [
+              "SAR",
+              "作者如何比较/设计结构并探索性质变化？",
+              "明确设计叙述、结构比较、同条件测定与范围说明",
+              "按编号 1→2→3 自动连成链"
+            ],
+            [
+              "synthesis",
+              "哪些前体经反应得到哪些产物？",
+              "Scheme 箭头、实验方法、明确的多步路径",
+              "把活性变好当成合成关系"
+            ],
+            [
+              "孤立对照",
+              "为什么有这个分子但没有优化关系？",
+              "用于初始活性比较或外部标准的说明",
+              "为了让所有节点连通而编造 Edge"
+            ]
+          ],
+          "en": [
+            [
+              "Category",
+              "Question answered",
+              "Possible source support",
+              "Avoid"
+            ],
+            [
+              "SAR",
+              "How were structures designed/compared to explore properties?",
+              "Design statements, structural comparisons, comparable assays and scope",
+              "Automatically chaining labels 1→2→3"
+            ],
+            [
+              "synthesis",
+              "Which precursors give which products?",
+              "Scheme arrows, methods and explicit multistep paths",
+              "Treating improved activity as synthesis"
+            ],
+            [
+              "Isolated control",
+              "Why is this molecule present without an optimization relationship?",
+              "Initial comparisons or an external reference standard",
+              "Inventing an edge merely to connect every node"
+            ]
+          ]
+        },
+        {
+          "type": "steps",
+          "zh": [
+            "先用一句话写该 Lineage 的共同问题，例如“比较同一骨架对位取代基”；另一个 Lineage 可写“制备该系列终产物的共同合成路线”。",
+            "把属于同一逻辑路线或比较系列的成员放在一起。图上分散时，先判断是否只是布局，再检查是否漏 Member/Edge、选错端点或混入独立路线。",
+            "若缺少来源支持，先写疑点；不要为了视觉连通而添加无依据的关系。如果确为独立系列/路线，再按科学逻辑分组。SAR 的证据可能只支持部分成对关系，应如实记录。",
+            "共同中间体通向多个产物时允许分叉，不要把所有产物串成一条线。跨组共用分子可复用同一个 Compound。"
+          ],
+          "en": [
+            "Describe one common question for the group, such as “compare para substituents on a shared scaffold.” Use another group for its shared synthetic route.",
+            "Keep members of a logical route or comparison series together. For a fragmented diagram, distinguish layout spacing from missing members/edges, incorrect endpoints or unrelated routes.",
+            "Record missing support as uncertainty rather than inventing connecting edges. Split truly independent series/routes on scientific grounds. SAR evidence may support only some pairwise relationships.",
+            "Allow branching from a shared intermediate to several products; do not force products into a linear chain. Reuse the same Compound across relevant groups."
+          ]
+        },
+        {
+          "type": "flow",
+          "zh": [
+            "虚构 SAR 示例",
+            "7a（Me） → 7b（OMe）",
+            "7a（Me） → 7c（F）",
+            "已说明共同参考物；箭头表示有依据的比较，不表示 7b 合成出 7c。"
+          ],
+          "en": [
+            "Fictional SAR example",
+            "7a (Me) → 7b (OMe)",
+            "7a (Me) → 7c (F)",
+            "A stated common reference; arrows represent supported comparisons, not synthesis of 7c from 7b."
+          ]
+        },
+        {
+          "type": "figure",
+          "zh": "同一示例 Lineage 的分叉关系。先看类别与分组理由，再看成员和每条边的来源；节点的位置只是展示。",
+          "en": "A branching example Lineage. Check its category and grouping rationale, then members and the support for each edge. Node position is presentation only.",
+          "asset": "lineage"
+        }
+      ]
+    },
+    {
+      "id": "roles",
+      "title_zh": "09 · Root、Intermediate、Terminal 与文章标注",
+      "title_en": "09 · Local roles versus article annotations",
+      "zh": "Lineage 角色描述分子在当前组中的位置；“研究起点／论文优选”描述作者在整篇研究或指定系列中的选择。两者分别核对。",
+      "en": "A Lineage role describes position within that group. Study starting point / paper-prioritized annotations describe author choices for the study or a named series. Review them separately.",
+      "blocks": [
+        {
+          "type": "table",
+          "zh": [
+            [
+              "名称",
+              "如何判断",
+              "不代表什么"
+            ],
+            [
+              "root",
+              "当前有向关系组的起点；核对关系方向和上下文",
+              "不自动等于整篇研究起点"
+            ],
+            [
+              "intermediate",
+              "当前组中间的节点，通常同时接收和引出关系",
+              "SAR 中不自动表示合成中间体"
+            ],
+            [
+              "terminal",
+              "当前组末端节点；没有继续向后的已记录关系",
+              "不自动等于最好活性、最终药物或论文优选"
+            ],
+            [
+              "unspecified",
+              "尚不能确定该组内角色，需继续核对",
+              "不是为了省事永久不标"
+            ],
+            [
+              "研究起点",
+              "作者据以启动本文/该系列优化的分子，有来源理由",
+              "不是每个便宜试剂或每条路线的第一个原料"
+            ],
+            [
+              "论文优选",
+              "作者明确选择优先推进的分子，有选择依据",
+              "不是所有 terminal，也不是你自己挑最低 IC50"
+            ]
+          ],
+          "en": [
+            [
+              "Name",
+              "How to decide",
+              "Does not mean"
+            ],
+            [
+              "root",
+              "A starting node in the directed group; check direction and context",
+              "Automatically a study starting point"
+            ],
+            [
+              "intermediate",
+              "An internal node, typically with incoming and outgoing relationships",
+              "Automatically a synthetic intermediate in an SAR group"
+            ],
+            [
+              "terminal",
+              "An endpoint with no further recorded outgoing relationship",
+              "Best potency, final medicine or author-prioritized compound"
+            ],
+            [
+              "unspecified",
+              "Role not yet determined; further review needed",
+              "A permanent shortcut around review"
+            ],
+            [
+              "Study starting point",
+              "An author-supported starting molecule for this study/series",
+              "Every reagent or first material in a synthesis"
+            ],
+            [
+              "Paper-prioritized compound",
+              "A molecule the authors explicitly choose to advance, with rationale",
+              "Every terminal or the reviewer’s lowest-IC50 choice"
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "zh": "同一个 Compound 在不同 Lineage 可以有不同角色。一个研究可以有多个起点和多个优选；同一分子也可能兼任。判断关键是“作者在什么范围、为什么这样选”，不是分子排在第几行。",
+          "en": "The same Compound can have different roles in different Lineages. A study can have several starts and priorities, and one molecule may carry both annotations. The key is the authors’ scope and rationale, not row order."
+        }
+      ]
+    },
+    {
+      "title_zh": "10 · 在画布和表单中编辑 Lineage",
+      "title_en": "10 · Editing a Lineage in graph and forms",
+      "zh": "三个页签切换。图上“新增 Node”选择本篇已有 Compound；找不到时先到化合物页创建。“新增 Edge”依次选择起点和终点，再填写关系表单。拖动节点或菱形控制点调整形状，点击“保存布局”；点线图与结构图独立保存。重新载入布局会丢弃该模式未保存的布局。表单仍是完整编辑入口。",
+      "en": "Switch between three tabs. Add Node selects an existing Compound from this paper; create missing Compounds on the compound page first. Add Edge selects source then target before opening the relationship form. Drag nodes or diamond control handles and Save layout. Point and structure modes save separately. Reload layout discards unsaved layout in that mode. Full forms remain available.",
+      "id": "graph",
+      "blocks": [
+        {
+          "type": "steps",
+          "zh": [
+            "选择正确的 SAR / synthesis 类别和 Lineage，再切换“关系图／Compound／Edge”页签；一个页签占主要操作区域。",
+            "画布点击“新增 Node”，搜索并选择本篇已有 Compound，再选组内角色并确认。找不到编号时先检查它是否已在该组中；若本篇清单没有，再回化合物页补录。",
+            "点击“新增 Edge”，按提示先选来源分子、再选目标分子；进入 Edge 表单后再次检查两个编号、方向、关系类型、修改摘要及证据。保存前取消不会建立关系。",
+            "也可以在 Compound 页签添加 Member，在 Edge 页签使用完整表单。两种入口编辑同一组记录。",
+            "拖动节点调整位置，打开边曲线调整后拖动菱形控制点；点击“保存布局”。点线图与结构图的布局分开保存。",
+            "“重新载入布局”会放弃当前模式未保存的位置；“重排为网格”是重新布局。移动节点或弯曲连线不会改变 Edge 端点或科学审核状态。"
+          ],
+          "en": [
+            "Select the correct SAR / synthesis category and Lineage, then switch Graph / Compound / Edge; each tab uses the main work area.",
+            "Choose Add Node on the canvas, find an existing Compound and select its local role. If the label is absent, first check whether it is already a member; create a genuinely missing Compound on the compound page.",
+            "Choose Add Edge, then source and target as prompted. In the Edge form recheck both labels, direction, relation type, modification summary and evidence. Cancel before saving to avoid creating a relation.",
+            "Alternatively add a Member in the Compound tab and use full forms in the Edge tab. Both interfaces edit the same records.",
+            "Drag nodes; enable edge bending to drag diamond control handles. Choose Save layout. Point and structure modes keep separate layouts.",
+            "Reload layout discards unsaved positions in the current mode; grid rearrangement changes presentation. Moving nodes or bending edges does not change endpoints or scientific review status."
+          ]
+        },
+        {
+          "type": "figure",
+          "zh": "“新增 Node”选择的是本篇已有 Compound；角色属于当前 Lineage。先核实编号，再确认添加。",
+          "en": "Add Node selects an existing Compound from this paper. Its role belongs to the current Lineage; verify the label before confirming.",
+          "asset": "node"
+        }
+      ]
+    },
+    {
+      "id": "edges",
+      "title_zh": "11 · Edge：写清“变了什么”和“凭什么连”",
+      "title_en": "11 · Edge: what changed and what supports the link",
+      "zh": "每条边都应有可解释的端点、方向和关系。描述应区分结构差异、测定结果、作者解释与 reviewer 推断。",
+      "en": "Each edge needs interpretable endpoints, direction and meaning. Separate structural differences, measured results, author explanations and reviewer inference.",
+      "blocks": [
+        {
+          "type": "table",
+          "zh": [
+            [
+              "检查项",
+              "推荐写法 / 做法"
+            ],
+            [
+              "端点与方向",
+              "先读 Parent / Child 的编号，再对照来源。合成通常前体→产物；SAR 方向按明确的参考/设计关系解释，不等于历史时间线。"
+            ],
+            [
+              "关系类型",
+              "依实际关系填写；例如 SAR 比较与合成转化不混用。类型字段不替代完整说明。"
+            ],
+            [
+              "修改摘要",
+              "虚构：相同骨架上对位 Me 替换为 OMe；同一 assay 的 IC50 由 120 nM 变为 40 nM。"
+            ],
+            [
+              "结论边界",
+              "可以说该 assay 抑制更强；未测 logP 就不能把“亲脂性降低”写成已测事实。"
+            ],
+            [
+              "推断标识",
+              "虚构：按结构比较建立，未见作者明确说明优化先后；方向以 7a 为参考物，不主张合成关系。"
+            ],
+            [
+              "审核",
+              "读完来源后明确选 draft / reviewer_confirmed / unresolved；有冲突保留说明。"
+            ]
+          ],
+          "en": [
+            [
+              "Check",
+              "Recommended approach"
+            ],
+            [
+              "Endpoints and direction",
+              "Read Parent / Child labels first. Synthesis normally goes precursor→product. Explain SAR direction using a supported reference/design relationship, not assumed chronology."
+            ],
+            [
+              "Relation type",
+              "Use the actual relationship; distinguish SAR comparison from synthesis. The type does not replace a full explanation."
+            ],
+            [
+              "Modification summary",
+              "Fictional: para Me replaced by OMe on the same scaffold; IC50 changes from 120 to 40 nM in the same assay."
+            ],
+            [
+              "Claim boundary",
+              "Stronger inhibition in that assay is supported; an unmeasured logP change is not a measured fact."
+            ],
+            [
+              "Inference labeling",
+              "Fictional: comparison inferred from structures; author optimization order not stated. 7a is the reference, with no synthesis claim."
+            ],
+            [
+              "Disposition",
+              "After checking sources explicitly choose draft / reviewer_confirmed / unresolved and retain conflicts."
+            ]
+          ]
+        },
+        {
+          "type": "figure",
+          "zh": "Edge 页签用于逐条核对端点、关系和审核状态。证据说明为何可以建立这条边，不能只凭图画得顺眼。",
+          "en": "Use the Edge tab to check endpoints, meaning and disposition one relationship at a time. Sources justify the edge; a tidy graph does not.",
+          "asset": "edge"
+        }
+      ]
+    },
+    {
+      "title_zh": "12 · 给研究起点／论文优选添加依据",
+      "title_en": "12 · Supporting study-start / priority annotations",
+      "zh": "在文章信息页关联本篇 Compound 与已有 Evidence，记录研究起点或论文优选、适用系列/范围及作者选择理由。每类可有多个分子，同一分子可兼任。先在 Evidence 库保存原文依据；标注卡片保留 PDF 页码与原文。研究起点不等于每条合成路线的原料；论文优选不等于所有 terminal 或最低 IC50。待审核、已确认、待解决分别显示，阅读不会自动确认；未记录不代表文章没有此类分子。修改理由、身份或来源后重新核对，需核对提示要显式清除。",
+      "en": "On the article information page, link a Compound and existing Evidence, record its study-start or paper-prioritized role, study/series scope and author rationale. Multiple compounds and both roles are allowed. Save source support in the Evidence library first; cards retain the PDF page and quotation. A study start is not every synthesis reagent; a prioritized compound is not every terminal or the lowest IC50. Draft, confirmed and unresolved states remain visible. Viewing never confirms; unrecorded does not mean absent. Recheck after changing identity, rationale or source, and explicitly clear resolved verification hints.",
+      "id": "highlights",
+      "blocks": [
+        {
+          "type": "steps",
+          "zh": [
+            "阅读 Introduction、Results/Discussion 和结论，找作者明确的起点或优先推进表述；结合 Figure/Table 核对化合物编号和别名。",
+            "先在 Evidence 中保存相关原文与 PDF 页码，再到“文章信息”点击“添加文章标注”。",
+            "选择本篇 Compound、标注类别、适用范围（例如全文或 Series A）、作者选择理由和来源 Evidence。理由可以包括活性、选择性、PK、脑暴露或体内效果，但只能写来源支持的部分。",
+            "确实核实后设为已确认；存在身份/依据冲突就设为待解决并解释。修改身份、理由或来源后重新核对，不能沿用旧的确认判断。"
+          ],
+          "en": [
+            "Read the Introduction, Results/Discussion and conclusion for explicit starting-point or advancement statements; verify labels and aliases against figures/tables.",
+            "Save the quotation and physical PDF page in Evidence, then choose Add article annotation on Article information.",
+            "Select the Compound, role, scope (whole study or Series A), author rationale and source Evidence. Potency, selectivity, PK, brain exposure or in vivo effects belong in the rationale only when supported.",
+            "Confirm only after verification. Use unresolved with an explanation for identity/support conflicts. Recheck after changing identity, rationale or evidence rather than carrying forward the old judgment."
+          ]
+        },
+        {
+          "type": "note",
+          "zh": "某分子在体外最强，但作者因暴露量差而放弃，不能标为论文优选。某化合物只作为外部药物对照，也不能因为出现在 Figure 1 就标为研究起点。",
+          "en": "The most potent in vitro compound may have been abandoned for poor exposure. An external drug comparator appearing in Figure 1 is not automatically a study starting point."
+        }
+      ]
+    },
+    {
+      "title_zh": "13 · Abstract 与 PDB：来源和用途要分开",
+      "title_en": "13 · Abstract and PDB: preserve source and usage",
       "zh": "Abstract 保存原文摘要及来源，不使用 AI 总结冒充。PDB ID 支持传统四字符与 pdb_ 前缀扩展格式；ATP 等三字符配体代码不是 PDB ID。区分本文结构、引用结构、用途待核对；记录页码和上下文。仅来源明确时关联 Compound。空白只代表未记录，不能自动判定文章未报告。",
-      "en": "Store the original abstract with provenance, not an AI summary. PDB IDs support legacy four-character and extended pdb_ formats. Three-character ligand codes such as ATP are not PDB IDs. Distinguish this-work structures, cited structures and unknown usage; record page and context. Pair with a Compound only when explicit in the source. Empty means unrecorded, not proven absent."
+      "en": "Store the original abstract with provenance, not an AI summary. PDB IDs support legacy four-character and extended pdb_ formats. Three-character ligand codes such as ATP are not PDB IDs. Distinguish this-work structures, cited structures and unknown usage; record page and context. Pair with a Compound only when explicit in the source. Empty means unrecorded, not proven absent.",
+      "id": "metadata",
+      "blocks": [
+        {
+          "type": "steps",
+          "zh": [
+            "点击“编辑基础信息”填写原文 Abstract 和来源。摘要翻译或自己的概括不能替换原文摘要。",
+            "在正文、结构解析方法和 Accession Codes 中查找 Protein Data Bank / PDB，逐个记录明确编号。先确认它是结构编号，不是配体三字码、基因编号或实验耗材型号。",
+            "判断用途：本文新测定并沉积的实验结构填“本文结构”；下载已有坐标做 docking、结构比较或分子置换填“引用结构”；无法判断时填“用途待核对”并说明。",
+            "填写 PDF 实际页码和来源上下文。只有原文明确结构与分子身份配对时才填关联 Compound；对接了化合物 7 并不证明该 PDB 晶体里就是 7。",
+            "同一编号多次出现通常合并说明用途和补充页码。原文编号或蛋白名冲突时保留来源并写需核对，不静默改成自己觉得更合理的编号。"
+          ],
+          "en": [
+            "Use Edit basic information to enter the original Abstract and provenance. Do not replace the abstract with a translation or summary.",
+            "Search text, structure methods and Accession Codes for Protein Data Bank / PDB. Distinguish structure accessions from three-character ligand codes, gene accessions and equipment codes.",
+            "Use this-work for newly determined/deposited experimental structures; cited-structure for existing coordinates used in docking, comparison or molecular replacement. Explain uncertain usage.",
+            "Record the physical PDF page and context. Associate a Compound only with explicit source support: docking compound 7 does not establish that the deposited crystal ligand is 7.",
+            "Usually consolidate repeated mentions of one ID with uses and additional page references. Retain and flag source conflicts rather than silently substituting a more plausible accession."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "zh": "查过正文但没有找到编号，准确写法是“已检查当前 PDF，未见明确 PDB 编号；SI 尚未检查”（如果确实如此）。空白字段只表示未记录，不能拿空白当作“作者没有报告”的证据。",
+          "en": "If no accession is found, state the actual scope, such as “No explicit PDB accession found in this PDF; SI not checked,” when true. An empty field alone does not establish source absence."
+        }
+      ]
     },
     {
-      "title_zh": "已查看、需核对与提交",
-      "title_en": "Viewed, needs verification and submission",
+      "title_zh": "14 · 已查看 ≠ 已确认：理解页面状态",
+      "title_en": "14 · Viewed is not confirmed",
       "zh": "只在 Compound 和 Lineage 两层记录已查看。主动选择 Compound 或 Lineage（含打开其 Edge 详情）后记录；后台加载和浏览整张图不批量确认所有组。Compound 包含基本信息、结构、来源图、活性及关联证据；Lineage 包含成员、成员化合物内容、Edge 及关联证据。相关内容变化使所属组已读失效，无关组不受影响；可以标记未读。只显示这两类计数，结构、Activity、Edge、Evidence 不再分别打勾。文章信息保留人工区段确认；无归属 Evidence 在证据库查看，由最终整篇确认覆盖。旧细粒度回执不自动升级为整组阅读，需要重新打开当前组。颜色仅辅助，文字为准。已查看不是科学批准，不清空“需核对”，不自动确认 Structure/Edge。无内容区段仍需明确未报告，最后须人工勾选整篇确认并提交，Admin 再审批。",
-      "en": "Viewing is recorded only for Compound and Lineage groups. Explicitly select a Compound or Lineage (including opening its Edge details); background loading or viewing the graph does not mark every group. A Compound includes its fields, structure, source images, activities and linked evidence. A Lineage includes members, their Compound content, edges and linked evidence. Related edits invalidate the affected groups; unrelated groups remain unchanged. Groups can be marked unread. Only these two counts are shown; Structures, Activities, Edges and Evidence have no separate viewing checkmarks. Article information retains its manual section confirmation. Unassigned Evidence remains in the evidence library and is covered by the final whole-paper confirmation. Historical narrow-scope receipts do not establish group viewing: reopen the current group. Text accompanies colors. Viewed is not scientific approval, never clears verification hints, and never confirms Structures or Edges. Empty sections still need an explicit not-reported disposition. Final human confirmation, submission and Admin approval remain required."
+      "en": "Viewing is recorded only for Compound and Lineage groups. Explicitly select a Compound or Lineage (including opening its Edge details); background loading or viewing the graph does not mark every group. A Compound includes its fields, structure, source images, activities and linked evidence. A Lineage includes members, their Compound content, edges and linked evidence. Related edits invalidate the affected groups; unrelated groups remain unchanged. Groups can be marked unread. Only these two counts are shown; Structures, Activities, Edges and Evidence have no separate viewing checkmarks. Article information retains its manual section confirmation. Unassigned Evidence remains in the evidence library and is covered by the final whole-paper confirmation. Historical narrow-scope receipts do not establish group viewing: reopen the current group. Text accompanies colors. Viewed is not scientific approval, never clears verification hints, and never confirms Structures or Edges. Empty sections still need an explicit not-reported disposition. Final human confirmation, submission and Admin approval remain required.",
+      "id": "progress",
+      "blocks": [
+        {
+          "type": "table",
+          "zh": [
+            [
+              "页面信号",
+              "代表什么",
+              "你还需要做什么"
+            ],
+            [
+              "Compound / Lineage 已查看",
+              "系统记录你主动打开过当前版本的这一组",
+              "核对组内全部相关内容；自动记录并不证明你已理解"
+            ],
+            [
+              "⚠ 需核对",
+              "该条目有明确疑点；点击图标展开文字",
+              "对照来源解决问题后编辑清空提示；阅读/确认不会自动清除"
+            ],
+            [
+              "draft / 待审核",
+              "科学处理尚未完成",
+              "判断当前结构/关系/文章标注是否可确认"
+            ],
+            [
+              "reviewer_confirmed / 已确认",
+              "reviewer 明确作出的科学判断",
+              "修改内容后重新检查其依据"
+            ],
+            [
+              "unresolved / 待解决",
+              "问题尚未解决，已明确记录",
+              "说明问题并交接负责人，不能等同已正确"
+            ],
+            [
+              "区段未报告",
+              "审核后判断该区段在来源中未报告",
+              "说明依据；不能用来绕过未做完的工作"
+            ]
+          ],
+          "en": [
+            [
+              "Signal",
+              "Meaning",
+              "Your remaining responsibility"
+            ],
+            [
+              "Compound / Lineage viewed",
+              "You explicitly opened this group at its current content version",
+              "Inspect all relevant contents; the automatic receipt does not prove understanding"
+            ],
+            [
+              "⚠ Needs verification",
+              "A specific issue is attached; click to expand",
+              "Resolve against the source and explicitly clear the hint; viewing/confirmation does not clear it"
+            ],
+            [
+              "draft",
+              "Scientific disposition is not complete",
+              "Decide whether the structure, relationship or annotation is supported"
+            ],
+            [
+              "reviewer_confirmed",
+              "An explicit scientific judgment by the reviewer",
+              "Recheck support after content changes"
+            ],
+            [
+              "unresolved",
+              "An explicitly recorded open problem",
+              "Explain and hand off; this is not confirmation of correctness"
+            ],
+            [
+              "Section not reported",
+              "Source absence determined through review",
+              "Document why; do not use to bypass unfinished work"
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "zh": "现在只记录 Compound 和 Lineage 两级已查看。Compound 组包括结构、来源图、Activity 和关联证据；Lineage 组包括成员、成员内容、Edge 和证据。相关内容修改会使相应组需重新查看，布局调整不等于科学修改。不要为把计数刷满而快速逐条点开。",
+          "en": "Viewing is tracked only at Compound and Lineage level. A Compound group includes structures, source images, Activities and linked evidence; a Lineage group includes members, member content, Edges and evidence. Relevant edits invalidate viewing, while layout changes do not change the science. Do not click through simply to fill the count."
+        }
+      ]
     },
     {
-      "title_zh": "冲突与保存",
-      "title_en": "Conflicts and saving",
+      "id": "submit",
+      "title_zh": "15 · 提交前：逐条处理阻断项",
+      "title_en": "15 · Before submission: resolve each blocker",
+      "zh": "提交会冻结当前内容，交给 Admin 审批。你的最后一次整篇确认仍是必需步骤；程序检查通过也不能代替源文审核。",
+      "en": "Submission freezes the current content for Admin review. Your final whole-paper confirmation is still required; passing automated checks does not replace source review.",
+      "blocks": [
+        {
+          "type": "steps",
+          "zh": [
+            "完成 Compound、Lineage 以及相关结构/关系/文章标注的核对后，进入“检查与提交”，点击“重新检查”。",
+            "有未查看组时点对应条目回去检查；修改了组内内容后，再查看当前版本。文章信息仍需人工区段确认。无归属 Evidence 也要在证据库检查，并纳入最终整篇确认。",
+            "逐个打开阻断项，根据实际原因处理：例如结构仍是 draft、Edge 尚未审核、Lineage 角色不完整、文章标注缺依据或查看记录过期。不要为了通过检查统一改为已确认。",
+            "源文确实未报告的空区段明确选择未报告。对 unresolved 项和范围限制，在 Reviewer note 中交代；若系统允许提交带未决项，也必须让 Admin 知道，提交不代表问题已解决。",
+            "复查整篇覆盖、结构来源、Activity 单位、Lineage 逻辑和所有疑点。确认可以交接后，人工勾选整篇确认并点击“提交给 Admin 审批”。",
+            "提交成功后内容被冻结；Admin 可以批准或退回修改。批准后才进入正式文章页面。需要修正已提交内容时按退回流程处理，不通过重复新建文章绕过。"
+          ],
+          "en": [
+            "After reviewing groups and their scientific dispositions, open Review & submit and choose Recheck.",
+            "Open unread groups and inspect the current content after edits. Article information retains manual section confirmation. Check unassigned Evidence in the library as part of the final whole-paper review.",
+            "Open each blocker and fix the actual issue: a draft structure/edge, incomplete Lineage roles, unsupported article annotation or stale viewing receipt. Never bulk-confirm just to pass.",
+            "Explicitly mark genuinely unreported empty sections. Explain unresolved issues and coverage limits in Reviewer note. If submission with unresolved items is permitted, make them clear to Admin; submission does not resolve them.",
+            "Recheck coverage, structure sources, Activity units, Lineage logic and uncertainties. When ready for handoff, manually check the final confirmation and submit to Admin.",
+            "A successful submission is frozen. Admin can approve or request changes; publication follows approval. Use the return-for-changes workflow for corrections rather than creating a duplicate paper."
+          ]
+        },
+        {
+          "type": "figure",
+          "zh": "教学示例故意保留一个待处理项：点击问题定位并核对，完成前不要勾选整篇确认。",
+          "en": "This teaching example intentionally retains a blocker. Open it and resolve the issue before final whole-paper confirmation.",
+          "asset": "submit"
+        }
+      ]
+    },
+    {
+      "title_zh": "16 · 常见问题：先判断，再操作",
+      "title_en": "16 · Troubleshooting: identify the issue first",
       "zh": "科学记录保存使用 Workspace 版本；发生冲突时重新读取并核对，不覆盖别人的修改。布局有独立版本，已读不增加科学版本。需要核对的记录可保持提示与草稿；不要为通过提交检查而随意确认。",
-      "en": "Scientific edits use the Workspace version; on conflict reload and reconcile instead of overwriting others. Layout has its own revision; viewing does not increment scientific versions. Keep hints and drafts when unresolved; never confirm merely to pass submission checks."
+      "en": "Scientific edits use the Workspace version; on conflict reload and reconcile instead of overwriting others. Layout has its own revision; viewing does not increment scientific versions. Keep hints and drafts when unresolved; never confirm merely to pass submission checks.",
+      "id": "problems",
+      "blocks": [
+        {
+          "type": "table",
+          "zh": [
+            [
+              "遇到的情况",
+              "建议处理"
+            ],
+            [
+              "新增 Node 找不到编号",
+              "检查是否选错文章、已是该组成员，或 Compound 尚未录入；不要重复新建。"
+            ],
+            [
+              "一组图散成几块",
+              "先区分布局与科学关系；查漏边/错端点/错误分组，缺来源时保留疑点。"
+            ],
+            [
+              "活性截图截错行",
+              "回 PDF 对照行标签、表头、单位、脚注；修正页码/区域后重新核对实际图片。"
+            ],
+            [
+              "保存提示版本冲突",
+              "保留未保存的文字，重新读取最新记录并逐项比较；避免多个窗口同时编辑同篇。"
+            ],
+            [
+              "有 ⚠ 但看不到说明",
+              "点击图标展开；只阅读不会清空提示。"
+            ],
+            [
+              "已读又变未读",
+              "相关内容已更改，重新核对当前版本；不是让你重复确认旧内容。"
+            ],
+            [
+              "不能提交",
+              "打开检查页逐项定位原因；区分未查看、draft、无来源、角色问题与真正未报告。"
+            ],
+            [
+              "按钮只读或无法编辑",
+              "检查账号角色和任务状态：Admin 查看或已提交/批准可能只读；联系负责人走正常修改流程。"
+            ],
+            [
+              "不懂杂环、立体化学或实验指标",
+              "记录化合物编号、PDF 页码、具体位置和问题，交给负责人；不要猜测或伪造确定性。"
+            ]
+          ],
+          "en": [
+            [
+              "Situation",
+              "Recommended action"
+            ],
+            [
+              "Label missing from Add Node",
+              "Check paper selection, existing membership and whether the Compound exists; avoid duplicates."
+            ],
+            [
+              "Diagram split into fragments",
+              "Distinguish layout from scientific relationships; inspect missing edges, wrong endpoints or grouping and retain source gaps."
+            ],
+            [
+              "Activity crop shows wrong row",
+              "Check row label, heading, unit and footnote; fix page/region and inspect the actual generated image."
+            ],
+            [
+              "Version conflict on save",
+              "Preserve unsaved text, reload current data and reconcile changes. Avoid concurrent editing of one paper in multiple windows."
+            ],
+            [
+              "Warning icon without text",
+              "Click to expand; viewing alone does not clear it."
+            ],
+            [
+              "Viewed becomes unread",
+              "Relevant content changed; inspect the current version, not the previous one."
+            ],
+            [
+              "Submission disabled",
+              "Locate each blocker: unread, draft, missing support, role issues or genuine source absence."
+            ],
+            [
+              "Read-only controls",
+              "Check role and workflow state; Admin viewing or submitted/approved content may be read-only. Ask for the normal change workflow."
+            ],
+            [
+              "Unfamiliar ring, stereochemistry or assay",
+              "Record compound label, PDF page, exact location and question for your supervisor; do not guess."
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "exercise",
+      "title_zh": "17 · 五分钟自测：能说清理由才算会",
+      "title_en": "17 · A short practice exercise",
+      "zh": "以下案例完全虚构，可在纸上回答，不需要在实际数据库创建。先想答案，再展开解释。",
+      "en": "This case is entirely fictional. Answer on paper without creating real database records. Think first, then expand the explanation.",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "zh": "假设论文报告 7a、7b、7c 三个同骨架分子，分别为 Me、OMe、F 取代；同一 assay 的 IC50 为 120、40、15 nM。作者明确写“以 7a 为参考比较 7b 和 7c；因 7b 暴露量更好，选择 7b 做体内验证”。对照 Q 仅用于初始活性比较；合成路线另有编号中间体 6。",
+          "en": "Suppose compounds 7a, 7b and 7c share a scaffold with Me, OMe and F substituents. Their IC50 values in the same assay are 120, 40 and 15 nM. The authors explicitly compare 7b and 7c against 7a and select 7b for in vivo studies because of better exposure. Control Q appears only in the initial comparison, and synthesis includes labeled intermediate 6."
+        },
+        {
+          "type": "question",
+          "zh": {
+            "question": "哪些分子进入 Compound？",
+            "answer": "7a、7b、7c、Q，以及中间体 6，只要各自有来源可确定的结构。6 没有活性也应收录；Q 不需要为了进清单而强行连入优化图。"
+          },
+          "en": {
+            "question": "Which identities belong in Compound?",
+            "answer": "7a, 7b, 7c, Q and intermediate 6, provided each has a source-determinable structure. Missing activity does not exclude 6; Q does not need an artificial optimization edge."
+          }
+        },
+        {
+          "type": "question",
+          "zh": {
+            "question": "应该画 7a→7b→7c 吗？",
+            "answer": "不应仅按编号串联。这里有明确共同参考物，可记录 7a→7b、7a→7c 的 SAR 比较；实际合成关系另看 Scheme，不能由这些 IC50 推断。"
+          },
+          "en": {
+            "question": "Should the graph be 7a→7b→7c?",
+            "answer": "Do not chain by numbering. The explicit common reference supports SAR comparisons 7a→7b and 7a→7c. Synthetic relationships require the Scheme and cannot be inferred from these IC50 values."
+          }
+        },
+        {
+          "type": "question",
+          "zh": {
+            "question": "谁是论文优选？",
+            "answer": "7b：作者明确选择它进行体内验证，有暴露量的理由。7c 的 IC50 最低也不能取代作者选择。7a 的研究起点仍需确认来源是否明确把它作为本研究/系列起点；“参考物”本身不总是足够。"
+          },
+          "en": {
+            "question": "Which compound is prioritized by the paper?",
+            "answer": "7b, explicitly advanced for its exposure. The lowest IC50 of 7c does not override the authors’ choice. Confirm that 7a is actually presented as the study/series starting point; being a reference alone is not always enough."
+          }
+        },
+        {
+          "type": "question",
+          "zh": {
+            "question": "看到 7c 的 IC50 <15 nM 应该怎么填？",
+            "answer": "Metric=IC50，Operator=<，Value=15，Unit=nM；检查该数值的行列和脚注，保留条件。不能记成等于 15 或 0。"
+          },
+          "en": {
+            "question": "How would IC50 <15 nM for 7c be entered?",
+            "answer": "Metric=IC50, Operator=<, Value=15, Unit=nM; check the row, column and footnotes and retain conditions. Do not record it as exactly 15 or zero."
+          }
+        },
+        {
+          "type": "question",
+          "zh": {
+            "question": "把所有组点到已读，可以直接提交吗？",
+            "answer": "不行。已查看不表示科学核对完成。还要处理结构/Edge/文章标注状态、来源问题和检查阻断项，再做人工整篇确认。"
+          },
+          "en": {
+            "question": "Can you submit after clicking every group to viewed?",
+            "answer": "No. Viewed does not establish scientific review. Resolve structure/edge/annotation dispositions, source issues and submission blockers, then give final whole-paper confirmation."
+          }
+        }
+      ]
+    },
+    {
+      "id": "handoff",
+      "title_zh": "18 · 完成标准与求助模板",
+      "title_en": "18 · Completion criteria and asking for help",
+      "zh": "一份好的审核结果应让下一位读者找到来源、理解判断，并清楚知道哪些地方仍待解决。",
+      "en": "A good review lets the next reader find the source, understand the judgment and see what remains unresolved.",
+      "blocks": [
+        {
+          "type": "steps",
+          "zh": [
+            "编号覆盖：原文可识别且结构可确定的分子已逐个核对，缺口和 SI 范围限制有说明。",
+            "身份与数据：结构连接/环系/立体化学、Activity 指标/数值/单位/条件，与来源逐项一致。",
+            "关系与角色：SAR/合成分开，分组和 Edge 有依据；组内角色与文章级作者选择分别判断。",
+            "可追溯性：页码、引文和实际截图可定位；所有提示与未决问题写得具体，不被无依据地清除。",
+            "交接：当前内容已保存，查看覆盖和科学状态真实，Reviewer note 告知未决及范围，最终确认由你作出。"
+          ],
+          "en": [
+            "Coverage: all identifiable, structurally determinable compounds checked; gaps and SI limits documented.",
+            "Identity and data: connectivity, rings, stereochemistry, Activity endpoint/value/unit/conditions checked against sources.",
+            "Relationships and roles: SAR/synthesis separated; groups and edges justified; local roles distinguished from author choices.",
+            "Traceability: pages, quotations and actual crops locate claims; uncertainties remain specific and are not cleared without evidence.",
+            "Handoff: current edits saved, viewing/dispositions truthful, Reviewer note explains unresolved scope, and final confirmation is yours."
+          ]
+        },
+        {
+          "type": "example",
+          "zh": "求助示例（虚构）\n文章：TRAINING-001\n对象：Compound 7b / Structure\n来源：PDF 第 2 页，Scheme 1 与 Table 1\n问题：通式画出六元含氮环，但当前结构是五元环；不确定是否套用了错误骨架。\n已做：核对编号与 R 基行；尚未确认结构，保留需核对。\n需要：请负责人核实环大小和杂原子位置。",
+          "en": "Help request (fictional)\nPaper: TRAINING-001\nObject: Compound 7b / Structure\nSource: PDF p. 2, Scheme 1 and Table 1\nIssue: the shared scaffold shows a six-membered N-containing ring; the current structure has five members. A wrong scaffold may have been used.\nChecked: source label and substituent row; structure remains unconfirmed with a hint.\nNeeded: supervisor review of ring size and heteroatom position."
+        }
+      ]
     }
   ],
   "groups": [
@@ -174,6 +1310,41 @@
       "en": "Ortho / meta / para",
       "note_zh": "二取代苯环通常对应 1,2 / 1,3 / 1,4；仍核对编号体系。",
       "note_en": "Usually 1,2 / 1,3 / 1,4 on disubstituted benzene; verify numbering."
+    },
+    {
+      "symbol": "H / F / Cl / Br / I",
+      "zh": "氢 / 氟 / 氯 / 溴 / 碘",
+      "en": "Hydrogen / fluorine / chlorine / bromine / iodine",
+      "note_zh": "元素符号区分大小写；Cl 不是 C 和 I。",
+      "note_en": "Element capitalization matters; Cl is not C plus I."
+    },
+    {
+      "symbol": "CF3 / CN / NO2",
+      "zh": "三氟甲基 / 氰基 / 硝基",
+      "en": "Trifluoromethyl / cyano / nitro",
+      "note_zh": "核对连接原子与完整价态；不能只按字符数画结构。",
+      "note_en": "Check attachment and valence; do not draw by character count."
+    },
+    {
+      "symbol": "c-Pr / c-Bu",
+      "zh": "环丙基 / 环丁基",
+      "en": "Cyclopropyl / cyclobutyl",
+      "note_zh": "c- 表示环；不同于直链或支链 Pr/Bu。",
+      "note_en": "c- denotes a ring, distinct from acyclic Pr/Bu."
+    },
+    {
+      "symbol": "Py / pyridyl",
+      "zh": "常指吡啶或吡啶基，依原文定义",
+      "en": "Often pyridine / pyridyl, source-dependent",
+      "note_zh": "必须核对 2-/3-/4- 连接位和 N 的位置；不可只凭 Py 推断唯一结构。",
+      "note_en": "Resolve 2-/3-/4- attachment and N position; Py alone is not a unique structure."
+    },
+    {
+      "symbol": "TMS / TBDMS (TBS) / TBDPS",
+      "zh": "常见硅基保护基",
+      "en": "Common silyl protecting groups",
+      "note_zh": "分别核对硅上取代基及连接位置；保护/脱保护会改变实际结构。",
+      "note_en": "Check silicon substituents and attachment; protection/deprotection changes the structure."
     }
   ]
 }

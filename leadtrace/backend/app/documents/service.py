@@ -90,7 +90,9 @@ class DocumentService:
         assigned_reviewer_ids = frozenset(
             session.scalars(
                 select(ReviewTask.assigned_reviewer_id).where(
-                    ReviewTask.paper_id == paper.id
+                    ReviewTask.paper_id == paper.id,
+                    ReviewTask.assigned_reviewer_id.is_not(None),
+                    ReviewTask.status.notin_(["unassigned", "archived"]),
                 )
             )
         )

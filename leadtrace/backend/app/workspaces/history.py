@@ -32,6 +32,12 @@ class WorkspaceMutation(Protocol):
 
 
 def lock_workspace(session: Session, workspace_id: UUID) -> LockedWorkspace | None:
+    # Follow the lifecycle/AI delivery order: paper, workspace, assignment task.
+    # Bibliography changes also write Paper; taking it last can deadlock reset.
+    paper_id = session.scalar(select(PaperWorkspace.paper_id).where(PaperWorkspace.id == workspace_id))
+    if paper_id is None:
+        return None
+    session.scalar(select(Paper).where(Paper.id == paper_id).with_for_update())
     row = session.execute(
         select(PaperWorkspace, ReviewTask, Paper)
         .join(ReviewTask, ReviewTask.id == PaperWorkspace.review_task_id)
@@ -42,6 +48,8 @@ def lock_workspace(session: Session, workspace_id: UUID) -> LockedWorkspace | No
     if row is None:
         return None
     workspace, task, paper = row
+    # Refresh task assignment after any wait for the workspace lock (stale tabs).
+    task = session.scalar(select(ReviewTask).where(ReviewTask.id == task.id).with_for_update().execution_options(populate_existing=True))
     return LockedWorkspace(workspace=workspace, task=task, paper=paper)
 
 

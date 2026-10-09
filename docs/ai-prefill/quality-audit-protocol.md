@@ -1,10 +1,10 @@
 # 独立源审查与增量复核协议
 
-流程 `deepseek-led-v3-20260923`；CandidateEnvelope 与 source-self-review schema 仍为 v1。独立审查由新的 DeepSeek 上下文执行，不能继承生产者推理或把生产者自检换名。AI 复核不是人工金标准，审查者也可能错。科学细则统一见 [提取指南](extraction-guide.md)。
+流程 `model-neutral-v4-20261008`；CandidateEnvelope 与 source-self-review schema 仍为 v1。独立审查由新会话中的审查模型上下文执行，不能继承生产者推理或把生产者自检换名。AI 复核不是人工金标准，审查者也可能错。科学细则统一见 [提取指南](extraction-guide.md)。
 
 ## 1. 冻结身份、范围和检查计划
 
-任务源身份链为外部 catalog/manifest→实际源→input/candidate→目标工作区。记录 paper key、DOI/题名、源 hash/bytes/pages、审查人、范围/样本。hash 按类型比较：candidate_file_sha256 与 canonical_candidate_sha256、inventory_file_sha256 与 canonical_inventory_sha256 不能混比；类型不同不证明 stale，沿用程序标注的 hash kind。DeepSeek 读源，Codex 查元数据/产物。
+任务源身份链为外部 catalog/manifest→实际源→input/candidate→目标工作区。记录 paper key、DOI/题名、源 hash/bytes/pages、审查人、范围/样本。hash 按类型比较：candidate_file_sha256 与 canonical_candidate_sha256、inventory_file_sha256 与 canonical_inventory_sha256 不能混比；类型不同不证明 stale，沿用程序标注的 hash kind。所选模型 读源，Codex 查元数据/产物。
 
 | 层面 | 分母/判定 | 不可混同 |
 |---|---|---|
@@ -15,7 +15,7 @@
 
 首次预填的生产者先从源建立 inventory。日常 reviewer 在同一次新调用内先核验源的身份范围/角色/排除与高风险核心，再与候选和生产者清单比较；生产者清单不能当独立金标准。若没有可信清单，先保存自己的源清点再比较，不能以候选反推分母；来不及完成就交 partial。清单有错时另存修订与理由，不改旧清单使其迎合候选。已有有效源清单的修补不要求每次重新做全篇调查；检查 exclusions/未决/新增来源范围，缺陷或范围改变才扩展。评测需独立 source-only 调查/强隔离时可另建任务，但这是额外调用，须计数，不是日常两次调用内自动存在的步骤。
 
-用分阶段目录/实际文件 manifest、源清单 hash 和候选提供时点记录隔离。目录隔离不是操作系统沙箱；未实现访问控制时明确限制。仅提示词要求“先读源”只能称 procedural separation，不能宣称物理盲审。Codex 不读取推理日志来证明顺序，也不从会话 ID 推断独立性。
+用分阶段目录/实际文件 manifest、源清单 hash 和候选提供时点记录隔离。目录隔离不是操作系统沙箱；未实现访问控制时明确限制。仅提示词要求“先读源”只能称 procedural separation，不能宣称物理盲审。监督者不读取推理日志来证明顺序，也不从会话 ID 推断独立性。
 
 ## 2. 覆盖清单
 
@@ -43,13 +43,13 @@ CompoundInventory v1 使用 [已有 schema](schemas/compound-inventory-v1.json)�
 - Lineage 逐组范围、分量/孤点、角色冲突和解释，逐 Compound 两类参与及原因，论文优选理由/未知，按 [分组规则](extraction-guide.md#lineage-grouping-roles-and-participation) 核查。不能为连通补边或恢复已否决关系。
 - 发现矛盾先回源复核 expected，保存审查修订轨迹；原文矛盾与提取错误分开。源未提供 SI 不等于正文 Methods 信息也不存在。
 
-核对 review_hint 与实际源依据和疑点是否一致：完整结构可由共享骨架、R 基或反应关系合理重构，不要求每个分子都单独画出；仅有编号范围而无可推导图仍不收录。提示不能使已知错误或未核项判为 correct；既核查无依据的猜测，也指出有依据候选被过度遗漏。解决疑点可建议清除提示，未决提示须保留；独立审查本身不修改候选。
+核对 review_hint 与实际源依据和疑点是否一致：完整结构可由共享骨架、R 基或反应关系合理重构，不要求每个分子都单独画出；仅有编号范围而无可推导图仍不收录。提示不能使已知错误或未核项判为 correct；既核查无依据的猜测，也指出有依据候选被过度遗漏。解决疑点可建议清除提示，未决提示须保留；原冻结候选不修改。合并复核任务先保存原候选的独立审查，再在同一会话将支持的修改另存为方案候选并自检；审查的 hash、逐项结论与统计仍绑定原候选，不能用修补后的值改写原审查或宣称再次独立通过。无依据或未完成的修补保留未决，接受由 Admin 显式操作且不调用模型。
 
 按字段保留结论：结构的连接/区域/立体/化学形式与定位；Activity 的值/单位/算符、条件/统计、来源及分子身份；Edge 的类型/方向/步骤/解释及端点身份。整项有已证实错误就不能 correct，有未核字段也不能声称全字段通过。已知端点结构错必须反映在关联边/Activity 的身份判定中，不能用“标签配对正确”消除该依赖错误。
 
 对“缺少 raw token/条件/出处”等指控，先读取最终候选的实际字段及 context，明确缺失位置或保留的内容，再判断科学表达是否正确；不要把字段存在性与语义正确性混为一谈。源有 SD/SEM/n 歧义时忠实保留原表述并标记解释未决，不擅改统计定义。数值错误、统计/条件错误、出处冲突分别计数。
 
-修补复核按 [最终产物闭环](deepseek-self-check-guide.md#最终产物与问题闭环) 检查反馈→实际字段差异→源依据→依赖结果。修补声明不是差异证据；声明与产物不符即报告未闭合。先检查真实产物，再审计生产者说明，不照抄其“已修复”列表。
+修补复核按 [最终产物闭环](self-check-guide.md#最终产物与问题闭环) 检查反馈→实际字段差异→源依据→依赖结果。修补声明不是差异证据；声明与产物不符即报告未闭合。先检查真实产物，再审计生产者说明，不照抄其“已修复”列表。
 
 Lineage 修补复核须先保存本次范围内独立的源制备/比较清单，再对照最终边、删除边与遗漏；之后才审计生产者账本与 checked 声明。已有可信清单可复用，但账本齐全不能自行证明科学成立。同 pair 存在合成关系不否定有独立依据的 SAR；范围未映射的个体结构也不会因为写了“推断/未决”而变成已确认。
 
@@ -61,7 +61,7 @@ Lineage 修补复核须先保存本次范围内独立的源制备/比较清单�
 
 汇总前交叉核对逐项记录、依赖问题、自检审计与摘要；理由写“仍错/未核”而 verdict=correct 时先纠正矛盾再计数。逐 ref 有一条记录不等于其所有字段都已核实；同时报告字段范围/未查项，不混合结构、数值、出处等分母。保留原报告，纠正记录另存，不能以摘要覆盖细项错误。原文箭头、扩展制备事件、边、检查记录和唯一实体分别计数。
 
-立即保存已查项，未查/受阻明确状态；预算到达交 partial。没有新证据的未决不重复调用。输出逐项审查文件、简短结论、精确 hash/范围、遗漏/冲突/限制和下一步。审查者不改 candidate、不 apply、不填写生产者自检或审批回执。独立审查正常结束不等于所有项正确；日常和 evaluation 均遵守以上标准。
+立即保存已查项，未查/受阻明确状态；预算到达交 partial。没有新证据的未决不重复调用。输出逐项审查文件、简短结论、精确 hash/范围、遗漏/冲突/限制和下一步。审查者不改冻结的输入 candidate、不 apply、不填写审批回执。仅审查任务不产出生产者自检；启用 `review_with_repair` 的任务先保存原候选审查，再在同一会话输出单独的修订 candidate 和修订结果的 `producer_self_check`，不得把该自检称为再次独立审查。独立审查正常结束不等于所有项正确；日常和 evaluation 均遵守以上标准。
 
 若候选含可选 Abstract/PDB 元数据，独立审查需核对原文摘要与摘要来源，检查每个结构编号确被提及、页码有效、用途及 Compound 配对未被猜测。发现摘要被改写为模型总结、配体代码被当 PDB ID、引用结构被写作本文结构时报告具体字段与证据。字段缺失按未覆盖报告，不自行认定“未报告”。
 
@@ -91,3 +91,16 @@ no reviewer confirmation. When a structure or source attribution changes,
 recheck dependent highlights as well as Activities and Edges. Independent review
 must verify these assertions afresh; a passing schema check is not scientific
 approval.
+
+
+## 运行器覆盖核对
+
+使用 `task review` 时，先独立读源，再读取冻结 `inputs/review-targets.json` 与候选对照。该文件是已知候选/清单的检查目标，不是独立源金标准。逐项报告使用其中的 domain/ref；activities 和 edge_evidence_links 用零基索引字符串。每行保留 expected、observed、非空 source_locations、checked_fields、逐字段 field_results、reason 和 verdict。审查范围不够时明确写 unreviewed_scope；缺目标会被程序降为 partial，不能仅用 complete_scope 声明完成。未知/重复 ref 或空检查证据拒绝通过。未提供来源应如实解释为 uncertain；报告存在不代表判断正确。
+
+### 网页统计与修补输入
+
+逐项记录继续保存为机器可读审查依据，供定向修补使用；网页默认展示汇总，不逐条铺开。`field_results` 使用 `correct / incorrect / uncertain`，或含 `verdict` 的对象。不能用一段“已检查”的自由文字替代逐字段结论；只有适用字段确已检查，才能计入“AI 复核支持”。非适用字段可在理由中解释，并记录其适用性判断；未知保持 uncertain。
+
+建议固定字段：结构 `connectivity, regiochemistry, stereochemistry, chemical_form`；Activity `compound, assay, metric, value, unit, operator, conditions, source`；Edge `type, endpoints, direction, basis`（合成另加 `steps`）；Lineage `type, scope, components, roles`；截图 `identity, bbox, source`；Evidence `source, content`（有图另加 `bbox`）；证据关联 `identity, role`。任何字段错误或端点身份错误不能被整项 correct 掩盖。候选/清单记录覆盖率与科学通过率分开，缺字段和未查记录不得算作支持。
+
+报告的整体说明聚焦主要错误类别、已查与未查范围、来源限制和后续修补方向；最多列少量代表性特殊问题。不要在摘要重复完整逐项审查清单，也不要根据“未发现警告”推算可信比例。详细记录仍按既有审查契约完整交付。

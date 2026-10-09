@@ -1,15 +1,15 @@
 # 能力边界、受限交互与后续优化
 
-当前流程 `deepseek-led-v3-20260923`。保留 `.worktrees/ai-prefill-tools` 及其 Preview/依赖；合并后不自动删除。运行事实留在实际 HANDOFF，本文只记录可复用边界和优先级。
+当前流程 `model-neutral-v4-20261008`。保留 `.worktrees/ai-prefill-tools` 及其 Preview/依赖；合并后不自动删除。运行事实留在实际 HANDOFF，本文只记录可复用边界和优先级。
 
 ## 已实现与尚未实现
 
 - 现有候选契约/validate/coverage/self-check、workspace 反馈导出和隔离 Preview 生命周期继续使用。source self-check 是确定性规则＋声明检查，不是源科学验证，也未强制接入所有 Preview API。
-- `task prefill` / `task selfcheck` 建立真实冻结包；`task run` 是一次有界 headless 生产调用，保存状态并按 paper_key 保持单写者；`task status` 返回保存的 checkpoint 与 leader_identity_matches，并非完整实时状态。`task recover` 在原锁与进程身份核验后将已无活进程的 running 标记 interrupted，不终止或重跑任务。续修建新 job，不覆盖旧包。默认本机锁根 `~/.local/state/leadtrace/ai-prefill/locks`，全部操作者须共享该根或统一 `LEADTRACE_PREFILL_LOCK_ROOT`；不同根不互斥，不是分布式锁或沙箱。它不是自动独立审查编排、后台持久队列或应用授权器。
-- `session inspect` 提取实际会话身份与可获得 usage 元数据；显式 dsh-home 对应实际子进程环境的 DSH_HOME，不固定假设用户默认目录。已安装 headless CLI 没有原生 resume；内部 Agent API/nativeWeb 的续接能力不等于当前 CLI 可调用。当前采用结构化 handoff 新会话，不声称保留模型上下文或命中缓存。
+- `task prefill` / `task selfcheck` / `task review` 建立真实冻结包；`task run` 是一次有界适配器调用，保存状态并按 paper_key 保持单写者；`task status` 返回保存的 checkpoint 与 leader_identity_matches，并非完整实时状态。`task recover` 在原锁与进程身份核验后将已无活进程的 running 标记 interrupted，不终止或重跑任务。续修建新 job，不覆盖旧包。默认本机锁根 `~/.local/state/leadtrace/ai-prefill/locks`，全部操作者须共享该根或统一 `LEADTRACE_PREFILL_LOCK_ROOT`；不同根不互斥，不是分布式锁或沙箱。它不是自动独立审查编排、后台持久队列或应用授权器。
+- `session inspect` 仅对 dsh 提取实际会话身份与可获得 usage 元数据；显式 dsh-home 对应实际子进程环境的 DSH_HOME，不固定假设用户默认目录。已安装 dsh headless CLI 没有原生 resume；内部 Agent API/nativeWeb 的续接能力不等于当前 CLI 可调用。当前采用结构化 handoff 新会话，不声称保留模型上下文或命中缓存。
 - 墙钟 timeout 已有执行边界；token/金额预算和最大修订轮数不是硬执行配额。审查继承的内容/依赖 hash 与统计校验仍需操作者核验，不把文档约定当自动实现。
-- Candidate 要求每个 Compound 有结构；未决完整身份与测量留 sidecar，不能造占位 SMILES。measurement tuple、route-details 等尚未统一为强契约；全篇测量 coverage、源语义和自检真实性仍需 DeepSeek 检查。
-- self-check 已报告 Lineage 分量/孤点/环/合成角色冲突/逐类型未参与，作为 review 诊断，不自动拆组或加边；其科学含义/非参与原因/优选依据没有自动验证，没有独立优选字段或 target/baseline/isolated 枚举。生成图显示、逐组加载和反复切换稳定性分别验证；布局拥挤不授权删科学边。
+- Candidate 要求每个 Compound 有结构；未决完整身份与测量留 sidecar，不能造占位 SMILES。measurement tuple、route-details 等尚未统一为强契约；全篇测量 coverage、源语义和自检真实性仍需所选模型检查。
+- self-check 已报告 Lineage 分量/孤点/环/合成角色冲突/逐类型未参与，作为 review 诊断，不自动拆组或加边；其科学含义/非参与原因/优选依据没有自动验证，论文级研究起点/论文优选使用独立 highlights 字段，不新增 target/baseline/isolated 枚举。生成图显示、逐组加载和反复切换稳定性分别验证；布局拥挤不授权删科学边。
 - Native Preview 是已有验收路径，Compose 仍有未验收范围。科学数据留在各自环境；合并源码不授权生产迁移、部署或启用生产 apply。
 
 ## 网页 reviewer 交互：采用受限任务 broker
@@ -31,9 +31,9 @@
 
 ## 优先级与验证方式
 
-1. 用固定新论文验证 routine 相比 evaluation 的成本：同源/同范围/同独立审查标准，记录准确性、覆盖、修复/新引入错误、返工、DeepSeek＋Codex 实际费用与墙钟时间。无 usage 则 null，不能从耗时换算账单。
+1. 用固定新论文验证 routine 相比 evaluation 的成本：同源/同范围/同独立审查标准，记录准确性、覆盖、修复/新引入错误、返工、所选模型＋Codex 实际费用与墙钟时间。无 usage 则 null，不能从耗时换算账单。
 2. 完善 measurement tuple/审核记录及依赖失效检测，把低成本确定性检查前移；完整 Compound coverage、图语义和正确性分别评价。
-3. 在真实 harness 能力和稳定运行恢复充分验证后，补持久任务队列、预算执行和受限网页 broker；不要先开放聊天端口再补控制。
+3. Admin 已有持久任务队列、并发与超时控制；后续补 token/金额预算执行，Reviewer 受限交互仍按上述边界评测后开放。
 4. 设计 identity-only 身份/测量保留方案；独立契约和迁移，避免未解析结构导致已有观察消失。
 
 ## 文档、Git 与发布
@@ -43,3 +43,9 @@
 Git 只保存可移植代码/指南/模板/契约，`leadtrace-data/` 保存源、候选、图片、数据库/凭据与运行记录。保留 worktree 不保证与 main 永久同步；整合前核对双方修改，保存 main 的 auth、Ketcher、CSP 修复。
 
 源码合并不切生产服务。发布需要实际授权、选定提交、前后端一致构建、目标 schema 核对、验收与回退方案。**Preview 科学记录、候选、图片、数据库不迁入生产**；生产保留自己的记录。0027 等 schema 迁移不授权把 Preview 分类/数据套到生产。实际部署路径与实例以最新 runbook/交接核验，不复用过期本机诊断。
+
+## Admin 调度入口
+
+网页入口与当前指导包共用科学契约，操作与运行配置见 [Admin 控制台](admin-console.md)。持久队列默认全站并发 4；归档保持旧工作区身份，新的生成使用新工作区。不要把任务停止、独立报告完成或 draft apply 解释成科学批准。
+
+Admin Codex 使用强制外层 Landlock＋私有 stdio app-server 的 externalSandbox 协议；模型启动前实际执行无模型工具预检。运行库与清理回执规则见 Admin 控制台；不能只凭主 PID 消失认定自行创建 session 的后代已停止。Codex 会话元数据保存在 `codex-session.json`，请求配置与服务端回显不冒充 wire-observed 参数。

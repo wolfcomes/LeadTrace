@@ -47,9 +47,9 @@ text remain in their original language. UI messages live in `frontend/src/i18n/`
 
 ## AI Prefill and self-check
 
-For a new or resumed Codex/DeepSeek prefill task, start with
+For a new or resumed AI prefill task, start with
 [AI Prefill START_HERE](../docs/ai-prefill/START_HERE.md). It describes source-reader
-separation, DeepSeek-led routine and Codex-observed evaluation modes, prefill/repair
+separation, model-led routine and supervised evaluation modes, prefill/repair/review
 task entries, delivery self-check, independent audit, Preview
 operations and the persistent handoff. Code/docs are tracked; paper-run artifacts
 and local Preview state remain in ignored `leadtrace-data/`.
@@ -216,8 +216,11 @@ starts, its current assignee must view all current groups before submission.
 
 The Chinese and English reviewer guides and group-abbreviation reference use one
 source, `frontend/src/review/help/reviewer-guide.json`, exposed in the workbench.
-Portable guides: [中文](../docs/reviewer/reviewer-guide.zh.md) and
-[English](../docs/reviewer/reviewer-guide.en.md). Regenerate with
+Illustrated beginner handbooks: [中文 HTML](frontend/public/reviewer-guide/zh.html) and
+[English HTML](frontend/public/reviewer-guide/en.html), linked from workbench help.
+The same bilingual source generates portable [中文 Markdown](../docs/reviewer/reviewer-guide.zh.md)
+and [English Markdown](../docs/reviewer/reviewer-guide.en.md). Screenshot provenance,
+offline distribution and maintenance: [Reviewer documentation](../docs/reviewer/README.md). Regenerate with
 `python leadtrace/ops/reviewer/render_guide.py`; CI/local check uses `--check`.
 
 Article information also supports evidence-backed Compound highlights: study
@@ -230,3 +233,11 @@ Highlights are versioned, frozen, projected on publication and exported with
 separate review metadata; AI apply always creates drafts. Legacy candidates and
 snapshots without highlights retain their serialized shape. Empty means
 unrecorded, not a scientific claim that no compound was prioritized.
+
+## Admin AI task console
+
+The article management page supports recall, verified archive/restart, first generation
+with bounded producer self-check, fresh-context review with a repair proposal in the same model invocation, then explicit acceptance of saved changes. Reports default to category totals, coverage and conservative review status statistics; full diagnostics and proposal differences expand on demand. Repair generation never changes the draft, and accepting a saved proposal applies a version-bound delta without calling a model. A persistent
+queue defaults to four concurrent tasks globally and one open task per paper.
+[Admin operations and configuration](../docs/ai-prefill/admin-console.md) describe
+model presets, independent review coverage, archives and restart recovery.

@@ -819,6 +819,9 @@
 .compound-list-panel article { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; border-bottom: 1px solid var(--line); }
 .compound-list-panel article:last-child { border-bottom: 0; }
 .compound-list-panel article.selected { box-shadow: inset 3px 0 var(--teal); background: var(--teal-pale); }
+.compound-list-panel article > button { grid-row: 1; }
+.compound-list-panel article > .highlight-badges { grid-column: 1 / -1; grid-row: 3; min-width: 0; padding: 0 14px 12px; }
+.compound-list-panel article > .highlight-badges > * { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .compound-list-panel article > button:first-child { display: grid; min-width: 0; gap: 4px; padding: 13px 14px; border: 0; color: var(--ink-soft); background: transparent; text-align: left; cursor: pointer; }
 .compound-list-panel article > button:first-child code { font-size: .7rem; }
 .compound-list-panel article > button:first-child span { overflow: hidden; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
@@ -1041,8 +1044,8 @@
 
 /* The directory contributes no intrinsic height; the selected compound sets the row height. */
 .compound-workspace .compound-editor-layout { align-items: stretch; }
-.compound-workspace { --compound-directory-top: calc(var(--topbar-height) + 64px); }
-.preview-environment + .application-shell .compound-workspace { --compound-directory-top: calc(var(--topbar-height) + 104px); }
+/* Reserve one unwrapped tab row plus breathing room below the shared header stack. */
+.compound-workspace { --compound-directory-top: calc(var(--workspace-tabs-top, var(--topbar-height)) + 64px); }
 .paper-workspace-tabs { background: var(--surface); }
 .compound-workspace .compound-list-panel { contain: size; min-height: 0; align-self: start; height: 100%; max-height: calc(100dvh - var(--compound-directory-top) - 24px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; position: sticky; top: var(--compound-directory-top); }
 .compound-detail-panel { min-width: 0; display: grid; gap: 24px; }
@@ -1153,3 +1156,39 @@
 .graph-compound-dialog { width: min(680px, 90vw); max-height: 85vh; overflow: auto; border: 1px solid var(--line-strong); border-radius: 14px; padding: 0; background: var(--surface-raised, white); color: var(--ink); }
 .graph-compound-dialog::backdrop { background: rgb(18 37 49 / 35%); }
 .graph-compound-dialog .graph-compound-picker { margin: 0; border: 0; }
+
+/* Article AI provenance */
+
+.ai-provenance { padding: 1rem; margin-block: .75rem; font-weight: normal; }
+.ai-provenance summary { cursor: pointer; }
+.ai-provenance p { margin-block: .5rem; }
+.ai-run-record { border-top: 1px solid var(--border, #d5dce5); padding-block: .75rem; }
+.ai-run-hash { overflow-wrap: anywhere; display: block; }
+.ai-provenance-compact { font-size: .78rem; font-weight: normal; color: var(--text-muted, #576476); margin-top: .4rem; }
+
+/* Aggregate AI reports and saved repair differences. */
+.ai-report-overview { display:grid; gap:1rem; min-width:0; }
+.ai-report-context { color:var(--ink-muted); font-size:.88rem; margin:0; }
+.ai-report-table-scroll { max-width:100%; overflow-x:auto; }
+.ai-report-table { border-collapse:collapse; width:100%; font-size:.9rem; font-variant-numeric:tabular-nums; }
+.ai-report-table caption { text-align:left; font-weight:600; margin-bottom:.65rem; }
+.ai-report-table th,.ai-report-table td { padding:.65rem .8rem; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
+.ai-report-table th:first-child { text-align:left; }
+.ai-report-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:1rem; margin:0; }
+.ai-report-metrics > div { border:1px solid var(--line); border-radius:8px; padding:1rem; }
+.ai-report-metrics dt { font-size:.85rem; }
+.ai-report-metrics dd { font-size:1.4rem; font-weight:600; margin:.4rem 0 0; }
+.ai-report-metrics small { font-size:.85rem; font-weight:400; margin-left:.4rem; }
+.ai-report-groups { display:flex; flex-wrap:wrap; gap:.6rem 1.4rem; margin:0; }
+.ai-report-groups > div { display:flex; gap:.5rem; align-items:baseline; }
+.ai-report-groups dt { font-size:.85rem; overflow-wrap:anywhere; }
+.ai-report-groups dd { margin:0; font-weight:600; }
+.ai-report-group-section h5,.ai-repair-proposal h5 { font-size:.95rem; margin:0 0 .7rem; }
+.ai-report-group-section li { margin:.35rem 0; overflow-wrap:anywhere; }
+.ai-report-overview summary { cursor:pointer; padding:.65rem 0; }
+.ai-repair-proposal { display:grid; gap:.6rem; }
+.ai-repair-change { padding:1rem 0; border-bottom:1px solid var(--line); }
+.ai-repair-diff { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+.ai-repair-diff pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.8rem; max-height:24rem; overflow-y:auto; padding:.7rem; background:var(--paper-deep); }
+.ai-report-annotation { white-space:pre-wrap; overflow-wrap:anywhere; }
+@media(max-width:640px) { .ai-repair-diff { grid-template-columns:1fr; } }

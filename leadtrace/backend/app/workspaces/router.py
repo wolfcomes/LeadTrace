@@ -67,8 +67,10 @@ def _task_response(aggregate: ReviewTaskAggregate) -> ReviewTaskResponse:
     )
 
 
-def _workspace_response(aggregate: WorkspaceAggregate) -> WorkspaceResponse:
+def _workspace_response(aggregate: WorkspaceAggregate, session: Session) -> WorkspaceResponse:
+    from app.ai_prefill.provenance import list_provenance
     return WorkspaceResponse(
+        ai_provenance=list_provenance(session, aggregate.workspace.id),
         id=aggregate.workspace.id,
         review_task_id=aggregate.task.id,
         assigned_reviewer_id=aggregate.task.assigned_reviewer_id,
@@ -212,9 +214,10 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
         try:
             with session.begin():
                 tasks = service.list_review_tasks(session, actor=principal)
+                from app.ai_prefill.provenance import list_provenance
+                items = [_task_response(task).model_copy(update={"ai_provenance": list_provenance(session, task.workspace.id)}) for task in tasks]
         except (WorkspaceForbiddenError, WorkspaceNotFoundError) as error:
             raise _translate_workspace_error(error) from error
-        items = [_task_response(task) for task in tasks]
         return ReviewTaskListResponse(items=items, total=len(items))
 
     @router.get(
@@ -234,7 +237,7 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
                     workspace_id=workspace_id,
                     actor=principal,
                 )
-                return _workspace_response(aggregate)
+                return _workspace_response(aggregate, session)
         except (WorkspaceForbiddenError, WorkspaceNotFoundError) as error:
             raise _translate_workspace_error(error) from error
 
@@ -285,7 +288,7 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
                     workspace_id=workspace_id,
                     actor=principal,
                 )
-                return _workspace_response(aggregate)
+                return _workspace_response(aggregate, session)
         except (
             WorkspaceForbiddenError,
             WorkspaceNotFoundError,
@@ -362,7 +365,7 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
                     workspace_id=workspace_id,
                     actor=principal,
                 )
-                return _workspace_response(aggregate)
+                return _workspace_response(aggregate, session)
         except (
             WorkspaceForbiddenError,
             WorkspaceNotFoundError,

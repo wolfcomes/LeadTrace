@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AiProvenance from "../review/paper/AiProvenance.vue";
 import HighlightCards from "../review/paper/HighlightCards.vue";
 import ArticleMetadata from "../review/paper/ArticleMetadata.vue";
 import ReviewHint from "../review/paper/ReviewHint.vue";
@@ -74,6 +75,7 @@ watch(() => route.params.paperId, load, { immediate: true });
         <aside class="published-version-card"><span>Published Paper Version</span><strong>{{ t("版本") }} {{ detail.version_number }}</strong><small>{{ formatDate(detail.published_at) }}</small><code>{{ detail.content_hash }}</code></aside>
       </header>
       <ArticleMetadata v-if="detail" :metadata="detail.bibliography" />
+      <AiProvenance :records="snapshot.ai_provenance ?? []" />
       <HighlightCards :items="snapshot.compound_highlights ?? []" :compounds="snapshot.compounds" :evidence="snapshot.evidence" :depiction="highlightDepiction" />
 
       <section class="content-section panel">

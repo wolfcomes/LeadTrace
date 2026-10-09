@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -61,6 +61,9 @@ class AiApplyResult:
     applied: bool
     idempotent: bool = False
     entity_map: dict[str, str] | None = None
+    delivery_notes: list[dict] = field(default_factory=list)
+    failure_code: str | None = None
+    failure_details: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,7 +386,7 @@ class AiPrefillService:
                     parsed_structures=parsed_structures,
                 )
                 session.flush()
-        except Exception:
+        except Exception as exc:
             cleanup_transaction_created_files(
                 session,
                 transaction_created_files(session) - existing_created_files,
@@ -394,12 +397,18 @@ class AiPrefillService:
                 error_summary="AI payload failed transactional validation",
             )
             session.flush()
-            return AiApplyResult(run, applied=False)
+            # Never expose SQL, parameters, credentials or exception messages.
+            diag=getattr(getattr(exc,'orig',None),'diag',None)
+            constraint=getattr(diag,'constraint_name',None)
+            details={'exception_type':type(exc).__name__}
+            if isinstance(constraint,str) and constraint.replace('_','').isalnum():details['constraint']=constraint[:128]
+            return AiApplyResult(run, applied=False, failure_code='DELIVERY_WRITE_FAILED',failure_details=details)
 
         workspace.version += 1
         self._mark_terminal(run, AiExtractionRunStatus.SUCCEEDED)
         session.flush()
-        return AiApplyResult(run, applied=True, entity_map=entity_map)
+        from app.ai_prefill.occurrences import occurrence_notes
+        return AiApplyResult(run, applied=True, entity_map=entity_map,delivery_notes=occurrence_notes(payload.structure_locators))
 
     def _write_payload(
         self,
@@ -514,7 +523,10 @@ class AiPrefillService:
             )
 
         source_images: list[StructureSourceImage] = []
-        for item in payload.structure_locators:
+        source_images_by_ref = {}
+        from app.ai_prefill.occurrences import occurrence_groups, occurrence_context
+        for group in occurrence_groups(payload.structure_locators):
+            item=group[0]
             source_image = StructureSourceImage(
                 paper_id=run.paper_id,
                 workspace_id=workspace.id,
@@ -525,7 +537,7 @@ class AiPrefillService:
                 y0=item.bbox.y0,
                 x1=item.bbox.x1,
                 y1=item.bbox.y1,
-                source_context=_clean_optional(item.source_context),
+                source_context=occurrence_context(group),
                 label=_clean_optional(item.label),
                 reviewer_note=None,
                 crop_status=(
@@ -538,6 +550,7 @@ class AiPrefillService:
             )
             session.add(source_image)
             source_images.append(source_image)
+            for locator in group:source_images_by_ref[locator.ref]=source_image
         session.flush()
 
         lineages: dict[str, Lineage] = {}
@@ -760,8 +773,8 @@ class AiPrefillService:
             entity_map[f"/compounds/{item.ref}"] = str(compounds[item.ref].id)
         for item, (_, structure) in zip(payload.compounds, structures):
             entity_map[f"/compounds/{item.ref}/structure"] = str(structure.id)
-        for item, source_image in zip(payload.structure_locators, source_images):
-            entity_map[f"/structure_locators/{item.ref}"] = str(source_image.id)
+        for ref, source_image in source_images_by_ref.items():
+            entity_map[f"/structure_locators/{ref}"] = str(source_image.id)
         for item in payload.lineages:
             entity_map[f"/lineages/{item.ref}"] = str(lineages[item.ref].id)
         member_offset = 0

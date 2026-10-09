@@ -1,11 +1,11 @@
-.application-shell { min-height: 100vh; color: var(--ink); background: var(--paper); }
+.application-shell { --environment-toolbar-height: 0px; --workspace-tabs-top: calc(var(--topbar-height) + var(--environment-toolbar-height)); min-height: 100vh; color: var(--ink); background: var(--paper); }
 
-.language-toolbar + .application-shell .sidebar { top: 38px; }
-.language-toolbar + .application-shell .topbar { top: 38px; }
-.language-toolbar + .application-shell .paper-workspace-tabs { top: calc(var(--topbar-height) + 38px); }
-.preview-environment + .language-toolbar + .application-shell .sidebar { top: 78px; }
-.preview-environment + .language-toolbar + .application-shell .topbar { top: 78px; }
-.preview-environment + .language-toolbar + .application-shell .paper-workspace-tabs { top: calc(var(--topbar-height) + 78px); }
+/* The tabs and compound directory share the full stack above the workspace. */
+.language-toolbar + .application-shell { --environment-toolbar-height: 38px; }
+.preview-environment + .language-toolbar + .application-shell { --environment-toolbar-height: 78px; }
+.application-shell .sidebar,
+.application-shell .topbar { top: var(--environment-toolbar-height); }
+.application-shell .paper-workspace-tabs { top: var(--workspace-tabs-top); }
 
 .sidebar {
   position: fixed;
@@ -156,7 +156,7 @@
 .workspace-bibliography div { padding: 14px; background: var(--surface); }
 .compound-editor-layout { display: grid; grid-template-columns: minmax(180px, .38fr) minmax(0, 1.62fr); gap: 16px; margin-top: 18px; align-items: start; }
 .paper-workspace-tabs { position: sticky; z-index: 8; top: var(--topbar-height); border-bottom: 0; overflow-x: auto; flex-wrap: nowrap; }
-.paper-workspace-tabs button { flex: 0 0 auto; }
+.paper-workspace-tabs button { flex: 0 0 auto; white-space: nowrap; }
 .paper-workspace-tabs button[aria-current="page"] { border-color: var(--teal); color: white; background: var(--teal); }
 .paper-workspace-grid { display: grid; grid-template-columns: minmax(260px, 280px) minmax(440px, 1fr) minmax(340px, 390px); min-height: 680px; border: 1px solid var(--line); background: var(--surface); }
 .workspace-context-rail { display: grid; align-content: start; min-width: 0; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--paper) 72%, white); }
@@ -360,4 +360,200 @@
 
 @media (max-width: 520px) {
   .quality-panel .quality-grid { grid-template-columns: 1fr; }
+}
+
+/* Admin article management and durable AI tasks. */
+
+.ai-task-console {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+  padding: clamp(20px, 2.5vw, 32px);
+}
+.ai-task-console > .section-heading {
+  align-items: flex-start;
+  margin: 0;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.ai-task-console > .section-heading > div { min-width: 0; }
+.ai-task-console > .section-heading > button { flex-shrink: 0; }
+.ai-task-console > .section-heading p:not(.eyebrow) {
+  margin: 12px 0 0;
+  color: var(--ink-muted);
+  line-height: 1.7;
+}
+.ai-task-console h2,
+.ai-task-console h3 {
+  margin: 0;
+}
+.ai-console-findings,
+.ai-console-report {
+  margin: 1rem 0;
+  overflow-wrap: anywhere;
+}
+.ai-console-report {
+  max-height: 34rem;
+  overflow: auto;
+  border: 1px solid var(--line);
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+.ai-console-findings li,
+.ai-console-report li {
+  margin: 0.8rem 0;
+}
+.ai-console-health,
+.ai-console-actions,
+.ai-console-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+.ai-console-health {
+  gap: 12px 24px;
+  font-size: .875rem;
+  line-height: 1.6;
+}
+.ai-console-health small { color: var(--ink-muted); }
+.ai-console-settings .form-field {
+  max-width: 16rem;
+}
+.ai-console-settings p {
+  flex-basis: 100%;
+  margin: 0;
+}
+.ai-console-models {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.ai-console-models .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  padding: 24px;
+  background: var(--surface-raised);
+}
+.ai-console-models .panel > h3 {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+.ai-console-models .panel > p {
+  margin: 0;
+  font-size: .875rem;
+  line-height: 1.75;
+}
+.ai-console-models .form-field { gap: 10px; }
+.ai-console-models .form-field select { min-height: 44px; }
+.ai-console-models .button-primary {
+  margin-top: auto;
+  align-self: flex-start;
+}
+.ai-console-checkbox {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  font-size: .875rem;
+  line-height: 1.7;
+}
+.ai-console-checkbox input {
+  width: auto;
+  margin-top: 0.3rem;
+}
+.ai-console-timeout {
+  max-width: 28rem;
+}
+.ai-console-history {
+  display: grid;
+  gap: 16px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.ai-console-history > p { margin: 0; color: var(--ink-muted); }
+.ai-console-job,
+.ai-console-lifecycle {
+  padding: 24px;
+}
+.ai-console-lifecycle > p { line-height: 1.75; margin: 16px 0; }
+.ai-console-job {
+  min-width: 0;
+}
+.ai-console-job header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.ai-console-job header > div {
+  display: grid;
+  gap: 0.4rem;
+}
+.ai-console-job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1.5rem;
+  font-size: 0.9rem;
+}
+.ai-console-job-meta div {
+  min-width: 0;
+  max-width: 100%;
+}
+.ai-console-job-meta dt {
+  opacity: 0.75;
+}
+.ai-console-job-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ai-console-path {
+  overflow-wrap: anywhere;
+}
+.ai-console-lifecycle {
+  border-color: var(--amber);
+}
+.ai-console-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+.ai-console-dialog {
+  width: min(42rem, 100%);
+  max-height: 85vh;
+  overflow: auto;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-panel);
+}
+.ai-console-dialog .ai-console-actions {
+  justify-content: flex-end;
+  margin-top: 1.2rem;
+}
+.ai-console-dialog .form-field {
+  margin-top: 1rem;
+}
+@media (max-width: 1100px) {
+  .ai-console-models {
+    grid-template-columns: 1fr;
+  }
+  .ai-console-job header {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 600px) {
+  .ai-task-console { padding: 16px; gap: 20px; }
+  .ai-task-console > .section-heading { flex-wrap: wrap; gap: 16px; }
+  .ai-console-models { gap: 20px; }
+  .ai-console-models .panel,
+  .ai-console-job,
+  .ai-console-lifecycle { padding: 18px; }
+  .ai-console-health { gap: 10px 16px; }
 }

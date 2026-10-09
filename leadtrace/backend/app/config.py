@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     trusted_proxy_addresses: list[str] = []
     asset_root: Path = Path("/var/lib/leadtrace/assets")
     source_roots: dict[str, Path] = Field(default_factory=dict)
+    article_archive_root: Path = Path('/var/lib/leadtrace/article-archives')
+    ai_task_root: Path = Path('/var/lib/leadtrace/ai-tasks')
+    ai_task_worker_enabled: bool = False
+    ai_task_python: Path | None = None
+    ai_task_presets: list[dict[str, object]] = Field(default_factory=list)
+    ai_task_inventory_roots: list[Path] = Field(default_factory=list)
     ai_prefill_engine: str = "legacy_pipeline"
     ai_prefill_engine_version: str = "pilot-v1"
     ai_prefill_legacy_root: Path | None = None
@@ -64,6 +70,23 @@ class Settings(BaseSettings):
         ):
             raise ValueError("preview_baseline_sha256 must be a lowercase SHA-256 digest")
         return value
+
+    @model_validator(mode="after")
+    def validate_ai_storage(self) -> "Settings":
+        roots = {"article_archive_root": self.article_archive_root, "ai_task_root": self.ai_task_root}
+        for name, path in roots.items():
+            if not path.is_absolute() or path == Path("/") or ".." in path.parts:
+                raise ValueError(f"{name} must be a dedicated absolute path")
+            if any(parent.is_symlink() for parent in (path, *path.parents)):
+                raise ValueError(f"{name} must not contain symlinks")
+        protected = [self.asset_root, *self.source_roots.values()]
+        if self.preview_artifact_root is not None:
+            protected.append(self.preview_artifact_root)
+        for name, path in roots.items():
+            for other in [*protected, *(v for k, v in roots.items() if k != name)]:
+                if path.is_relative_to(other) or other.is_relative_to(path):
+                    raise ValueError(f"{name} must not overlap source, asset, artifact or other task storage")
+        return self
 
     @model_validator(mode="after")
     def validate_production_safety(self) -> "Settings":

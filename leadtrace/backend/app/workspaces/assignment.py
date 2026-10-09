@@ -118,42 +118,29 @@ class AssignmentService:
 
         self._verified_source(session, paper)
         existing = session.scalar(
-            select(ReviewTask.id).where(
+            select(ReviewTask).where(
                 ReviewTask.paper_id == paper.id,
-                ReviewTask.status != ReviewTaskState.APPROVED,
+                ReviewTask.status.notin_([ReviewTaskState.APPROVED, ReviewTaskState.ARCHIVED]),
             )
         )
         if existing is not None:
-            raise ActiveAssignmentError("Paper already has an active assignment")
-
-        task = ReviewTask(
-            paper_id=paper.id,
-            assigned_reviewer_id=reviewer.id,
-            created_by_id=admin_id,
-            status=ReviewTaskState.ASSIGNED,
-            version=1,
-        )
-        session.add(task)
-        session.flush()
-        workspace = PaperWorkspace(
-            paper_id=paper.id,
-            review_task_id=task.id,
-            state=WorkspaceState.EDITING,
-            version=1,
-        )
-        session.add(workspace)
-        session.flush()
-        sections = [
-            PaperSectionReview(
-                paper_id=paper.id,
-                workspace_id=workspace.id,
-                section_key=section_key,
-                state=PaperSectionState.PENDING,
-                note=None,
-            )
-            for section_key in PaperSection
-        ]
-        session.add_all(sections)
+            if existing.status != ReviewTaskState.UNASSIGNED or existing.assigned_reviewer_id is not None:
+                raise ActiveAssignmentError("Paper already has an active assignment")
+            workspace = session.scalar(select(PaperWorkspace).where(PaperWorkspace.review_task_id == existing.id).with_for_update())
+            task = session.scalar(select(ReviewTask).where(ReviewTask.id == existing.id).with_for_update().execution_options(populate_existing=True))
+            task.assigned_reviewer_id = reviewer.id
+            task.status = ReviewTaskState.ASSIGNED
+            task.version += 1
+            sections = list(session.scalars(select(PaperSectionReview).where(PaperSectionReview.workspace_id == workspace.id)))
+        else:
+            task = ReviewTask(paper_id=paper.id,assigned_reviewer_id=reviewer.id,created_by_id=admin_id,
+                              status=ReviewTaskState.ASSIGNED,version=1)
+            session.add(task);session.flush()
+            workspace = PaperWorkspace(paper_id=paper.id,review_task_id=task.id,state=WorkspaceState.EDITING,version=1)
+            session.add(workspace);session.flush()
+            sections = [PaperSectionReview(paper_id=paper.id,workspace_id=workspace.id,section_key=key,
+                                           state=PaperSectionState.PENDING,note=None) for key in PaperSection]
+            session.add_all(sections)
         session.flush()
 
         before = {"paper_id": str(paper.id), "active_assignment": None}

@@ -242,8 +242,9 @@ export function putCompoundStructure(
   );
 }
 
-export function structureDepictionUrl(compoundId: string): string {
-  return `/api/v2/compounds/${encodeURIComponent(compoundId)}/structure/depiction`;
+export function structureDepictionUrl(compoundId: string, depictionAssetId?: string | null): string {
+  const path = `/api/v2/compounds/${encodeURIComponent(compoundId)}/structure/depiction`;
+  return depictionAssetId ? `${path}?v=${encodeURIComponent(depictionAssetId)}` : path;
 }
 
 export function listStructureSourceImages(compoundId: string): Promise<StructureSourceImageList> {

@@ -147,8 +147,12 @@ describe("Admin AI paper prefill", () => {
     expect(wrapper.get("[data-ai-prefill-error]").text()).toContain("ai-conflict");
   });
 
-  it("mounts the interactive prefill control on the Admin paper detail", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => response({
+  it("mounts the model-selectable task console on the Admin paper detail", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path=String(input);
+      if(path.includes('/ai-tasks'))return response({items:[],total:0,settings:{max_concurrent:4},worker:{online:true,last_seen_at:null},presets:[{id:'deepseek',label:'DeepSeek',adapter:'dsh',model:'deepseek-flash',efforts:['high','max'],default_effort:'max',available:true,unavailable_reason:null}]});
+      if(path.endsWith('/management'))return response({paper_id:paperId,paper_key:'LT-JMC-2024-67-05-001',workspace_id:workspaceId,workspace_version:1,task_version:1,assignment_state:'assigned',assigned_reviewer_id:'10000000-0000-4000-8000-000000000002',counts:{},archives:[],archive_root:'/test/article-archives'});
+      return response({
       id: paperId,
       paper_key: "LT-JMC-2024-67-05-001",
       title: "Selective kinase lead optimization",
@@ -180,16 +184,17 @@ describe("Admin AI paper prefill", () => {
         submission_state: "not_submitted",
       },
       ai_prefill: { run: null, can_start: true, blocked_reason: null },
-    })));
+    });}));
     const router = createAppRouter(createMemoryHistory());
     await router.push(`/admin/papers/${paperId}`);
     await router.isReady();
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
-    expect(wrapper.get("[data-ai-prefill-panel]").text()).toContain("AI 预填");
-    expect(wrapper.get("[data-ai-prefill-status]").text()).toContain("可启动");
-    expect(wrapper.get("[data-ai-prefill-start]").attributes("disabled")).toBeUndefined();
+    expect(wrapper.get("[data-ai-task-console]").text()).toContain("文章管理与 AI 任务");
+    expect(wrapper.get("[data-producer-model]").text()).toContain("deepseek-flash");
+    expect(wrapper.get("[data-start-prefill]").attributes("disabled")).toBeUndefined();
+    expect(wrapper.find("[data-ai-prefill-start]").exists()).toBe(false);
   });
 
   it("stops polling after the bounded number of successful running reads", async () => {

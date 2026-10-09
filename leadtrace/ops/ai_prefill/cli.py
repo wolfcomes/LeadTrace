@@ -58,16 +58,20 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--guide-version", default="guide-v1")
     prepare.add_argument("--source-path", type=Path)
     prepare.add_argument("--output", type=Path, required=True)
-    task = sub.add_parser("task", help="prepare and run bounded DeepSeek producer jobs")
+    task = sub.add_parser("task", help="prepare and run bounded configurable model jobs")
     tasks = task.add_subparsers(dest="action", required=True)
-    for entry in ("prefill", "selfcheck"):
+    for entry in ("prefill", "selfcheck", "review"):
         job = tasks.add_parser(entry)
         job.add_argument("--input", type=Path, required=True)
         job.add_argument("--output", type=Path, required=True)
         job.add_argument("--mode", choices=["routine", "evaluation"], default="routine")
+        job.add_argument("--adapter", choices=["dsh", "codex"], default="dsh")
+        job.add_argument("--model")
+        job.add_argument("--reasoning-effort")
+        job.add_argument("--python-executable")
         job.add_argument("--previous-task", type=Path)
         job.add_argument("--handoff", type=Path)
-        if entry == "selfcheck":
+        if entry in {"selfcheck", "review"}:
             job.add_argument("--candidate", type=Path, required=True)
             job.add_argument("--inventory", type=Path, required=True)
             job.add_argument("--feedback", type=Path)
@@ -76,6 +80,11 @@ def build_parser() -> argparse.ArgumentParser:
     execute = tasks.add_parser("run")
     execute.add_argument("directory", type=Path)
     execute.add_argument("--timeout-seconds", type=int, default=1800)
+    provenance = tasks.add_parser("provenance", help="export source/candidate-bound operator provenance; never applies data")
+    provenance.add_argument("directory", type=Path)
+    provenance.add_argument("--candidate", type=Path, required=True)
+    provenance.add_argument("--output", type=Path, required=True)
+    provenance.add_argument("--applied-workspace-version", type=int)
     status = tasks.add_parser("status")
     status.add_argument("directory", type=Path)
     recover = tasks.add_parser("recover", help="close an abandoned running checkpoint after process checks")
@@ -337,16 +346,21 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "doctor":
-            _emit({"ok": True, "offline": True, "database": "not checked", "commands": ["contract export", "input prepare", "task prefill", "task selfcheck", "task run", "task status", "task recover", "session inspect", "candidate import", "candidate validate", "candidate coverage", "candidate self-check", "candidate compare", "candidate export", "candidate export-workspace", "evaluation record", "evaluation summary", "preview create", "preview start", "preview status", "preview stop", "preview plan", "preview archive", "preview destroy"]})
+            _emit({"ok": True, "offline": True, "database": "not checked", "commands": ["contract export", "input prepare", "task prefill", "task selfcheck", "task review", "task provenance", "task run", "task status", "task recover", "session inspect", "candidate import", "candidate validate", "candidate coverage", "candidate self-check", "candidate compare", "candidate export", "candidate export-workspace", "evaluation record", "evaluation summary", "preview create", "preview start", "preview status", "preview stop", "preview plan", "preview archive", "preview destroy"]})
             return 0
         if args.command == "task":
             from leadtrace.ops.ai_prefill.tasks import prepare_task, recover_task, run_task, task_status
-            if args.action in {"prefill", "selfcheck"}:
+            if args.action in {"prefill", "selfcheck", "review"}:
                 result = prepare_task(entry=args.action, input_path=args.input, output=args.output,
                     mode=args.mode, candidate_path=getattr(args, "candidate", None),
                     inventory_path=getattr(args, "inventory", None), feedback_path=getattr(args, "feedback", None),
                     previous_task=args.previous_task, handoff_path=args.handoff,
-                    workspace_id=getattr(args, "workspace_id", None), workspace_version=getattr(args, "workspace_version", None))
+                    workspace_id=getattr(args, "workspace_id", None), workspace_version=getattr(args, "workspace_version", None),
+                    adapter=args.adapter, model=args.model, reasoning_effort=args.reasoning_effort, python_executable=args.python_executable)
+            elif args.action == "provenance":
+                from leadtrace.ops.ai_prefill.provenance import export_run_provenance
+                result = export_run_provenance(args.directory, args.candidate, applied_workspace_version=args.applied_workspace_version)
+                _publish_output(args.output, json.dumps(result, ensure_ascii=False, indent=2) + "\n")
             elif args.action == "run":
                 result = run_task(args.directory, timeout_seconds=args.timeout_seconds)
             elif args.action == "recover":
@@ -354,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 result = task_status(args.directory)
             _emit(result)
-            if args.action == "run" and result["state"]["status"] != "ready_for_independent_review":
+            if args.action == "run" and result["state"]["status"] not in {"ready_for_independent_review", "review_complete"}:
                 return 4
             return 0
         if args.command == "session":

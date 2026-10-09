@@ -607,3 +607,21 @@ def test_ai_lineage_classification_survives_apply_and_snapshot(ai_context):
         lineage = session.scalar(select(Lineage))
         assert lineage.lineage_type == "synthesis"
         assert build_paper_snapshot(session, ai_context.workspace_id)["lineages"][0]["lineage_type"] == "synthesis"
+
+
+def test_duplicate_source_occurrences_merge_without_losing_refs_or_annotations(ai_context):
+    from copy import deepcopy
+    raw=complete_payload();first=raw['structure_locators'][0]
+    duplicate=deepcopy(first);duplicate.update(ref='duplicate-location',label='Alternate source label',source_context='Additional source explanation')
+    raw['structure_locators'].append(duplicate)
+    run_id=_queue(ai_context)
+    with ai_context.session_factory.begin() as session:
+        result=AiPrefillService().apply(session,run_id=run_id,payload=AiPrefillPayload.model_validate(raw))
+        assert result.applied,(result.run.status,result.run.error_summary)
+        assert result.entity_map['/structure_locators/'+first['ref']]==result.entity_map['/structure_locators/duplicate-location']
+        rows=list(session.scalars(select(StructureSourceImage)))
+        assert len(rows)==1
+        assert 'Additional source explanation' in rows[0].source_context
+        assert 'Alternate source label' in (rows[0].label or '')+(rows[0].source_context or '')
+        assert result.delivery_notes[0]['code']=='DUPLICATE_STRUCTURE_OCCURRENCE_MERGED'
+        assert session.scalar(select(func.count()).select_from(ChangeEvent).where(ChangeEvent.entity_type=='structure_source_image'))==1

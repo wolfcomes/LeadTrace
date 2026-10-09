@@ -42,8 +42,8 @@ class PaperSourceResponse(CatalogProjection):
 class CatalogReviewResponse(CatalogProjection):
     review_task_id: UUID
     workspace_id: UUID
-    assigned_reviewer_id: UUID
-    assignee_display_name: str
+    assigned_reviewer_id: UUID | None
+    assignee_display_name: str | None
     task_status: ReviewTaskState
     workspace_state: WorkspaceState
     sections_resolved: int = Field(ge=0, le=6)

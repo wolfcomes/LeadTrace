@@ -88,3 +88,16 @@ it('defaults to points and retains structure mode across Edge detail navigation'
   expect(wrapper.find('[data-structure-count]').exists()).toBe(false);
   wrapper.unmount();
 });
+
+it('refreshes an endpoint depiction and clears its old image failure after a structure change', async () => {
+  const { mount } = await import('@vue/test-utils');
+  const { default: EdgeCompoundCard } = await import('../src/review/paper/EdgeCompoundCard.vue');
+  const structure={id:'30000000-0000-4000-8000-000000000091',paper_id:ids.paper,workspace_id:ids.workspace,compound_id:ids.compounds[0]!,smiles:'CC',canonical_smiles:'CC',molfile:null,inchi:null,inchikey:null,depiction_asset_id:'30000000-0000-4000-8000-000000000092',status:'draft' as const,input_method:'manual_smiles' as const};
+  const wrapper=mount(EdgeCompoundCard,{props:{compoundId:ids.compounds[0]!,workspaceId:ids.workspace,paperId:ids.paper,caption:'Parent',state:{status:'ready',structure}},global:{stubs:{RouterLink:true}}});
+  const before=wrapper.get('[data-endpoint-depiction]').attributes('src');
+  await wrapper.get('[data-endpoint-depiction]').trigger('error');
+  expect(wrapper.find('[data-endpoint-depiction]').exists()).toBe(false);
+  await wrapper.setProps({state:{status:'ready',structure:{...structure,smiles:'CCN',canonical_smiles:'CCN',depiction_asset_id:'30000000-0000-4000-8000-000000000093'}}});
+  expect(wrapper.get('[data-endpoint-depiction]').attributes('src')).not.toBe(before);
+  wrapper.unmount();
+});

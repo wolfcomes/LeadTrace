@@ -45,7 +45,7 @@ def test_prefill_freezes_actual_guides_and_source_and_refuses_overwrite(tmp_path
         assert hashlib.sha256((task / path).read_bytes()).hexdigest() == digest
     assert (task / 'inputs/source.pdf').read_bytes() == source.read_bytes()
     assert 'extraction-guide.md' in (task / 'prompt.md').read_text()
-    assert json.loads((task / 'inputs/input.json').read_text())['guide_version'] == 'deepseek-led-v3-20260923'
+    assert json.loads((task / 'inputs/input.json').read_text())['guide_version'] == 'model-neutral-v4-20261008'
     with pytest.raises(ValueError, match='exists'):
         prepare_task(entry='prefill', input_path=inp, output=task)
 
@@ -254,3 +254,219 @@ def test_cli_two_entries_and_session_export_never_overwrites(tmp_path, capsys):
     before = out.read_bytes()
     assert main(['session', 'inspect', '--run-dir', str(task), '--dsh-home', str(tmp_path / 'dsh'), '--output', str(out)]) != 0
     assert before == out.read_bytes()
+
+
+def test_explicit_runtime_is_frozen_and_review_is_separate_read_only_job(tmp_path):
+    inp, _, candidate, inv = inputs(tmp_path)
+    job = tmp_path / 'review'
+    prepare_task(entry='review', input_path=inp, output=job, candidate_path=candidate,
+                 inventory_path=inv, adapter='codex', model='gpt-test', reasoning_effort='high')
+    task = json.loads((job / 'task.json').read_text())
+    assert task['runtime']['adapter'] == 'codex'
+    assert task['runtime']['reasoning_effort'] == 'high'
+    assert 'independent' in (job / 'prompt.md').read_text().lower()
+    assert 'Do not repair' in (job / 'prompt.md').read_text()
+    fake = fake_harness(tmp_path, '''import pathlib,json,hashlib
+p=pathlib.Path('.')
+r={'candidate_file_sha256':hashlib.sha256((p/'inputs/current-candidate.json').read_bytes()).hexdigest(), 'source_sha256':hashlib.sha256((p/'inputs/source.pdf').read_bytes()).hexdigest(), 'complete_scope':False,'unreviewed_scope':['synthetic'], 'scientific_approval':False}
+(p/'outputs/audit-summary.json').write_text(json.dumps(r))
+''')
+    result=run_task(job, executable=fake, timeout_seconds=10, lock_root=tmp_path/'locks')
+    assert result['state']['status']=='partial'
+    assert (job/'inputs/current-candidate.json').read_bytes()==candidate.read_bytes()
+    provenance=json.loads((job/'runtime-provenance.json').read_text())
+    assert provenance['verification']=='requested_only'
+    assert provenance['requested']['model']=='gpt-test'
+    assert not (job/'outputs/candidate.json').exists()
+
+    from leadtrace.ops.ai_prefill.provenance import export_run_provenance
+    record = export_run_provenance(job, candidate)
+    assert record['stage'] == 'independent_review' and record['outcome'] == 'partial'
+    assert record['model'] == 'gpt-test'
+    with pytest.raises(ValueError, match='review cannot apply'):
+        export_run_provenance(job, candidate, applied_workspace_version=2)
+    tampered = tmp_path/'other-candidate.json'
+    tampered.write_bytes(candidate.read_bytes()+b'\n')
+    with pytest.raises(ValueError, match='bytes'):
+        export_run_provenance(job, tampered)
+
+
+def test_running_task_can_be_cancelled_without_early_completion(tmp_path):
+    inp,_,_,_=inputs(tmp_path)
+    job=tmp_path/'cancel-task'
+    prepare_task(entry='prefill',input_path=inp,output=job)
+    fake=fake_harness(tmp_path,'import time\ntime.sleep(20)\n')
+    from time import monotonic
+    start=monotonic()
+    result=run_task(job,executable=fake,timeout_seconds=30,lock_root=tmp_path/'locks',
+                    should_cancel=lambda:monotonic()-start>0.5)
+    assert result['state']['status']=='cancelled'
+    assert result['state']['exit_code'] is not None
+
+
+def test_exception_after_leader_exit_still_stops_descendant(tmp_path):
+    import time
+    import signal
+    inp,_,_,_=inputs(tmp_path)
+    job=tmp_path/'exception-task'
+    prepare_task(entry='prefill',input_path=inp,output=job)
+    fake=fake_harness(tmp_path,'''import os,signal,time,pathlib
+pid=os.fork()
+if pid==0:
+    os.setpgid(0,0)
+    signal.signal(signal.SIGTERM,signal.SIG_IGN)
+    pathlib.Path('child.pid').write_text(str(os.getpid()))
+    time.sleep(30)
+else:
+    os._exit(0)
+''')
+    def failed_heartbeat():
+        deadline=time.monotonic()+3
+        while not (job/'child.pid').exists() and time.monotonic()<deadline:time.sleep(.01)
+        time.sleep(.05)
+        raise RuntimeError('Synthetic heartbeat failure after leader exit')
+    child=None
+    try:
+        result=run_task(job,executable=fake,timeout_seconds=10,lock_root=tmp_path/'locks',heartbeat=failed_heartbeat)
+        child=int((job/'child.pid').read_text())
+        assert result['state']['status']=='failed'
+        assert result['state']['process_cleanup_confirmed'] is True
+        path=Path(f'/proc/{child}/stat')
+        assert not path.exists() or path.read_text().rsplit(')',1)[1].split()[0]=='Z'
+    finally:
+        if child:
+            try:os.kill(child,signal.SIGKILL)
+            except ProcessLookupError:pass
+
+
+def test_admin_runner_uses_isolated_home_and_removes_it_after_exit(tmp_path,monkeypatch):
+    # Exercise common isolation with the simple headless adapter; Codex RPC has native tests.
+    inp,_,_,_=inputs(tmp_path)
+    job=tmp_path/'sandboxed-task'
+    prepare_task(entry='prefill',input_path=inp,output=job,adapter='dsh',model='deepseek-flash',reasoning_effort='high')
+    empty_home=tmp_path/'empty-home';empty_home.mkdir()
+    monkeypatch.setenv('HOME',str(empty_home));monkeypatch.setenv('CODEX_HOME',str(empty_home/'.codex'))
+    monkeypatch.setenv('LEADTRACE_TEST_SECRET','must-not-reach-child')
+    fake=fake_harness(job,'''import os,json,pathlib
+pathlib.Path('outputs/runtime-probe.json').write_text(json.dumps({'home':os.environ['HOME'],'secret':os.environ.get('LEADTRACE_TEST_SECRET')}))
+''')
+    result=run_task(job,executable=fake,timeout_seconds=10,lock_root=tmp_path/'locks',sandboxed=True)
+    assert result['state']['status']=='partial', (job/'stderr.log').read_text()
+    probe=json.loads((job/'outputs/runtime-probe.json').read_text())
+    assert probe['home']!=str(empty_home) and probe['secret'] is None
+    assert result['state']['process_cleanup_confirmed'] is True
+    assert not Path(result['state']['sandbox_home']).exists()
+
+
+def _combined_review_job(tmp_path):
+    inp, _, candidate, inv = inputs(tmp_path)
+    job = tmp_path / 'combined-review'
+    prepare_task(entry='review', input_path=inp, output=job, candidate_path=candidate,
+                 inventory_path=inv, review_with_repair=True)
+    task = json.loads((job / 'task.json').read_text())
+    targets = json.loads((job / 'inputs/review-targets.json').read_text())
+    rows = [{'domain': domain, 'ref': ref, 'verdict': 'uncertain', 'source_locations': ['synthetic p1'],
+             'checked_fields': ['identity'], 'field_results': {'identity': 'uncertain'},
+             'expected': 'synthetic', 'observed': 'synthetic', 'reason': 'synthetic uncertainty'}
+            for domain, refs in targets.items() for ref in refs]
+    (job / 'outputs/rows.json').write_text(json.dumps(rows))
+    (job / 'outputs/audit-summary.json').write_text(json.dumps({
+        'candidate_file_sha256': task['baseline']['candidate_file_sha256'],
+        'source_sha256': task['source']['source_sha256'], 'complete_scope': True,
+        'unreviewed_scope': [], 'scientific_approval': False, 'item_reports': ['rows.json']}))
+    return job, task, candidate
+
+
+def _combined_proposal(job, task, candidate, *, changed=True):
+    c = json.loads(candidate.read_text())
+    c.update(parent_candidate_id=c['candidate_id'], candidate_id=task['candidate_id'])
+    c['recipe']['guide_version'] = task['guide_version']
+    if changed:
+        c['payload']['compounds'][0]['structure']['smiles'] = 'CCCO'
+    (job / 'outputs/candidate.json').write_text(json.dumps(c))
+    (job / 'outputs/compound-inventory.json').write_bytes((job / 'inputs/compound-inventory.json').read_bytes())
+    from app.ai_prefill.assistance_self_check import SOURCE_REVIEW_CHECKS
+    (job / 'outputs/self-review.json').write_text(json.dumps({
+        'self_review_version': 1, 'candidate_file_sha256': hashlib.sha256((job / 'outputs/candidate.json').read_bytes()).hexdigest(),
+        'reviewer_type': 'producer_self_check', 'checks': [
+            {'check_id': name, 'status': 'unresolved', 'details': 'synthetic uncertainty'} for name in SOURCE_REVIEW_CHECKS]}))
+
+
+def test_combined_review_runs_once_and_binds_audit_and_proposal_separately(tmp_path):
+    job, task, candidate = _combined_review_job(tmp_path)
+    _combined_proposal(job, task, candidate)
+    prompt = (job / 'prompt.md').read_text()
+    assert task['review_with_repair'] is True
+    assert 'SAME session' in prompt and 'NOT another independent review' in prompt
+    fake = fake_harness(tmp_path, "import pathlib\np=pathlib.Path('invocations'); p.write_text(p.read_text()+'x' if p.exists() else 'x')\n")
+    result = run_task(job, executable=fake, timeout_seconds=10, lock_root=tmp_path / 'locks')
+    assert (job / 'invocations').read_text() == 'x'
+    assert result['state']['status'] == 'review_complete'
+    assert result['state']['repair_proposal_status'] == 'ready'
+    assert result['state']['repair_self_check_status'] == 'needs_revision'
+    assert (job / 'inputs/current-candidate.json').read_bytes() == candidate.read_bytes()
+    provenance = json.loads((job / 'runtime-provenance.json').read_text())
+    assert provenance['candidate_file_sha256'] == task['baseline']['candidate_file_sha256']
+    assert provenance['proposal_candidate_file_sha256'] == result['state']['candidate_file_sha256']
+    assert provenance['candidate_file_sha256'] != provenance['proposal_candidate_file_sha256']
+
+
+@pytest.mark.parametrize('fault', ['missing', 'bad_parent', 'invalid_json', 'missing_self_review', 'bad_declared_hash', 'invalid_structure'])
+def test_combined_review_preserves_valid_audit_when_proposal_unavailable(tmp_path, fault):
+    from leadtrace.ops.ai_prefill.tasks import _postflight
+    job, task, candidate = _combined_review_job(tmp_path)
+    if fault != 'missing':
+        _combined_proposal(job, task, candidate)
+        path = job / 'outputs/candidate.json'
+        if fault == 'invalid_json':
+            path.write_text('{broken')
+        elif fault == 'missing_self_review':
+            (job / 'outputs/self-review.json').unlink()
+        else:
+            c = json.loads(path.read_text())
+            if fault == 'bad_parent':
+                c['parent_candidate_id'] = 'wrong-parent'
+            elif fault == 'invalid_structure':
+                c['payload']['compounds'][0]['structure']['smiles'] = 'C1broken'
+            else:
+                c['hashes'] = {'candidate_sha256': '0' * 64}
+            path.write_text(json.dumps(c))
+    status, details = _postflight(job, task)
+    assert status == 'partial'
+    assert details['complete_scope'] is True
+    assert details['repair_proposal_status'] == 'unavailable'
+    assert details['repair_proposal_errors']
+    assert details['audit_summary'] == 'outputs/audit-summary.json'
+    assert 'candidate_file_sha256' not in details
+
+
+@pytest.mark.parametrize('candidate_output', [False, True])
+def test_combined_review_explicit_no_change_is_not_scientific_approval(tmp_path, candidate_output):
+    from leadtrace.ops.ai_prefill.tasks import _postflight
+    job, task, candidate = _combined_review_job(tmp_path)
+    if candidate_output:
+        _combined_proposal(job, task, candidate, changed=False)
+    else:
+        (job / 'outputs/repair-outcome.json').write_text(json.dumps({
+            'status': 'no_changes', 'reason': 'Synthetic source conflict cannot be resolved'}))
+    status, details = _postflight(job, task)
+    assert status == 'review_complete'
+    assert details['repair_proposal_status'] == 'no_changes'
+    assert json.loads((job / 'outputs/audit-summary.json').read_text())['scientific_approval'] is False
+
+
+def test_combined_review_flag_rejected_for_producer(tmp_path):
+    inp, _, _, _ = inputs(tmp_path)
+    with pytest.raises(ValueError, match='requires a review'):
+        prepare_task(entry='prefill', input_path=inp, output=tmp_path / 'bad', review_with_repair=True)
+
+
+def test_combined_review_accepts_task_relative_item_reports(tmp_path):
+    job, task, candidate = _combined_review_job(tmp_path)
+    _combined_proposal(job, task, candidate)
+    path=job/'outputs/audit-summary.json';summary=json.loads(path.read_text())
+    summary['item_reports']=['outputs/rows.json'];path.write_text(json.dumps(summary))
+    fake=fake_harness(tmp_path,"pass\n")
+    result=run_task(job,executable=fake,timeout_seconds=10,lock_root=tmp_path/'locks')
+    assert result['state']['status']=='review_complete'
+    assert result['state']['repair_proposal_status']=='ready'

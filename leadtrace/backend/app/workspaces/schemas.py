@@ -47,7 +47,7 @@ class AssignmentResponse(WorkspaceProjection):
     review_task_id: UUID
     workspace_id: UUID
     paper_id: UUID
-    assigned_reviewer_id: UUID
+    assigned_reviewer_id: UUID | None
     task_status: ReviewTaskState
     task_version: int
     workspace_state: WorkspaceState
@@ -97,6 +97,7 @@ class BibliographyResponse(ArticleMetadata, WorkspaceProjection):
 
 
 class ReviewTaskResponse(WorkspaceProjection):
+    ai_provenance: list[dict[str, object]] = Field(default_factory=list)
     review_task_id: UUID
     workspace_id: UUID
     paper_id: UUID
@@ -114,9 +115,10 @@ class ReviewTaskListResponse(WorkspaceProjection):
 
 
 class WorkspaceResponse(WorkspaceProjection):
+    ai_provenance: list[dict[str, object]] = Field(default_factory=list)
     id: UUID
     review_task_id: UUID
-    assigned_reviewer_id: UUID
+    assigned_reviewer_id: UUID | None
     state: WorkspaceState
     version: int
     task_status: ReviewTaskState

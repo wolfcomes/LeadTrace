@@ -1,12 +1,12 @@
-# DeepSeek 自检与修补入口
+# 模型自检与修补入口
 
-流程 `deepseek-led-v3-20260923`。适用于首次提取后的生产者自检，也适用于 `task selfcheck` 创建的已有候选修补任务。两者均由生产者完成，不是独立审查；不自行批准或写入 Preview。科学细则以 [提取指南](extraction-guide.md) 为准。
+流程 `model-neutral-v4-20261008`。适用于首次提取后的生产者自检，也适用于 `task selfcheck` 创建的已有候选修补任务。两者均由生产者完成，不是独立审查；不自行批准或写入 Preview。科学细则以 [提取指南](extraction-guide.md) 为准。
 
 ## 先固定现状和检查范围
 
 1. 核对当前候选文件 SHA-256、源身份、inventory、实际 parent/feedback、结构化 handoff。已有 Preview 以操作者提供的当前导出和工作区版本为基线，不能覆盖后来的人类修改。
 2. 首次自检覆盖本次全部提取；修补先列 changed refs、疑点和影响依赖，再核查相关源。源清单可复用但不能用候选自身反推分母；发现缺失范围就扩展清单，保留原版与理由。
-3. 原生产会话只用于追踪；当前 headless 无 resume，使用新 job＋handoff 继续。独立审查另建 fresh reader。未改变的有效源审查可继承，但须记录源/内容/依赖 hash 与实际范围；此继承目前不由工具自动证明。
+3. 原生产会话只用于追踪；当前 dsh headless 无 resume，使用新 job＋handoff 继续。独立审查另建 fresh reader。未改变的有效源审查可继承，但须记录源/内容/依赖 hash 与实际范围；此继承目前不由工具自动证明。
 4. 默认一次系统自检、最多两轮修正。已知原文冲突、缺失 SI/结构未决在没有新证据时保留，不反复调用凑通过。保存可用产物和明确未决。
 
 ## 先程序检查，再源核查
@@ -73,13 +73,13 @@
 
 保留 `candidate-before-self-check.json`；正式父候选不覆盖，新版本保留真实 parent/evaluation 链。保存完整新 candidate、冻结 inventory、上述适用记录、quality-record、自检差异与 unresolved；共享核心/制备事件一次记录，每个变体/边仍须映射和结论。
 
-对最后一次改动后的 candidate **文件字节**计算 SHA-256，按 [现有模板](templates/deepseek-self-review.json) 填 self-review，然后生成程序报告：
+对最后一次改动后的 candidate **文件字节**计算 SHA-256，按 [现有模板](templates/self-review.json) 填 self-review，然后生成程序报告：
 
 ```bash
 .venv/bin/python -m leadtrace.ops.ai_prefill candidate self-check /absolute/job/candidate.json --inventory /absolute/job/compound-inventory.json --self-review /absolute/job/self-review.json --output /absolute/job/self-check.json
 ```
 
-退出 0 是 `ready_for_independent_review`，4 是 `needs_revision`，2 是输入不合法。0 只说明已实现规则和源自检声明通过，不证明声明真实，不代替新 DeepSeek 独立审查。`supervisor_preview_gate` 保持 not_reviewed，交付字段由受信操作者填写。
+退出 0 是 `ready_for_independent_review`，4 是 `needs_revision`，2 是输入不合法。0 只说明已实现规则和源自检声明通过，不证明声明真实，不代替新会话中的独立审查。`supervisor_preview_gate` 保持 not_reviewed，交付字段由受信操作者填写。
 
 程序已有 schema/引用/可解析性、required 缺失/歧义、特定 dose/ratio/重复 Activity、lineage 分类、七项完整性/豁免/hash/edge refs 检查；新增图诊断报告分量、孤点、环、合成角色冲突和逐类型非参与，均为 review 提示，不自动改图。尚未自动证明图语义、非参与原因、优选依据、测量穷尽、立体正确、crop 内容、合成条件、审查统计或继承有效性。不要把渲染脚本运行、文件存在或 CLI 通过当源核验完成。
 
@@ -108,3 +108,5 @@ emits no reviewer confirmation. When a structure or source attribution changes,
 recheck dependent highlights as well as Activities and Edges. Independent review
 must verify these assertions afresh; a passing schema check is not scientific
 approval.
+
+Admin 草稿交付与科学自检状态分开：退出 4 / needs_revision 不再单独阻止有效候选入库，问题报告和未决身份必须保留。启动预填授权保存草稿，不授权科学批准；格式、源/候选身份、引用安全和目标工作区版本检查仍必须通过。报告缺项也要明确展示，不能以先入库为由跳过自检。

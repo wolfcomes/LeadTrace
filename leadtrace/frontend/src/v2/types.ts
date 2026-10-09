@@ -1,3 +1,4 @@
+import { aiProvenanceSchema } from './provenance';
 import { highlightSchema, publishedHighlightSchema } from "./highlights";
 import { articleMetadataFields, progressSchema } from "./workbench";
 import { z } from "zod";
@@ -42,12 +43,14 @@ export const sourceIntegrityStateSchema = z.enum([
   "corrupt",
 ]);
 export const reviewTaskStateSchema = z.enum([
+  "unassigned",
+  "archived",
   "assigned",
   "submitted",
   "changes_requested",
   "approved",
 ]);
-export const workspaceStateSchema = z.enum(["editing", "submitted", "approved"]);
+export const workspaceStateSchema = z.enum(["editing", "submitted", "approved", "archived"]);
 export const sectionKeySchema = z.enum([
   "bibliography",
   "compounds",
@@ -132,9 +135,10 @@ function workflowPairIsValid(
   taskState: z.infer<typeof reviewTaskStateSchema>,
 ): boolean {
   return (workspaceState === "editing"
-      && (taskState === "assigned" || taskState === "changes_requested"))
+      && (taskState === "assigned" || taskState === "changes_requested" || taskState === "unassigned"))
     || (workspaceState === "submitted" && taskState === "submitted")
-    || (workspaceState === "approved" && taskState === "approved");
+    || (workspaceState === "approved" && taskState === "approved")
+    || (workspaceState === "archived" && taskState === "archived");
 }
 
 function addWorkflowPairIssue(
@@ -168,8 +172,8 @@ export const paperSourceSchema = z.object({
 export const catalogReviewSchema = z.object({
   review_task_id: uuidSchema,
   workspace_id: uuidSchema,
-  assigned_reviewer_id: uuidSchema,
-  assignee_display_name: z.string().min(1),
+  assigned_reviewer_id: uuidSchema.nullable(),
+  assignee_display_name: z.string().min(1).nullable(),
   task_status: reviewTaskStateSchema,
   workspace_state: workspaceStateSchema,
   sections_resolved: z.number().int().min(0).max(6),
@@ -188,7 +192,7 @@ export const catalogReviewSchema = z.object({
       message: "Resolved section count exceeds total",
     });
   }
-  const expectedSubmissionState = value.task_status === "assigned"
+  const expectedSubmissionState = ["assigned", "unassigned"].includes(value.task_status)
     ? "not_submitted"
     : value.task_status;
   if (value.submission_state !== expectedSubmissionState) {
@@ -246,6 +250,7 @@ export const paperCatalogPageSchema = z.object({
 });
 
 export const reviewTaskSchema = z.object({
+  ai_provenance: z.array(aiProvenanceSchema).optional(),
   review_task_id: uuidSchema,
   workspace_id: uuidSchema,
   paper_id: uuidSchema,
@@ -287,9 +292,10 @@ export const workspaceSourceSchema = z.object({
 }).strict();
 
 export const paperWorkspaceSchema = z.object({
+  ai_provenance: z.array(aiProvenanceSchema).optional(),
   id: uuidSchema,
   review_task_id: uuidSchema,
-  assigned_reviewer_id: uuidSchema,
+  assigned_reviewer_id: uuidSchema.nullable(),
   state: workspaceStateSchema,
   version: z.number().int().positive(),
   task_status: reviewTaskStateSchema,
@@ -465,6 +471,7 @@ export const activitySchema = z.object({
 }).strict();
 
 export const frozenPaperSnapshotSchema = z.object({
+  ai_provenance: z.array(aiProvenanceSchema).optional(),
   compound_highlights: z.array(highlightSchema).optional(),
   schema_version: z.literal(1),
   review_progress: progressSchema.optional(),
@@ -597,6 +604,7 @@ const publishedEdgeEvidenceLinkSchema = edgeEvidenceLinkSchema.omit({
 const publishedActivitySchema = activitySchema.omit({ paper_id: true, workspace_id: true }).strict();
 
 export const publishedPaperSnapshotSchema = z.object({
+  ai_provenance: z.array(aiProvenanceSchema).optional(),
   compound_highlights: z.array(publishedHighlightSchema).optional(),
   schema_version: z.literal(1),
   review_progress: progressSchema.optional(),
@@ -649,7 +657,7 @@ export const assignmentResponseSchema = z.object({
   review_task_id: uuidSchema,
   workspace_id: uuidSchema,
   paper_id: uuidSchema,
-  assigned_reviewer_id: uuidSchema,
+  assigned_reviewer_id: uuidSchema.nullable(),
   task_status: reviewTaskStateSchema,
   task_version: z.number().int().positive(),
   workspace_state: workspaceStateSchema,

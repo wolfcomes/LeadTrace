@@ -1,5 +1,9 @@
 // UI text only. Scientific content and user-entered records remain unchanged.
 export const enReview: Record<string, string> = {
+  "默认排序": "Default order",
+  "名称排序": "Name order",
+  "未分配": "Unassigned",
+  "已归档": "Archived",
   "需核对": "Needs checking",
   "核对提示（可选，解决后清空）": "Review hint (optional; clear when resolved)",
   "Workspace 已更新，正在重新载入全部 Activity 数据。": "The workspace changed. Reloading all activity data.",

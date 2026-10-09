@@ -6,6 +6,7 @@ import os
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from app.ai_tasks import models as ai_task_models  # noqa: F401
 from app.activities import models as activity_models  # noqa: F401
 from app.ai_prefill import models as ai_prefill_models  # noqa: F401
 from app.ai_prefill import preview_models as preview_models  # noqa: F401

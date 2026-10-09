@@ -78,7 +78,7 @@ def _actor_identity(actor: WorkspaceActor) -> tuple[UUID, UserRole]:
 class WorkspaceService:
     @staticmethod
     def _authorize_read(
-        *, actor_id: UUID, role: UserRole, assigned_reviewer_id: UUID
+        *, actor_id: UUID, role: UserRole, assigned_reviewer_id: UUID | None
     ) -> None:
         if role is UserRole.VISITOR:
             raise WorkspaceForbiddenError("Permission denied")

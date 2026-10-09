@@ -444,7 +444,7 @@ onMounted(load);
 <template>
   <section class="lineage-workspace">
     <header class="section-heading"><div><p class="eyebrow">LINEAGES</p><h2>{{ t("SAR 与合成路线") }}</h2></div><button class="button-primary" data-add-lineage type="button" :disabled="readOnly || busy" @click="showCreate = !showCreate">{{ t("添加 Lineage") }}</button></header>
-    <FieldExample :section="2" />
+    <FieldExample section="lineages" />
     <nav class="lineage-group-switch" :aria-label='t("Lineage 类别")'>
       <button v-for="type in groupTypes" :key="type" type="button" class="button-secondary" :data-lineage-group="type" :aria-pressed="selectedGroup === type" @click="selectGroup(type)">{{ t(lineageTypeLabels[type]) }} <span>{{ lineages.filter(item => item.lineage_type === type).length }}</span></button>
     </nav>

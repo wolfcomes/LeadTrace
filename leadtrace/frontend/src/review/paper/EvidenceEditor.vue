@@ -338,7 +338,7 @@ onMounted(load);
 <template>
   <section class="evidence-editor">
     <header class="section-heading"><div><p class="eyebrow">{{ activityOnly ? "ACTIVITY EVIDENCE" : "EDGE EVIDENCE" }}</p><h2>{{ t("证据") }}</h2></div><button class="button-primary" data-add-evidence type="button" :disabled="readOnly || busy" @click="showCreate = !showCreate">{{ t("添加 Evidence") }}</button></header>
-    <FieldExample :section="4" />
+    <FieldExample section="evidence" />
     <button v-if="edgeId || evidenceIds" class="button-quiet" data-toggle-evidence-library type="button" @click="showLibrary = !showLibrary">{{ showLibrary ? t("仅显示当前关联证据") : t("从全文证据库选择 / 管理未关联证据") }}</button>
     <p v-if="showLibrary" class="inline-feedback">{{ t("全文证据库：此处包含其他记录的来源，只有已关联的证据才属于当前记录。共享证据的修改会影响所有引用。") }}</p>
     <form v-if="showCreate" class="evidence-create-form" @submit.prevent="save">
