@@ -3,6 +3,7 @@ import { t } from "../i18n";
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 
 import { normalizePdfRegionBounds, type PdfRegionBounds } from "./geometry";
+import { pdfRenderScale } from "./resolution";
 import RegionOverlay, { type PdfRegion } from "./RegionOverlay.vue";
 
 const props = withDefaults(defineProps<{
@@ -38,6 +39,24 @@ const selectedId = ref<string | null>(null);
 const drawing = ref<{ x: number; y: number } | null>(null);
 const draft = ref<PdfRegionBounds | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
+const pageElement = ref<HTMLElement | null>(null);
+let resizeObserver: ResizeObserver | null = null;
+let resizeFrame: number | null = null;
+let displayWidth = 0;
+let displayDensity = 1;
+
+function refreshDisplay(): void {
+  const width = pageElement.value?.clientWidth ?? 0;
+  const density = window.devicePixelRatio || 1;
+  if (width === displayWidth && density === displayDensity) return;
+  displayWidth = width;
+  displayDensity = density;
+  if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = null;
+    void renderPdfPage();
+  });
+}
 const renderedPage = ref(false);
 const renderError = ref<string | null>(null);
 let generation = 0;
@@ -128,7 +147,9 @@ function setRotation(value: number): void {
 
 async function renderPdfPage(): Promise<void> {
   const request = ++generation;
-  const url = props.pdfUrl, pageNumber = currentPage.value, scale = zoom.value;
+  const url = props.pdfUrl, pageNumber = currentPage.value, detailZoom = zoom.value;
+  const width = pageElement.value?.clientWidth ?? 0;
+  const density = window.devicePixelRatio || 1;
   renderedPage.value = false;
   renderError.value = null;
   cancelDrawing();
@@ -150,11 +171,13 @@ async function renderPdfPage(): Promise<void> {
     if (request !== generation) return;
     const page = await document.getPage(pageNumber);
     if (request !== generation) return;
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = pdfRenderScale(baseViewport, width, density, detailZoom);
     const viewport = page.getViewport({ scale });
     // Each request renders off screen; a cancelled task cannot paint a newer page.
     const buffer = window.document.createElement("canvas");
-    buffer.width = Math.ceil(viewport.width);
-    buffer.height = Math.ceil(viewport.height);
+    buffer.width = Math.max(1, Math.floor(viewport.width));
+    buffer.height = Math.max(1, Math.floor(viewport.height));
     const context = buffer.getContext("2d");
     if (!context) throw new Error("Canvas is unavailable");
     const task = page.render({ canvasContext: context, viewport });
@@ -189,8 +212,24 @@ watch([currentPage, zoom], () => { void renderPdfPage(); }, { flush: "sync" });
 watch(rotation, cancelDrawing, { flush: "sync" });
 watch(() => [props.selectionMode, props.readOnly], cancelDrawing, { flush: "sync" });
 watch(() => props.pageCount, () => { currentPage.value = clampPage(currentPage.value); });
-onBeforeUnmount(() => { generation++; renderTask?.cancel(); disposeDocument(); });
-onMounted(() => { void renderPdfPage(); });
+onBeforeUnmount(() => {
+  generation++;
+  resizeObserver?.disconnect();
+  window.removeEventListener("resize", refreshDisplay);
+  if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+  renderTask?.cancel();
+  disposeDocument();
+});
+onMounted(() => {
+  displayWidth = pageElement.value?.clientWidth ?? 0;
+  displayDensity = window.devicePixelRatio || 1;
+  if (typeof ResizeObserver !== "undefined" && pageElement.value) {
+    resizeObserver = new ResizeObserver(refreshDisplay);
+    resizeObserver.observe(pageElement.value);
+  }
+  window.addEventListener("resize", refreshDisplay);
+  void renderPdfPage();
+});
 </script>
 
 <template>
@@ -212,6 +251,7 @@ onMounted(() => { void renderPdfPage(); });
     <div class="pdf-page-shell" :class="{ 'is-rendered': renderedPage }">
       <div
         class="pdf-page"
+        ref="pageElement"
         data-pdf-page
         :data-page-number="currentPage"
         :data-selection-mode="selectionMode && renderedPage && rotation === 0 ? 'true' : 'false'"
@@ -247,7 +287,7 @@ onMounted(() => { void renderPdfPage(); });
 </template>
 
 <style scoped>
-.pdf-review-canvas { display: grid; gap: 12px; color: var(--ink-soft); }
+.pdf-review-canvas { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 12px; color: var(--ink-soft); }
 .canvas-toolbar { align-items: flex-end; font-size: 13px; }
 .canvas-toolbar .form-control { min-width: 4rem; }
 .page-thumbnails { display: flex; gap: 6px; overflow-x: auto; }
