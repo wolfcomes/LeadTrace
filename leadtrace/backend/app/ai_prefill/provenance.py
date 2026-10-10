@@ -92,6 +92,8 @@ def create_provenance_router(settings: Settings):
         require_request_csrf(principal,csrf_token,settings.session_secret.get_secret_value())
         try:
             with session.begin():
+                from app.workspaces.history import lock_workspace
+                if lock_workspace(session,workspace_id) is None:raise WorkspaceNotFoundError('Resource not found')
                 a=service.get_workspace(session,workspace_id=workspace_id,actor=principal)
                 w=session.scalar(select(PaperWorkspace).where(PaperWorkspace.id==workspace_id).with_for_update())
                 if w.version!=body.expected_workspace_version:raise APIError(409,'WORKSPACE_VERSION_CONFLICT','Workspace version changed')

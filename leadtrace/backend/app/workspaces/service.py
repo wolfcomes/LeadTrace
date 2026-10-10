@@ -150,7 +150,7 @@ class WorkspaceService:
                 PaperWorkspace.review_task_id == ReviewTask.id,
             )
             .join(Paper, Paper.id == ReviewTask.paper_id)
-            .where(ReviewTask.assigned_reviewer_id == actor_id)
+            .where(ReviewTask.assigned_reviewer_id == actor_id, Paper.removed_at.is_(None))
             .order_by(ReviewTask.created_at, ReviewTask.id)
         ).all()
         return [
@@ -171,7 +171,7 @@ class WorkspaceService:
             .join(ReviewTask, ReviewTask.id == PaperWorkspace.review_task_id)
             .join(Paper, Paper.id == PaperWorkspace.paper_id)
             .join(PaperSource, PaperSource.id == Paper.source_id)
-            .where(PaperWorkspace.id == workspace_id)
+            .where(PaperWorkspace.id == workspace_id, Paper.removed_at.is_(None))
         ).one_or_none()
         if row is None:
             raise WorkspaceNotFoundError("Resource not found")

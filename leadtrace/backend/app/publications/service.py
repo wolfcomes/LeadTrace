@@ -112,7 +112,7 @@ class PublicationService:
                 AdminDecision,
                 AdminDecision.submission_id == PaperSubmission.id,
             )
-            .where(AdminDecision.id.is_(None))
+            .where(AdminDecision.id.is_(None), Paper.removed_at.is_(None))
             .order_by(PaperSubmission.submitted_at, PaperSubmission.id)
         )
         return [PendingSubmission(submission, paper) for submission, paper in rows]
@@ -129,7 +129,7 @@ class PublicationService:
         if submission is None:
             raise DecisionNotFoundError("Resource not found")
         paper = session.get(Paper, submission.paper_id)
-        if paper is None:
+        if paper is None or paper.removed_at is not None:
             raise DecisionNotFoundError("Resource not found")
         boundary = session.scalar(
             select(ChangeEvent).where(
@@ -198,6 +198,7 @@ class PublicationService:
                 PublishedPaperVersion,
                 PublishedPaperVersion.id == Paper.current_published_version_id,
             )
+            .where(Paper.removed_at.is_(None))
             .order_by(PublishedPaperVersion.published_at, Paper.id)
         )
         return [PublishedPaper(paper, version) for paper, version in rows]
@@ -214,7 +215,7 @@ class PublicationService:
                 PublishedPaperVersion,
                 PublishedPaperVersion.id == Paper.current_published_version_id,
             )
-            .where(Paper.id == paper_id)
+            .where(Paper.id == paper_id, Paper.removed_at.is_(None))
         ).one_or_none()
         if row is None:
             raise DecisionNotFoundError("Resource not found")
@@ -270,6 +271,10 @@ class PublicationService:
         if len(key) > 255:
             raise ValueError("idempotency_key must not exceed 255 characters")
 
+        paper_id = session.scalar(select(PaperSubmission.paper_id).where(PaperSubmission.id == submission_id))
+        paper = session.scalar(select(Paper).where(Paper.id == paper_id).with_for_update().execution_options(populate_existing=True))
+        if paper is None or paper.removed_at is not None:
+            raise DecisionNotFoundError("Resource not found")
         submission = session.scalar(
             select(PaperSubmission)
             .where(PaperSubmission.id == submission_id)

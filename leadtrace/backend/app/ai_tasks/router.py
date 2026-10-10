@@ -3,6 +3,7 @@ from fastapi import APIRouter,Depends,Header,Query,Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.ai_tasks import service
+from app.papers.visibility import visible_paper_ids
 from app.ai_tasks.models import AiTask
 from app.workspaces.models import PaperWorkspace, WorkspaceState
 from app.ai_tasks.contracts import StartTask,RetryTask,LimitUpdate,RepairRequest,AcceptRepair
@@ -18,11 +19,11 @@ def create_ai_tasks_router(settings:Settings):
     permission=require_permission(Action.MANAGE_PAPER_CATALOG)
     def csrf(p,token):require_request_csrf(p,token,settings.session_secret.get_secret_value())
     def load(session,id,lock=False):
-        q=select(AiTask).where(AiTask.id==id)
+        q=select(AiTask).where(AiTask.id==id,AiTask.paper_id.in_(visible_paper_ids()))
         job=session.scalar(q.with_for_update() if lock else q)
         if not job:raise APIError(404,'RESOURCE_NOT_FOUND','Task not found')
         return job
-    def error(e):return APIError(409,e.code,str(e))
+    def error(e):return APIError(404 if e.code=="PAPER_NOT_FOUND" else 409,e.code,str(e))
     @router.get('/api/v2/admin/ai-tasks/options')
     @declare_route_access(RouteAccess.PERMISSION,Action.MANAGE_PAPER_CATALOG)
     def get_options(session:Session=Depends(get_db_session),principal:Principal=Depends(permission)):
@@ -37,7 +38,7 @@ def create_ai_tasks_router(settings:Settings):
     @declare_route_access(RouteAccess.PERMISSION,Action.MANAGE_PAPER_CATALOG)
     def list_jobs(paper_id:UUID|None=None,limit:int=Query(default=100,ge=1,le=500),session:Session=Depends(get_db_session),principal:Principal=Depends(permission)):
         with session.begin():
-            query=select(AiTask).join(PaperWorkspace,PaperWorkspace.id==AiTask.workspace_id).where(PaperWorkspace.state!=WorkspaceState.ARCHIVED)
+            query=select(AiTask).join(PaperWorkspace,PaperWorkspace.id==AiTask.workspace_id).where(PaperWorkspace.state!=WorkspaceState.ARCHIVED,AiTask.paper_id.in_(visible_paper_ids()))
             if paper_id:query=query.where(AiTask.paper_id==paper_id)
             jobs=list(session.scalars(query.order_by(AiTask.created_at.desc(),AiTask.id).limit(limit)))
             return {'items':[service.job_response(session,j) for j in jobs],'total':len(jobs),**service.options(session,settings)}

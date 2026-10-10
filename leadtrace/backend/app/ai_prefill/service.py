@@ -190,11 +190,9 @@ class AiPrefillService:
         engine: str,
         engine_version: str,
     ) -> AiQueueResult:
-        workspace = session.scalar(
-            select(PaperWorkspace)
-            .where(PaperWorkspace.id == workspace_id)
-            .with_for_update()
-        )
+        from app.workspaces.history import lock_workspace
+        context = lock_workspace(session, workspace_id)
+        workspace = context.workspace if context else None
         if workspace is None:
             raise AiPrefillNotFoundError("Workspace not found")
         requester = session.get(User, requested_by_id)

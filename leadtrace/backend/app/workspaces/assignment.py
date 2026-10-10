@@ -105,7 +105,7 @@ class AssignmentService:
         paper = session.scalar(
             select(Paper).where(Paper.id == paper_id).with_for_update()
         )
-        if paper is None:
+        if paper is None or paper.removed_at is not None:
             raise PaperNotFoundError("Paper not found")
 
         reviewer = session.scalar(

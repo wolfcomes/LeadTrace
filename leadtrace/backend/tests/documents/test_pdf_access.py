@@ -236,3 +236,20 @@ def test_source_pdf_closes_verified_snapshot_on_client_disconnect(
 
     assert len(snapshots) == 1
     asyncio.run(assert_disconnect_closes_snapshot())
+
+
+def test_removed_paper_pdf_is_unavailable_even_to_admin(document_fixture):
+    f = document_fixture
+    response = f.client.post('/api/v1/auth/login', json={'username':'document.admin','password':'Document test password 2026!'})
+    headers = {'X-CSRF-Token': response.json()['csrf_token']}
+    url = f'/api/v2/papers/{f.paper_id}/source-pdf'
+    assert f.client.get(url).status_code == 200
+    info = f.client.get(f'/api/v2/admin/papers/{f.paper_id}/management').json()
+    response = f.client.request('DELETE', f'/api/v2/admin/papers/{f.paper_id}', headers=headers,
+        json={'reason':'Confirmed out of scope','confirm_paper_key':info['paper_key'],
+              'expected_workspace_id':info['workspace_id'], 'expected_workspace_version':info['workspace_version'],
+              'expected_task_version':info['task_version']})
+    assert response.status_code == 200, response.text
+    assert f.client.get(url).status_code == 404
+    assert f.client.get(url, headers={'Range':'bytes=0-10'}).status_code == 404
+    assert f.source_path.read_bytes() == f.payload

@@ -11,6 +11,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.assets.models import Asset
+from app.papers.visibility import visible_asset, visible_paper_ids
+from app.papers.models import Paper
 from app.audit.models import AuditEvent
 from app.audit.service import AuditService
 from app.catalog.models import PaperSource
@@ -124,20 +126,21 @@ def _safe_asset(asset: Asset) -> dict[str, object]:
 def _asset_references(session: Session, asset: Asset) -> list[dict[str, object]]:
     references: list[dict[str, object]] = []
     for source in session.scalars(
-        select(PaperSource).where(PaperSource.asset_id == asset.id)
+        select(PaperSource).join(Paper, Paper.source_id == PaperSource.id).where(PaperSource.asset_id == asset.id, Paper.removed_at.is_(None))
     ):
         references.append(
             {"kind": "paper_source", "id": str(source.id), "role": "source_pdf"}
         )
     for structure in session.scalars(
-        select(Structure).where(Structure.depiction_asset_id == asset.id)
+        select(Structure).where(Structure.depiction_asset_id == asset.id, Structure.paper_id.in_(visible_paper_ids()))
     ):
         references.append(
             {"kind": "structure", "id": str(structure.id), "role": "depiction"}
         )
     for source_image in session.scalars(
         select(StructureSourceImage).where(
-            StructureSourceImage.crop_asset_id == asset.id
+            StructureSourceImage.crop_asset_id == asset.id,
+            StructureSourceImage.paper_id.in_(visible_paper_ids()),
         )
     ):
         references.append(
@@ -148,14 +151,15 @@ def _asset_references(session: Session, asset: Asset) -> list[dict[str, object]]
             }
         )
     for evidence in session.scalars(
-        select(Evidence).where(Evidence.crop_asset_id == asset.id)
+        select(Evidence).where(Evidence.crop_asset_id == asset.id, Evidence.paper_id.in_(visible_paper_ids()))
     ):
         references.append(
             {"kind": "evidence", "id": str(evidence.id), "role": "crop"}
         )
     for job in session.scalars(
         select(CropJob).where(
-            (CropJob.asset_id == asset.id) | (CropJob.source_asset_id == asset.id)
+            (CropJob.asset_id == asset.id) | (CropJob.source_asset_id == asset.id),
+            visible_asset(CropJob.source_asset_id),
         )
     ):
         references.append(
@@ -166,7 +170,7 @@ def _asset_references(session: Session, asset: Asset) -> list[dict[str, object]]
             }
         )
     for derivative in session.scalars(
-        select(Asset).where(Asset.source_asset_id == asset.id)
+        select(Asset).where(Asset.source_asset_id == asset.id, visible_asset(Asset.id))
     ):
         references.append(
             {
@@ -216,7 +220,7 @@ def create_operations_router(
         principal: Principal = Depends(require_admin),
     ) -> list[dict[str, object]]:
         del principal
-        statement = select(Asset).order_by(Asset.created_at.desc(), Asset.id)
+        statement = select(Asset).where(visible_asset(Asset.id)).order_by(Asset.created_at.desc(), Asset.id)
         if category:
             statement = statement.where(Asset.category == category)
         if integrity:
@@ -234,7 +238,7 @@ def create_operations_router(
     ) -> dict[str, object]:
         del principal
         with session.begin():
-            asset = session.get(Asset, asset_id)
+            asset = session.scalar(select(Asset).where(Asset.id == asset_id, visible_asset(Asset.id)))
             if asset is None:
                 raise HTTPException(status_code=404, detail="Asset not found")
             return {
@@ -275,7 +279,7 @@ def create_operations_router(
         principal: Principal = Depends(require_admin),
     ) -> list[dict[str, object]]:
         del principal
-        statement = select(CropJob).order_by(CropJob.created_at.desc(), CropJob.id)
+        statement = select(CropJob).where(visible_asset(CropJob.source_asset_id)).order_by(CropJob.created_at.desc(), CropJob.id)
         if status is not None:
             statement = statement.where(CropJob.status == status)
         with session.begin():
@@ -303,7 +307,7 @@ def create_operations_router(
             )
         with session.begin():
             job = session.scalar(
-                select(CropJob).where(CropJob.id == job_id).with_for_update()
+                select(CropJob).where(CropJob.id == job_id, visible_asset(CropJob.source_asset_id)).with_for_update()
             )
             if job is None:
                 raise HTTPException(status_code=404, detail="Job not found")

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import (
     CheckConstraint,
+    DateTime,
     Enum,
     ForeignKey,
     ForeignKeyConstraint,
@@ -29,6 +31,11 @@ class PaperCatalogState(StrEnum):
 class Paper(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "papers"
     __table_args__ = (
+        CheckConstraint(
+            "(removed_at IS NULL AND removed_by_id IS NULL AND removal_reason IS NULL) OR "
+            "(removed_at IS NOT NULL AND removed_by_id IS NOT NULL AND removal_reason IS NOT NULL AND btrim(removal_reason) <> '')",
+            name="ck_papers_removal_metadata",
+        ),
         UniqueConstraint("paper_key", name="uq_papers_paper_key"),
         UniqueConstraint("source_id", name="uq_papers_source"),
         UniqueConstraint("doi", name="uq_papers_doi"),
@@ -58,6 +65,12 @@ class Paper(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         Index("ix_papers_current_published_version", "current_published_version_id"),
     )
+
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_by_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    removal_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     paper_key: Mapped[str] = mapped_column(String(128), nullable=False)
     source_id: Mapped[UUID] = mapped_column(

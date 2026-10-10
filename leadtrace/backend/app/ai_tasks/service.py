@@ -58,7 +58,7 @@ def options(session,settings):
 
 def target(session,paper_id):
     paper=session.scalar(select(Paper).where(Paper.id==paper_id).with_for_update())
-    if not paper:raise TaskError('PAPER_NOT_FOUND','Article not found')
+    if not paper or paper.removed_at is not None:raise TaskError('PAPER_NOT_FOUND','Article not found')
     workspace=session.scalar(select(PaperWorkspace).join(ReviewTask,ReviewTask.id==PaperWorkspace.review_task_id).where(PaperWorkspace.paper_id==paper_id,ReviewTask.status.notin_(['archived','approved'])).with_for_update(of=PaperWorkspace))
     task=session.scalar(select(ReviewTask).where(ReviewTask.id==workspace.review_task_id).with_for_update()) if workspace else None
     return paper,workspace,task

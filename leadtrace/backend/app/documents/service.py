@@ -82,7 +82,7 @@ class DocumentService:
             select(Paper, PaperSource, Asset)
             .join(PaperSource, PaperSource.id == Paper.source_id)
             .join(Asset, Asset.id == PaperSource.asset_id)
-            .where(Paper.id == paper_id)
+            .where(Paper.id == paper_id, Paper.removed_at.is_(None))
         ).one_or_none()
         if row is None:
             raise DocumentNotFound

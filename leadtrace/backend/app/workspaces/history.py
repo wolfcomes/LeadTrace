@@ -37,7 +37,9 @@ def lock_workspace(session: Session, workspace_id: UUID) -> LockedWorkspace | No
     paper_id = session.scalar(select(PaperWorkspace.paper_id).where(PaperWorkspace.id == workspace_id))
     if paper_id is None:
         return None
-    session.scalar(select(Paper).where(Paper.id == paper_id).with_for_update())
+    paper = session.scalar(select(Paper).where(Paper.id == paper_id).with_for_update().execution_options(populate_existing=True))
+    if paper is None or paper.removed_at is not None:
+        return None
     row = session.execute(
         select(PaperWorkspace, ReviewTask, Paper)
         .join(ReviewTask, ReviewTask.id == PaperWorkspace.review_task_id)

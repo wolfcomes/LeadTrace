@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
+from app.papers.visibility import visible_paper_ids
 from sqlalchemy.orm import Session
 
 from app.ai_prefill.artifact_store import ArtifactConflictError, ArtifactStore
@@ -232,6 +233,7 @@ def create_assistance_router(settings: Settings) -> APIRouter:
             receipt = session.scalar(
                 select(ApplicationReceipt).where(
                     ApplicationReceipt.application_id == application_id,
+                    ApplicationReceipt.paper_id.in_(visible_paper_ids()),
                     ApplicationReceipt.instance_id == settings.preview_instance_id,
                 )
             )

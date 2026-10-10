@@ -133,7 +133,7 @@ def test_legacy_admin_review_workflow_revision_contract(
     config = _alembic_config(empty_postgresql_database_url)
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "0033_admin_ai_tasks"
+    assert script.get_current_head() == "0034_paper_removal"
     reviewer_revision = script.get_revision("0018_reviewer_scientific_workspace")
     assert reviewer_revision is not None
     assert reviewer_revision.down_revision == "0017_unique_active_review_task"
@@ -977,5 +977,24 @@ def test_lineage_type_migration_defaults_checks_and_downgrades(empty_postgresql_
         command.downgrade(config, "0026_ai_prefill_preview_receipts")
         assert "lineage_type" not in {item["name"] for item in inspect(engine).get_columns("lineages")}
         command.upgrade(config, "head")
+    finally:
+        engine.dispose()
+
+
+def test_paper_removal_migration_is_additive_and_nullable(empty_postgresql_database_url):
+    config = _alembic_config(empty_postgresql_database_url)
+    command.upgrade(config, '0033_admin_ai_tasks')
+    engine = create_database_engine(empty_postgresql_database_url)
+    try:
+        before = {column['name'] for column in inspect(engine).get_columns('papers')}
+        command.upgrade(config, '0034_paper_removal')
+        schema = inspect(engine)
+        columns = {column['name']: column for column in schema.get_columns('papers')}
+        added = {'removed_at', 'removed_by_id', 'removal_reason'}
+        assert set(columns) == before | added
+        assert all(columns[name]['nullable'] for name in added)
+        assert any(fk['constrained_columns'] == ['removed_by_id'] and fk['referred_table'] == 'users'
+                   for fk in schema.get_foreign_keys('papers'))
+        assert any(c['name'] == 'ck_papers_removal_metadata' for c in schema.get_check_constraints('papers'))
     finally:
         engine.dispose()

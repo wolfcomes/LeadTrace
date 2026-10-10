@@ -19,6 +19,7 @@ from app.catalog.schemas import (
 from app.config import Settings
 from app.database import get_db_session
 from app.papers.models import Paper
+from app.papers.removal import RemovePaperRequest, remove_paper
 from app.security.permissions import (
     RouteAccess,
     declare_route_access,
@@ -197,7 +198,7 @@ def create_catalog_router(settings: Settings) -> APIRouter:
     ) -> PaperCatalogPage:
         del principal
         with session.begin():
-            filters = []
+            filters = [Paper.removed_at.is_(None)]
             if search is not None and search.strip():
                 pattern = _literal_search_pattern(search.strip())
                 filters.append(or_(
@@ -252,7 +253,7 @@ def create_catalog_router(settings: Settings) -> APIRouter:
             row = session.execute(
                 select(Paper, PaperSource)
                 .join(PaperSource, PaperSource.id == Paper.source_id)
-                .where(Paper.id == paper_id)
+                .where(Paper.id == paper_id, Paper.removed_at.is_(None))
             ).one_or_none()
             reviews = _review_summaries(
                 session,
@@ -318,6 +319,20 @@ def create_catalog_router(settings: Settings) -> APIRouter:
             result.workspace,
             result.sections,
         )
+
+    @router.delete("/{paper_id}")
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_PAPER_CATALOG)
+    def delete_paper(
+        paper_id: UUID, payload: RemovePaperRequest, request: Request,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(require_catalog_management),
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    ):
+        require_request_csrf(principal, csrf_token, settings.session_secret.get_secret_value())
+        with session.begin():
+            return remove_paper(session, paper_id=paper_id, actor_id=principal.user_id,
+                payload=payload, request_id=request_id_for(request),
+                ip_address=resolve_remote_address(request, settings))
 
     return router
 

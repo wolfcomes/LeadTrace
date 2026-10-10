@@ -344,7 +344,7 @@ class PreviewApplicationService:
         if paper_id is not None:
             statement = statement.where(Paper.id == paper_id)
         paper = session.scalar(statement.with_for_update())
-        if paper is None:
+        if paper is None or paper.removed_at is not None:
             raise AiPrefillNotFoundError("Paper not found")
         return paper
 

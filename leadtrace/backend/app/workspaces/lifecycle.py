@@ -55,7 +55,7 @@ def _paper(session,paper_id,lock=True):
     query=select(Paper).where(Paper.id==paper_id)
     if lock:query=query.with_for_update()
     paper=session.scalar(query)
-    if paper is None:raise PaperNotFoundError('Paper not found')
+    if paper is None or paper.removed_at is not None:raise PaperNotFoundError('Paper not found')
     return paper
 
 

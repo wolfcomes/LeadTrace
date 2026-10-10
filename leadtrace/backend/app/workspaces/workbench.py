@@ -47,7 +47,8 @@ def create_workbench_router(settings):
         try:
             # Shared workspace lock serializes a content change against viewing/layout saves.
             if write:
-                session.scalar(select(PaperWorkspace).where(PaperWorkspace.id==workspace_id).with_for_update())
+                from app.workspaces.history import lock_workspace
+                if lock_workspace(session,workspace_id) is None:raise WorkspaceNotFoundError("Resource not found")
             aggregate=service.get_workspace(session,workspace_id=workspace_id,actor=actor)
             if write:
                 if actor.role != UserRole.REVIEWER:raise WorkspaceForbiddenError('Permission denied')

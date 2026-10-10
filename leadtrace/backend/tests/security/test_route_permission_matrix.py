@@ -285,7 +285,7 @@ def test_retired_v1_product_urls_return_not_found(
         if isinstance(route, APIRoute)
         and route.path.startswith("/api/v2/admin/papers")
     ]
-    assert len(catalog_routes) == 9
+    assert len(catalog_routes) == 10
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION

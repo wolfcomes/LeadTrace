@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.papers.visibility import visible_paper_ids
 from app.ai_prefill.models import AiExtractionRun, AiExtractionRunStatus
 from app.ai_prefill.schemas import (
     AiExtractionRunResponse,
@@ -42,7 +43,7 @@ def _default_dispatch(run_id: UUID, dispatch_token: UUID) -> None:
 def _workspace_for_paper(session: Session, paper_id: UUID) -> PaperWorkspace:
     workspace = session.scalar(
         select(PaperWorkspace)
-        .where(PaperWorkspace.paper_id == paper_id)
+        .where(PaperWorkspace.paper_id == paper_id, PaperWorkspace.paper_id.in_(visible_paper_ids()))
         .order_by(PaperWorkspace.created_at.desc(), PaperWorkspace.id.desc())
     )
     if workspace is None:

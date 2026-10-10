@@ -10,7 +10,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.assets.models import AssetCategory, AssetIntegrityState
+from app.papers.visibility import visible_asset
+from app.assets.models import Asset, AssetCategory, AssetIntegrityState
 from app.assets.repository import AssetRepository
 from app.assets.responses import SnapshotStreamingResponse
 from app.assets.schemas import AssetResponse
@@ -61,7 +62,7 @@ def create_assets_router() -> APIRouter:
         snapshot: BinaryIO | None = None
         try:
             with session.begin():
-                asset = repository.get(session, asset_id)
+                asset = session.scalar(select(Asset).where(Asset.id == asset_id, visible_asset(Asset.id)))
                 if (
                     asset is None
                     or asset.integrity_state is not AssetIntegrityState.VERIFIED
@@ -134,7 +135,7 @@ def create_assets_router() -> APIRouter:
         principal: Principal = Depends(require_file_management),
     ) -> AssetResponse:
         with session.begin():
-            asset = repository.get(session, asset_id)
+            asset = session.scalar(select(Asset).where(Asset.id == asset_id, visible_asset(Asset.id)))
             if asset is None:
                 raise HTTPException(status_code=404, detail="Asset not found")
             return AssetResponse.model_validate(asset)
