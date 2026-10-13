@@ -233,7 +233,7 @@ export function lineageGraphPair(record: PairedRecord<LineageRecord>): {
   const positions = new Map(
     ids.map((id, i) => [
       id,
-      { x: (i % columns) * 290 + 150, y: Math.floor(i / columns) * 230 + 130 },
+      { x: (i % columns) * 170 + 80, y: Math.floor(i / columns) * 120 + 60 },
     ]),
   );
   function graph(side: "before" | "after"): FrozenGraph {

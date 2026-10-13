@@ -9,7 +9,7 @@ import {
   watch,
 } from "vue";
 import { t, locale } from "../i18n";
-import { assetUrl, changeLabels } from "./recordLabels";
+import { changeLabels } from "./recordLabels";
 import type { FrozenGraph } from "./recordComparison";
 export interface GraphViewport {
   zoom: number;
@@ -21,7 +21,6 @@ const props = defineProps<{
   side: "before" | "after";
   viewport: GraphViewport;
   selectedId: string;
-  structures: boolean;
   unionBounds: { width: number; height: number };
 }>();
 const emit = defineEmits<{
@@ -70,7 +69,6 @@ function elements() {
       data: {
         id: n.id,
         label: `${n.label}${n.change !== "unchanged" && n.change !== "unknown" ? "\n" + t(changeLabels[n.change]) : ""}`,
-        image: n.depiction ? assetUrl(n.depiction) : "",
         change: n.change,
       },
       position: n.position,
@@ -99,31 +97,18 @@ function styles(): StylesheetStyle[] {
         "background-color": color("--surface-raised"),
         "border-color": color("--ink-muted"),
         "border-width": 2,
-        width: props.structures ? 178 : 88,
-        height: props.structures ? 130 : 58,
+        width: 88,
+        height: 48,
         shape: "round-rectangle",
         label: "data(label)",
         "text-wrap": "wrap",
         "font-family": color("--font-sans"),
-        "font-size": props.structures ? 13 : 12,
-        "text-valign": props.structures ? "bottom" : "center",
-        "text-margin-y": props.structures ? 8 : 0,
+        "font-size": 12,
+        "text-valign": "center",
+        "text-margin-y": 0,
         color: color("--ink"),
       },
     },
-    ...(props.structures
-      ? [
-          {
-            selector: 'node[image != ""]',
-            style: {
-              "background-image": "data(image)",
-              "background-fit": "contain",
-              "background-width": "90%",
-              "background-height": "90%",
-            },
-          } as StylesheetStyle,
-        ]
-      : []),
     {
       selector: "edge",
       style: {
@@ -150,7 +135,7 @@ function styles(): StylesheetStyle[] {
         "line-color": color("--teal"),
         "target-arrow-color": color("--teal"),
         "border-width": 4,
-        width: props.structures ? 178 : 88,
+        width: 88,
       },
     },
     { selector: 'edge[change = "added"]', style: { width: 4 } },
@@ -228,7 +213,7 @@ async function render() {
   applyViewport();
   select();
 }
-watch(() => [props.graph, props.structures, locale.value], render, {
+watch(() => [props.graph, locale.value], render, {
   deep: true,
 });
 watch(() => props.viewport, applyViewport, { deep: true });
@@ -254,6 +239,7 @@ onBeforeUnmount(() => {
   <section
     class="frozen-graph"
     :data-lineage-graph-side="side"
+    data-graph-presentation="points"
     :data-node-count="graph.nodes.length"
     :data-edge-count="graph.edges.length"
     :data-selected-id="selectedId"
@@ -316,7 +302,7 @@ onBeforeUnmount(() => {
   background: var(--surface);
 }
 .frozen-graph-canvas {
-  height: 390px;
+  height: 280px;
   width: 100%;
 }
 .graph-local-controls {

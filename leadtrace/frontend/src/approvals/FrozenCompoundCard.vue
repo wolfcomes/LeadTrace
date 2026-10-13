@@ -4,6 +4,7 @@ import { t } from "../i18n";
 import type { Row, ScientificChange } from "./comparison";
 import type { CompoundRecord } from "./recordComparison";
 import { assetUrl, changeLabels, reviewState, textValue } from "./recordLabels";
+import ReviewDisclosure from "./ReviewDisclosure.vue";
 import FrozenEvidence from "./FrozenEvidence.vue";
 const props = defineProps<{
   record: CompoundRecord | null;
@@ -41,12 +42,26 @@ function isChanged(domain: string, id: unknown, key?: string) {
   const c = change(domain, id);
   return Boolean(c && (!key || c.fields.some((f) => f.key === key)));
 }
+function activityChanged(id: string) {
+  const row = activity(id);
+  return (
+    !props.available ||
+    isChanged("activities", id) ||
+    isChanged("evidence", row?.evidence_id) ||
+    Boolean(row?.review_hint) ||
+    row?.review_status === "unresolved"
+  );
+}
 function evidence(id: unknown) {
   return props.record?.evidence.find((x) => x.id === id);
 }
 function evidenceLabel(row: Row) {
   const c = change("evidence", row.id);
-  return c ? changeLabels[c.kind] : "证据未变";
+  return c
+    ? changeLabels[c.kind]
+    : props.available
+      ? "证据未变"
+      : "比较起点不可用";
 }
 </script>
 <template>
@@ -74,28 +89,38 @@ function evidenceLabel(row: Row) {
             }}</span
           >
         </div>
-        <p
-          :class="{
-            'field-modified': isChanged(
-              'compounds',
-              record.compound.id,
-              'display_name',
-            ),
-          }"
+        <ReviewDisclosure
+          :id="`identity:${record.compound.id}`"
+          :label="t('名称与说明')"
+          :expanded="
+            !available ||
+            isChanged('compounds', record.compound.id, 'display_name') ||
+            isChanged('compounds', record.compound.id, 'description')
+          "
         >
-          {{ record.compound.display_name }}
-        </p>
-        <p
-          :class="{
-            'field-modified': isChanged(
-              'compounds',
-              record.compound.id,
-              'description',
-            ),
-          }"
-        >
-          {{ record.compound.description }}
-        </p>
+          <p
+            :class="{
+              'field-modified': isChanged(
+                'compounds',
+                record.compound.id,
+                'display_name',
+              ),
+            }"
+          >
+            {{ record.compound.display_name }}
+          </p>
+          <p
+            :class="{
+              'field-modified': isChanged(
+                'compounds',
+                record.compound.id,
+                'description',
+              ),
+            }"
+          >
+            {{ record.compound.description }}
+          </p>
+        </ReviewDisclosure>
         <p v-if="record.compound.review_hint" class="record-issue">
           {{ record.compound.review_hint }}
         </p>
@@ -105,8 +130,17 @@ function evidenceLabel(row: Row) {
         >
           {{ t("核对提示已解决") }}
         </p>
-        <div
+        <ReviewDisclosure
           v-for="highlight in record.highlights"
+          :id="`highlight:${highlight.id}`"
+          :label="reviewState(highlight.role ?? highlight.highlight_type)"
+          :expanded="
+            !available ||
+            isChanged('compound_highlights', highlight.id) ||
+            isChanged('evidence', highlight.evidence_id) ||
+            Boolean(highlight.review_hint) ||
+            highlight.review_status === 'unresolved'
+          "
           :key="String(highlight.id)"
           :class="{
             'field-modified': isChanged('compound_highlights', highlight.id),
@@ -131,12 +165,28 @@ function evidenceLabel(row: Row) {
             :current-source-sha="currentSourceSha"
             :change-label="evidenceLabel(evidence(highlight.evidence_id)!)"
           />
-        </div>
+        </ReviewDisclosure>
       </section>
       <section class="compound-structures">
         <h4>{{ t("分子结构") }}</h4>
-        <article
+        <ReviewDisclosure
           v-for="structure in record.structures"
+          :id="`structure:${structure.id}`"
+          :label="
+            t(
+              isChanged('structures', structure.id)
+                ? '分子结构 · 有修改'
+                : !available
+                  ? '分子结构'
+                  : '分子结构 · 未修改',
+            )
+          "
+          :expanded="
+            !available ||
+            isChanged('structures', structure.id) ||
+            structure.status === 'unresolved'
+          "
+          v-slot="{ open }"
           :key="String(structure.id)"
           :data-entity-type="'structures'"
           :class="{ 'field-modified': isChanged('structures', structure.id) }"
@@ -153,7 +203,9 @@ function evidenceLabel(row: Row) {
           </div>
           <img
             v-if="
-              structure.depiction_asset_id && !failed.has(String(structure.id))
+              open &&
+              structure.depiction_asset_id &&
+              !failed.has(String(structure.id))
             "
             data-rdkit-depiction
             :src="assetUrl(structure.depiction_asset_id)"
@@ -204,7 +256,7 @@ function evidenceLabel(row: Row) {
               >
             </dl>
           </details>
-        </article>
+        </ReviewDisclosure>
         <p v-if="!record.structures.length" class="section-empty">
           {{ t("该化合物尚无结构记录。") }}
         </p>
@@ -221,7 +273,9 @@ function evidenceLabel(row: Row) {
           :change-label="
             change('structure_source_images', image.id)
               ? changeLabels[change('structure_source_images', image.id)!.kind]
-              : '证据未变'
+              : !available
+                ? '比较起点不可用'
+                : '证据未变'
           "
         />
         <p v-if="!record.images.length" class="section-empty">
@@ -238,15 +292,25 @@ function evidenceLabel(row: Row) {
           :class="{ 'field-modified': isChanged('activities', id) }"
         >
           <div data-activity-content>
-            <template v-if="activity(id)"
-              ><div class="record-mini-heading">
-                <strong>{{ activity(id)!.assay_name }}</strong
-                ><span
-                  v-if="change('activities', id)"
-                  class="record-change-badge"
-                  >{{ t(changeLabels[change("activities", id)!.kind]) }}</span
-                >
-              </div>
+            <ReviewDisclosure
+              v-if="activity(id)"
+              :id="`activity:${id}`"
+              :label="String(activity(id)!.assay_name || t('活性与实验条件'))"
+              :expanded="activityChanged(id)"
+            >
+              <template #summary
+                ><span class="status-chip">{{
+                  t(
+                    isChanged("activities", id)
+                      ? changeLabels[change("activities", id)!.kind]
+                      : isChanged("evidence", activity(id)!.evidence_id)
+                        ? "证据更新"
+                        : !available
+                          ? "比较起点不可用"
+                          : "未修改",
+                  )
+                }}</span></template
+              >
               <p class="activity-result">
                 <span>{{ activity(id)!.metric }}</span
                 ><strong
@@ -257,10 +321,16 @@ function evidenceLabel(row: Row) {
                   {{ activity(id)!.unit }}</strong
                 >
               </p>
-              <p class="activity-context">
-                <span>{{ t("实验条件") }}</span> ·
-                {{ activity(id)!.context || "—" }}
-              </p>
+              <ReviewDisclosure
+                :id="`activity-context:${id}`"
+                :label="t('实验条件')"
+                :expanded="!available || isChanged('activities', id, 'context')"
+              >
+                <p class="activity-context">
+                  <span>{{ t("实验条件") }}</span> ·
+                  {{ activity(id)!.context || "—" }}
+                </p>
+              </ReviewDisclosure>
               <p v-if="activity(id)!.review_hint" class="record-issue">
                 {{ activity(id)!.review_hint }}
               </p>
@@ -277,12 +347,14 @@ function evidenceLabel(row: Row) {
                 :paper-id="paperId"
                 :current-source-sha="currentSourceSha"
                 :change-label="
-                  evidenceLabel(evidence(activity(id)!.evidence_id)!)
+                  isChanged('activities', id, 'evidence_id')
+                    ? '证据更新'
+                    : evidenceLabel(evidence(activity(id)!.evidence_id)!)
                 "
               />
               <p v-else class="section-empty">
                 {{ t("无关联证据") }}
-              </p></template
+              </p></ReviewDisclosure
             >
             <p v-else class="record-absent">
               {{ t(side === "before" ? "修改前无此条目" : "本次提交已删除") }}

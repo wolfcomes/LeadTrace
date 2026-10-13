@@ -41,7 +41,23 @@ describe("complete approval record presentation", () => {
     expect(after.text()).toContain("12.5");
     expect(before.text()).toContain("Human cells");
     expect(after.text()).toContain("IC50");
-    expect(wrapper.findAll("[data-evidence-thumbnail]")).toHaveLength(2);
+    expect(wrapper.findAll("[data-evidence-thumbnail]")).toHaveLength(0);
+    const structure = `[data-disclosure="structure:${ids.structureB}"]`;
+    expect(before.get(structure).attributes("open")).toBeUndefined();
+    expect(after.get(structure).attributes("open")).toBeUndefined();
+    await before.get(`${structure} > summary`).trigger("click");
+    expect(before.get(structure).attributes("open")).toBeDefined();
+    expect(after.get(structure).attributes("open")).toBeDefined();
+    expect(
+      after
+        .get(`[data-disclosure="activity:${ids.activity}"]`)
+        .attributes("open"),
+    ).toBeDefined();
+    expect(
+      after
+        .get(`[data-disclosure="activity-context:${ids.activity}"]`)
+        .attributes("open"),
+    ).toBeUndefined();
     await wrapper.get("[data-change-only]").setValue(false);
     expect(wrapper.findAll("[data-record-entry]")).toHaveLength(2);
   });
@@ -54,8 +70,10 @@ describe("complete approval record presentation", () => {
     expect(wrapper.find("[data-lineage-comparison]").exists()).toBe(true);
     expect(wrapper.get("[data-record-entry]").text()).toContain("Series A");
     expect(wrapper.findAll("[data-lineage-relation]")).toHaveLength(1);
+    expect(wrapper.find("[data-graph-mode]").exists()).toBe(false);
+    expect(wrapper.find("[data-rdkit-depiction]").exists()).toBe(false);
   });
-  it("displays a crop by default, explicit no-region fallback and blocked source mismatch", () => {
+  it("mounts crops only after expansion, preserves no-region fallback and source mismatch", async () => {
     const base = {
       evidence: frozenSnapshot.evidence[0],
       snapshot: frozenSnapshot,
@@ -63,6 +81,8 @@ describe("complete approval record presentation", () => {
       currentSourceSha: frozenSnapshot.source.sha256,
     };
     const crop = mount(FrozenEvidence, { props: base });
+    expect(crop.find("[data-evidence-thumbnail]").exists()).toBe(false);
+    await crop.get("[data-evidence-image] > summary").trigger("click");
     expect(crop.find("[data-evidence-thumbnail]").exists()).toBe(true);
     const noBox = mount(FrozenEvidence, {
       props: { ...base, evidence: { ...base.evidence, x0: null } },
@@ -97,6 +117,27 @@ describe("outstanding issue navigation", () => {
     expect(wrapper.get("[data-lineage-comparison]").text()).toContain(
       "Unchanged relation issue",
     );
+    expect(wrapper.get(".relation-side").element.children.length).toBe(4);
+    expect(wrapper.get(`[data-disclosure="relation:${ids.edge}"] .record-issue`).text()).toContain("Unchanged relation issue");
+  });
+  it("keeps an unchanged unresolved relation visible without a free-text hint", async () => {
+    const values = props();
+    values.snapshot = structuredClone(frozenSnapshot);
+    values.snapshot.lineage_edges[0].review_status = "unresolved" as never;
+    values.comparison.baseline_snapshot.lineage_edges[0].review_status =
+      "unresolved" as never;
+    const wrapper = mount(SubmissionComparison, {
+      props: values,
+      global: { stubs: { FrozenLineageGraph: true } },
+    });
+    await wrapper.get('[data-record-tab="lineages"]').trigger("click");
+    await wrapper.get("[data-lineage-relation]").trigger("click");
+    expect(
+      wrapper
+        .get(`[data-disclosure="relation:${ids.edge}"]`)
+        .attributes("open"),
+    ).toBeDefined();
+    expect(wrapper.get(".relation-side").element.children.length).toBe(4);
   });
   it("locates an unchanged activity issue in the complete compound entry", async () => {
     const values = props(),
@@ -157,6 +198,9 @@ describe("nested comparison dialogs", () => {
     expect(
       wrapper.get("[data-lineage-comparison]").attributes("aria-modal"),
     ).toBe("true");
+    await wrapper
+      .findAll("[data-evidence-image] > summary")[0]
+      .trigger("click");
     await wrapper.findAll("[data-enlarge-evidence]")[0].trigger("click");
     expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(2);
     window.dispatchEvent(

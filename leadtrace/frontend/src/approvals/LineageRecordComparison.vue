@@ -16,6 +16,7 @@ import FrozenLineageGraph, {
 import FrozenCompoundCard from "./FrozenCompoundCard.vue";
 import { useModalFocus } from "./useModalFocus";
 import { usePairedActivityAlignment } from "./usePairedActivityAlignment";
+import ReviewDisclosure from "./ReviewDisclosure.vue";
 import FrozenEvidence from "./FrozenEvidence.vue";
 const props = defineProps<{
   record: PairedRecord<LineageRecord>;
@@ -27,7 +28,6 @@ const props = defineProps<{
   initialSelection?: string;
 }>();
 const pair = computed(() => lineageGraphPair(props.record)),
-  structures = ref(true),
   linked = ref(true),
   expanded = ref(false),
   selectedId = ref("");
@@ -41,8 +41,8 @@ usePairedActivityAlignment(compoundPair, () => selectedId.value);
 const unionBounds = computed(() => {
   const nodes = [...pair.value.before.nodes, ...pair.value.after.nodes];
   return {
-    width: Math.max(300, ...nodes.map((x) => x.position.x + 150)),
-    height: Math.max(260, ...nodes.map((x) => x.position.y + 130)),
+    width: Math.max(160, ...nodes.map((x) => x.position.x + 80)),
+    height: Math.max(120, ...nodes.map((x) => x.position.y + 60)),
   };
 });
 const edges = computed(() => [
@@ -162,14 +162,7 @@ useModalFocus(expanded, modal);
         <p>{{ t("共有节点位置保持一致，左右展示完整 Lineage。") }}</p>
       </div>
       <div class="lineage-tools">
-        <button
-          class="button-secondary"
-          type="button"
-          data-graph-mode
-          @click="structures = !structures"
-        >
-          {{ t(structures ? "切换点线图" : "切换结构图") }}</button
-        ><label
+        <label
           ><input type="checkbox" v-model="linked" data-graph-sync />{{
             t("联动视图")
           }}</label
@@ -211,7 +204,21 @@ useModalFocus(expanded, modal);
               reviewState(record[side]!.lineage.lineage_type ?? "unspecified")
             }}</span
           >
-          <p>{{ record[side]?.lineage.description }}</p>
+          <ReviewDisclosure
+            v-if="record[side]?.lineage.description"
+            :id="`lineage-description:${record.id}`"
+            :label="t('Lineage 说明')"
+            :expanded="
+              !available ||
+              record.changes.some(
+                (c) =>
+                  c.domain === 'lineages' &&
+                  c.fields.some((f) => f.key === 'description'),
+              )
+            "
+          >
+            <p>{{ record[side]?.lineage.description }}</p>
+          </ReviewDisclosure>
           <p v-if="record[side]?.lineage.review_hint" class="record-issue">
             {{ record[side]?.lineage.review_hint }}
           </p>
@@ -219,7 +226,6 @@ useModalFocus(expanded, modal);
         <FrozenLineageGraph
           :graph="pair[side]"
           :side="side"
-          :structures="structures"
           :viewport="viewport[side]"
           :union-bounds="unionBounds"
           :selected-id="selectedId"
@@ -251,7 +257,7 @@ useModalFocus(expanded, modal);
         {{ t("下一处变化") }}
       </button>
     </nav>
-    <details class="lineage-entry-list" open>
+    <details class="lineage-entry-list">
       <summary>{{ t("关系与成员目录") }}</summary>
       <div class="lineage-select-list">
         <button
@@ -300,46 +306,65 @@ useModalFocus(expanded, modal);
         <header class="record-side-heading">
           {{ t(side === "before" ? "修改前关系详情" : "本次提交关系详情") }}
         </header>
-        <template v-if="edge(side)"
-          ><div class="relation-endpoints">
-            <div
-              v-for="endpoint in ['parent_compound_id', 'child_compound_id']"
-              :key="endpoint"
-            >
-              <strong>{{
-                t(
-                  endpoint === "parent_compound_id"
-                    ? "起始化合物"
-                    : "衍生化合物",
-                )
-              }}</strong
-              ><FrozenCompoundCard
-                :record="
-                  compoundRecord(
-                    side === 'before' ? before : after,
-                    String(edge(side)![endpoint]),
+        <template v-if="edge(side)">
+          <ReviewDisclosure
+            :id="`endpoints:${selectedId}`"
+            :label="t('两端化合物详情')"
+            v-slot="{ open }"
+          >
+            <div v-if="open" class="relation-endpoints">
+              <div
+                v-for="endpoint in ['parent_compound_id', 'child_compound_id']"
+                :key="endpoint"
+              >
+                <strong>{{
+                  t(
+                    endpoint === "parent_compound_id"
+                      ? "起始化合物"
+                      : "衍生化合物",
                   )
-                "
-                :snapshot="side === 'before' ? before : after"
-                :paper-id="paperId"
-                :current-source-sha="currentSourceSha"
-                :side="side"
-                :changes="record.changes"
-                :available="available"
-                compact
-              />
+                }}</strong
+                ><FrozenCompoundCard
+                  :record="
+                    compoundRecord(
+                      side === 'before' ? before : after,
+                      String(edge(side)![endpoint]),
+                    )
+                  "
+                  :snapshot="side === 'before' ? before : after"
+                  :paper-id="paperId"
+                  :current-source-sha="currentSourceSha"
+                  :side="side"
+                  :changes="record.changes"
+                  :available="available"
+                  compact
+                />
+              </div>
             </div>
-          </div>
-          <div class="relation-description">
-            <p>
-              <strong>{{ t("关系类型") }}</strong> ·
-              {{ edge(side)!.relation_type }}
-            </p>
-            <p>
-              <strong>{{ t("结构变化说明") }}</strong>
-            </p>
-            <p>{{ edge(side)!.modification_summary || "—" }}</p>
-            <p>{{ reviewState(edge(side)!.review_status) }}</p>
+          </ReviewDisclosure>
+          <ReviewDisclosure
+            :id="`relation:${selectedId}`"
+            :label="t('关系说明')"
+            :expanded="
+              !available ||
+              edge(side)!.review_status === 'unresolved' ||
+              Boolean(edge(side)!.review_hint) ||
+              record.changes.some(
+                (c) => c.domain === 'lineage_edges' && c.id === selectedId,
+              )
+            "
+          >
+            <div class="relation-description">
+              <p>
+                <strong>{{ t("关系类型") }}</strong> ·
+                {{ edge(side)!.relation_type }}
+              </p>
+              <p>
+                <strong>{{ t("结构变化说明") }}</strong>
+              </p>
+              <p>{{ edge(side)!.modification_summary || "—" }}</p>
+              <p>{{ reviewState(edge(side)!.review_status) }}</p>
+            </div>
             <p v-if="edge(side)!.review_hint" class="record-issue">
               {{ edge(side)!.review_hint }}
             </p>
@@ -354,7 +379,7 @@ useModalFocus(expanded, modal);
             >
               {{ t("核对提示已解决") }}
             </p>
-          </div>
+          </ReviewDisclosure>
           <div class="relation-evidence">
             <h4>{{ t("关系证据") }}</h4>
             <div v-for="item in evidence(side)" :key="String(item.link.id)">
@@ -373,7 +398,9 @@ useModalFocus(expanded, modal);
                         c.id === item.link.id),
                   )
                     ? '证据更新'
-                    : '证据未变'
+                    : !available
+                      ? '比较起点不可用'
+                      : '证据未变'
                 "
               />
               <p v-else class="record-issue">{{ t("关联证据不可用") }}</p>
@@ -537,6 +564,9 @@ useModalFocus(expanded, modal);
   overflow: hidden;
   min-width: 0;
 }
+.relation-side > .review-disclosure {
+  padding: 0.35rem 0.8rem;
+}
 .relation-endpoints {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -590,7 +620,10 @@ useModalFocus(expanded, modal);
     grid-template-columns: repeat(2, minmax(285px, 1fr));
     overflow-x: auto;
   }
-  .relation-endpoints {
+  .relation-side > .review-disclosure {
+  padding: 0.35rem 0.8rem;
+}
+.relation-endpoints {
     grid-template-columns: 1fr;
   }
   .is-expanded {

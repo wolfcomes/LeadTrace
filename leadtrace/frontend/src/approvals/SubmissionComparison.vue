@@ -17,6 +17,8 @@ import {
 } from "./recordLabels";
 import { usePairedActivityAlignment } from "./usePairedActivityAlignment";
 import { useFrozenPdfPool } from "./frozenPdf";
+import ReviewDisclosure from "./ReviewDisclosure.vue";
+import { provideReviewDisclosures } from "./reviewDisclosures";
 import FrozenCompoundCard from "./FrozenCompoundCard.vue";
 import FrozenEvidence from "./FrozenEvidence.vue";
 import LineageRecordComparison from "./LineageRecordComparison.vue";
@@ -26,6 +28,7 @@ const props = defineProps<{
   paperId: string;
 }>();
 useFrozenPdfPool();
+const disclosures = provideReviewDisclosures();
 const result = computed(() =>
   buildRecordComparison(props.snapshot, props.comparison),
 );
@@ -38,6 +41,10 @@ const tab = ref<"article" | "compounds" | "lineages">("compounds"),
   selected = ref(""),
   navOpen = ref(true),
   selectedEntity = ref("");
+watch(
+  () => [props.snapshot, selected.value, tab.value],
+  () => disclosures.clear(),
+);
 const tabs = [
   { key: "article", label: "文章信息" },
   { key: "compounds", label: "化合物与结构" },
@@ -141,6 +148,13 @@ function visibleFields(row: Row) {
         "created_by_kind",
         "created_by_id",
       ].includes(key),
+  );
+}
+function articleFields(row: Row, domain: string, changed: boolean) {
+  return visibleFields(row).filter(
+    ([key]) =>
+      (!result.value.available ||
+        fieldChanged(domain, row.section_key ?? row.id, key)) === changed,
   );
 }
 function fieldChanged(domain: string, id: unknown, key: string) {
@@ -340,35 +354,60 @@ function fieldChanged(domain: string, id: unknown, key: string) {
                 :key="domain"
               >
                 <h4>{{ t(domainLabels[domain]) }}</h4>
-                <dl
+                <div
                   v-for="row in rows(
                     side === 'before' ? baseline : snapshot,
                     domain,
                   )"
                   :key="String(row.id ?? row.section_key ?? domain)"
-                  class="article-details"
                 >
                   <template
-                    v-for="[key, value] in visibleFields(row)"
-                    :key="key"
-                    ><dt>{{ t(fieldLabels[key] ?? key) }}</dt>
-                    <dd
-                      :class="{
-                        'field-modified': fieldChanged(
-                          domain,
-                          row.section_key ?? row.id,
-                          key,
-                        ),
-                      }"
-                    >
-                      {{
-                        ["state", "status", "section_key"].includes(key)
-                          ? reviewState(value)
-                          : textValue(value)
-                      }}
-                    </dd></template
+                    v-for="changed in [true, false]"
+                    :key="String(changed)"
                   >
-                </dl>
+                    <ReviewDisclosure
+                      v-if="articleFields(row, domain, changed).length"
+                      :id="`article:${domain}:${row.id ?? row.section_key ?? domain}:${changed}`"
+                      :label="
+                        t(
+                          !result.available
+                            ? '完整内容'
+                            : changed
+                              ? '已修改字段'
+                              : '未修改字段',
+                        )
+                      "
+                      :expanded="changed"
+                    >
+                      <dl class="article-details">
+                        <template
+                          v-for="[key, value] in articleFields(
+                            row,
+                            domain,
+                            changed,
+                          )"
+                          :key="key"
+                          ><dt>{{ t(fieldLabels[key] ?? key) }}</dt>
+                          <dd
+                            :class="{
+                              'field-modified': fieldChanged(
+                                domain,
+                                row.section_key ?? row.id,
+                                key,
+                              ),
+                            }"
+                          >
+                            {{
+                              ["state", "status", "section_key"].includes(key)
+                                ? reviewState(value)
+                                : textValue(value)
+                            }}
+                          </dd></template
+                        >
+                      </dl>
+                    </ReviewDisclosure>
+                  </template>
+                </div>
               </section>
               <section>
                 <h4>{{ t("其他原文证据") }}</h4>
@@ -378,6 +417,15 @@ function fieldChanged(domain: string, id: unknown, key: string) {
                   )"
                   :key="String(evidence.id)"
                   :evidence="evidence"
+                  :change-label="
+                    result.article.changes.some(
+                      (c) => c.domain === 'evidence' && c.id === evidence.id,
+                    )
+                      ? '证据更新'
+                      : !result.available
+                        ? '比较起点不可用'
+                        : '证据未变'
+                  "
                   :snapshot="side === 'before' ? baseline : snapshot"
                   :paper-id="paperId"
                   :current-source-sha="sourceSha"

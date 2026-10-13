@@ -1,5 +1,15 @@
 // Approval interface copy only; never translate scientific records.
 export const enApproval: Record<string, string> = {
+  "名称与说明": "Name and description",
+  "分子结构 · 有修改": "Molecular structure · Changed",
+  "分子结构 · 未修改": "Molecular structure · Unchanged",
+  "原文截图（点击展开）": "Source screenshot (expand to view)",
+  "Lineage 说明": "Lineage description",
+  "两端化合物详情": "Endpoint compound details",
+  "关系说明": "Relationship description",
+  "已修改字段": "Changed fields",
+  "未修改字段": "Unchanged fields",
+  "完整内容": "Complete content",
   "比较起点不可用，无法可靠判断本次修改；请检查完整提交内容及操作历史。": "The comparison baseline is unavailable. Changes cannot be determined reliably; review the full submission and history.",
   "本次提交修改": "Changes in this submission",
   "比较起点：第 {number} 次提交": "Compared with submission #{number}",

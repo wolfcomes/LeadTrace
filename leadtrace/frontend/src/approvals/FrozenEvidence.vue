@@ -4,6 +4,7 @@ import { t } from "../i18n";
 import { evidenceUsage, type Row } from "./comparison";
 import { validateCrop, useFrozenPdfPool } from "./frozenPdf";
 import { useModalFocus } from "./useModalFocus";
+import ReviewDisclosure from "./ReviewDisclosure.vue";
 import FrozenPdfCrop from "./FrozenPdfCrop.vue";
 const props = defineProps<{
   evidence: Row;
@@ -45,80 +46,104 @@ useModalFocus(expanded, modal);
     data-frozen-evidence
     :data-evidence-id="String(evidence.id)"
   >
-    <header>
-      <strong>{{ heading }}</strong
-      ><span v-if="changeLabel" class="status-chip">{{ t(changeLabel) }}</span>
-    </header>
-    <p class="evidence-caption">
-      {{ t("第 {page} 页", { page }) }}
-      <span v-if="evidence.kind">· {{ evidence.kind }}</span>
-    </p>
-    <template v-if="sameSource">
-      <FrozenPdfCrop
-        v-if="bounds"
-        :url="pdfUrl"
-        :sha="String(evidence.source_sha256)"
-        :page="page"
-        :bounds="bounds"
-        :label="heading"
-      />
-      <p v-else class="section-empty">
-        {{ t("未提供区域截图；请结合文字证据核对原文。") }}
+    <ReviewDisclosure
+      :id="`evidence:${evidence.id}`"
+      :label="heading"
+      :expanded="!sameSource || changeLabel !== '证据未变'"
+    >
+      <template #summary
+        ><span class="evidence-caption">{{ t("第 {page} 页", { page }) }}</span
+        ><span v-if="changeLabel" class="status-chip">{{
+          t(changeLabel)
+        }}</span></template
+      >
+      <blockquote v-if="evidence.quoted_text">
+        {{ evidence.quoted_text }}
+      </blockquote>
+      <p v-if="evidence.source_context && evidence.source_context !== heading">
+        {{ evidence.source_context }}
       </p>
-      <div class="evidence-actions">
-        <button
-          v-if="bounds"
-          type="button"
-          class="button-quiet"
-          data-enlarge-evidence
-          @click="
-            expanded = true;
-            fullPage = false;
-          "
-        >
-          {{ t("放大查看") }}</button
-        ><button
-          v-if="bounds"
-          type="button"
-          class="button-quiet"
-          data-open-evidence-page
-          @click="
-            expanded = true;
-            fullPage = true;
-          "
-        >
-          {{ t("打开整页并标出区域") }}</button
-        ><a
-          v-else
+      <p v-if="evidence.reviewer_note">{{ evidence.reviewer_note }}</p>
+      <p v-if="usage.length" class="evidence-usage">
+        {{ t("支持对象") }}: {{ usage.join(" · ") }}
+      </p>
+      <ReviewDisclosure
+        v-if="sameSource && bounds"
+        :id="`evidence-image:${evidence.id}`"
+        :label="t('原文截图（点击展开）')"
+        data-evidence-image
+        v-slot="{ open }"
+      >
+        <template v-if="open">
+          <FrozenPdfCrop
+            v-if="bounds"
+            :url="pdfUrl"
+            :sha="String(evidence.source_sha256)"
+            :page="page"
+            :bounds="bounds"
+            :label="heading"
+          />
+          <p v-else class="section-empty">
+            {{ t("未提供区域截图；请结合文字证据核对原文。") }}
+          </p>
+          <div class="evidence-actions">
+            <button
+              v-if="bounds"
+              type="button"
+              class="button-quiet"
+              data-enlarge-evidence
+              @click="
+                expanded = true;
+                fullPage = false;
+              "
+            >
+              {{ t("放大查看") }}</button
+            ><button
+              v-if="bounds"
+              type="button"
+              class="button-quiet"
+              data-open-evidence-page
+              @click="
+                expanded = true;
+                fullPage = true;
+              "
+            >
+              {{ t("打开整页并标出区域") }}</button
+            ><a
+              v-else
+              data-evidence-pdf-locator
+              :href="`${pdfUrl}#page=${page}`"
+              target="_blank"
+              rel="noopener"
+              >{{ t("打开 Source PDF ↗") }}</a
+            >
+          </div>
+        </template>
+      </ReviewDisclosure>
+      <template v-else-if="sameSource">
+        <p class="section-empty">
+          {{ t("未提供区域截图；请结合文字证据核对原文。") }}
+        </p>
+        <a
           data-evidence-pdf-locator
           :href="`${pdfUrl}#page=${page}`"
           target="_blank"
           rel="noopener"
           >{{ t("打开 Source PDF ↗") }}</a
         >
-      </div>
-    </template>
-    <p v-else class="message is-error">
-      {{ t("证据来源与冻结 PDF 不一致，请核对原文版本。") }}
-    </p>
-    <blockquote v-if="evidence.quoted_text">
-      {{ evidence.quoted_text }}
-    </blockquote>
-    <p v-if="evidence.source_context && evidence.source_context !== heading">
-      {{ evidence.source_context }}
-    </p>
-    <p v-if="evidence.reviewer_note">{{ evidence.reviewer_note }}</p>
-    <p v-if="usage.length" class="evidence-usage">
-      {{ t("支持对象") }}: {{ usage.join(" · ") }}
-    </p>
-    <details v-if="bounds && sameSource" class="evidence-coordinates">
-      <summary>{{ t("原文区域") }}</summary>
-      {{
-        Object.values(bounds)
-          .map((x) => x.toFixed(3))
-          .join(" · ")
-      }}
-    </details>
+      </template>
+      <p v-else class="message is-error">
+        {{ t("证据来源与冻结 PDF 不一致，请核对原文版本。") }}
+      </p>
+      <details v-if="bounds && sameSource" class="evidence-coordinates">
+        <summary>{{ t("原文区域") }}</summary>
+        {{
+          Object.values(bounds)
+            .map((x) => x.toFixed(3))
+            .join(" · ")
+        }}
+      </details>
+    </ReviewDisclosure>
     <Teleport to="body"
       ><div
         v-if="expanded && bounds && sameSource"

@@ -40,7 +40,9 @@ describe("changes-first approval presentation", () => {
   it("does not load a current PDF as historical evidence when its source fingerprint differs", () => {
     const wrapper = mount(FrozenEvidence, {props: {evidence: frozenSnapshot.evidence[0], snapshot: frozenSnapshot, paperId: frozenSnapshot.paper.id, currentSourceSha: "b".repeat(64)}});
     expect(wrapper.find("a").exists()).toBe(false);
-    expect(wrapper.find("details").exists()).toBe(false);
+    expect(wrapper.find("[data-evidence-image]").exists()).toBe(false);
+    expect(wrapper.find("[data-evidence-thumbnail]").exists()).toBe(false);
+    expect(wrapper.get("[data-disclosure]").attributes("open")).toBeDefined();
     expect(wrapper.text()).toContain("证据来源与冻结 PDF 不一致");
   });
 

@@ -44,12 +44,15 @@ The approval page uses Reviewer-style, read-only article, Compound and Lineage
 records with the comparison baseline on the left and the frozen submission on the
 right. The default directory lists changed records; all records remain available.
 A selected Compound keeps its structure, activities and supporting evidence in
-context. Original evidence crops are visible and rendered from verified frozen
-PDF identity and coordinates. Larger region/page views are available on demand.
+context. Unchanged sections are collapsed, while changed values and unresolved issues stay
+visible. Matching disclosures expand together on both sides. Original evidence
+crops are collapsed and loaded only when expanded, using verified frozen PDF
+identity and coordinates. Larger region/page views are available on demand.
 
 Each affected Lineage is reviewed as a whole: paired graphs use shared node
 positions and viewport coordinates, with linked selection, optional synchronized
-pan/zoom, change navigation and an expanded comparison view. Member structure,
+pan/zoom, change navigation and an expanded comparison view. The graph uses compact
+labelled nodes and arrows; molecular depictions remain in expandable compound details. Member structure,
 activity and shared evidence changes make their Lineages discoverable even when
 the topology is unchanged. Selected members and relationships show complete
 before/after context and evidence below the graphs. Viewing never writes a graph

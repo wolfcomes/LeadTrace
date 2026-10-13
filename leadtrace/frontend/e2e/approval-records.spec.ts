@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Locator } from '@playwright/test';
 import { adminSubmissionDetail, publicationIds as ids, reviewerEvent } from '../tests/paper-publication-v2-fixtures';
 
 const extra = (tail: string) => `50000000-0000-4000-8000-${tail.padStart(12,'0')}`;
@@ -63,7 +63,14 @@ async function setup(page:Page, body=fixture(), corruptPdf=false) {
   return {writes,mutable,pdfRequests};
 }
 
-test('complete compound records align before/after and original evidence is directly visible',async({page})=>{
+async function expandEvidence(evidence: Locator) {
+  const content = evidence.locator(':scope > [data-disclosure]');
+  if (!(await content.evaluate(el => (el as HTMLDetailsElement).open))) await content.locator(':scope > summary').click();
+  const screenshot = evidence.locator('[data-evidence-image]');
+  if (!(await screenshot.evaluate(el => (el as HTMLDetailsElement).open))) await screenshot.locator(':scope > summary').click();
+}
+
+test('changed records stay visible while unchanged details and screenshots expand on demand',async({page})=>{
   await page.setViewportSize({width:1536,height:1100});
   const requests=await setup(page);
   await page.locator('[data-record-tab="compounds"]').click();
@@ -71,7 +78,16 @@ test('complete compound records align before/after and original evidence is dire
   const before=page.locator('[data-record-side="before"]'),after=page.locator('[data-record-side="after"]');
   await expect(before).toContainText('Cell potency');await expect(after).toContainText('Human cells');
   await expect(before).toContainText('125');await expect(after).toContainText('12.5');
-  const crop=after.locator('[data-evidence-thumbnail]').first();await after.locator('[data-frozen-evidence]').first().scrollIntoViewIfNeeded();await expect(crop).toBeVisible();
+  await expect(page.locator('[data-evidence-thumbnail]')).toHaveCount(0);
+  expect(requests.pdfRequests).toHaveLength(0);
+  await expect(after.locator('.activity-context')).not.toBeVisible();
+  await expect(after.locator(`[data-disclosure="identity:${ids.compoundB}"]`)).not.toHaveAttribute('open');
+  await page.screenshot({path:'test-results/approval-records-compact.png',fullPage:true});
+  await before.locator(`[data-disclosure="activity-context:${ids.activity}"] > summary`).click();
+  await expect(after.locator('.activity-context')).toBeVisible();
+  const firstEvidence=after.locator('[data-frozen-evidence]').first();
+  await expandEvidence(firstEvidence);
+  const crop=firstEvidence.locator('[data-evidence-thumbnail]');await expect(crop).toBeVisible();
   await expect.poll(()=>crop.evaluate((el:any)=>el.tagName==='CANVAS'?el.width:el.naturalWidth)).toBeGreaterThan(100);
   await expect.poll(()=>crop.evaluate((el:any)=> {
     if(el.tagName!=='CANVAS')return el.complete && el.naturalWidth>0;
@@ -96,7 +112,7 @@ test('complete compound records align before/after and original evidence is dire
   await expect(page.locator(`[data-record-entry="${ids.compoundA}"]`)).toBeVisible();
   await page.locator('[data-full-submission] > summary').click();
   const fullCrop=page.locator('[data-full-submission] [data-evidence-thumbnail]').first();
-  await page.locator('[data-full-submission] [data-frozen-evidence]').first().scrollIntoViewIfNeeded();
+  await expandEvidence(page.locator('[data-full-submission] [data-frozen-evidence]').first());
   await expect(fullCrop).toHaveAttribute('data-rendered','true');
   expect(requests.pdfRequests).toHaveLength(1);
   expect(requests.writes).toEqual([]);expect(requests.mutable).toEqual([]);
@@ -110,6 +126,11 @@ test('whole lineage comparison shares layout and exposes changed relation with f
   const before=page.locator('[data-lineage-graph-side="before"]'),after=page.locator('[data-lineage-graph-side="after"]');
   await expect(before).toHaveAttribute('data-node-count','2');await expect(after).toHaveAttribute('data-node-count','3');
   await expect(before).toHaveAttribute('data-edge-count','1');await expect(after).toHaveAttribute('data-edge-count','2');
+  await expect(before).toHaveAttribute('data-graph-presentation','points');
+  await expect(after).toHaveAttribute('data-graph-presentation','points');
+  await expect(page.locator('[data-graph-mode]')).toHaveCount(0);
+  await expect(page.locator('[data-lineage-comparison] [data-rdkit-depiction]:visible')).toHaveCount(0);
+  await page.locator('.lineage-entry-list > summary').click();
   await page.locator(`[data-lineage-relation][data-edge-id="${ids.edge}"]`).click();
   await expect(before).toHaveAttribute('data-selected-id',ids.edge);await expect(after).toHaveAttribute('data-selected-id',ids.edge);
   await expect(page.locator('[data-lineage-comparison]')).toContainText('Original synthetic potency');
@@ -125,9 +146,11 @@ test('whole lineage comparison shares layout and exposes changed relation with f
   await page.locator('[data-graph-sync]').check();
   await page.locator('[data-change-next]').click();
   expect(await before.getAttribute('data-selected-id')).toBe(await after.getAttribute('data-selected-id'));
+  await before.locator('[data-graph-fit]').click();
+  await page.evaluate(()=>window.scrollTo(0,0));
+  await page.screenshot({path:'test-results/approval-records-lineage.png',fullPage:true});
   await page.locator('[data-graph-expand]').click();
   await expect(page.locator('[data-lineage-comparison]')).toBeVisible();
-  await page.screenshot({path:'test-results/approval-records-lineage.png'});
   expect(requests.writes).toEqual([]);expect(requests.mutable).toEqual([]);
 });
 
@@ -147,7 +170,7 @@ test('mismatching frozen PDF is explicit and never drawn as historical evidence'
   await page.locator('[data-record-tab="compounds"]').click();
   await page.locator(`[data-record-entry="${ids.compoundB}"]`).click();
   const side=page.locator('[data-record-side="after"]');
-  await side.locator('[data-frozen-evidence]').first().scrollIntoViewIfNeeded();
+  await expandEvidence(side.locator('[data-frozen-evidence]').first());
   await expect(side.getByText('证据来源与冻结 PDF 不一致，请核对原文版本。').first()).toBeVisible();
   await expect(side.locator('[data-evidence-thumbnail]:visible')).toHaveCount(0);
 });
