@@ -14,6 +14,7 @@ from app.assets.models import (
 )
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
 from app.papers.models import Paper, PaperCatalogState
+from app.publications.comparison import reconstruct_reviewer_baseline
 from app.publications.models import (
     AdminDecision,
     AdminDecisionAction,
@@ -74,6 +75,11 @@ class SubmissionReview:
     paper: Paper
     change_events: tuple[ChangeEvent, ...]
     reviewer_diff: tuple[ChangeEvent, ...]
+    comparison_kind: str
+    baseline_submission_number: int | None
+    baseline_snapshot: dict | None
+    comparison_events: tuple[ChangeEvent, ...]
+    comparison_warnings: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,7 +146,10 @@ class PublicationService:
             )
         )
         if boundary is None:
-            raise DecisionStateConflictError("Submission history boundary is missing")
+            return SubmissionReview(
+                submission, paper, (), (), "unavailable", None, None, (),
+                ("Submission history boundary is missing; changes cannot be reliably attributed.",),
+            )
         events = tuple(
             session.scalars(
                 select(ChangeEvent)
@@ -179,8 +188,10 @@ class PublicationService:
                 None,
             )
             if previous_boundary_index is None:
-                raise DecisionStateConflictError(
-                    "Previous submission history boundary is missing"
+                return SubmissionReview(
+                    submission, paper, events, (), "previous_submission",
+                    previous_submission.submission_number, previous_submission.snapshot, (),
+                    ("Previous submission history boundary is missing; event provenance is unavailable. The frozen snapshots can still be compared.",),
                 )
             current_submission_events = events[previous_boundary_index + 1 :]
         reviewer_diff = tuple(
@@ -189,7 +200,22 @@ class PublicationService:
             if event.actor_kind is ChangeActorKind.REVIEWER
             and event.action != "workspace.submit"
         )
-        return SubmissionReview(submission, paper, events, reviewer_diff)
+        if previous_submission is not None:
+            kind = "previous_submission"
+            baseline = previous_submission.snapshot
+            warnings: list[str] = []
+        else:
+            baseline, warnings = reconstruct_reviewer_baseline(submission.snapshot, events)
+            kind = "reviewer_start" if baseline is not None else "unavailable"
+            first = next((index for index, event in enumerate(events)
+                          if event.actor_kind is ChangeActorKind.REVIEWER
+                          and event.action != "workspace.submit"), None)
+            current_submission_events = events[first:] if first is not None else ()
+        return SubmissionReview(
+            submission, paper, events, reviewer_diff, kind,
+            previous_submission.submission_number if previous_submission is not None else None,
+            baseline, current_submission_events, tuple(warnings),
+        )
 
     def list_published_papers(self, session: Session) -> list[PublishedPaper]:
         rows = session.execute(

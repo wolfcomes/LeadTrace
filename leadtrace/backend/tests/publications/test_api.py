@@ -46,6 +46,10 @@ def test_admin_submission_queue_detail_and_approval_api(publication_fixture):
     assert listing.json()["items"][0]["submission_id"] == str(submission.id)
     assert listing.json()["items"][0]["title"] == "Frozen submitted title"
     assert detail.status_code == 200
+    assert set(detail.json()) == {"submission", "bibliography", "change_events", "reviewer_diff"}
+    assert set(detail.json()["bibliography"]) == {
+        "paper_id", "paper_key", "title", "journal", "publication_year", "volume", "issue", "doi"
+    }
     assert detail.json()["submission"]["content_hash"] == submission.content_hash
     assert detail.json()["submission"]["snapshot"] == submission.snapshot
     assert any(
@@ -178,3 +182,77 @@ def test_admin_submission_history_is_scoped_to_each_frozen_submission(
     assert [
         event["action"] for event in second_detail.json()["reviewer_diff"]
     ] == ["bibliography.update"]
+
+
+def test_initial_comparison_reconstructs_reviewer_start_and_freezes_later_mutations(publication_fixture):
+    fixture = publication_fixture
+    csrf = fixture.login('publication.reviewer')
+    update = fixture.client.patch(
+        f'/api/v2/workspaces/{fixture.workspace_id}/bibliography',
+        headers={'X-CSRF-Token':csrf},
+        json={'expected_workspace_version':1, 'title':'Reviewer corrected title'},
+    )
+    assert update.status_code == 200
+    with fixture.session_factory.begin() as session:
+        paper = session.get(Paper, fixture.paper_id)
+        paper.title = 'Admin corrected title'
+        session.add(ChangeEvent(paper_id=fixture.paper_id, workspace_id=fixture.workspace_id,
+            entity_type='paper', entity_id=fixture.paper_id, action='bibliography.update',
+            before_value={'title':'Reviewer corrected title'}, after_value={'title':'Admin corrected title'},
+            actor_kind=ChangeActorKind.ADMIN, actor_id=fixture.admin_id))
+    submission = fixture.submit()
+    with fixture.session_factory.begin() as session:
+        session.get(Paper, fixture.paper_id).title = 'Later mutable title'
+    fixture.login('publication.admin')
+    response = fixture.client.get(f'/api/v2/admin/submissions/{submission.id}?include_comparison=true')
+    assert response.status_code == 200
+    result = response.json()
+    comparison = result['comparison']
+    assert comparison['kind'] == 'reviewer_start'
+    assert comparison['baseline_snapshot']['paper']['title'] == 'Frozen submitted title'
+    assert result['submission']['snapshot']['paper']['title'] == 'Admin corrected title'
+    assert {e['actor_kind'] for e in comparison['events']} == {'reviewer','admin'}
+    assert comparison['warnings'] == []
+    assert result['submission']['content_hash'] == submission.content_hash
+
+
+def test_resubmission_comparison_uses_previous_frozen_snapshot_and_all_round_actors(publication_fixture):
+    fixture = publication_fixture
+    first = fixture.submit()
+    with fixture.session_factory.begin() as session:
+        PublicationService().decide(session, submission_id=first.id,
+            content_hash=first.content_hash, action=AdminDecisionAction.REQUEST_CHANGES,
+            reason='Correct title', idempotency_key='comparison-request',
+            actor=session.get(User, fixture.admin_id))
+    with fixture.session_factory.begin() as session:
+        session.get(Paper, fixture.paper_id).title = 'Admin edit this round'
+        session.add(ChangeEvent(paper_id=fixture.paper_id, workspace_id=fixture.workspace_id,
+            entity_type='paper', entity_id=fixture.paper_id, action='bibliography.update',
+            before_value={'title':'Frozen submitted title'}, after_value={'title':'Admin edit this round'},
+            actor_kind=ChangeActorKind.ADMIN, actor_id=fixture.admin_id))
+    second = fixture.submit(key='comparison-second')
+    fixture.login('publication.admin')
+    response = fixture.client.get(f'/api/v2/admin/submissions/{second.id}?include_comparison=true')
+    assert response.status_code == 200
+    comparison = response.json()['comparison']
+    assert comparison['kind'] == 'previous_submission'
+    assert comparison['baseline_submission_number'] == 1
+    assert comparison['baseline_snapshot'] == first.snapshot
+    assert [e['action'] for e in comparison['events']] == [
+        'submission.request_changes','bibliography.update','workspace.submit']
+    assert comparison['events'][1]['actor_kind'] == 'admin'
+    assert comparison['warnings'] == []
+
+
+def test_missing_reviewer_history_has_explicit_unavailable_comparison(publication_fixture):
+    fixture = publication_fixture
+    submission = fixture.submit()
+    fixture.login('publication.admin')
+    response = fixture.client.get(f'/api/v2/admin/submissions/{submission.id}?include_comparison=true')
+    assert response.status_code == 200
+    comparison = response.json()['comparison']
+    assert comparison['kind'] == 'unavailable'
+    assert comparison['baseline_snapshot'] is None
+    assert comparison['warnings']
+    fixture.login('publication.reviewer')
+    assert fixture.client.get(f'/api/v2/admin/submissions/{submission.id}?include_comparison=true').status_code == 403

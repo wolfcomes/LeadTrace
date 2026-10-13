@@ -112,11 +112,20 @@ class ChangeEventResponse(PublicationProjection):
     occurred_at: datetime
 
 
+class SubmissionComparisonResponse(PublicationProjection):
+    kind: Literal["previous_submission", "reviewer_start", "unavailable"]
+    baseline_submission_number: int | None
+    baseline_snapshot: dict[str, Any] | None
+    events: list[ChangeEventResponse]
+    warnings: list[str]
+
+
 class AdminSubmissionDetailResponse(PublicationProjection):
     submission: SubmissionResponse
     bibliography: BibliographyResponse
     change_events: list[ChangeEventResponse]
     reviewer_diff: list[ChangeEventResponse]
+    comparison: SubmissionComparisonResponse | None = None
 
 
 class PublishedPaperListItem(PublicationProjection):

@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.errors import APIError
@@ -18,6 +19,7 @@ from app.publications.schemas import (
     ChangeEventResponse,
     DecisionMutationResponse,
     PublishedPaperVersionResponse,
+    SubmissionComparisonResponse,
 )
 from app.publications.service import (
     DecisionForbiddenError,
@@ -183,9 +185,10 @@ def create_admin_publications_router(settings: Settings) -> APIRouter:
     @declare_route_access(RouteAccess.PERMISSION, Action.APPROVE_CHANGESET)
     def get_submission(
         submission_id: UUID,
+        include_comparison: bool = False,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
-    ) -> AdminSubmissionDetailResponse:
+    ) -> AdminSubmissionDetailResponse | JSONResponse:
         try:
             with session.begin():
                 review = service.get_submission_review(
@@ -193,12 +196,24 @@ def create_admin_publications_router(settings: Settings) -> APIRouter:
                     submission_id=submission_id,
                     actor=principal,
                 )
-                return AdminSubmissionDetailResponse(
+                response = AdminSubmissionDetailResponse(
                     submission=_submission_response(review.submission),
                     bibliography=_bibliography(review.submission.snapshot),
                     change_events=[_event_response(event) for event in review.change_events],
                     reviewer_diff=[_event_response(event) for event in review.reviewer_diff],
+                    **({"comparison": SubmissionComparisonResponse(
+                        kind=review.comparison_kind,
+                        baseline_submission_number=review.baseline_submission_number,
+                        baseline_snapshot=review.baseline_snapshot,
+                        events=[_event_response(event) for event in review.comparison_events],
+                        warnings=list(review.comparison_warnings),
+                    )} if include_comparison else {}),
                 )
+                if not include_comparison:
+                    # Older clients validate exact keys. Exclude only the new top-level
+                    # field, preserving all existing nested defaults and null values.
+                    return JSONResponse(response.model_dump(mode="json", exclude={"comparison"}))
+                return response
         except (
             DecisionForbiddenError,
             DecisionNotFoundError,
