@@ -38,6 +38,21 @@ implement the same versioned payload contract.
 PostgreSQL is the only business-data authority. Redis is delivery state for
 Celery and may be rebuilt from PostgreSQL-backed jobs and extraction runs.
 
+## Admin submission review
+
+The approval page starts with net changes between the frozen submission and the
+previous frozen submission, or the reliably reconstructed state before the first
+Reviewer edit. Missing or unsupported history shows an explicit comparison warning.
+Compound and relationship cards show before/after scientific values, structure
+representations and evidence with frozen page/region locators. Routine confirmations
+are collapsed; unresolved issue resolutions, cleared hints, deletions and evidence
+reassignments remain visible. Remaining issues are shown even when unchanged.
+Complete frozen content and all actors' event history expand on demand. Approval
+still applies to the entire frozen submission and its content hash.
+
+The Admin detail API exposes the read-only projection with
+`?include_comparison=true`; its default response retains the legacy shape.
+
 ## Interface language
 
 The page-top language selector switches between the existing Chinese interface
