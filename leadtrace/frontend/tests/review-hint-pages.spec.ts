@@ -73,6 +73,16 @@ describe.each(["submission", "published"] as const)("%s page review hints", (pag
       ? mount(PaperSubmissionReviewPage, { global: { plugins: [router] } })
       : mount(PaperDetailPage, { global: { plugins: [router] } });
     await flushPromises();
+    if (page === "submission") {
+      if (withHints) {
+        expect(wrapper.get("[data-remaining-issues]").text()).toContain(hints.compound);
+        expect(wrapper.get("[data-remaining-issues]").text()).toContain(hints.activity);
+        expect(wrapper.get("[data-remaining-issues]").text()).toContain(hints.edge);
+      }
+      const full = wrapper.get("[data-full-submission]");
+      (full.element as HTMLDetailsElement).open = true;
+      await full.trigger("toggle");
+    }
     return { wrapper, fetchMock };
   }
 

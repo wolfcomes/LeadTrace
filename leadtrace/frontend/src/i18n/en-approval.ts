@@ -1,0 +1,23 @@
+// Approval interface copy only; never translate scientific records.
+export const enApproval: Record<string, string> = {
+  "比较起点不可用，无法可靠判断本次修改；请检查完整提交内容及操作历史。": "The comparison baseline is unavailable. Changes cannot be determined reliably; review the full submission and history.",
+  "本次提交修改": "Changes in this submission",
+  "比较起点：第 {number} 次提交": "Compared with submission #{number}",
+  "比较起点：Reviewer 开始本轮审核时的内容": "Compared with the content at the start of this review round",
+  "展示起点与冻结提交之间的净变化；完整提交仍是批准对象。": "Net changes from the baseline to this frozen submission. Approval still applies to the complete submission.",
+  "{count} 项实质修改": "{count} substantive changes",
+  "新增 {added} · 删除 {removed} · 问题处理 {resolved}": "Added {added} · Removed {removed} · Issues addressed {resolved}",
+  "仍需核对的问题": "Issues still requiring review",
+  "本次没有实质内容修改。请结合未解决问题及完整提交决定是否批准。": "No substantive changes in this submission. Review outstanding issues and the full submission before deciding.",
+  "另有 {count} 项仅确认、内容未变": "{count} additional confirmations with no content changes",
+  "查看完整提交内容": "View full submitted content", "查看完整操作历史": "View complete history", "完整操作历史": "Complete history",
+  "该 Submission 没有操作历史。": "This submission has no recorded history.",
+  "问题处理": "Issue addressed", "修改来源": "Contributors", "未记录": "Not recorded", "字段": "Field", "修改": "Modified", "新增": "Added", "删除": "Removed",
+  "修改前结构": "Structure before", "修改后结构": "Structure after", "修改前证据": "Evidence before", "修改后证据": "Evidence after", "无关联证据": "No linked evidence",
+  "文章信息": "Article information", "原文来源": "Source document", "区段状态": "Section status", "化合物": "Compound", "结构": "Structure", "结构证据": "Structure evidence", "Lineage 成员": "Lineage member", "关系": "Relationship", "证据": "Evidence", "证据关联": "Evidence link", "活性": "Activity", "关键化合物": "Compound highlight", "文章与其他修改": "Article and other changes",
+  "化合物编号": "Compound label", "名称": "Name", "说明": "Description", "排序": "Order", "核对状态": "Review status", "核对提示": "Review hint", "Lineage 名称": "Lineage label", "Lineage 类型": "Lineage type", "起始化合物": "Parent compound", "衍生化合物": "Child compound", "关系类型": "Relationship type", "结构变化说明": "Modification summary", "作用": "Role", "实验名称": "Assay", "指标": "Metric", "比较符号": "Operator", "数值": "Value", "单位": "Unit", "实验条件": "Assay context", "证据类型": "Evidence type", "页码": "Page", "左边界": "Left", "上边界": "Top", "右边界": "Right", "下边界": "Bottom", "原文摘录": "Source quotation", "标题": "Caption", "核对说明": "Review note", "原文位置": "Source context", "标签": "Label", "原文指纹": "Source fingerprint", "区段": "Section", "文章标题": "Article title", "期刊": "Journal", "年份": "Year", "卷": "Volume", "期": "Issue", "页数": "Pages", "原文路径": "Source path", "原文目录": "Source directory", "原文文件": "Source file", "文章编号": "Article key", "原因": "Reason", "标记类型": "Highlight type",
+  "适用范围": "Scope", "选择依据": "Selection rationale",
+  "待确认": "Awaiting confirmation", "已确认": "Confirmed", "未解决": "Unresolved", "原文未报告": "Not reported in the paper", "已完成": "Completed", "待修改": "Needs revision", "待核对": "Needs review", "摘要": "Abstract", "摘要来源": "Abstract source", "PDB 结构引用": "PDB references",
+  "第 {page} 页": "Page {page}", "支持对象": "Supports", "原文区域": "Source region",
+  "证据来源与冻结 PDF 不一致，请核对原文版本。": "The evidence source does not match the frozen PDF. Verify the source version.",
+};

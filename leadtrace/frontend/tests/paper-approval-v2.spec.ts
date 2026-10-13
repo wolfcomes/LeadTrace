@@ -59,23 +59,32 @@ describe("paper-centric Admin approval", () => {
     expect(router.currentRoute.value.path).toBe(`/admin/submissions/${publicationIds.submission}`);
     expect(wrapper.get("[data-submission-review]").text()).toContain(submission.content_hash);
     expect(wrapper.get("[data-submission-review]").text()).toContain("All structures and transformations checked");
+    expect(wrapper.get("[data-comparison-warning]").text()).toContain("比较起点不可用");
+    expect(wrapper.find("[data-submission-lineage]").exists()).toBe(false);
+    const fullContent = wrapper.get("[data-full-submission]");
+    (fullContent.element as HTMLDetailsElement).open = true;
+    await fullContent.trigger("toggle");
     expect(wrapper.get("[data-submission-lineage]").text()).toContain("Series A");
     expect(wrapper.get("[data-submission-lineage]").text()).toContain("Polar amine replacement");
     expect(wrapper.get("[data-structure-comparison]").text()).toContain("Lead 1");
     expect(wrapper.get("[data-source-pdf]").attributes("href"))
       .toBe(`/api/v2/papers/${publicationIds.paper}/source-pdf`);
-    expect(wrapper.get("[data-structure-source-image]").attributes("src"))
-      .toBe(`/api/v2/structure-source-images/${publicationIds.sourceImage}/content`);
+    expect(wrapper.get("[data-structure-comparison] [data-frozen-evidence]").text()).toContain("Scheme 1");
+    expect(wrapper.find('img[src*="structure-source-images"]').exists()).toBe(false);
     expect(wrapper.get("[data-rdkit-depiction]").attributes("src")).toContain(publicationIds.depictionA);
     expect(wrapper.get("[data-submission-lineage]").text()).toContain("root");
     expect(wrapper.get("[data-submission-lineage]").text()).toContain("terminal");
     expect(wrapper.get("[data-submission-evidence]").text()).toContain("Lead 1 was optimized to compound 18.");
-    expect(wrapper.get("[data-evidence-pdf-locator]").attributes("href"))
+    expect(wrapper.get("[data-submission-evidence] [data-evidence-pdf-locator]").attributes("href"))
       .toBe(`/api/v2/papers/${publicationIds.paper}/source-pdf#page=4`);
     expect(wrapper.get("[data-submission-evidence]").text()).toContain("Lead 1 → Compound 18");
     expect(wrapper.get("[data-submission-evidence]").text()).toContain("IC50");
     expect(wrapper.get("[data-submission-evidence]").text()).toContain("12.5 nM");
+    const history = wrapper.get("[data-change-history]");
+    (history.element as HTMLDetailsElement).open = true;
+    await history.trigger("toggle");
     expect(wrapper.get("[data-reviewer-diff]").text()).toContain("CCO");
+    expect(wrapper.get("[data-reviewer-diff]").text()).toContain("AI 预填");
     expect(requests).toEqual([
       "/api/v2/admin/submissions",
       `/api/v2/admin/submissions/${publicationIds.submission}`,

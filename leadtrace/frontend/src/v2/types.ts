@@ -549,7 +549,16 @@ export const adminSubmissionListSchema = z.object({
   }
 });
 
+export const submissionComparisonSchema = z.object({
+  kind: z.enum(["previous_submission", "reviewer_start", "unavailable"]),
+  baseline_submission_number: z.number().int().positive().nullable(),
+  baseline_snapshot: z.record(z.unknown()).nullable(),
+  events: z.array(changeEventSchema),
+  warnings: z.array(z.string()),
+}).strict();
+
 export const adminSubmissionDetailSchema = z.object({
+  comparison: submissionComparisonSchema.optional(),
   submission: paperSubmissionSchema,
   bibliography: bibliographySchema,
   change_events: z.array(changeEventSchema),
@@ -557,7 +566,7 @@ export const adminSubmissionDetailSchema = z.object({
 }).strict().superRefine((value, context) => {
   const { paper_id: paperId, workspace_id: workspaceId } = value.submission;
   if (value.bibliography.paper_id !== paperId
-    || [...value.change_events, ...value.reviewer_diff].some(
+    || [...value.change_events, ...value.reviewer_diff, ...(value.comparison?.events ?? [])].some(
       (event) => event.paper_id !== paperId || event.workspace_id !== workspaceId,
     )) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Submission review identity mismatch" });

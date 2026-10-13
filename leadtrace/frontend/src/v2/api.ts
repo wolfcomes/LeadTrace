@@ -515,7 +515,7 @@ export function listAdminSubmissions(): Promise<AdminSubmissionList> {
 
 export function getAdminSubmission(submissionId: string): Promise<AdminSubmissionDetail> {
   return apiRequest(
-    `/api/v2/admin/submissions/${encodeURIComponent(submissionId)}`,
+    `/api/v2/admin/submissions/${encodeURIComponent(submissionId)}?include_comparison=true`,
     adminSubmissionDetailSchema,
   );
 }

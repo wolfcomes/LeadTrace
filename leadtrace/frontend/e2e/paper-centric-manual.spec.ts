@@ -855,11 +855,14 @@ test("blank manual Paper flows from assignment through immutable publication", a
   await expect(page.getByRole("heading", { name: "提交审批" })).toBeVisible();
   await expect(page.locator("[data-submission-row]")).toContainText(bibliography.title);
   await page.locator("[data-open-submission]").click();
+  await expect(page.locator("[data-comparison-summary]")).toBeVisible();
+  await page.locator("[data-full-submission] > summary").click();
   await expect(page.getByRole("heading", { name: "结构原图与 RDKit 对照" })).toBeVisible();
   await expect(page.locator("[data-submission-lineage]")).toContainText("Lead 1 → Compound 18");
   await expect(page.locator("[data-submission-lineage]")).toContainText("root");
   await expect(page.locator("[data-submission-lineage]")).toContainText("terminal");
   await expect(page.locator("[data-submission-evidence]")).toContainText("supports · Lead 1 → Compound 18");
+  await page.locator("[data-change-history] > summary").click();
   await expect(page.locator("[data-reviewer-diff]")).toContainText("Lead 1");
   await page.locator("[data-decision-reason]").fill("Source PDF and scientific lineage verified.");
   await page.locator("[data-approve-submission]").click();

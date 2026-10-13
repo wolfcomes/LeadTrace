@@ -13,12 +13,16 @@ import { useAuthStore } from "../auth/store";
 import { decideSubmission, getAdminSubmission } from "../v2/api";
 import type { AdminSubmissionDetail, DecisionMutation } from "../v2/types";
 import SubmissionDiff from "./SubmissionDiff.vue";
+import SubmissionComparison from "./SubmissionComparison.vue";
+import FrozenEvidence from "./FrozenEvidence.vue";
 
 type State = "loading" | "ready" | "not-found" | "error";
 const route = useRoute();
 const auth = useAuthStore();
 const state = ref<State>("loading");
 const detail = ref<AdminSubmissionDetail | null>(null);
+const fullContentOpen = ref(false);
+const historyOpen = ref(false);
 const reason = ref("");
 const acting = ref<"approve" | "request_changes" | null>(null);
 const decision = ref<DecisionMutation | null>(null);
@@ -44,9 +48,6 @@ const decisionDisabled = computed(() => !detail.value || !reason.value.trim() ||
 function adminAssetUrl(assetId: string): string {
   return `/api/v1/assets/${encodeURIComponent(assetId)}/content`;
 }
-function sourceImageUrl(sourceImageId: string): string {
-  return `/api/v2/structure-source-images/${encodeURIComponent(sourceImageId)}/content`;
-}
 function sourcePdfUrl(page?: number): string {
   const base = `/api/v2/papers/${encodeURIComponent(String(detail.value?.submission.paper_id ?? ""))}/source-pdf`;
   return page ? `${base}#page=${page}` : base;
@@ -62,6 +63,8 @@ function formatDate(value: string): string {
 }
 async function load(): Promise<void> {
   state.value = "loading";
+  fullContentOpen.value = false;
+  historyOpen.value = false;
   detail.value = null;
   decision.value = null;
   error.value = null;
@@ -105,18 +108,22 @@ watch(() => route.params.submissionId, load, { immediate: true });
         <div><p class="eyebrow">IMMUTABLE SUBMISSION · #{{ detail.submission.submission_number }}</p><h1>{{ detail.bibliography.title }}</h1><p>{{ detail.bibliography.journal }} · {{ detail.bibliography.publication_year }} · {{ detail.bibliography.volume }}({{ detail.bibliography.issue }})</p><a class="button-secondary source-pdf-link" data-source-pdf :href="sourcePdfUrl()" target="_blank" rel="noopener">{{ t("打开 Source PDF ↗") }}</a></div>
         <dl class="submission-identity"><div><dt>Paper</dt><dd><code>{{ detail.bibliography.paper_key }}</code></dd></div><div><dt>Content hash</dt><dd><code>{{ detail.submission.content_hash }}</code></dd></div><div><dt>{{ t("提交时间") }}</dt><dd>{{ formatDate(detail.submission.submitted_at) }}</dd></div></dl>
       </header>
+      <p v-if="detail.submission.reviewer_note" class="reviewer-attestation panel"><strong>{{ t("Reviewer 声明") }}</strong><span>{{ detail.submission.reviewer_note }}</span></p>
+      <p v-if="error" class="message inline-feedback is-error" role="alert">{{ t(error ?? "") }} <small v-if="errorRequestId">{{ t("请求编号：{requestId}", { requestId: errorRequestId }) }}</small></p>
+      <SubmissionComparison :snapshot="snapshot" :comparison="detail.comparison" :paper-id="detail.submission.paper_id" />
+      <details class="panel approval-full-content" data-full-submission @toggle="fullContentOpen = ($event.target as HTMLDetailsElement).open">
+        <summary>{{ t("查看完整提交内容") }}</summary>
+        <template v-if="fullContentOpen">
       <ArticleMetadata v-if="detail" :metadata="detail.bibliography" />
       <AiProvenance :records="snapshot.ai_provenance ?? []" />
       <HighlightCards :items="snapshot.compound_highlights ?? []" :compounds="snapshot.compounds" :evidence="snapshot.evidence" :depiction="highlightDepiction" />
-      <p v-if="detail.submission.reviewer_note" class="reviewer-attestation panel"><strong>{{ t("Reviewer 声明") }}</strong><span>{{ detail.submission.reviewer_note }}</span></p>
-      <p v-if="error" class="message inline-feedback is-error" role="alert">{{ t(error ?? "") }} <small v-if="errorRequestId">{{ t("请求编号：{requestId}", { requestId: errorRequestId }) }}</small></p>
       <section class="submission-science panel" data-structure-comparison>
         <div class="section-heading"><div><p class="eyebrow">STRUCTURE VERIFICATION</p><h2>{{ t("结构原图与 RDKit 对照") }}</h2></div></div>
         <div class="submission-structure-grid">
           <article v-for="structure in snapshot.structures" :key="structure.id">
             <header><strong>{{ compoundLabels.get(structure.compound_id) ?? structure.compound_id }}</strong><ReviewHint :hint="snapshot.compounds.find(item => item.id === structure.compound_id)?.review_hint" /><span class="status-chip">{{ statusLabel(structure.status) }}</span></header>
             <div class="submission-image-pair">
-              <div v-for="image in sourceImagesByCompound.get(structure.compound_id) ?? []" :key="image.id"><span>{{ t("PDF 原图 · 第") }} {{ image.page_number }} {{ t("页") }}</span><img v-if="image.crop_asset_id" data-structure-source-image :src="sourceImageUrl(image.id)" :alt="t('PDF 结构原图')"><a :href="sourcePdfUrl(image.page_number)" target="_blank" rel="noopener">{{ t("在 PDF 中核对 ↗") }}</a><p v-if="!image.crop_asset_id">{{ t("Crop 尚不可用") }}</p></div>
+              <FrozenEvidence v-for="image in sourceImagesByCompound.get(structure.compound_id) ?? []" :key="image.id" :evidence="image" :snapshot="snapshot" :paper-id="detail.submission.paper_id" :current-source-sha="snapshot.source.sha256" />
               <div><span>{{ t("RDKit 重绘") }}</span><img v-if="structure.depiction_asset_id" data-rdkit-depiction :src="adminAssetUrl(structure.depiction_asset_id)" :alt="t('RDKit 结构重绘')"><code v-else>{{ structure.canonical_smiles ?? structure.smiles ?? "—" }}</code></div>
             </div>
             <code>{{ structure.canonical_smiles ?? structure.smiles ?? "—" }}</code>
@@ -154,7 +161,12 @@ watch(() => route.params.submissionId, load, { immediate: true });
           </div>
         </div>
       </section>
-      <SubmissionDiff :events="detail.reviewer_diff" />
+        </template>
+      </details>
+      <details class="panel approval-full-history" data-change-history @toggle="historyOpen = ($event.target as HTMLDetailsElement).open">
+        <summary>{{ t("查看完整操作历史") }} · {{ detail.change_events.length }}</summary>
+        <SubmissionDiff v-if="historyOpen" :events="detail.change_events" />
+      </details>
       <section class="decision-panel panel">
         <div class="section-heading"><div><p class="eyebrow">ADMIN DECISION</p><h2>{{ t("审批决定") }}</h2></div></div>
         <div v-if="decision" class="submission-success" data-decision-success>
@@ -169,3 +181,8 @@ watch(() => route.params.submissionId, load, { immediate: true });
     </template>
   </div>
 </template>
+
+<style scoped>
+.approval-full-content, .approval-full-history { margin: 1rem 0; }
+.approval-full-content > summary, .approval-full-history > summary { cursor: pointer; font-weight: 600; padding: .5rem; }
+</style>
