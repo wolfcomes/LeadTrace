@@ -1,8 +1,14 @@
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
 import { adminSubmissionDetail, publicationIds, reviewerEvent } from '../tests/paper-publication-v2-fixtures';
 
+const syntheticPdf = execFileSync(process.env.LEADTRACE_PYTHON || '/data/home/zhangzhiyong/lead_optimization_collection/.worktrees/ai-prefill-tools/.venv/bin/python', ['-c', 'import fitz,sys; d=fitz.open(); [d.new_page(width=600,height=800).insert_text((100,200),"Synthetic evidence",fontsize=20) for _ in range(12)]; sys.stdout.buffer.write(d.tobytes())']);
+const syntheticSha = createHash('sha256').update(syntheticPdf).digest('hex');
 function fixture() {
  const detail = structuredClone(adminSubmissionDetail) as any;
+ detail.submission.snapshot.source.sha256 = syntheticSha;
+ for (const item of [...detail.submission.snapshot.evidence, ...detail.submission.snapshot.structure_source_images]) item.source_sha256 = syntheticSha;
  const before = structuredClone(detail.submission.snapshot);
  before.activities[0].value = '125';
  before.evidence[0].page_number = 3;
@@ -30,6 +36,7 @@ async function setup(page: Page, body = fixture()) {
   if (!['GET','HEAD'].includes(route.request().method())) scientificWrites.push(path);
   if (path === '/api/v1/auth/session') return route.fulfill({json:{ user: { username: 'admin', display_name: 'Test Admin', role: 'admin', must_change_password: false }, csrf_token: 'synthetic-csrf' }});
   if (path === `/api/v2/admin/submissions/${publicationIds.submission}`) return route.fulfill({ json: body });
+  if (path.endsWith('/source-pdf')) return route.fulfill({contentType:'application/pdf',body:syntheticPdf});
   if (path.startsWith('/api/v1/assets/')) return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="240" height="100"><text x="30" y="50">CH3—CH2—OH</text></svg>'});
   return route.fulfill({status:404,json:{error:{code:'NOT_FOUND',message:'Synthetic fixture only'}}});
  });

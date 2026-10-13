@@ -15,7 +15,7 @@ describe("changes-first approval presentation", () => {
     setLocale("zh-CN");
     const wrapper = mount(SubmissionComparison, {props: props()});
     expect(wrapper.get("[data-comparison-summary]").text()).toContain("第 1 次提交");
-    expect(wrapper.findAll("[data-change-card]")).toHaveLength(2);
+    expect(wrapper.findAll("[data-change-card]")).toHaveLength(1);
     expect(wrapper.text()).toContain("125");
     expect(wrapper.text()).toContain("12.5");
     expect(wrapper.text()).toContain("Original quoted evidence");
@@ -44,14 +44,16 @@ describe("changes-first approval presentation", () => {
     expect(wrapper.text()).toContain("证据来源与冻结 PDF 不一致");
   });
 
-  it("explains unresolved-to-confirmed transitions with readable bilingual labels", () => {
+  it("explains unresolved-to-confirmed transitions with readable bilingual labels", async () => {
     const values = props();
     values.comparison.baseline_snapshot.structures[0].status = "unresolved" as never;
     const wrapper = mount(SubmissionComparison, {props: values});
-    const structure = wrapper.get('[data-entity-type="structures"]');
-    expect(structure.text()).toContain("未解决");
-    expect(structure.text()).toContain("已确认");
-    expect(structure.text()).not.toContain("reviewer_confirmed");
+    await wrapper.get(`[data-record-entry="${frozenSnapshot.compounds[0].id}"]`).trigger('click');
+    const before = wrapper.get('[data-record-side="before"]');
+    const after = wrapper.get('[data-record-side="after"]');
+    expect(before.text()).toContain("未解决");
+    expect(after.text()).toContain("已确认");
+    expect(after.text()).not.toContain("reviewer_confirmed");
   });
 
 });

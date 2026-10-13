@@ -14,6 +14,7 @@ import { decideSubmission, getAdminSubmission } from "../v2/api";
 import type { AdminSubmissionDetail, DecisionMutation } from "../v2/types";
 import SubmissionDiff from "./SubmissionDiff.vue";
 import SubmissionComparison from "./SubmissionComparison.vue";
+import FrozenSubmissionScope from "./FrozenSubmissionScope.vue";
 import FrozenEvidence from "./FrozenEvidence.vue";
 
 type State = "loading" | "ready" | "not-found" | "error";
@@ -103,7 +104,7 @@ watch(() => route.params.submissionId, load, { immediate: true });
     <section v-if="state === 'loading'" class="page-state" aria-live="polite">{{ t("正在读取冻结 Submission…") }}</section>
     <section v-else-if="state === 'not-found'" class="page-state"><span class="state-symbol" aria-hidden="true">404</span><h1>{{ t("未找到待审批 Submission") }}</h1></section>
     <section v-else-if="state === 'error'" class="page-state" role="alert"><span class="state-symbol is-error" aria-hidden="true">!</span><h1>{{ t(error ?? "") }} <small v-if="errorRequestId">{{ t("请求编号：{requestId}", { requestId: errorRequestId }) }}</small></h1><button class="button-secondary" type="button" @click="load">{{ t("重新加载") }}</button></section>
-    <template v-else-if="detail && snapshot">
+    <FrozenSubmissionScope v-else-if="detail && snapshot" :key="detail.submission.id">
       <header class="page-heading">
         <div><p class="eyebrow">IMMUTABLE SUBMISSION · #{{ detail.submission.submission_number }}</p><h1>{{ detail.bibliography.title }}</h1><p>{{ detail.bibliography.journal }} · {{ detail.bibliography.publication_year }} · {{ detail.bibliography.volume }}({{ detail.bibliography.issue }})</p><a class="button-secondary source-pdf-link" data-source-pdf :href="sourcePdfUrl()" target="_blank" rel="noopener">{{ t("打开 Source PDF ↗") }}</a></div>
         <dl class="submission-identity"><div><dt>Paper</dt><dd><code>{{ detail.bibliography.paper_key }}</code></dd></div><div><dt>Content hash</dt><dd><code>{{ detail.submission.content_hash }}</code></dd></div><div><dt>{{ t("提交时间") }}</dt><dd>{{ formatDate(detail.submission.submitted_at) }}</dd></div></dl>
@@ -178,7 +179,7 @@ watch(() => route.params.submissionId, load, { immediate: true });
           <div class="decision-actions"><button class="button-secondary" data-request-changes type="button" :disabled="decisionDisabled" @click="decide('request_changes')">{{ t("退回修改") }}</button><button class="button-primary" data-approve-submission type="button" :disabled="decisionDisabled" @click="decide('approve')">{{ t("批准并发布") }}</button></div>
         </template>
       </section>
-    </template>
+    </FrozenSubmissionScope>
   </div>
 </template>
 

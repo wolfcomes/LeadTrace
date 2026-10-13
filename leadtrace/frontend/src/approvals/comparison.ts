@@ -107,12 +107,12 @@ export function buildComparison(current: Record<string, unknown>, comparison?: C
   const warnings = [...(comparison?.warnings ?? [])];
   if (!available) warnings.unshift("比较起点不可用，无法可靠判断本次修改；请检查完整提交内容及操作历史。");
   const changes: ScientificChange[] = [], confirmations: ScientificChange[] = [];
-  const issues: { label: string; domain: string; detail: string }[] = [];
+  const issues: { id: string; label: string; domain: string; detail: string }[] = [];
   for (const domain of domains) {
     for (const row of rows(current, domain)) {
       const state = row.status ?? row.review_status ?? row.state;
       if (state === "unresolved" || state === "needs_revision" || state === "needs_review" || row.review_hint) {
-        issues.push({ label: recordLabel(current, domain, row), domain, detail: String(row.review_hint || state) });
+        issues.push({ id: identity(row, domain), label: recordLabel(current, domain, row), domain, detail: String(row.review_hint || state) });
       }
     }
     if (!available || !before) continue;
