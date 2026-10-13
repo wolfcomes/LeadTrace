@@ -40,15 +40,27 @@ Celery and may be rebuilt from PostgreSQL-backed jobs and extraction runs.
 
 ## Admin submission review
 
-The approval page starts with net changes between the frozen submission and the
-previous frozen submission, or the reliably reconstructed state before the first
-Reviewer edit. Missing or unsupported history shows an explicit comparison warning.
-Compound and relationship cards show before/after scientific values, structure
-representations and evidence with frozen page/region locators. Routine confirmations
-are collapsed; unresolved issue resolutions, cleared hints, deletions and evidence
-reassignments remain visible. Remaining issues are shown even when unchanged.
-Complete frozen content and all actors' event history expand on demand. Approval
-still applies to the entire frozen submission and its content hash.
+The approval page uses Reviewer-style, read-only article, Compound and Lineage
+records with the comparison baseline on the left and the frozen submission on the
+right. The default directory lists changed records; all records remain available.
+A selected Compound keeps its structure, activities and supporting evidence in
+context. Original evidence crops are visible and rendered from verified frozen
+PDF identity and coordinates. Larger region/page views are available on demand.
+
+Each affected Lineage is reviewed as a whole: paired graphs use shared node
+positions and viewport coordinates, with linked selection, optional synchronized
+pan/zoom, change navigation and an expanded comparison view. Member structure,
+activity and shared evidence changes make their Lineages discoverable even when
+the topology is unchanged. Selected members and relationships show complete
+before/after context and evidence below the graphs. Viewing never writes a graph
+layout or changes the Reviewer workspace.
+
+Net changes compare with the previous frozen submission, or the reliably
+reconstructed state before the first Reviewer edit. Missing or unsupported history
+shows an explicit comparison warning. Routine confirmations are collapsed;
+unresolved issue resolutions, cleared hints, deletions and evidence reassignments
+remain visible. Complete frozen content and all actors' history expand on demand.
+Approval still applies to the entire frozen submission and its content hash.
 
 The Admin detail API exposes the read-only projection with
 `?include_comparison=true`; its default response retains the legacy shape.
