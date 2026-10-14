@@ -1,4 +1,4 @@
-"""Operator-only, additive bibliography revisions of pending submissions.
+"""Operator-only article-metadata revisions of pending submissions.
 
 Call inside a transaction. No HTTP endpoint or Reviewer impersonation is used.
 The old immutable submission is returned for the stated administrative reason;
@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.service import AuditService, canonical_content_hash
+from app.catalog.models import PaperSource
 from app.papers.metadata import ArticleMetadata, ARTICLE_METADATA_DEFAULTS, metadata_values
 from app.publications.models import AdminDecisionAction
 from app.publications.service import PublicationService
@@ -23,30 +24,41 @@ from app.workspaces.models import (
 )
 from app.workspaces.snapshot import build_paper_snapshot, canonical_snapshot_hash
 
-FIELDS = frozenset(ARTICLE_METADATA_DEFAULTS) - {'pdb_references'}
+FIELDS = frozenset(ARTICLE_METADATA_DEFAULTS)
 
 
 def supplement_metadata(
     session: Session, *, submission_id: UUID, content_hash: str,
     expected_workspace_version: int, updates: dict, reason: str,
     actor: User, request_id: str,
+    expected_existing: dict | None = None,
+    expected_section_note: str | None = None,
 ) -> PaperSubmission:
     if actor.role is not UserRole.ADMIN or not actor.is_enabled:
         raise PermissionError('An enabled Admin is required')
     reason = reason.strip()
     if not reason or not updates or not set(updates) <= FIELDS:
         raise ValueError('A reason and an article-metadata-only patch are required')
+    expected_existing = expected_existing or {}
+    if not set(expected_existing) <= {'abstract_note'} or not set(expected_existing) <= set(updates):
+        raise ValueError('Only an explicitly matched Abstract note may be replaced')
     original = session.get(PaperSubmission, submission_id)
     if original is None:
         raise ValueError('Submission not found')
     context = lock_workspace(session, original.workspace_id)
     if context is None:
         raise ValueError('Active workspace not found')
-    key = 'metadata-supplement:' + canonical_content_hash({
+    request_identity = {
         'original': str(submission_id), 'hash': content_hash,
         'version': expected_workspace_version, 'updates': updates,
         'reason': reason, 'actor': str(actor.id),
-    })
+    }
+    # Keep the original key shape for already executed additive requests.
+    if expected_existing:
+        request_identity['expected_existing'] = expected_existing
+    if expected_section_note is not None:
+        request_identity['expected_section_note'] = expected_section_note
+    key = 'metadata-supplement:' + canonical_content_hash(request_identity)
     replay = session.scalar(select(PaperSubmission).where(
         PaperSubmission.workspace_id == original.workspace_id,
         PaperSubmission.idempotency_key == key,
@@ -71,8 +83,27 @@ def supplement_metadata(
     validated = ArticleMetadata.model_validate(metadata_values(paper) | updates).model_dump(mode='json')
     patch = {field: validated[field] for field in updates}
     for field, value in patch.items():
+        if field in expected_existing:
+            if getattr(paper, field) != expected_existing[field] or value == expected_existing[field]:
+                raise ValueError('Abstract note changed or replacement is unchanged')
+            continue
         if value == ARTICLE_METADATA_DEFAULTS[field] or getattr(paper, field) != ARTICLE_METADATA_DEFAULTS[field]:
             raise ValueError('Only missing metadata may be supplemented')
+    if 'pdb_references' in patch:
+        source = session.get(PaperSource, paper.source_id)
+        if source is None or any(ref.get('source_page') and ref['source_page'] > source.page_count for ref in patch['pdb_references']):
+            raise ValueError('PDB source page is outside the article')
+    section = session.scalar(select(PaperSectionReview).where(
+        PaperSectionReview.workspace_id == workspace.id,
+        PaperSectionReview.section_key == PaperSection.BIBLIOGRAPHY,
+    ))
+    if section is None:
+        raise ValueError('Bibliography section is missing')
+    note = section.note
+    if expected_section_note is not None:
+        if section.note != expected_section_note:
+            raise ValueError('Bibliography note changed; preserve the new note')
+        note = None
 
     PublicationService().decide(
         session, submission_id=original.id, content_hash=content_hash,
@@ -89,13 +120,8 @@ def supplement_metadata(
         actor_kind=ChangeActorKind.ADMIN, actor_id=actor.id,
         occurred_at=datetime.now(timezone.utc),
     ))
-    note = '管理员补充书目信息，新增内容待审核；未代表原 reviewer 确认。' + reason
-    section = session.scalar(select(PaperSectionReview).where(
-        PaperSectionReview.workspace_id == workspace.id,
-        PaperSectionReview.section_key == PaperSection.BIBLIOGRAPHY,
-    ))
-    if section is None:
-        raise ValueError('Bibliography section is missing')
+    # Keep human notes unless an explicit, exact-value cleanup was requested.
+    # Operator attribution and explanations remain in history/audit.
     session.add(ChangeEvent(
         paper_id=paper.id, workspace_id=workspace.id, entity_type='paper_section_review', entity_id=section.id,
         action='section.update', before_value={'section_key': 'bibliography', 'state': section.state.value, 'note': section.note},
@@ -117,7 +143,7 @@ def supplement_metadata(
         submission_number=original.submission_number + 1, idempotency_key=key,
         snapshot=snapshot, content_hash=canonical_snapshot_hash(snapshot),
         workspace_version=workspace.version, submitted_by_id=actor.id,
-        reviewer_note=note + f' 原提交 #{original.submission_number} 保留原 reviewer 内容和历史。',
+        reviewer_note=None,
     )
     session.add(replacement)
     session.flush()

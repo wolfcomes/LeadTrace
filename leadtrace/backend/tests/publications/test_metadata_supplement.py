@@ -3,12 +3,12 @@ from copy import deepcopy
 import pytest
 from sqlalchemy import select
 
-from app.audit.service import AuditService
+from app.audit.service import AuditService, canonical_content_hash
 from app.papers.models import Paper
 from app.publications.models import AdminDecision, PublishedPaperVersion
 from app.publications.service import PublicationService
 from app.users.models import User
-from app.workspaces.models import ChangeEvent, PaperSubmission, PaperWorkspace
+from app.workspaces.models import ChangeEvent, PaperSection, PaperSectionReview, PaperSubmission, PaperWorkspace
 from app.workspaces.snapshot import canonical_snapshot_hash
 
 
@@ -35,7 +35,7 @@ def test_supplement_preserves_frozen_science_and_records_admin_origin(publicatio
         second = amend(f, s, first)
         assert second.submission_number == 2
         assert second.submitted_by_id == f.admin_id
-        assert '管理员' in second.reviewer_note
+        assert second.reviewer_note is None
         assert second.snapshot['paper']['pmid'] == PATCH['pmid']
         assert second.content_hash == canonical_snapshot_hash(second.snapshot)
         assert s.get(PaperSubmission, first.id).snapshot == original
@@ -44,6 +44,7 @@ def test_supplement_preserves_frozen_science_and_records_admin_origin(publicatio
             if key not in {'paper', 'workspace_version', 'sections'}:
                 assert second.snapshot[key] == value
         assert all(x['state'] == 'pending' for x in second.snapshot['sections'] if x['section_key'] == 'bibliography')
+        assert all(x['note'] is None for x in second.snapshot['sections'] if x['section_key'] == 'bibliography')
         assert not list(s.scalars(select(PublishedPaperVersion)))
         assert len(list(s.scalars(select(AdminDecision)))) == 1
         admin = s.get(User, f.admin_id)
@@ -99,3 +100,84 @@ def test_missing_optional_science_key_is_not_silently_restored(publication_fixtu
     with pytest.raises(RuntimeError, match='no longer matches'):
         with publication_fixture.session_factory.begin() as session:
             amend(publication_fixture, session, first)
+
+
+def test_scoped_note_cleanup_preserves_sources_and_adds_research_profile(publication_fixture):
+    f = publication_fixture
+    old_note = 'Bibliographic identity matched. 管理员补充，待审核。'
+    with f.session_factory.begin() as s:
+        s.get(Paper, f.paper_id).abstract_note = old_note
+    first = f.submit()
+    with f.session_factory.begin() as s:
+        revised = amend(f, s, first, updates={
+            'abstract_note': 'Bibliographic identity matched.',
+            'research_profile': {'targets': [{'name': 'Target A', 'role': 'primary', 'source': 'Page 1'}]},
+        }, expected_existing={'abstract_note': old_note})
+        assert revised.snapshot['paper']['abstract_note'] == 'Bibliographic identity matched.'
+        assert revised.snapshot['paper']['research_profile']['targets'][0]['name'] == 'Target A'
+        assert s.get(PaperSubmission, first.id).snapshot['paper']['abstract_note'] == old_note
+
+
+@pytest.mark.parametrize('case', ['stale_note', 'replace_profile', 'pdb_page'])
+def test_scoped_replacement_and_pdb_limits_are_checked(publication_fixture, case):
+    f = publication_fixture
+    first = f.submit()
+    options = {
+        'stale_note': {'updates': {'abstract_note': None}, 'expected_existing': {'abstract_note': 'Not the current note'}},
+        'replace_profile': {'updates': {'research_profile': {'targets': []}}, 'expected_existing': {'research_profile': {}}},
+        'pdb_page': {'updates': {'pdb_references': [{'pdb_id': '1ABC', 'source_page': 2, 'source_context': 'Out of range'}]}},
+    }
+    with pytest.raises(ValueError):
+        with f.session_factory.begin() as s:
+            amend(f, s, first, **options[case])
+
+
+def test_missing_pdb_mentions_can_be_supplemented(publication_fixture):
+    f = publication_fixture
+    first = f.submit()
+    with f.session_factory.begin() as s:
+        revised = amend(f, s, first, updates={'pdb_references': [{'pdb_id': '1ABC', 'source_page': 1, 'usage': 'cited_structure'}]})
+        assert revised.snapshot['paper']['pdb_references'][0]['pdb_id'] == '1ABC'
+
+
+def test_legacy_request_retains_its_idempotency_key(publication_fixture):
+    f = publication_fixture
+    first = f.submit()
+    with f.session_factory.begin() as s:
+        second = amend(f, s, first)
+        legacy_key = 'metadata-supplement:' + canonical_content_hash({
+            'original': str(first.id), 'hash': first.content_hash,
+            'version': first.workspace_version, 'updates': PATCH,
+            'reason': 'Administrator bibliographic supplement; pending review.',
+            'actor': str(f.admin_id),
+        })
+        assert second.idempotency_key == legacy_key
+
+
+def test_human_bibliography_note_is_preserved(publication_fixture):
+    f = publication_fixture
+    with f.session_factory.begin() as s:
+        section = s.scalar(select(PaperSectionReview).where(PaperSectionReview.workspace_id == f.workspace_id, PaperSectionReview.section_key == PaperSection.BIBLIOGRAPHY))
+        section.note = 'Human note: verify the supplied year.'
+    first = f.submit()
+    with f.session_factory.begin() as s:
+        second = amend(f, s, first)
+        row = next(x for x in second.snapshot['sections'] if x['section_key'] == 'bibliography')
+        assert row['note'] == 'Human note: verify the supplied year.'
+
+
+@pytest.mark.parametrize('stale', [False, True])
+def test_section_note_cleanup_requires_exact_expected_value(publication_fixture, stale):
+    f = publication_fixture
+    with f.session_factory.begin() as s:
+        section = s.scalar(select(PaperSectionReview).where(PaperSectionReview.workspace_id == f.workspace_id, PaperSectionReview.section_key == PaperSection.BIBLIOGRAPHY))
+        section.note = 'Previously generated supplement annotation.'
+    first = f.submit()
+    if stale:
+        with pytest.raises(ValueError):
+            with f.session_factory.begin() as s:
+                amend(f, s, first, expected_section_note='An outdated note')
+    else:
+        with f.session_factory.begin() as s:
+            second = amend(f, s, first, expected_section_note='Previously generated supplement annotation.')
+            assert next(x for x in second.snapshot['sections'] if x['section_key'] == 'bibliography')['note'] is None

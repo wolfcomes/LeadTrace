@@ -16,12 +16,21 @@ The normal Reviewer editor remains the path for editing an open draft.
    `app.publications.metadata_supplement.supplement_metadata` with the recorded
    `submission_id`, `content_hash`, `expected_workspace_version`, `updates`,
    a clear administrative `reason`, and an operator `request_id`.
-4. The service accepts only missing article metadata. It verifies that the live
+4. The service accepts missing article metadata, including source-bounded PDB
+   mentions. Explicit cleanup of an existing Abstract note additionally requires
+   its exact current value in `expected_existing={"abstract_note": old_value}`;
+   other populated metadata cannot be replaced through this operation.
+   Existing bibliography section notes are preserved by default. Removing a
+   prior generated section note requires `expected_section_note=old_value` and
+   an exact current-value match; an unexpected human edit is never cleared.
+   It verifies that the live
    science and bibliography still match the frozen submission. It uses the
    existing request-changes decision to close the old submission, then creates
    a new pending submission attributed to Admin. The previous snapshot and hash
-   remain unchanged. The new bibliography section is pending, and the submission
-   note explicitly says the new information is not confirmed by the Reviewer.
+   remain unchanged. The new bibliography section is pending. Operator identity
+   and the reason remain in history/audit; the visible article and submission
+   notes receive no special administrator-supplement label or fabricated
+   Reviewer confirmation.
    Compound/Lineage viewing receipts remain valid for unchanged scientific data.
 5. Verify original submission hashes, unaffected scientific tables, the unchanged
    pending queue count, Admin change provenance, new metadata in the comparison,
@@ -30,8 +39,9 @@ The normal Reviewer editor remains the path for editing an open draft.
    original submission and complete history. No publication is created.
 
 An identical request replays its existing replacement. A stale baseline,
-non-Admin actor, non-metadata field, or attempt to replace a populated field is
-rejected. Let any exception roll back the complete transaction. Do not change
+non-Admin actor, non-metadata field, or attempt to replace a populated field
+without the supported exact-value Abstract-note check is rejected. Let any
+exception roll back the complete transaction. Do not change
 versions, snapshots, assignments or confirmations to force an operation through.
 Different follow-up corrections require fresh inspection and a separately
 authorized operation; this service deliberately supports additive supplements.
