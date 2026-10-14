@@ -195,3 +195,56 @@ it('pairs unchanged duplicate entries once each without inventing additions and 
   for(const evidence of wrapper.findAll('[data-term-evidence]'))expect(evidence.attributes('open')).toBeUndefined();
  }
 });
+
+it('arranges six article modules and keeps exact quotations separate from explanations', () => {
+  const quote = {source_kind:'main_pdf' as const,quoted_text:'Exact paper sentence.',page_number:2};
+  const wrapper=mount(ArticleMetadata,{props:{metadata:{...metadata,research_profile:{...metadata.research_profile,mechanisms:[{label:'Inhibitor',source:'Human explanation',evidence:[quote]}]}}}});
+  expect(wrapper.findAll('[data-article-module]')).toHaveLength(6);
+  expect(wrapper.get('[data-profile-group=mechanisms] blockquote').text()).toBe('Exact paper sentence.');
+  expect(wrapper.get('[data-profile-group=mechanisms]').text()).toContain('Human explanation');
+  expect(wrapper.get('[data-profile-group=targets]').text()).toContain('尚未补充原文摘录');
+});
+
+it('recognizes evidence-only changes without treating identical copied evidence as changed', async () => {
+  const {profileEvidenceChanged,pairProfileEntries}=await import('../src/approvals/researchProfilePairs');
+  const entry={label:'A',source:'Page 1',evidence:[{source_kind:'main_pdf' as const,quoted_text:'Original',page_number:1}]};
+  expect(profileEvidenceChanged({before:entry,after:structuredClone(entry)})).toBe(false);
+  const changed=structuredClone(entry);changed.evidence[0]!.quoted_text='Corrected';
+  expect(profileEvidenceChanged({before:entry,after:changed})).toBe(true);
+  expect(pairProfileEntries([entry,entry],[structuredClone(entry),structuredClone(entry)])).toHaveLength(2);
+});
+
+it('links supplement evidence to its own source and never to main PDF; crops stay lazy',async()=>{
+  const {default:Evidence}=await import('../src/review/paper/ArticleEvidence.vue');
+  const wrapper=mount(Evidence,{props:{sourceContext:{paperId:'paper',pageCount:5,sha256:'a'.repeat(64)},evidence:[{source_kind:'supplement',quoted_text:'Supporting text',page_number:2,locator:'Supplement S1',source_url:'https://example.org/si.pdf'},{source_kind:'main_pdf',quoted_text:'Main text',page_number:1,source_sha256:'a'.repeat(64),bbox:{x:0,y:0,width:.5,height:.2}}]}});
+  expect(wrapper.findAll('[data-article-source-link]')).toHaveLength(1);
+  expect(wrapper.find('a[href="https://example.org/si.pdf"]').exists()).toBe(true);
+  expect(wrapper.findComponent({name:'FrozenPdfCrop'}).exists()).toBe(false);
+  expect(wrapper.find('[data-article-crop]').exists()).toBe(true);
+  await wrapper.setProps({sourceContext:{paperId:'paper',pageCount:5,sha256:'b'.repeat(64)}});
+  expect(wrapper.find('[data-article-crop]').exists()).toBe(false);
+});
+
+it('shows changed PDB evidence as readable quotations in both approval sides',async()=>{
+  const {default:SubmissionComparison}=await import('../src/approvals/SubmissionComparison.vue');
+  const {frozenSnapshot,publicationIds}=await import('./paper-publication-v2-fixtures');
+  const before=structuredClone(frozenSnapshot) as any,after=structuredClone(frozenSnapshot) as any;
+  before.paper.pdb_references=[{pdb_id:'1ABC',usage:'cited_structure',source_context:'Existing explanation'}];
+  after.paper.pdb_references=structuredClone(before.paper.pdb_references);after.paper.pdb_references[0].evidence=[{source_kind:'main_pdf',quoted_text:'Exact structure evidence',page_number:1}];
+  const wrapper=mount(SubmissionComparison,{props:{paperId:publicationIds.paper,snapshot:after,comparison:{kind:'previous_submission',baseline_submission_number:1,baseline_snapshot:before,events:[],warnings:[]}}});
+  await wrapper.get('[data-record-tab=article]').trigger('click');
+  expect(wrapper.get('[data-record-side=after] [data-pdb-comparison] blockquote').text()).toBe('Exact structure evidence');
+  expect(wrapper.get('[data-record-side=before] [data-pdb-comparison]').text()).toContain('尚未补充原文摘录');
+});
+
+it('renders a paired PDB placeholder when a historical snapshot has no PDB field',async()=>{
+  const {default:SubmissionComparison}=await import('../src/approvals/SubmissionComparison.vue');
+  const {frozenSnapshot,publicationIds}=await import('./paper-publication-v2-fixtures');
+  const before=structuredClone(frozenSnapshot) as any,after=structuredClone(frozenSnapshot) as any;
+  delete before.paper.pdb_references;
+  after.paper.pdb_references=[{pdb_id:'1ABC',usage:'cited_structure',evidence:[{source_kind:'main_pdf',quoted_text:'Original structure text',page_number:1}]}];
+  const wrapper=mount(SubmissionComparison,{props:{paperId:publicationIds.paper,snapshot:after,comparison:{kind:'previous_submission',baseline_submission_number:1,baseline_snapshot:before,events:[],warnings:[]}}});
+  await wrapper.get('[data-record-tab=article]').trigger('click');
+  expect(wrapper.get('[data-record-side=before] [data-pdb-comparison]').text()).toContain('未记录');
+  expect(wrapper.get('[data-record-side=after] [data-pdb-comparison]').text()).toContain('1ABC');
+});

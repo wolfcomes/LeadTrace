@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.papers.metadata import ArticleMetadata, ARTICLE_METADATA_FIELDS, metadata_values
+from app.papers.metadata import ArticleMetadata, ARTICLE_METADATA_FIELDS, metadata_values, validate_article_evidence_sources
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -422,6 +422,7 @@ class AiPrefillService:
         before_paper = _paper_snapshot(paper)
         bibliography = payload.bibliography
         serialized = bibliography.model_dump(mode='json')
+        validate_article_evidence_sources(serialized, page_count=source.page_count, sha256=source.sha256)
         ArticleMetadata.model_validate(metadata_values(paper) | {
             key: serialized[key] for key in ARTICLE_METADATA_FIELDS if key in bibliography.model_fields_set})
         for field in ARTICLE_METADATA_FIELDS:

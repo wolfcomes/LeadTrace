@@ -24,6 +24,8 @@ import FrozenCompoundCard from "./FrozenCompoundCard.vue";
 import FrozenEvidence from "./FrozenEvidence.vue";
 import LineageRecordComparison from "./LineageRecordComparison.vue";
 import ResearchProfileComparison from "./ResearchProfileComparison.vue";
+import PdbReferenceComparison from "./PdbReferenceComparison.vue";
+import type { PdbReference } from "../v2/workbench";
 import type { ResearchProfile } from "../review/paper/articleMetadata";
 const props = defineProps<{
   snapshot: Record<string, unknown>;
@@ -185,13 +187,12 @@ function visibleFields(row: Row) {
   );
 }
 function isProvenanceField(row:Row,key:string) {
-  return ['abstract_source','identifiers_source'].includes(key) || (['abstract_status','abstract_note'].includes(key) && !['not_found','needs_review'].includes(String(row.abstract_status)));
+  return ['abstract_source','identifiers_source'].includes(key) || (['abstract_status','abstract_note'].includes(key) && ![row,...rows(props.snapshot,'paper'),...rows(baseline.value,'paper')].some(item=>['not_found','needs_review'].includes(String(item.abstract_status))));
 }
-function provenanceFields(row:Row) {return visibleFields(row).filter(([key])=>isProvenanceField(row,key));}
+function pairedPaper(row:Row) {const after=rows(props.snapshot,'paper')[0]??{},before=rows(baseline.value,'paper')[0]??{};return Object.fromEntries([...new Set([...Object.keys(after),...Object.keys(before)])].map(key=>[key,row[key]??(key==='research_profile'?{}:key==='pdb_references'?[]:null)]));}
+function provenanceFields(row:Row) {return visibleFields(pairedPaper(row)).filter(([key])=>isProvenanceField(row,key));}
 function articleFields(row: Row, domain: string, changed: boolean) {
-  const pairedRow = domain === 'paper' && (
-    rows(props.snapshot, 'paper')[0]?.research_profile || rows(baseline.value, 'paper')[0]?.research_profile
-  ) ? { ...row, research_profile: row.research_profile ?? {} } : row;
+  const pairedRow=domain==='paper'?pairedPaper(row):row;
   return visibleFields(pairedRow).filter(([key])=>domain!=='paper'||!isProvenanceField(row,key)).filter(
     ([key]) =>
       (!result.value.available ||
@@ -357,7 +358,7 @@ function fieldChanged(domain: string, id: unknown, key: string) {
         </header>
         <div
           v-if="tab === 'compounds' && selectedCompound"
-          ref="compoundPair"
+          ref="compoundPair" data-comparison-pair
           class="paired-compound-records"
         >
           <FrozenCompoundCard
@@ -384,7 +385,7 @@ function fieldChanged(domain: string, id: unknown, key: string) {
           :current-source-sha="sourceSha"
           :available="result.available"
         />
-        <div v-else-if="tab === 'article'" class="paired-article-records">
+        <div v-else-if="tab === 'article'" ref="compoundPair" data-comparison-pair class="paired-article-records">
           <article v-for="side in sides" :key="side" :data-record-side="side">
             <h3 class="record-side-heading">
               {{ t(side === "before" ? "修改前" : "本次提交") }}
@@ -434,7 +435,7 @@ function fieldChanged(domain: string, id: unknown, key: string) {
                           )"
                           :key="key"
                           ><dt>{{ t(fieldLabels[key] ?? key) }}</dt>
-                          <dd
+                          <dd :data-profile-pair="`article-field:${domain}:${row.section_key??row.id??domain}:${key}`"
                             :class="{
                               'field-modified': key !== 'research_profile' && fieldChanged(
                                 domain,
@@ -443,13 +444,14 @@ function fieldChanged(domain: string, id: unknown, key: string) {
                               ),
                             }"
                           >
-                            <ResearchProfileComparison v-if="key === 'research_profile'" :side="side" :profile="(value ?? {}) as ResearchProfile" :other="(rows(side === 'before' ? snapshot : comparison?.baseline_snapshot ?? {}, 'paper')[0]?.research_profile ?? {}) as ResearchProfile" :available="result.available" />
+                            <div data-profile-pair-content><ResearchProfileComparison v-if="key === 'research_profile'" :source-context="{paperId,pageCount:Number((snapshot.source as Row)?.page_count??0),sha256:sourceSha}" :side="side" :profile="(value ?? {}) as ResearchProfile" :other="(rows(side === 'before' ? snapshot : comparison?.baseline_snapshot ?? {}, 'paper')[0]?.research_profile ?? {}) as ResearchProfile" :available="result.available" />
+                            <PdbReferenceComparison v-else-if="key==='pdb_references'" :entries="(value??[]) as PdbReference[]" :other="(rows(side==='before'?snapshot:comparison?.baseline_snapshot??{},'paper')[0]?.pdb_references??[]) as PdbReference[]" :side="side" :available="result.available" :source-context="{paperId,pageCount:Number((snapshot.source as Row)?.page_count??0),sha256:sourceSha}" />
                             <template v-else>{{
                               ["state", "status", "section_key", "abstract_status"].includes(key)
                                 ? reviewState(value)
                                 : textValue(value)
                             }}</template>
-                          </dd></template
+                          </div></dd></template
                         >
                       </dl>
                     </ReviewDisclosure>

@@ -625,3 +625,22 @@ def test_duplicate_source_occurrences_merge_without_losing_refs_or_annotations(a
         assert 'Alternate source label' in (rows[0].label or '')+(rows[0].source_context or '')
         assert result.delivery_notes[0]['code']=='DUPLICATE_STRUCTURE_OCCURRENCE_MERGED'
         assert session.scalar(select(func.count()).select_from(ChangeEvent).where(ChangeEvent.entity_type=='structure_source_image'))==1
+
+
+@pytest.mark.parametrize('case', ['page', 'hash'])
+def test_ai_article_evidence_checks_main_source_before_apply(ai_context, case):
+    run_id = _queue(ai_context)
+    raw = complete_payload()
+    quote = {'source_kind': 'main_pdf', 'quoted_text': 'Exact source text.', 'page_number': 1}
+    if case == 'page': quote['page_number'] = 13
+    else: quote['source_sha256'] = 'f' * 64
+    raw['bibliography'] = {'research_profile': {'mechanisms': [{'label': 'Inhibitor', 'source': 'Page 1', 'evidence': [quote]}]}}
+    with ai_context.session_factory.begin() as session:
+        result = AiPrefillService().apply(session, run_id=run_id, payload=AiPrefillPayload.model_validate(raw))
+        assert not result.applied
+        assert result.failure_code == 'DELIVERY_WRITE_FAILED'
+        assert result.failure_details['exception_type'] == 'ValueError'
+    with ai_context.session_factory() as session:
+        assert session.get(PaperWorkspace, ai_context.workspace_id).version == 1
+        assert session.get(Paper, ai_context.paper_id).research_profile == {}
+        assert session.scalar(select(func.count()).select_from(Compound)) == 0

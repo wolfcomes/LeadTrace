@@ -510,3 +510,9 @@ Entity `ref` values must not contain `/` (receipt path separator). Use identifie
 `bibliography.pdb_references` 是提及记录数组，每项包含 `pdb_id`、`usage`（`this_work` / `cited_structure` / `unknown`），以及可选的 `source_page`、`source_context`、`compound_label`、`review_hint`。PDF 页码从 1 开始，不能超过原文件页数。保留用途和来源上下文；只有来源明确配对时才填写 compound_label，不凭 docking 常识猜配体对应。无法确定用途用 unknown 并简要写核对提示。
 
 PDB ID 接受传统四字符（例如 1ABC）和扩展格式（例如 pdb_00001abc）；三字符配体代码（ATP 等）、DOI、UniProt ID 不属于此字段。同一个 PDB ID 在不同上下文中可多次出现，不能据此把引用结构认作本文新解析结构。不要查询外部结构反推论文未报告的编号。旧候选可不含这些字段；对既有文章补录仍遵守版本化修改及人工编辑保护。
+
+### 文章条目的原文证据
+
+SourceBackedLabel、ResearchTarget 和 PdbReference 可有 `evidence` 数组。新提取应为每个可支持的条目提供直接原文短摘录，不把 `source` 的解释或译文冒充引文。证据格式：`{source_kind: main_pdf|supplement|external, quoted_text, page_number?, locator?, source_url?, source_sha256?, bbox?}`。`quoted_text` 是保持原语言的精确原句/短段（最多 6000 字符）；PDF 两类都必须使用从 1 开始的 PDF 物理页码，补充材料另需 locator 标识材料名称；external 必须给无凭据的 http(s) 来源 URL。基因数据库补充须标外部来源，不能暗示文章报告了 accession。
+
+准确且确有需要时可附主文 `bbox:{x,y,width,height}`（全页归一化坐标，矩形不得越界）；必须同时附主 PDF SHA-256。未确定坐标就省略 bbox，不猜测截图。未能找到直接支持的摘录时省略 evidence，保留原 source/review_hint 并在未决中列出；缺失不是“论文未报告”的证明。历史 candidate 可缺少 evidence。修补仅追加获核对的证据，保留所有人工字段、条目顺序和既有引文。

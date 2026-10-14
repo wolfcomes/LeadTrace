@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import func, select
 
 from app.papers.models import Paper
@@ -285,3 +286,16 @@ def test_modality_vocabulary_preserves_legacy_but_rejects_new_free_text(workspac
                            {'label': '前药', 'source': 'Page 3'}]}})
     assert fixed.status_code == 200
     assert len(fixed.json()['bibliography']['research_profile']['modalities']) == 2
+
+
+@pytest.mark.parametrize('invalid', ['page', 'hash'])
+def test_article_evidence_manual_save_checks_source_identity(workspace_fixture, invalid):
+    f = workspace_fixture
+    csrf = f.login('workspace.reviewer')
+    evidence = {'source_kind': 'main_pdf', 'quoted_text': 'Exact words', 'page_number': 1}
+    if invalid == 'page': evidence['page_number'] = 99999
+    if invalid == 'hash': evidence['source_sha256'] = 'f' * 64
+    response = f.client.patch(f'/api/v2/workspaces/{f.workspace_id}/bibliography', headers={'X-CSRF-Token': csrf}, json={'expected_workspace_version': 1, 'research_profile': {'mechanisms': [{'label': 'Inhibitor', 'source': 'Page 1', 'evidence': [evidence]}]}})
+    assert response.status_code == 422
+    with f.session_factory() as session:
+        assert session.get(PaperWorkspace, f.workspace_id).version == 1

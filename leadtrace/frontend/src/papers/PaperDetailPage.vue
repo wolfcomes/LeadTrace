@@ -74,7 +74,7 @@ watch(() => route.params.paperId, load, { immediate: true });
         </div>
         <aside class="published-version-card"><span>Published Paper Version</span><strong>{{ t("版本") }} {{ detail.version_number }}</strong><small>{{ formatDate(detail.published_at) }}</small><code>{{ detail.content_hash }}</code></aside>
       </header>
-      <ArticleMetadata v-if="detail" :metadata="detail.bibliography" />
+      <ArticleMetadata v-if="detail" :metadata="detail.bibliography" :source-context="{paperId:String(route.params.paperId),pageCount:snapshot.source.page_count,sha256:snapshot.source.sha256}" />
       <AiProvenance :records="snapshot.ai_provenance ?? []" />
       <HighlightCards :items="snapshot.compound_highlights ?? []" :compounds="snapshot.compounds" :evidence="snapshot.evidence" :depiction="highlightDepiction" />
 

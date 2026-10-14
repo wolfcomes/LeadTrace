@@ -2,7 +2,7 @@ import type { ArticleTarget, ResearchProfile } from '../review/paper/articleMeta
 type Term = NonNullable<ResearchProfile['modalities']>[number];
 export type ProfileEntry = Term | ArticleTarget;
 export type ProfilePair = { before?: ProfileEntry; after?: ProfileEntry };
-const equal = (a: ProfileEntry, b: ProfileEntry) => [...new Set([...Object.keys(a), ...Object.keys(b)])].every(key => (a as Record<string, unknown>)[key] === (b as Record<string, unknown>)[key]);
+const equal = (a: ProfileEntry, b: ProfileEntry) => [...new Set([...Object.keys(a), ...Object.keys(b)])].every(key => JSON.stringify((a as Record<string, unknown>)[key]) === JSON.stringify((b as Record<string, unknown>)[key]));
 const identity = (entry: ProfileEntry, includeRole: boolean) => 'name' in entry
   ? JSON.stringify([entry.name, entry.organism ?? null, ...(includeRole ? [entry.role] : [])])
   : entry.label;
@@ -27,6 +27,6 @@ export function pairProfileEntries(before: ProfileEntry[], after: ProfileEntry[]
 }
 export function profileEvidenceChanged(pair: ProfilePair): boolean {
   if (!pair.before || !pair.after) return false;
-  return ['source', 'review_hint', 'uniprot_id', 'ncbi_gene_id'].some(key =>
-    ((pair.before as Record<string, unknown>)[key] ?? null) !== ((pair.after as Record<string, unknown>)[key] ?? null));
+  return ['source', 'review_hint', 'uniprot_id', 'ncbi_gene_id', 'evidence'].some(key =>
+    JSON.stringify((pair.before as Record<string, unknown>)[key] ?? null) !== JSON.stringify((pair.after as Record<string, unknown>)[key] ?? null));
 }

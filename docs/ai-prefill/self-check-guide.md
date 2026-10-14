@@ -110,3 +110,5 @@ must verify these assertions afresh; a passing schema check is not scientific
 approval.
 
 Admin 草稿交付与科学自检状态分开：退出 4 / needs_revision 不再单独阻止有效候选入库，问题报告和未决身份必须保留。启动预填授权保存草稿，不授权科学批准；格式、源/候选身份、引用安全和目标工作区版本检查仍必须通过。报告缺项也要明确展示，不能以先入库为由跳过自检。
+
+文章条目 evidence 自检：逐项确认原文逐字摘录、支持范围、PDF 物理页码、主文/补充/外部来源区分，以及可选 bbox 的实际坐标和 SHA 身份；数据库 accession 不得伪装为论文报告。保留既有人工编辑和证据；没有可核对原句时留缺口，不用 source 解释生成引文。

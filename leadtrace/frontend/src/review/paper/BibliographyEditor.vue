@@ -6,6 +6,7 @@ import { useAuthStore } from '../../auth/store';
 import { paperWorkspaceSchema, type PaperWorkspace } from '../../v2/types';
 import type { PdbReference } from '../../v2/workbench';
 import ArticleMetadata from './ArticleMetadata.vue';
+import ArticleEvidenceEditor from './ArticleEvidenceEditor.vue';
 import ResearchProfileEditor from './ResearchProfileEditor.vue';
 import { abstractStatusLabels, revealInvalidField } from './articleMetadata';
 const props = defineProps<{workspace:PaperWorkspace;readOnly?:boolean}>();
@@ -35,7 +36,7 @@ async function save() {
   <details v-if="!editing" class="record-detail" data-bibliography-detail open>
     <summary>{{ t('查看文章信息与摘要') }}</summary>
     <dl class="workspace-bibliography"><div><dt>{{ t('标题') }}</dt><dd>{{ workspace.bibliography.title }}</dd></div><div><dt>{{ t('期刊') }}</dt><dd>{{ workspace.bibliography.journal }} · {{ workspace.bibliography.publication_year }}</dd></div><div><dt>DOI</dt><dd>{{ workspace.bibliography.doi||t('未报告') }}</dd></div><div><dt>{{ t('卷 / 期') }}</dt><dd>{{ workspace.bibliography.volume }} / {{ workspace.bibliography.issue }}</dd></div></dl>
-    <ArticleMetadata :metadata="workspace.bibliography" />
+    <ArticleMetadata :metadata="workspace.bibliography" :source-context="{paperId:workspace.bibliography.paper_id,pageCount:workspace.source.page_count,sha256:workspace.source.sha256}" />
   </details>
   <form v-else class="bibliography-edit-form" @submit.prevent="save" @invalid.capture="revealInvalidField">
     <label class="form-field">{{ t('标题') }}<input v-model="draft.title" required maxlength="1024"></label>
@@ -61,7 +62,7 @@ async function save() {
       <label class="form-field">{{ t('关联 Compound 编号') }}<input v-model="entry.compound_label" maxlength="255" :placeholder="t('仅在来源明确配对时填写')"></label>
       <label class="form-field">{{ t('来源上下文') }}<textarea v-model="entry.source_context" maxlength="2000" :placeholder="t('例如：引用既有受体结构用于 docking；不是本文新解析结构。')"></textarea></label>
       <label class="form-field">{{ t('核对提示（可选，解决后清空）') }}<input v-model="entry.review_hint" maxlength="1000"></label>
-      <button type="button" class="button-quiet" @click="draft.pdb_references.splice(index,1)">{{ t('删除') }}</button>
+      <ArticleEvidenceEditor v-model="entry.evidence" /><button type="button" class="button-quiet" @click="draft.pdb_references.splice(index,1)">{{ t('删除') }}</button>
     </fieldset>
     <button type="button" class="button-secondary" data-add-pdb @click="addPdb">{{ t('添加 PDB ID') }}</button>
     <div class="editor-actions"><button class="button-primary" type="submit" data-save-bibliography :disabled="busy">{{ t('保存修改') }}</button><button type="button" class="button-quiet" :disabled="busy" @click="editing=false">{{ t('取消') }}</button></div>

@@ -1,11 +1,19 @@
 import { z } from 'zod';
-export const sourcedTermSchema = z.object({label:z.string(),source:z.string(),review_hint:z.string().nullable().optional()}).strict();
+export const articleEvidenceSchema = z.object({
+  source_kind:z.enum(['main_pdf','supplement','external']),quoted_text:z.string().trim().min(1).max(6000),
+  page_number:z.number().int().positive().nullable().optional(),locator:z.string().nullable().optional(),
+  source_url:z.string().url().nullable().optional(),source_sha256:z.string().regex(/^[0-9a-f]{64}$/).nullable().optional(),
+  bbox:z.object({x:z.number().min(0).max(1),y:z.number().min(0).max(1),width:z.number().positive().max(1),height:z.number().positive().max(1)}).strict().nullable().optional(),
+}).strict();
+export type ArticleEvidence=z.infer<typeof articleEvidenceSchema>;
+export type ArticleSourceContext={paperId:string;pageCount:number;sha256:string};
+export const sourcedTermSchema = z.object({label:z.string(),source:z.string(),review_hint:z.string().nullable().optional(),evidence:z.array(articleEvidenceSchema).optional()}).strict();
 export const targetRoleLabels = {primary:'主要靶点',co_primary:'共同主要靶点',selectivity:'选择性对照',off_target:'脱靶检测',mechanistic:'机制相关',biomarker:'生物标志物',unknown:'角色待核对'} as const;
 export const articleTargetSchema = z.object({
   name:z.string(), role:z.enum(['primary','co_primary','selectivity','off_target','mechanistic','biomarker','unknown']),
   organism:z.string().nullable().optional(),gene_symbol:z.string().nullable().optional(),
   uniprot_id:z.string().nullable().optional(),ncbi_gene_id:z.string().nullable().optional(),
-  source:z.string(),review_hint:z.string().nullable().optional(),
+  source:z.string(),review_hint:z.string().nullable().optional(),evidence:z.array(articleEvidenceSchema).optional(),
 }).strict();
 export const profileGroups = [
   {key:'modalities',label:'作用模态',suggestions:[]},

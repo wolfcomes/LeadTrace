@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { researchMetadataFields } from '../review/paper/articleMetadata';
+import { researchMetadataFields, articleEvidenceSchema } from '../review/paper/articleMetadata';
 import { apiRequest } from '../api/client';
 export const pdbReferenceSchema = z.object({
-  pdb_id: z.string(), usage: z.enum(['this_work','cited_structure','unknown']),
+  evidence:z.array(articleEvidenceSchema).optional(), pdb_id: z.string(), usage: z.enum(['this_work','cited_structure','unknown']),
   source_page: z.number().int().positive().nullable().optional(), source_context: z.string().nullable().optional(),
   compound_label: z.string().nullable().optional(), review_hint: z.string().nullable().optional(),
 }).strict();

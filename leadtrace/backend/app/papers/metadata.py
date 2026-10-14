@@ -2,10 +2,68 @@
 import re
 from collections import Counter
 from typing import ClassVar, Literal
+from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 
-class PdbReference(BaseModel):
+class ArticleEvidenceBox(BaseModel):
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+    x: float = Field(ge=0, lt=1)
+    y: float = Field(ge=0, lt=1)
+    width: float = Field(gt=0, le=1)
+    height: float = Field(gt=0, le=1)
+
+    @model_validator(mode='after')
+    def contained(self):
+        if self.x + self.width > 1.000001 or self.y + self.height > 1.000001:
+            raise ValueError('Evidence crop must be within the page')
+        return self
+
+
+class ArticleEvidence(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    source_kind: Literal['main_pdf', 'supplement', 'external']
+    quoted_text: str = Field(min_length=1, max_length=6000)
+    page_number: int | None = Field(default=None, ge=1)
+    locator: str | None = Field(default=None, min_length=1, max_length=1000)
+    source_url: str | None = Field(default=None, max_length=2000)
+    bbox: ArticleEvidenceBox | None = None
+    source_sha256: str | None = Field(default=None, pattern=r'^[0-9a-f]{64}$')
+
+    @field_validator('source_url')
+    @classmethod
+    def safe_url(cls, value):
+        if value is not None:
+            parsed = urlsplit(value)
+            if parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password:
+                raise ValueError('Use an http(s) source URL without credentials')
+        return value
+
+    @model_validator(mode='after')
+    def traceable(self):
+        if self.source_kind in ('main_pdf', 'supplement') and self.page_number is None:
+            raise ValueError('PDF evidence requires a PDF page number')
+        if self.source_kind == 'supplement' and not self.locator:
+            raise ValueError('Supplement evidence requires the supplement identity')
+        if self.source_kind == 'external' and not self.source_url:
+            raise ValueError('External evidence requires its source URL')
+        if self.bbox is not None and (self.source_kind != 'main_pdf' or not self.source_sha256):
+            raise ValueError('Crops require the main PDF identity hash')
+        return self
+
+
+class ArticleEvidenceOwner(BaseModel):
+    evidence: list[ArticleEvidence] = Field(default_factory=list, max_length=30)
+
+    @model_serializer(mode='wrap')
+    def preserve_evidence_shape(self, handler):
+        result = handler(self)
+        if 'evidence' not in self.model_fields_set and not result.get('evidence'):
+            result.pop('evidence', None)
+        return result
+
+
+class PdbReference(ArticleEvidenceOwner):
     model_config = ConfigDict(extra='forbid')
     pdb_id: str = Field(max_length=12)
     usage: Literal['this_work', 'cited_structure', 'unknown'] = 'unknown'
@@ -64,14 +122,14 @@ def metadata_values(paper):
     return {key: getattr(paper, key) for key in ARTICLE_METADATA_FIELDS}
 
 
-class SourceBackedLabel(BaseModel):
+class SourceBackedLabel(ArticleEvidenceOwner):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
     label: str = Field(min_length=1, max_length=500)
     source: str = Field(min_length=1, max_length=2000)
     review_hint: str | None = Field(default=None, max_length=1000)
 
 
-class ResearchTarget(BaseModel):
+class ResearchTarget(ArticleEvidenceOwner):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
     name: str = Field(min_length=1, max_length=500)
     role: Literal['primary', 'co_primary', 'selectivity', 'off_target', 'mechanistic', 'biomarker', 'unknown'] = 'unknown'
@@ -157,3 +215,15 @@ class ArticleMetadata(BaseModel):
             if key not in self.model_fields_set and result.get(key) == default:
                 result.pop(key, None)
         return result
+
+
+def validate_article_evidence_sources(metadata: dict, *, page_count: int, sha256: str) -> None:
+    entries = [entry for group in metadata.get('research_profile', {}).values() for entry in group]
+    entries += metadata.get('pdb_references', [])
+    for entry in entries:
+        for evidence in entry.get('evidence', []):
+            if evidence['source_kind'] == 'main_pdf':
+                if evidence['page_number'] > page_count:
+                    raise ValueError('Article evidence page is outside the main PDF')
+                if evidence.get('source_sha256') and evidence['source_sha256'] != sha256:
+                    raise ValueError('Article evidence source identity mismatch')

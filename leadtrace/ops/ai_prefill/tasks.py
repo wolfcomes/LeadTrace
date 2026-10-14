@@ -133,6 +133,9 @@ pharmacological actions in mechanisms. Do not generate molecular_forms in new ex
 and preserve unchanged historical human fields during scoped repair. Keep Abstract
 provenance internally; do not add routine process boilerplate to abstract_note.
 PMID/PMCID need authorized identity evidence; never guess IDs or genes.
+For article profile/PDB entries add exact original-language evidence quotations with
+source kind and PDF page/locator or external URL; keep source explanations separate.
+Never fabricate absent quotations or crop coordinates; preserve existing evidence.
 Before expensive source checks run deterministic candidate checks, including graph diagnostics.
 No Preview/production access, credentials, database writes or external messaging. This
 task directory is the output boundary; source and bundle are read-only inputs. Do not

@@ -12,16 +12,17 @@ export function usePairedActivityAlignment(
     if (!host.value) return;
     const groups = new Map<string, HTMLElement[]>();
     for (const row of host.value.querySelectorAll<HTMLElement>(
-      "[data-activity-id]",
+      "[data-activity-id], [data-profile-pair]",
     )) {
-      const id = row.dataset.activityId!;
+      const id = row.dataset.activityId ?? `profile:${row.dataset.profilePair}`;
       groups.set(id, [...(groups.get(id) ?? []), row]);
     }
     for (const group of groups.values()) {
+      for (const row of group) { row.style.boxSizing = 'border-box'; const content=row.querySelector<HTMLElement>('[data-profile-pair-content]'); if(content)content.style.display='flow-root'; }
       const height = Math.max(
         ...group.map((row) => {
           const content = row.querySelector<HTMLElement>(
-            "[data-activity-content]",
+            "[data-activity-content], [data-profile-pair-content]",
           );
           const style = getComputedStyle(row);
           return (
@@ -57,7 +58,7 @@ export function usePairedActivityAlignment(
     observer = new ResizeObserver(schedule);
     observer.observe(host.value);
     host.value
-      .querySelectorAll("[data-activity-content]")
+      .querySelectorAll("[data-activity-content], [data-profile-pair-content]")
       .forEach((el) => observer!.observe(el));
     schedule();
   }

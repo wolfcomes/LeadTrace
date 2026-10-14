@@ -69,3 +69,29 @@ def test_unexplained_legacy_modality_does_not_allow_new_duplicate():
     validate_modality_update(old, old)
     with pytest.raises(ValueError):
         validate_modality_update(old, {'modalities': old['modalities'] * 2})
+
+
+def test_article_evidence_preserves_legacy_shape_and_accepts_exact_quotes():
+    from app.papers.metadata import SourceBackedLabel, ArticleEvidence, PdbReference
+    legacy = SourceBackedLabel(label='Inhibitor', source='Page 1').model_dump(mode='json')
+    assert 'evidence' not in legacy
+    assert 'evidence' not in PdbReference(pdb_id='1ABC').model_dump(mode='json')
+    quote = {'source_kind': 'main_pdf', 'quoted_text': 'Exact source words.', 'page_number': 1}
+    term = SourceBackedLabel(label='Inhibitor', source='Page 1', evidence=[quote])
+    assert term.model_dump(mode='json')['evidence'][0]['quoted_text'] == quote['quoted_text']
+    assert ArticleEvidence.model_validate(quote).page_number == 1
+
+
+@pytest.mark.parametrize('quote', [
+    {'source_kind': 'main_pdf', 'quoted_text': 'Quote'},
+    {'source_kind': 'main_pdf', 'quoted_text': ' ', 'page_number': 1},
+    {'source_kind': 'external', 'quoted_text': 'Quote', 'source_url': 'javascript:alert(1)'},
+    {'source_kind': 'external', 'quoted_text': 'Quote'},
+    {'source_kind': 'supplement', 'quoted_text': 'Quote', 'page_number': 1},
+    {'source_kind': 'main_pdf', 'quoted_text': 'Quote', 'page_number': 1, 'bbox': {'x': .9, 'y': 0, 'width': .2, 'height': .1}, 'source_sha256': 'a'*64},
+    {'source_kind': 'main_pdf', 'quoted_text': 'Quote', 'page_number': 1, 'bbox': {'x': 0, 'y': 0, 'width': .2, 'height': .1}},
+])
+def test_article_evidence_rejects_untraceable_or_unsafe_sources(quote):
+    from app.papers.metadata import ArticleEvidence
+    with pytest.raises(ValidationError):
+        ArticleEvidence.model_validate(quote)

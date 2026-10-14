@@ -27,12 +27,45 @@ from app.workspaces.snapshot import build_paper_snapshot, canonical_snapshot_has
 FIELDS = frozenset(ARTICLE_METADATA_DEFAULTS)
 
 
+def validate_evidence_additions(before: dict, after: dict) -> None:
+    """Allow only appended evidence; identity, order and all human fields stay exact."""
+    additions = 0
+    def entries(old, new):
+        nonlocal additions
+        if len(old) != len(new):
+            raise ValueError('Evidence supplement must preserve every entry')
+        for a, b in zip(old, new):
+            if {k: v for k, v in a.items() if k != 'evidence'} != {k: v for k, v in b.items() if k != 'evidence'}:
+                raise ValueError('Evidence supplement cannot change existing scientific fields')
+            if 'evidence' in a and 'evidence' not in b:
+                raise ValueError('Evidence supplement cannot remove evidence fields')
+            previous, current = a.get('evidence', []), b.get('evidence', [])
+            additions += len(current) - len(previous)
+            if current[:len(previous)] != previous or len(current) < len(previous):
+                raise ValueError('Evidence supplement must retain prior evidence')
+    if set(before) != set(after):
+        raise ValueError('Evidence baseline must cover every updated metadata field')
+    for field in before:
+        if field == 'research_profile':
+            if set(before[field]) != set(after[field]):
+                raise ValueError('Evidence supplement must preserve profile groups')
+            for group in before[field]:
+                entries(before[field][group], after[field][group])
+        elif field == 'pdb_references':
+            entries(before[field], after[field])
+        else:
+            raise ValueError('Evidence supplement accepts profile and PDB evidence only')
+    if additions <= 0:
+        raise ValueError('Evidence supplement must add evidence')
+
+
 def supplement_metadata(
     session: Session, *, submission_id: UUID, content_hash: str,
     expected_workspace_version: int, updates: dict, reason: str,
     actor: User, request_id: str,
     expected_existing: dict | None = None,
     expected_section_note: str | None = None,
+    expected_evidence_baseline: dict | None = None,
 ) -> PaperSubmission:
     if actor.role is not UserRole.ADMIN or not actor.is_enabled:
         raise PermissionError('An enabled Admin is required')
@@ -42,6 +75,10 @@ def supplement_metadata(
     expected_existing = expected_existing or {}
     if not set(expected_existing) <= {'abstract_note'} or not set(expected_existing) <= set(updates):
         raise ValueError('Only an explicitly matched Abstract note may be replaced')
+    if expected_evidence_baseline is not None:
+        if expected_existing or expected_section_note is not None:
+            raise ValueError('Evidence supplements cannot clean up other metadata')
+        validate_evidence_additions(expected_evidence_baseline, updates)
     original = session.get(PaperSubmission, submission_id)
     if original is None:
         raise ValueError('Submission not found')
@@ -58,6 +95,8 @@ def supplement_metadata(
         request_identity['expected_existing'] = expected_existing
     if expected_section_note is not None:
         request_identity['expected_section_note'] = expected_section_note
+    if expected_evidence_baseline is not None:
+        request_identity['expected_evidence_baseline'] = expected_evidence_baseline
     key = 'metadata-supplement:' + canonical_content_hash(request_identity)
     replay = session.scalar(select(PaperSubmission).where(
         PaperSubmission.workspace_id == original.workspace_id,
@@ -82,7 +121,14 @@ def supplement_metadata(
         raise RuntimeError('Bibliography no longer matches frozen submission')
     validated = ArticleMetadata.model_validate(metadata_values(paper) | updates).model_dump(mode='json')
     patch = {field: validated[field] for field in updates}
+    if expected_evidence_baseline is not None:
+        if any(getattr(paper, field) != baseline for field, baseline in expected_evidence_baseline.items()):
+            raise ValueError('Evidence baseline changed; preserve current human edits')
+        # Validate above but retain exact historical serialization and human fields.
+        patch = deepcopy(updates)
     for field, value in patch.items():
+        if expected_evidence_baseline is not None:
+            continue
         if field in expected_existing:
             if getattr(paper, field) != expected_existing[field] or value == expected_existing[field]:
                 raise ValueError('Abstract note changed or replacement is unchanged')
@@ -93,6 +139,14 @@ def supplement_metadata(
         source = session.get(PaperSource, paper.source_id)
         if source is None or any(ref.get('source_page') and ref['source_page'] > source.page_count for ref in patch['pdb_references']):
             raise ValueError('PDB source page is outside the article')
+    source = session.get(PaperSource, paper.source_id)
+    if source is None:
+        raise ValueError('Article source is missing')
+    for entries in [*patch.get('research_profile', {}).values(), patch.get('pdb_references', [])]:
+        for entry in entries:
+            for evidence in entry.get('evidence', []):
+                if evidence['source_kind'] == 'main_pdf' and (evidence['page_number'] > source.page_count or (evidence.get('source_sha256') and evidence['source_sha256'] != source.sha256)):
+                    raise ValueError('Article evidence page or source identity mismatch')
     section = session.scalar(select(PaperSectionReview).where(
         PaperSectionReview.workspace_id == workspace.id,
         PaperSectionReview.section_key == PaperSection.BIBLIOGRAPHY,

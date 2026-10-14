@@ -1,4 +1,5 @@
 export const enArticleMetadata: Record<string,string> = {
+  '尚未补充原文摘录':'Original excerpt not yet added','原文摘录':'Original excerpt','主文':'Main article','补充材料':'Supplementary material','外部数据库／来源':'External database / source','打开对应原文':'Open source passage','打开来源':'Open source','依据说明':'Supporting explanation','来源类型':'Source type','原文位置／材料名称':'Location / supplement name','来源链接':'Source URL','原图定位':'Original image location','清除原图定位':'Clear image location','添加原文摘录':'Add original excerpt',
   '直接靶点调节':'Direct target modulation','分子胶':'Molecular glue','前药':'Prodrug','其他':'Other','待明确':'Unresolved','旧词条，待选择':'Legacy term; select a category','原始词条':'Original wording','依据与说明':'Evidence and notes','编号与依据':'Identifiers and evidence','书目追溯信息':'Bibliographic provenance','分类说明（必填）':'Classification explanation (required)','收起摘要':'Collapse abstract','展开完整摘要':'Read full abstract',
   '小分子抑制剂':'Small-molecule inhibitor','选择性V1a受体拮抗剂':'Selective V1a receptor antagonist','CdSpoVD 小分子抑制剂':'CdSpoVD small-molecule inhibitor','前药特征（43自身亦有活性）':'Prodrug characteristics (43 itself is also active)',
   '待核对':'Needs review',

@@ -1083,6 +1083,14 @@
           ],
           "default": null,
           "title": "Review Hint"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ArticleEvidence"
+          },
+          "maxItems": 30,
+          "title": "Evidence",
+          "type": "array"
         }
       },
       "required": [
@@ -1280,6 +1288,14 @@
           ],
           "default": null,
           "title": "Review Hint"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ArticleEvidence"
+          },
+          "maxItems": 30,
+          "title": "Evidence",
+          "type": "array"
         }
       },
       "required": [
@@ -1316,6 +1332,14 @@
           ],
           "default": null,
           "title": "Review Hint"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ArticleEvidence"
+          },
+          "maxItems": 30,
+          "title": "Evidence",
+          "type": "array"
         }
       },
       "required": [
@@ -1372,6 +1396,133 @@
         "page_count"
       ],
       "title": "SourceIdentity",
+      "type": "object"
+    },
+    "ArticleEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "bbox": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArticleEvidenceBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locator"
+        },
+        "page_number": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Number"
+        },
+        "quoted_text": {
+          "maxLength": 6000,
+          "minLength": 1,
+          "title": "Quoted Text",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "main_pdf",
+            "supplement",
+            "external"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Sha256"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Url"
+        }
+      },
+      "required": [
+        "source_kind",
+        "quoted_text"
+      ],
+      "title": "ArticleEvidence",
+      "type": "object"
+    },
+    "ArticleEvidenceBox": {
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Height",
+          "type": "number"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Width",
+          "type": "number"
+        },
+        "x": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "title": "ArticleEvidenceBox",
       "type": "object"
     }
   },

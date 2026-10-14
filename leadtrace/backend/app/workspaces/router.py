@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.papers.metadata import ArticleMetadata, metadata_values, validate_modality_update
+from app.papers.metadata import ArticleMetadata, metadata_values, validate_modality_update, validate_article_evidence_sources
 
 from uuid import UUID
 
@@ -261,6 +261,9 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
         def mutation(context) -> MutationChange:
             try:
                 ArticleMetadata.model_validate(metadata_values(context.paper) | updates)
+                from app.catalog.models import PaperSource
+                source = session.get(PaperSource, context.paper.source_id)
+                validate_article_evidence_sources(updates, page_count=source.page_count, sha256=source.sha256)
                 if 'research_profile' in updates:
                     validate_modality_update(context.paper.research_profile or {}, updates['research_profile'])
             except ValueError as exc:

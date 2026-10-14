@@ -115,7 +115,7 @@ watch(() => route.params.submissionId, load, { immediate: true });
       <details class="panel approval-full-content" data-full-submission @toggle="fullContentOpen = ($event.target as HTMLDetailsElement).open">
         <summary>{{ t("查看完整提交内容") }}</summary>
         <template v-if="fullContentOpen">
-      <ArticleMetadata v-if="detail" :metadata="detail.bibliography" />
+      <ArticleMetadata v-if="detail" :metadata="detail.bibliography" :source-context="{paperId:detail.submission.paper_id,pageCount:snapshot.source.page_count,sha256:snapshot.source.sha256}" />
       <AiProvenance :records="snapshot.ai_provenance ?? []" />
       <HighlightCards :items="snapshot.compound_highlights ?? []" :compounds="snapshot.compounds" :evidence="snapshot.evidence" :depiction="highlightDepiction" />
       <section class="submission-science panel" data-structure-comparison>

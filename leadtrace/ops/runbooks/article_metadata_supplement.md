@@ -45,3 +45,16 @@ exception roll back the complete transaction. Do not change
 versions, snapshots, assignments or confirmations to force an operation through.
 Different follow-up corrections require fresh inspection and a separately
 authorized operation; this service deliberately supports additive supplements.
+
+## Evidence-only additions to populated metadata
+
+For an authorized evidence backfill, pass `expected_evidence_baseline` to
+`supplement_metadata`: a complete exact copy of each updated `research_profile`
+or `pdb_references` field. `updates` contains the same complete fields with only
+per-entry evidence appended. Existing groups, entry order, all non-evidence
+fields and previous evidence must remain byte-shape-equivalent JSON. Do not use
+`expected_existing`, section-note cleanup, or a generic populated-field replace.
+The ordinary submission hash/workspace version/frozen content checks still apply.
+Main-PDF pages and optional SHA values are checked against PaperSource. The old
+submission remains immutable, and its replacement is pending/unconfirmed.
+No scientific approval, deployment, or arbitrary metadata overwrite is implied.

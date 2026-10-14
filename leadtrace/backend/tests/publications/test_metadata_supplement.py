@@ -181,3 +181,44 @@ def test_section_note_cleanup_requires_exact_expected_value(publication_fixture,
         with f.session_factory.begin() as s:
             second = amend(f, s, first, expected_section_note='Previously generated supplement annotation.')
             assert next(x for x in second.snapshot['sections'] if x['section_key'] == 'bibliography')['note'] is None
+
+
+def test_evidence_supplement_preserves_existing_records_and_immutable_submission(publication_fixture):
+    f = publication_fixture
+    profile = {'mechanisms': [{'label': 'Inhibitor', 'source': 'Human explanation', 'review_hint': 'Keep me'}]}
+    with f.session_factory.begin() as s:
+        s.get(Paper, f.paper_id).research_profile = profile
+    first = f.submit()
+    before = deepcopy(first.snapshot['paper']['research_profile'])
+    after = deepcopy(before)
+    after['mechanisms'][0]['evidence'] = [{'source_kind': 'main_pdf', 'quoted_text': 'Exact source words.', 'page_number': 1}]
+    with f.session_factory.begin() as s:
+        second = amend(f, s, first, updates={'research_profile': after}, expected_evidence_baseline={'research_profile': before})
+        assert second.snapshot['paper']['research_profile']['mechanisms'][0]['source'] == 'Human explanation'
+        assert second.snapshot['paper']['research_profile']['mechanisms'][0]['review_hint'] == 'Keep me'
+        assert s.get(PaperSubmission, first.id).snapshot['paper']['research_profile'] == before
+
+
+@pytest.mark.parametrize('case', ['label', 'removed', 'reordered', 'prior_quote', 'stale', 'page', 'hash'])
+def test_evidence_supplement_rejects_nonadditive_or_stale_patch(publication_fixture, case):
+    f = publication_fixture
+    profile = {'mechanisms': [{'label': 'A', 'source': 'Human', 'evidence': [{'source_kind': 'main_pdf', 'quoted_text': 'Old words', 'page_number': 1}]}, {'label': 'B', 'source': 'Other'}]}
+    with f.session_factory.begin() as s:
+        s.get(Paper, f.paper_id).research_profile = profile
+    first = f.submit()
+    before = deepcopy(first.snapshot['paper']['research_profile'])
+    after = deepcopy(before)
+    after['mechanisms'][0]['evidence'].append({'source_kind': 'main_pdf', 'quoted_text': 'New words', 'page_number': 1})
+    if case == 'label': after['mechanisms'][0]['label'] = 'Changed'
+    if case == 'removed': after['mechanisms'].pop()
+    if case == 'reordered': after['mechanisms'].reverse()
+    if case == 'prior_quote': after['mechanisms'][0]['evidence'][0]['quoted_text'] = 'Overwritten'
+    if case == 'stale': before['mechanisms'][0]['source'] = 'Stale baseline'
+    if case == 'page': after['mechanisms'][0]['evidence'][-1]['page_number'] = 2
+    if case == 'hash': after['mechanisms'][0]['evidence'][-1]['source_sha256'] = 'f' * 64
+    with pytest.raises((ValueError, RuntimeError)):
+        with f.session_factory.begin() as s:
+            amend(f, s, first, updates={'research_profile': after}, expected_evidence_baseline={'research_profile': before})
+    with f.session_factory() as s:
+        assert len(list(s.scalars(select(PaperSubmission)))) == 1
+        assert not list(s.scalars(select(AdminDecision)))

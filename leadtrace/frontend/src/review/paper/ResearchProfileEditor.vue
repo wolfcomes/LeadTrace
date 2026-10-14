@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from '../../i18n';
+import ArticleEvidenceEditor from './ArticleEvidenceEditor.vue';
 import { profileGroups,targetRoleLabels,modalityChoices,modalityLabel,revealInvalidField,type ResearchProfile,type ArticleTarget,type ModalityChoice } from './articleMetadata';
 const props=defineProps<{modelValue:ResearchProfile}>();
 const initialModalities=JSON.parse(JSON.stringify(props.modelValue.modalities??[])) as NonNullable<ResearchProfile['modalities']>;
@@ -23,7 +24,7 @@ function toggleModality(choice:ModalityChoice,event:Event) {
       <template v-if="group.key==='modalities'"><strong>{{t(modalityLabel(term.label)??term.label)}}</strong><p v-if="modalityLabel(term.label)!==term.label" class="legacy-wording">{{t('原始词条')}}：{{term.label}}</p><label v-if="!modalityLabel(term.label)" class="form-field">{{t('旧词条，待选择')}}<select v-model="term.label" data-legacy-modality><option :value="term.label" disabled>{{term.label}}</option><option v-for="choice in modalityChoices" :key="choice" :value="choice">{{t(choice)}}</option></select></label></template>
       <label v-else class="form-field">{{t('名称')}}<textarea v-model="term.label" required maxlength="255" rows="2" data-term-label></textarea></label>
       <details class="entry-evidence" :open="!term.source"><summary>{{t('依据与说明')}}<span v-if="term.review_hint"> · ⚠ {{t('需核对')}}</span></summary><label class="form-field">{{t('来源')}}<textarea v-model="term.source" required maxlength="2000" rows="3" data-term-source :placeholder="t('例如：PDF 第 1 页，Abstract')"></textarea></label><label class="form-field">{{t(group.key==='modalities' && needsExplanation(term)?'分类说明（必填）':'核对提示（可选，解决后清空）')}}<textarea v-model="term.review_hint" data-term-hint :required="group.key==='modalities' && needsExplanation(term)" maxlength="1000" rows="2"></textarea></label></details>
-      <button type="button" class="button-quiet" @click="modelValue[group.key]?.splice(index,1)">{{t('删除')}}</button>
+      <ArticleEvidenceEditor v-model="term.evidence" /><button type="button" class="button-quiet" @click="modelValue[group.key]?.splice(index,1)">{{t('删除')}}</button>
     </fieldset>
     <button v-if="group.key!=='modalities'" type="button" class="button-secondary" :data-add-term="group.key" @click="add(group.key)">{{t('添加条目')}}</button>
   </details>
@@ -37,7 +38,7 @@ function toggleModality(choice:ModalityChoice,event:Event) {
       <details class="entry-evidence" :open="!target.source"><summary>{{t('编号与依据')}}<span v-if="target.review_hint"> · ⚠ {{t('需核对')}}</span></summary><div class="target-grid"><label class="form-field">UniProt ID<input v-model="target.uniprot_id" maxlength="32"></label><label class="form-field">NCBI Gene ID<input v-model="target.ncbi_gene_id" inputmode="numeric" pattern="[1-9][0-9]*" maxlength="20"></label></div>
       <label class="form-field">{{t('来源')}}<textarea v-model="target.source" required maxlength="2000" rows="3" data-target-source></textarea></label>
       <label class="form-field">{{t('核对提示（可选，解决后清空）')}}<textarea v-model="target.review_hint" maxlength="1000" rows="2"></textarea></label></details>
-      <button type="button" class="button-quiet" @click="modelValue.targets?.splice(index,1)">{{t('删除')}}</button>
+      <ArticleEvidenceEditor v-model="target.evidence" /><button type="button" class="button-quiet" @click="modelValue.targets?.splice(index,1)">{{t('删除')}}</button>
     </fieldset>
     <button type="button" class="button-secondary" data-add-target @click="addTarget">{{t('添加靶点')}}</button>
   </details>
