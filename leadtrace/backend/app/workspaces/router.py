@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.papers.metadata import ArticleMetadata, metadata_values
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -86,7 +88,7 @@ def _workspace_response(aggregate: WorkspaceAggregate, session: Session) -> Work
             volume=aggregate.paper.volume,
             issue=aggregate.paper.issue,
             doi=aggregate.paper.doi,
-            abstract=aggregate.paper.abstract, abstract_source=aggregate.paper.abstract_source, pdb_references=aggregate.paper.pdb_references,
+            **metadata_values(aggregate.paper),
         ),
         source=WorkspaceSourceResponse(
             asset_id=aggregate.source.asset_id,
@@ -257,6 +259,10 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
         updates = payload.updates()
 
         def mutation(context) -> MutationChange:
+            try:
+                ArticleMetadata.model_validate(metadata_values(context.paper) | updates)
+            except ValueError as exc:
+                raise APIError(422, 'INVALID_ARTICLE_METADATA', str(exc)) from exc
             if "pdb_references" in updates:
                 from app.catalog.models import PaperSource
                 source = session.get(PaperSource, context.paper.source_id)

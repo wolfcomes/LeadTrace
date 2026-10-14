@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.papers.metadata import ARTICLE_METADATA_FIELDS
+
 from collections.abc import Iterator
 from typing import Any, BinaryIO
 from urllib.parse import quote
@@ -94,7 +96,7 @@ def _bibliography(version: PublishedPaper) -> BibliographyResponse:
             "volume": paper["volume"],
             "issue": paper["issue"],
             "doi": paper.get("doi"),
-            **{k: paper[k] for k in ("abstract", "abstract_source", "pdb_references") if k in paper},
+            **{k: paper[k] for k in ARTICLE_METADATA_FIELDS if k in paper},
         }
     )
 

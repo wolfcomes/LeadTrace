@@ -6,6 +6,8 @@ reviewer notes and history remain untouched.
 """
 from __future__ import annotations
 
+from app.papers.metadata import ArticleMetadata, metadata_values
+
 from copy import deepcopy
 from decimal import Decimal, ROUND_HALF_UP
 from enum import Enum
@@ -221,6 +223,10 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
     if set(old['bibliography']['paper'])-set(new['bibliography']['paper']):
         raise RepairApplyConflict('Repair omitted existing bibliography fields; preserve them or explicitly provide a supported empty value')
     paper=session.get(Paper,workspace.paper_id)
+    try:
+        ArticleMetadata.model_validate(metadata_values(paper) | new['bibliography']['paper'])
+    except ValueError as exc:
+        raise RepairApplyConflict(str(exc)) from exc
     for field,expected in old['bibliography']['paper'].items():
         if getattr(paper,field)!=expected:
             raise RepairApplyConflict('Bibliography baseline differs from workspace')

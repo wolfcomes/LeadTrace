@@ -690,6 +690,74 @@
           "title": "Pdb References",
           "type": "array"
         },
+        "pmid": {
+          "anyOf": [
+            {
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pmid"
+        },
+        "pmcid": {
+          "anyOf": [
+            {
+              "maxLength": 23,
+              "pattern": "^PMC[1-9][0-9]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pmcid"
+        },
+        "identifiers_source": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Identifiers Source"
+        },
+        "abstract_status": {
+          "default": "not_checked",
+          "enum": [
+            "not_checked",
+            "extracted",
+            "not_found",
+            "needs_review"
+          ],
+          "title": "Abstract Status",
+          "type": "string"
+        },
+        "abstract_note": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Abstract Note"
+        },
+        "research_profile": {
+          "$ref": "#/$defs/ResearchProfile"
+        },
         "title": {
           "anyOf": [
             {
@@ -1061,6 +1129,200 @@
         "generated_at"
       ],
       "title": "ProducerProvenance",
+      "type": "object"
+    },
+    "ResearchProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "molecular_forms": {
+          "items": {
+            "$ref": "#/$defs/SourceBackedLabel"
+          },
+          "maxItems": 100,
+          "title": "Molecular Forms",
+          "type": "array"
+        },
+        "modalities": {
+          "items": {
+            "$ref": "#/$defs/SourceBackedLabel"
+          },
+          "maxItems": 100,
+          "title": "Modalities",
+          "type": "array"
+        },
+        "mechanisms": {
+          "items": {
+            "$ref": "#/$defs/SourceBackedLabel"
+          },
+          "maxItems": 100,
+          "title": "Mechanisms",
+          "type": "array"
+        },
+        "diseases": {
+          "items": {
+            "$ref": "#/$defs/SourceBackedLabel"
+          },
+          "maxItems": 100,
+          "title": "Diseases",
+          "type": "array"
+        },
+        "optimization_goals": {
+          "items": {
+            "$ref": "#/$defs/SourceBackedLabel"
+          },
+          "maxItems": 100,
+          "title": "Optimization Goals",
+          "type": "array"
+        },
+        "targets": {
+          "items": {
+            "$ref": "#/$defs/ResearchTarget"
+          },
+          "maxItems": 200,
+          "title": "Targets",
+          "type": "array"
+        }
+      },
+      "title": "ResearchProfile",
+      "type": "object"
+    },
+    "ResearchTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "default": "unknown",
+          "enum": [
+            "primary",
+            "co_primary",
+            "selectivity",
+            "off_target",
+            "mechanistic",
+            "biomarker",
+            "unknown"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "organism": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Organism"
+        },
+        "gene_symbol": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gene Symbol"
+        },
+        "uniprot_id": {
+          "anyOf": [
+            {
+              "maxLength": 20,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Uniprot Id"
+        },
+        "ncbi_gene_id": {
+          "anyOf": [
+            {
+              "maxLength": 20,
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ncbi Gene Id"
+        },
+        "source": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "review_hint": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Hint"
+        }
+      },
+      "required": [
+        "name",
+        "source"
+      ],
+      "title": "ResearchTarget",
+      "type": "object"
+    },
+    "SourceBackedLabel": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "review_hint": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Hint"
+        }
+      },
+      "required": [
+        "label",
+        "source"
+      ],
+      "title": "SourceBackedLabel",
       "type": "object"
     },
     "SourceIdentity": {

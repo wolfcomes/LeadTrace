@@ -148,3 +148,37 @@ def test_historical_child_receipts_are_retained_without_becoming_group_views(sci
     with ctx.session_factory.begin() as session:
         assert session.scalar(select(WorkspaceViewReceipt).where(
             WorkspaceViewReceipt.workspace_id==ctx.first.workspace_id)).viewed_at is not None
+
+
+def test_article_research_metadata_persists_with_merged_abstract_validation(science_api_context):
+    ctx = science_api_context
+    headers = {'X-CSRF-Token': ctx.login('science.api.reviewer')}
+    base = f'/api/v2/workspaces/{ctx.first.workspace_id}'
+    metadata = {'pmid': '12345', 'pmcid': 'pmc12345', 'identifiers_source': 'PubMed',
+        'abstract': 'Synthetic abstract.', 'abstract_source': 'Page 1', 'abstract_status': 'extracted',
+        'research_profile': {'targets': [{'name': 'EGFR', 'role': 'primary', 'organism': 'Homo sapiens',
+            'gene_symbol': 'EGFR', 'source': 'Abstract'}],
+            'optimization_goals': [{'label': 'Solubility', 'source': 'Abstract'}]}}
+    with ctx.session_factory.begin() as session:
+        legacy = build_paper_snapshot(session, ctx.first.workspace_id)['paper']
+        assert not {'pmid', 'research_profile', 'abstract_status'} & legacy.keys()
+    response = ctx.client.patch(base+'/bibliography', headers=headers,
+        json={'expected_workspace_version': 1, **metadata})
+    assert response.status_code == 200, response.text
+    result = response.json()['bibliography']
+    assert result['pmcid'] == 'PMC12345'
+    assert result['research_profile']['targets'][0]['gene_symbol'] == 'EGFR'
+    with ctx.session_factory.begin() as session:
+        paper = build_paper_snapshot(session, ctx.first.workspace_id)['paper']
+        assert paper['research_profile'] == result['research_profile']
+        assert paper['abstract_status'] == 'extracted'
+    partial = ctx.client.patch(base+'/bibliography', headers=headers,
+        json={'expected_workspace_version': 2, 'abstract_status': 'extracted'})
+    assert partial.status_code == 200, partial.text
+    invalid = ctx.client.patch(base+'/bibliography', headers=headers,
+        json={'expected_workspace_version': 2, 'abstract_source': None})
+    assert invalid.status_code == 422, invalid.text
+    assert ctx.client.get(base).json()['version'] == 2
+    stale = ctx.client.patch(base+'/bibliography', headers=headers,
+        json={'expected_workspace_version': 1, 'pmid': '999'})
+    assert stale.status_code == 409

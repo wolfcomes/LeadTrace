@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.papers.metadata import ARTICLE_METADATA_FIELDS
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -72,7 +74,7 @@ def _bibliography(snapshot: dict[str, object]) -> BibliographyResponse:
             "volume": paper["volume"],
             "issue": paper["issue"],
             "doi": paper.get("doi"),
-            **{k: paper[k] for k in ("abstract", "abstract_source", "pdb_references") if k in paper},
+            **{k: paper[k] for k in ARTICLE_METADATA_FIELDS if k in paper},
         }
     )
 

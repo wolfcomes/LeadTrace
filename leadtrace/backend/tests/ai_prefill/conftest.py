@@ -27,7 +27,7 @@ def preview_database_url(postgresql_database_url: str) -> Iterator[str]:
         assert admin.info.dbname == parent.database
         assert admin.info.dbname.endswith("_test")
         name = f"leadtrace_{uuid4().hex}_preview"
-        admin.execute(sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(sql.Identifier(name)))
+        admin.execute(sql.SQL("CREATE DATABASE {} TEMPLATE template0 ENCODING 'UTF8'").format(sql.Identifier(name)))
         try:
             url = parent.set(database=name).render_as_string(hide_password=False)
             config = Config("alembic.ini")

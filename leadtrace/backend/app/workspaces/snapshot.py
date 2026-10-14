@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.papers.metadata import ARTICLE_METADATA_FIELDS, ARTICLE_METADATA_DEFAULTS
+
 import hashlib
 import json
 from decimal import Decimal
@@ -40,9 +42,9 @@ def _row(row: Any, fields: tuple[str, ...]) -> dict[str, Any]:
     if isinstance(row, (Compound, Activity, LineageEdge)) and row.review_hint:
         data["review_hint"] = row.review_hint
     if isinstance(row, Paper):
-        for field in ('abstract', 'abstract_source', 'pdb_references'):
+        for field in ARTICLE_METADATA_FIELDS:
             value = getattr(row, field)
-            if value:
+            if value != ARTICLE_METADATA_DEFAULTS[field]:
                 data[field] = _value(value)
     return data
 

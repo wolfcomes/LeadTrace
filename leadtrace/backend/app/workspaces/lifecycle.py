@@ -1,6 +1,8 @@
 """Admin article generations: revocable assignment and verified, non-destructive archives."""
 from __future__ import annotations
 
+from app.papers.metadata import ARTICLE_METADATA_FIELDS
+
 from datetime import datetime, timezone
 from enum import Enum
 from decimal import Decimal
@@ -27,7 +29,7 @@ class LifecycleConflict(RuntimeError):
     pass
 
 
-CATALOG_FIELDS = ('title','journal','publication_year','volume','issue','doi','abstract','abstract_source','pdb_references')
+CATALOG_FIELDS = ('title','journal','publication_year','volume','issue','doi') + ARTICLE_METADATA_FIELDS
 
 
 def _json(value):

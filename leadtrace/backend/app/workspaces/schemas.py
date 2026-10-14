@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.papers.metadata import ArticleMetadata, PdbReference
+from app.papers.metadata import ArticleMetadata, ARTICLE_METADATA_FIELDS
 
 from app.workspaces.models import (
     PaperSection,
@@ -128,6 +128,7 @@ class WorkspaceResponse(WorkspaceProjection):
 
 
 class BibliographyUpdateRequest(ArticleMetadata, WorkspaceProjection):
+    partial_metadata = True
     expected_workspace_version: int = Field(ge=1)
     title: str | None = Field(default=None, max_length=1024)
     journal: str | None = Field(default=None, max_length=255)
@@ -146,28 +147,18 @@ class BibliographyUpdateRequest(ArticleMetadata, WorkspaceProjection):
 
     @model_validator(mode="after")
     def validate_updates(self) -> "BibliographyUpdateRequest":
-        editable = {"title", "journal", "publication_year", "volume", "issue", "doi", "abstract", "abstract_source", "pdb_references"}
+        editable = {"title", "journal", "publication_year", "volume", "issue", "doi", *ARTICLE_METADATA_FIELDS}
         changed = self.model_fields_set & editable
         if not changed:
             raise ValueError("At least one bibliography field is required")
-        nonnullable = changed - {"doi", "abstract", "abstract_source"}
+        nonnullable = changed - {"doi", "abstract", "abstract_source", "pmid", "pmcid", "identifiers_source", "abstract_note"}
         if any(getattr(self, field) is None for field in nonnullable):
             raise ValueError("Bibliography fields except DOI cannot be null or blank")
         return self
 
-    def updates(self) -> dict[str, str | int | None]:
-        return {
-            field: ([x.model_dump(mode="json") for x in self.pdb_references] if field == "pdb_references" else getattr(self, field))
-            for field in (
-                "title",
-                "journal",
-                "publication_year",
-                "volume",
-                "issue",
-                "doi", "abstract", "abstract_source", "pdb_references",
-            )
-            if field in self.model_fields_set
-        }
+    def updates(self) -> dict[str, object]:
+        data = self.model_dump(mode='json')
+        return {key: data[key] for key in self.model_fields_set if key != 'expected_workspace_version'}
 
 
 class SectionUpdateRequest(WorkspaceProjection):

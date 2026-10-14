@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.papers.metadata import metadata_values, ARTICLE_METADATA_DEFAULTS
+
 from dataclasses import dataclass
 from copy import copy
 from uuid import UUID, uuid4
@@ -221,6 +223,7 @@ class PreviewApplicationService:
                 "publication_year": paper.publication_year,
                 "volume": paper.volume,
                 "issue": paper.issue,
+                **{key: value for key, value in metadata_values(paper).items() if value != ARTICLE_METADATA_DEFAULTS[key]},
             },
             "workspace": {
                 "id": str(workspace.id),

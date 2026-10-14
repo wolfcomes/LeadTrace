@@ -113,3 +113,18 @@ def test_export_still_rejects_multiple_compound_refs_to_one_row():
     mapping['/compounds/c2']=mapping['/compounds/c1']
     with pytest.raises(WorkspaceExportUnrepresentableError,match='multiple refs'):
         _payload_from_snapshot(parent,snapshot,mapping,snapshot['paper'])
+
+
+def test_export_preserves_article_profile_and_explicit_metadata_clears():
+    from app.ai_prefill.workspace_export import _payload_from_snapshot
+    parent, snapshot, mapping = alias_export_fixture()
+    initial = dict(snapshot['paper'], pmid='123', research_profile={'mechanisms': [{'label': 'inhibitor', 'source': 'Abstract'}]}, abstract_status='needs_review', abstract_note='Check source')
+    snapshot['paper'].update({'abstract': 'Synthetic abstract', 'abstract_source': 'PubMed',
+                              'abstract_status': 'extracted', 'pmcid': 'PMC123'})
+    payload, _, _ = _payload_from_snapshot(parent, snapshot, mapping, initial)
+    data = payload.bibliography.model_dump(mode='json')
+    assert data['pmid'] is None
+    assert data['research_profile'] == {}
+    assert data['abstract_note'] is None
+    assert data['abstract_status'] == 'extracted'
+    assert data['pmcid'] == 'PMC123'

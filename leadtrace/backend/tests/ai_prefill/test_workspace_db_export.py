@@ -318,3 +318,21 @@ def test_highlights_roundtrip_as_draft_with_separate_review_metadata(preview_ai_
         assert any(x.get('path') == 'compound_highlights/highlight:start' and x.get('review_status') == 'draft' for x in exported.review_metadata)
         assert str(row.id) in exported.entity_refs
         assert 'review_status' not in exported.candidate.payload.model_dump(mode='json')['compound_highlights'][0]
+
+
+def test_article_metadata_apply_snapshot_and_export_preserve_sources(preview_ai_context, preview_settings):
+    from app.papers.models import Paper
+    from app.workspaces.snapshot import build_paper_snapshot
+    metadata = {'pmid': '12345', 'pmcid': 'PMC12345', 'identifiers_source': 'PubMed identity match',
+        'abstract': 'Synthetic abstract.', 'abstract_source': 'PubMed', 'abstract_status': 'extracted',
+        'research_profile': {'targets': [{'name': 'Target', 'role': 'primary', 'source': 'Abstract'}],
+                             'modalities': [{'label': 'Degrader', 'source': 'Abstract'}]}}
+    parent, application_id = _apply(preview_ai_context, preview_settings, {**complete_payload(), 'bibliography': metadata})
+    with preview_ai_context.session_factory.begin() as session:
+        paper = session.get(Paper, preview_ai_context.paper_id)
+        assert paper.pmid == '12345'
+        snapshot = build_paper_snapshot(session, preview_ai_context.workspace_id)
+        assert snapshot['paper']['research_profile']['targets'][0]['name'] == 'Target'
+        exported = _export(session, parent, application_id, preview_settings)
+        assert exported.candidate.payload.bibliography.model_dump(mode='json') == parent.payload.bibliography.model_dump(mode='json') | {
+            key: snapshot['paper'][key] for key in ('title', 'journal', 'publication_year', 'volume', 'issue', 'doi')}

@@ -1,6 +1,8 @@
 """Export scientific Workspace rows and retain review state in a separate snapshot."""
 from __future__ import annotations
 
+from app.papers.metadata import ARTICLE_METADATA_FIELDS, ARTICLE_METADATA_DEFAULTS
+
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -166,11 +168,11 @@ def _payload_from_snapshot(
         "compounds": [], "structure_locators": [], "lineages": [], "evidence": [],
         "edge_evidence_links": [], "activities": [],
     }
-    for field in ('abstract', 'abstract_source', 'pdb_references'):
-        if snapshot['paper'].get(field) or initial_paper.get(field):
-            payload['bibliography'][field] = snapshot['paper'].get(field, [] if field == 'pdb_references' else None)
+    for field in ARTICLE_METADATA_FIELDS:
+        if field in snapshot['paper'] or field in initial_paper:
+            payload['bibliography'][field] = snapshot['paper'].get(field, ARTICLE_METADATA_DEFAULTS[field])
     for name, value in payload["bibliography"].items():
-        if name not in ('abstract', 'abstract_source', 'pdb_references') and value is None and (name not in initial_paper or initial_paper[name] is not None):
+        if name not in ARTICLE_METADATA_FIELDS and value is None and (name not in initial_paper or initial_paper[name] is not None):
             issue(f"bibliography/{name}", "Candidate v1 cannot express clearing a baseline value; a known null baseline is required")
     for compound in compounds:
         structure = structures.get(compound["id"])

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.papers.metadata import ArticleMetadata, ARTICLE_METADATA_FIELDS, metadata_values
+
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -97,9 +99,7 @@ def _paper_snapshot(paper: Paper) -> dict[str, object]:
         "issue": paper.issue,
         "doi": paper.doi,
         "catalog_state": paper.catalog_state.value,
-        "abstract": paper.abstract,
-        "abstract_source": paper.abstract_source,
-        "pdb_references": paper.pdb_references,
+        **metadata_values(paper),
     }
 
 
@@ -421,14 +421,17 @@ class AiPrefillService:
     ) -> dict[str, str]:
         before_paper = _paper_snapshot(paper)
         bibliography = payload.bibliography
-        for field in ('abstract', 'abstract_source', 'pdb_references'):
+        serialized = bibliography.model_dump(mode='json')
+        ArticleMetadata.model_validate(metadata_values(paper) | {
+            key: serialized[key] for key in ARTICLE_METADATA_FIELDS if key in bibliography.model_fields_set})
+        for field in ARTICLE_METADATA_FIELDS:
             if field in bibliography.model_fields_set:
                 value = getattr(bibliography, field)
                 if field == 'pdb_references':
                     if any(x.source_page and x.source_page > source.page_count for x in value):
                         raise ValueError('PDB source page is outside article')
                     value = [x.model_dump(mode='json') for x in value]
-                setattr(paper, field, value)
+                setattr(paper, field, serialized[field])
         if bibliography.title is not None:
             paper.title = _clean_required(bibliography.title, "title")
         if bibliography.journal is not None:
