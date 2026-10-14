@@ -266,3 +266,42 @@ test('compound-only edits do not create lineage changes or node detail panels',a
   await expect(page.locator('[data-change-next]')).toBeDisabled();
   expect(requests.pdfRequests).toHaveLength(0);expect(requests.writes).toEqual([]);
 });
+
+test('one edited edge has one change label among many identical relationship types', async ({ page }) => {
+  const body = fixture(), current = body.submission.snapshot;
+  const root = current.compounds[0];
+  current.compounds = [root, ...Array.from({ length: 8 }, (_, i) => ({
+    ...current.compounds[1], id: extra(String(600 + i)), compound_label: `Node ${i + 1}`,
+  }))];
+  current.lineage_members = current.compounds.map((c: any, i: number) => ({
+    ...current.lineage_members[0], id: extra(String(700 + i)), compound_id: c.id,
+  }));
+  current.lineage_edges = current.compounds.slice(1).map((c: any, i: number) => ({
+    ...current.lineage_edges[0], id: extra(String(800 + i)),
+    parent_compound_id: root.id, child_compound_id: c.id,
+    modification_summary: 'Original relationship',
+  }));
+  current.edge_evidence_links = [];
+  body.comparison.baseline_snapshot = structuredClone(current);
+  current.lineage_edges[3].modification_summary = 'Only this relationship was corrected';
+  const requests = await setup(page, body);
+  await page.locator('[data-record-tab="lineages"]').click();
+  const canvas = page.locator('[data-lineage-graph-side="after"] .frozen-graph-canvas');
+  await expect.poll(() => canvas.evaluate((el: any) => el._cyreg?.cy?.edges().length)).toBe(8);
+  const renderedEdges = (): Promise<Array<{ id: string; change: string; label: string; centerLabel: string }>> => canvas.evaluate((el: any) => el._cyreg.cy.edges().map((edge: any) => ({
+    id: edge.id(), change: edge.data('change'), label: edge.style('target-label'),
+    centerLabel: edge.style('label'),
+  })));
+  const edges = await renderedEdges();
+  expect(edges.filter(e => e.change !== 'unchanged').map(e => e.id)).toEqual([extra('803')]);
+  expect(edges.every(e => !e.centerLabel)).toBe(true);
+  await page.screenshot({ path: 'test-results/approval-single-edge-label.png', fullPage: true });
+  expect(edges.filter(e => e.label).map(e => ({ id: e.id, label: e.label }))).toEqual([
+    { id: extra('803'), label: '已修改' },
+  ]);
+  await page.locator('.lineage-entry-list > summary').click();
+  await page.locator('[data-lineage-relation]').filter({ hasText: 'Node 1' }).click();
+  expect((await renderedEdges()).filter(e => e.label).map(e => e.id)).toEqual([extra('803')]);
+  await expect(page.locator('[data-change-next]')).toBeEnabled();
+  expect(requests.writes).toEqual([]);
+});

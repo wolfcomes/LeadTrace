@@ -172,3 +172,36 @@ describe("lineage topology and edge scope", () => {
     );
   });
 });
+
+describe("edge-local change markers", () => {
+  function multipleEdges() {
+    const before = snapshot();
+    before.lineage_edges = Array.from({ length: 3 }, (_, i) => ({
+      ...before.lineage_edges[0], id: `edge-${i}`,
+    }));
+    before.edge_evidence_links = before.lineage_edges.map((edge, i) => ({
+      ...before.edge_evidence_links[0], id: `link-${i}`, edge_id: edge.id,
+      evidence_id: i < 2 ? ids.evidence : 'unrelated-evidence',
+    }));
+    before.evidence.push({ ...before.evidence[0], id: 'unrelated-evidence' });
+    return before;
+  }
+  it('marks only the edited edge even with identical types, endpoints and shared evidence', () => {
+    const before = multipleEdges(), after = structuredClone(before);
+    after.lineage_edges[1].modification_summary = 'Corrected relationship';
+    const pair = lineageGraphPair(project(before, after).lineages[0]);
+    for (const side of ['before', 'after'] as const) {
+      expect(pair[side].edges.map(e => e.change)).toEqual(['unchanged', 'modified', 'unchanged']);
+    }
+  });
+  it('limits evidence link edits to their own edge and shared evidence edits to actual consumers', () => {
+    const before = multipleEdges(), after = structuredClone(before);
+    after.edge_evidence_links[0].role = 'contradicts';
+    let pair = lineageGraphPair(project(before, after).lineages[0]);
+    expect(pair.after.edges.map(e => e.change)).toEqual(['evidence', 'unchanged', 'unchanged']);
+    after.edge_evidence_links = structuredClone(before.edge_evidence_links);
+    after.evidence[0].caption = 'Updated shared evidence';
+    pair = lineageGraphPair(project(before, after).lineages[0]);
+    expect(pair.after.edges.map(e => e.change)).toEqual(['evidence', 'evidence', 'unchanged']);
+  });
+});

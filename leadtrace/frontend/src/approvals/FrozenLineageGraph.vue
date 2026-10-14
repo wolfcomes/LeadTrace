@@ -78,7 +78,10 @@ function elements() {
         id: e.id,
         source: e.source,
         target: e.target,
-        label: `${e.label}${e.change !== "unchanged" && e.change !== "unknown" ? "\n" + t(changeLabels[e.change]) : ""}`,
+        label:
+          e.change !== "unchanged" && e.change !== "unknown"
+            ? t(changeLabels[e.change])
+            : "",
         change: e.change,
       },
     })),
@@ -117,14 +120,17 @@ function styles(): StylesheetStyle[] {
         "target-arrow-color": color("--ink-muted"),
         "target-arrow-shape": "triangle",
         "curve-style": "bezier",
-        label: "data(label)",
+        // Anchor a short change marker near this edge's own arrow. Repeating
+        // relationship types at every midpoint obscures ownership in branches.
+        "target-label": "data(label)",
+        "target-text-offset": 24,
         "font-family": color("--font-sans"),
         "font-size": 10,
         "text-wrap": "wrap",
         "text-background-color": color("--surface-raised"),
         "text-background-opacity": 0.85,
         "text-background-padding": "3px",
-        "text-rotation": "autorotate",
+        "target-text-rotation": "autorotate",
         color: color("--ink-soft"),
       },
     },

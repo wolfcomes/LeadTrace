@@ -55,7 +55,10 @@ identity and coordinates. Larger region/page views are available on demand.
 Each affected Lineage is reviewed as a whole: paired graphs use shared node
 positions and viewport coordinates, with linked selection, optional synchronized
 pan/zoom, change navigation and an expanded comparison view. The graph uses compact
-labelled nodes and arrows. Lineage approval includes node additions/removals,
+labelled nodes and arrows. Edge text shows only a short change marker near that
+Edge's arrow; unchanged Edges have no text. Relationship types remain in the
+selected Edge's details rather than repeating across overlapping branches.
+Lineage approval includes node additions/removals,
 Edge changes (including endpoint changes and supporting evidence), and direct
 Lineage metadata changes. Compound identity, structure, activity, highlights and
 Compound-only evidence edits remain in the Compound review and do not mark nodes
