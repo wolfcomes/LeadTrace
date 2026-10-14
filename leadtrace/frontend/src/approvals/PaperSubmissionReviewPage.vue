@@ -109,7 +109,7 @@ watch(() => route.params.submissionId, load, { immediate: true });
         <div><p class="eyebrow">IMMUTABLE SUBMISSION · #{{ detail.submission.submission_number }}</p><h1>{{ detail.bibliography.title }}</h1><p>{{ detail.bibliography.journal }} · {{ detail.bibliography.publication_year }} · {{ detail.bibliography.volume }}({{ detail.bibliography.issue }})</p><a class="button-secondary source-pdf-link" data-source-pdf :href="sourcePdfUrl()" target="_blank" rel="noopener">{{ t("打开 Source PDF ↗") }}</a></div>
         <dl class="submission-identity"><div><dt>Paper</dt><dd><code>{{ detail.bibliography.paper_key }}</code></dd></div><div><dt>Content hash</dt><dd><code>{{ detail.submission.content_hash }}</code></dd></div><div><dt>{{ t("提交时间") }}</dt><dd>{{ formatDate(detail.submission.submitted_at) }}</dd></div></dl>
       </header>
-      <p v-if="detail.submission.reviewer_note" class="reviewer-attestation panel"><strong>{{ t("Reviewer 声明") }}</strong><span>{{ detail.submission.reviewer_note }}</span></p>
+      <p v-if="detail.submission.reviewer_note" class="reviewer-attestation panel"><strong>{{ t("提交说明") }}</strong><span>{{ detail.submission.reviewer_note }}</span></p>
       <p v-if="error" class="message inline-feedback is-error" role="alert">{{ t(error ?? "") }} <small v-if="errorRequestId">{{ t("请求编号：{requestId}", { requestId: errorRequestId }) }}</small></p>
       <SubmissionComparison :snapshot="snapshot" :comparison="detail.comparison" :paper-id="detail.submission.paper_id" />
       <details class="panel approval-full-content" data-full-submission @toggle="fullContentOpen = ($event.target as HTMLDetailsElement).open">

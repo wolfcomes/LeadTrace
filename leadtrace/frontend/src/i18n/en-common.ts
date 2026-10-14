@@ -151,7 +151,7 @@ export const enCommon: Record<string, string> = {
   "正在读取冻结 Submission…": "Loading frozen submission…",
   "未找到待审批 Submission": "Pending submission not found",
   "打开 Source PDF ↗": "Open source PDF ↗",
-  "Reviewer 声明": "Reviewer declaration",
+  "提交说明": "Submission note",
   "结构原图与 RDKit 对照": "Source structures and RDKit comparison",
   "PDF 原图 · 第": "Original PDF · Page",
   "PDF 结构原图": "Structure from original PDF",

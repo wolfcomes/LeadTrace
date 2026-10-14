@@ -3,6 +3,7 @@ import { adminSubmissionDetail,publicationIds } from '../tests/paper-publication
 
 test('article metadata comparison preserves target roles, sources and collapsed unchanged groups',async({page})=>{
   const detail=structuredClone(adminSubmissionDetail) as any;
+  detail.submission.reviewer_note='管理员补充书目信息，新增内容待审核。';
   const before=structuredClone(detail.submission.snapshot);
   const profile={molecular_forms:[{label:'Macrocycle',source:'Page 2'}],targets:[{name:'Target A',role:'primary',organism:'Homo sapiens',gene_symbol:'GENEA',source:'Page 1'}],optimization_goals:[{label:'Potency',source:'Abstract'}]};
   before.paper.research_profile=structuredClone(profile);
@@ -20,6 +21,7 @@ test('article metadata comparison preserves target roles, sources and collapsed 
   });
   await page.setViewportSize({width:1440,height:1000});
   await page.goto(`/admin/submissions/${publicationIds.submission}`);
+  await expect(page.locator('.reviewer-attestation strong')).toHaveText('提交说明');
   await page.locator('[data-record-tab="article"]').click();
   const after=page.locator('[data-record-side="after"]');
   await expect(after).toContainText('12345678');
