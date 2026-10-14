@@ -61,12 +61,15 @@ describe("complete approval record presentation", () => {
     await wrapper.get("[data-change-only]").setValue(false);
     expect(wrapper.findAll("[data-record-entry]")).toHaveLength(2);
   });
-  it("shows whole lineage with context even when only a member activity changed", async () => {
+  it("excludes activity-only lineage changes and keeps the graph available through all records", async () => {
     const wrapper = mount(SubmissionComparison, {
       props: props(),
       global: { stubs: { FrozenLineageGraph: true } },
     });
     await wrapper.get('[data-record-tab="lineages"]').trigger("click");
+    expect(wrapper.find("[data-lineage-comparison]").exists()).toBe(false);
+    expect(wrapper.findAll("[data-record-entry]")).toHaveLength(0);
+    await wrapper.get("[data-change-only]").setValue(false);
     expect(wrapper.find("[data-lineage-comparison]").exists()).toBe(true);
     expect(wrapper.get("[data-record-entry]").text()).toContain("Series A");
     expect(wrapper.findAll("[data-lineage-relation]")).toHaveLength(1);
@@ -138,6 +141,7 @@ describe("outstanding issue navigation", () => {
       global: { stubs: { FrozenLineageGraph: true } },
     });
     await wrapper.get('[data-record-tab="lineages"]').trigger("click");
+    await wrapper.get("[data-change-only]").setValue(false);
     await wrapper.get("[data-lineage-relation]").trigger("click");
     expect(
       wrapper
@@ -203,6 +207,7 @@ describe("nested comparison dialogs", () => {
       global: { stubs: { FrozenLineageGraph: true, FrozenPdfCrop: true } },
     });
     await wrapper.get('[data-record-tab="lineages"]').trigger("click");
+    await wrapper.get("[data-change-only]").setValue(false);
     await wrapper.get("[data-lineage-relation]").trigger("click");
     await wrapper.get("[data-graph-expand]").trigger("click");
     expect(
@@ -296,8 +301,26 @@ describe("strict changed-content focus", () => {
   });
 });
 
-describe("member changes are local to the selected lineage", () => {
-  it("opens changed membership detail but leaves global compound identity closed", async () => {
+describe("node approval only shows membership", () => {
+  it("does not claim unchanged membership when the comparison baseline is unavailable", async () => {
+    setLocale("zh-CN");
+    const wrapper = mount(SubmissionComparison, {
+      props: { snapshot: frozenSnapshot, paperId: ids.paper },
+      global: { stubs: { FrozenLineageGraph: true } },
+    });
+    await wrapper.get('[data-record-tab="lineages"]').trigger("click");
+    await wrapper
+      .get(`[data-lineage-member][data-compound-id="${ids.compoundB}"]`)
+      .trigger("click");
+    const membership = wrapper.get("[data-node-membership]");
+    for (const side of ["before", "after"]) {
+      expect(membership.get(`[data-record-side="${side}"]`).text()).toContain(
+        "比较起点不可用",
+      );
+    }
+    expect(membership.text()).not.toMatch(/节点未增删|新增节点|删除节点/);
+  });
+  it("does not list role-only edits or mount compound details for selected nodes or edges", async () => {
     const values = props();
     values.comparison.baseline_snapshot.activities[0].value =
       frozenSnapshot.activities[0].value;
@@ -308,36 +331,52 @@ describe("member changes are local to the selected lineage", () => {
       global: { stubs: { FrozenLineageGraph: true } },
     });
     await wrapper.get('[data-record-tab="lineages"]').trigger("click");
+    expect(wrapper.findAll("[data-record-entry]")).toHaveLength(0);
+    await wrapper.get("[data-change-only]").setValue(false);
     await wrapper
       .get(`[data-lineage-member][data-compound-id="${ids.compoundB}"]`)
       .trigger("click");
-    expect(
-      wrapper
-        .get(`[data-disclosure="section:identity:${ids.compoundB}"]`)
-        .attributes("open"),
-    ).toBeDefined();
-    await wrapper.get("[data-change-only]").setValue(false);
-    await wrapper.get('[data-record-tab="compounds"]').trigger("click");
-    await wrapper
-      .get(`[data-record-entry="${ids.compoundB}"]`)
-      .trigger("click");
-    expect(
-      wrapper
-        .get(`[data-disclosure="section:identity:${ids.compoundB}"]`)
-        .attributes("open"),
-    ).toBeUndefined();
+    expect(wrapper.get("[data-node-membership]").text()).toContain(
+      "节点未增删",
+    );
+    expect(wrapper.find(".frozen-compound-card").exists()).toBe(false);
+    expect(wrapper.get("[data-lineage-comparison]").text()).not.toContain(
+      "Cell potency",
+    );
+    await wrapper.get("[data-lineage-relation]").trigger("click");
+    expect(wrapper.findAll("[data-edge-endpoints]")).toHaveLength(2);
+    expect(wrapper.find(".frozen-compound-card").exists()).toBe(false);
+    expect(wrapper.find('[data-disclosure^="endpoints:"]').exists()).toBe(
+      false,
+    );
   });
 });
 
-
 it("places changed source evidence before unchanged source occurrences on both sides", () => {
-  const values=props(); values.snapshot=structuredClone(frozenSnapshot);
-  const image={...values.snapshot.structure_source_images[0],compound_id:ids.compoundB};
-  const first={...image,id:'unchanged-image'}, second={...image,id:'changed-image'};
-  values.snapshot.structure_source_images=[first,{...second,page_number:8}];
-  values.comparison.baseline_snapshot.structure_source_images=[structuredClone(first),second];
-  const wrapper=mount(SubmissionComparison,{props:values});
-  for(const side of ['before','after']) {
-    expect(wrapper.get(`[data-record-side="${side}"] [data-section="originals"] [data-frozen-evidence]`).attributes('data-evidence-id')).toBe('changed-image');
+  const values = props();
+  values.snapshot = structuredClone(frozenSnapshot);
+  const image = {
+    ...values.snapshot.structure_source_images[0],
+    compound_id: ids.compoundB,
+  };
+  const first = { ...image, id: "unchanged-image" },
+    second = { ...image, id: "changed-image" };
+  values.snapshot.structure_source_images = [
+    first,
+    { ...second, page_number: 8 },
+  ];
+  values.comparison.baseline_snapshot.structure_source_images = [
+    structuredClone(first),
+    second,
+  ];
+  const wrapper = mount(SubmissionComparison, { props: values });
+  for (const side of ["before", "after"]) {
+    expect(
+      wrapper
+        .get(
+          `[data-record-side="${side}"] [data-section="originals"] [data-frozen-evidence]`,
+        )
+        .attributes("data-evidence-id"),
+    ).toBe("changed-image");
   }
 });

@@ -55,11 +55,16 @@ identity and coordinates. Larger region/page views are available on demand.
 Each affected Lineage is reviewed as a whole: paired graphs use shared node
 positions and viewport coordinates, with linked selection, optional synchronized
 pan/zoom, change navigation and an expanded comparison view. The graph uses compact
-labelled nodes and arrows; molecular depictions remain in expandable compound details. Member structure,
-activity and shared evidence changes make their Lineages discoverable even when
-the topology is unchanged. Selected members and relationships show complete
-before/after context and evidence below the graphs. Viewing never writes a graph
-layout or changes the Reviewer workspace.
+labelled nodes and arrows. Lineage approval includes node additions/removals,
+Edge changes (including endpoint changes and supporting evidence), and direct
+Lineage metadata changes. Compound identity, structure, activity, highlights and
+Compound-only evidence edits remain in the Compound review and do not mark nodes
+or Lineages changed. Evidence actually used by an Edge still belongs in its
+Lineage comparison, including evidence shared with a Compound. Node selection
+shows only membership before/after; Edge details show endpoint labels, relationship
+fields and evidence, without embedded Compound cards. Membership role/order-only
+edits remain in complete history. Viewing never writes a graph layout or changes
+the Reviewer workspace.
 
 Net changes compare with the previous frozen submission, or the reliably
 reconstructed state before the first Reviewer edit. Missing or unsupported history

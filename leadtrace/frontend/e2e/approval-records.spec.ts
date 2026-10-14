@@ -134,7 +134,9 @@ test('whole lineage comparison shares layout and exposes changed relation with f
   await expect(before).toHaveAttribute('data-graph-presentation','points');
   await expect(after).toHaveAttribute('data-graph-presentation','points');
   await expect(page.locator('[data-graph-mode]')).toHaveCount(0);
-  await expect(page.locator('[data-lineage-comparison] [data-rdkit-depiction]:visible')).toHaveCount(0);
+  await expect(page.locator('[data-lineage-comparison] .frozen-compound-card')).toHaveCount(0);
+  await expect(page.locator('[data-lineage-comparison] [data-rdkit-depiction]')).toHaveCount(0);
+  await expect(page.locator('.lineage-change-navigation')).toContainText('3 处节点或关系变化');
   await page.locator('.lineage-entry-list > summary').click();
   await page.locator(`[data-lineage-relation][data-edge-id="${ids.edge}"]`).click();
   await expect(before).toHaveAttribute('data-selected-id',ids.edge);await expect(after).toHaveAttribute('data-selected-id',ids.edge);
@@ -241,4 +243,26 @@ test('only changed fields lead both columns while unchanged content stays collap
   await expect(after.locator('[data-review-fields="evidence:'+ids.evidence+'"] [data-field="quoted_text"]')).toBeVisible();
   expect(requests.pdfRequests).toHaveLength(0);
   await page.screenshot({path:'test-results/approval-focus-fields.png',fullPage:true});
+});
+
+
+test('compound-only edits do not create lineage changes or node detail panels',async({page})=>{
+  const body=fixture(),current=body.submission.snapshot;
+  const before=structuredClone(current);
+  before.compounds[1].description='Old compound description';
+  before.activities[0].value='125';before.structures[1].canonical_smiles='CCO';
+  before.structures[1].inchi='old identity';before.structures[1].inchikey='old key';
+  body.comparison.baseline_snapshot=before;
+  const requests=await setup(page,body);
+  await page.locator('[data-record-tab="lineages"]').click();
+  await expect(page.locator('[data-record-entry]')).toHaveCount(0);
+  await expect(page.locator('[data-lineage-comparison]')).toHaveCount(0);
+  await page.locator('[data-change-only]').uncheck();
+  await page.locator('.lineage-entry-list > summary').click();
+  await page.locator(`[data-lineage-member][data-compound-id="${ids.compoundB}"]`).click();
+  await expect(page.locator('[data-node-membership]')).toContainText('节点未增删');
+  await expect(page.locator('[data-lineage-comparison] .frozen-compound-card')).toHaveCount(0);
+  await expect(page.locator('[data-lineage-comparison]')).not.toContainText('Cell potency');
+  await expect(page.locator('[data-change-next]')).toBeDisabled();
+  expect(requests.pdfRequests).toHaveLength(0);expect(requests.writes).toEqual([]);
 });

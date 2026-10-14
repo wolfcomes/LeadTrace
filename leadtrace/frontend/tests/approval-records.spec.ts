@@ -38,16 +38,16 @@ describe("frozen approval records", () => {
       result.lineages[0].changes.some((x) => x.domain === "evidence"),
     ).toBe(true);
   });
-  it("propagates member structure and activity changes without pretending topology changed", () => {
+  it("keeps member structure and activity changes out of lineage approval", () => {
     const before = snapshot(),
       after = snapshot();
     after.structures[0].canonical_smiles = "CCCO";
     after.activities[0].value = "125";
     const result = project(before, after),
       pair = lineageGraphPair(result.lineages[0]);
-    expect(result.lineages[0].changed).toBe(true);
+    expect(result.lineages[0].changed).toBe(false);
     expect(pair.before.nodes.find((x) => x.id === ids.compoundA)?.change).toBe(
-      "modified",
+      "unchanged",
     );
     expect(pair.after.edges[0].change).toBe("unchanged");
     expect(pair.before.nodes.map((x) => x.position)).toEqual(
@@ -115,5 +115,60 @@ describe("whole lineage change identity", () => {
     expect(pair.before.edges[0].source).toBe(ids.compoundA);
     expect(pair.after.edges[0].source).toBe(ids.compoundB);
     expect(pair.after.edges[0].change).toBe("modified");
+  });
+});
+
+describe("lineage topology and edge scope", () => {
+  it("does not propagate activity-only evidence but keeps evidence used by an edge", () => {
+    const before = snapshot(),
+      after = snapshot();
+    before.edge_evidence_links = [];
+    after.edge_evidence_links = [];
+    after.evidence[0].quoted_text = "Activity evidence update";
+    expect(project(before, after).lineages[0].changed).toBe(false);
+    expect(project(before, after).compounds[1].changed).toBe(true);
+    before.edge_evidence_links = structuredClone(
+      frozenSnapshot.edge_evidence_links,
+    );
+    after.edge_evidence_links = structuredClone(
+      frozenSnapshot.edge_evidence_links,
+    );
+    expect(
+      lineageGraphPair(project(before, after).lineages[0]).after.edges[0]
+        .change,
+    ).toBe("evidence");
+  });
+  it("ignores compound identity and member role-only edits without routing them into article changes", () => {
+    const before = snapshot(),
+      after = snapshot();
+    after.compounds[1].description = "Compound-only correction";
+    after.lineage_members[1].role = "root";
+    const result = project(before, after);
+    expect(result.lineages[0].changed).toBe(false);
+    expect(result.article.changed).toBe(false);
+    expect(result.changes.map(c => c.domain)).toEqual(['compounds']);
+    expect(
+      lineageGraphPair(result.lineages[0]).after.nodes.every(
+        (n) => n.change === "unchanged",
+      ),
+    ).toBe(true);
+  });
+  it("compares node membership by compound identity, including replacement and recreated member rows", () => {
+    const before = snapshot(),
+      after = snapshot();
+    after.lineage_members[1].id = "recreated-member";
+    expect(project(before, after).lineages[0].changed).toBe(false);
+    after.lineage_members[1].compound_id = "new-node";
+    after.lineage_edges = [];
+    after.edge_evidence_links = [];
+    const result = project(before, after),
+      pair = lineageGraphPair(result.lineages[0]);
+    expect(result.lineages[0].changed).toBe(true);
+    expect(pair.before.nodes.find((n) => n.id === ids.compoundB)?.change).toBe(
+      "removed",
+    );
+    expect(pair.after.nodes.find((n) => n.id === "new-node")?.change).toBe(
+      "added",
+    );
   });
 });

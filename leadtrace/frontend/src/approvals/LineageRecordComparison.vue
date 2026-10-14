@@ -5,7 +5,6 @@ import type { Row } from "./comparison";
 import { compoundLabel } from "./comparison";
 import {
   lineageGraphPair,
-  compoundRecord,
   type PairedRecord,
   type LineageRecord,
 } from "./recordComparison";
@@ -13,9 +12,7 @@ import { changeLabels, reviewState } from "./recordLabels";
 import FrozenLineageGraph, {
   type GraphViewport,
 } from "./FrozenLineageGraph.vue";
-import FrozenCompoundCard from "./FrozenCompoundCard.vue";
 import { useModalFocus } from "./useModalFocus";
-import { usePairedActivityAlignment } from "./usePairedActivityAlignment";
 import { useReviewFocus } from "./reviewFocus";
 import ReviewFields from "./ReviewFields.vue";
 import ReviewDisclosure from "./ReviewDisclosure.vue";
@@ -58,8 +55,6 @@ const viewport = ref<Record<"before" | "after", GraphViewport>>({
   after: { zoom: 0.6, x: 10, y: 10 },
 });
 const sides = ["before", "after"] as const;
-const compoundPair = ref<HTMLElement>();
-usePairedActivityAlignment(compoundPair, () => selectedId.value);
 const unionBounds = computed(() => {
   const nodes = [...pair.value.before.nodes, ...pair.value.after.nodes];
   return {
@@ -95,18 +90,6 @@ const changeTargets = computed(() => [
       .map((x) => x.id),
   ),
 ]);
-const selectedActivityIds = computed(() =>
-  focus.sortIds("activities", [
-    ...new Set(
-      sides.flatMap(
-        (side) =>
-          props.record[side]?.compounds
-            .find((c) => c.compound.id === selectedId.value)
-            ?.activities.map((a) => String(a.id)) ?? [],
-      ),
-    ),
-  ]),
-);
 const selectedIsEdge = computed(() =>
   edges.value.some((x) => x.id === selectedId.value),
 );
@@ -133,7 +116,12 @@ function evidence(side: "before" | "after") {
     .map((link) => ({
       link,
       evidence: own?.evidence.find((x) => x.id === link.evidence_id),
-    })).sort((a,b) => Number(focus.related('edge_evidence_links',b.link.id))-Number(focus.related('edge_evidence_links',a.link.id)));
+    }))
+    .sort(
+      (a, b) =>
+        Number(focus.related("edge_evidence_links", b.link.id)) -
+        Number(focus.related("edge_evidence_links", a.link.id)),
+    );
 }
 function compoundName(id: string) {
   return (
@@ -298,8 +286,8 @@ useModalFocus(expanded, modal);
           :data-compound-id="n.id"
           @click="selectedId = n.id"
         >
-          {{ n.label }} <span> · {{ reviewState(n.role) }}</span
-          ><span v-if="n.change !== 'unchanged'"
+          {{ n.label }}
+          <span v-if="n.change !== 'unchanged'"
             >· {{ t(changeLabels[n.change]) }}</span
           >
         </button>
@@ -319,42 +307,25 @@ useModalFocus(expanded, modal);
           {{ t(side === "before" ? "修改前关系详情" : "本次提交关系详情") }}
         </header>
         <template v-if="edge(side)">
-          <ReviewDisclosure
-            :style="{ order: 30 }"
-            :id="`endpoints:${selectedId}`"
-            :label="t('两端化合物详情')"
-            v-slot="{ open }"
+          <p
+            class="relation-endpoints"
+            data-edge-endpoints
+            :style="{ order: -5 }"
           >
-            <div v-if="open" class="relation-endpoints">
-              <div
-                v-for="endpoint in ['parent_compound_id', 'child_compound_id']"
-                :key="endpoint"
-              >
-                <strong>{{
-                  t(
-                    endpoint === "parent_compound_id"
-                      ? "起始化合物"
-                      : "衍生化合物",
-                  )
-                }}</strong
-                ><FrozenCompoundCard
-                  :record="
-                    compoundRecord(
-                      side === 'before' ? before : after,
-                      String(edge(side)![endpoint]),
-                    )
-                  "
-                  :snapshot="side === 'before' ? before : after"
-                  :paper-id="paperId"
-                  :current-source-sha="currentSourceSha"
-                  :side="side"
-                  :changes="record.changes"
-                  :available="available"
-                  compact
-                />
-              </div>
-            </div>
-          </ReviewDisclosure>
+            {{
+              compoundLabel(
+                side === "before" ? before : after,
+                String(edge(side)!.parent_compound_id),
+              )
+            }}
+            →
+            {{
+              compoundLabel(
+                side === "before" ? before : after,
+                String(edge(side)!.child_compound_id),
+              )
+            }}
+          </p>
           <ReviewDisclosure
             :style="{ order: relationChanged() ? 0 : 10 }"
             :id="`relation:${selectedId}`"
@@ -439,33 +410,43 @@ useModalFocus(expanded, modal);
     </div>
     <div
       v-else-if="selectedId"
-      ref="compoundPair"
-      class="paired-compound-records"
+      class="paired-node-membership"
+      data-node-membership
     >
-      <FrozenCompoundCard
+      <article
         v-for="side in sides"
         :key="side"
-        :record="
-          pair[side].nodes.some((n) => n.id === selectedId)
-            ? compoundRecord(side === 'before' ? before : after, selectedId)
-            : null
-        "
-        :snapshot="side === 'before' ? before : after"
-        :paper-id="paperId"
-        :current-source-sha="currentSourceSha"
-        :side="side"
-        :changes="record.changes"
-        :available="available"
-        :activity-ids="selectedActivityIds"
-        :member-role="
-          record[side]?.members.find((m) => m.compound_id === selectedId)?.role
-        "
-        :absence-label="
-          side === 'before'
-            ? '修改前不属于此 Lineage'
-            : '本次提交已移出此 Lineage'
-        "
-      />
+        :data-record-side="side"
+        class="node-membership-side"
+      >
+        <h4 class="record-side-heading">
+          {{ t(side === "before" ? "修改前" : "本次提交") }}
+        </h4>
+        <p>
+          {{
+            pair[side].nodes.find((n) => n.id === selectedId)?.label ??
+            label(selectedId)
+          }}
+        </p>
+        <p>
+          {{
+            t(
+              !available
+                ? "比较起点不可用"
+                : pair[side].nodes.some((n) => n.id === selectedId)
+                  ? nodes.find((n) => n.id === selectedId)?.change === "added"
+                    ? "新增节点"
+                    : nodes.find((n) => n.id === selectedId)?.change ===
+                        "removed"
+                      ? "删除节点"
+                      : "节点未增删"
+                  : side === "before"
+                    ? "修改前不属于此 Lineage"
+                    : "本次提交已移出此 Lineage",
+            )
+          }}
+        </p>
+      </article>
     </div>
   </section>
 </template>
@@ -513,7 +494,7 @@ useModalFocus(expanded, modal);
 }
 .paired-lineage-graphs,
 .paired-relation-details,
-.paired-compound-records {
+.paired-node-membership {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.8rem;
@@ -585,15 +566,19 @@ useModalFocus(expanded, modal);
   padding: 0.35rem 0.8rem;
 }
 .relation-endpoints {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
-  padding: 0.8rem;
+  padding: 0.5rem 0.8rem;
+  margin: 0;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }
-.relation-endpoints > div > strong {
-  display: block;
-  font-size: 0.75rem;
-  padding-bottom: 0.5rem;
+.node-membership-side {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 0;
+}
+.node-membership-side p {
+  margin: 0.75rem;
+  overflow-wrap: anywhere;
 }
 .relation-description,
 .relation-evidence {
@@ -633,15 +618,12 @@ useModalFocus(expanded, modal);
 @media (max-width: 700px) {
   .paired-lineage-graphs,
   .paired-relation-details,
-  .paired-compound-records {
+  .paired-node-membership {
     grid-template-columns: repeat(2, minmax(285px, 1fr));
     overflow-x: auto;
   }
   .relation-side > .review-disclosure {
     padding: 0.35rem 0.8rem;
-  }
-  .relation-endpoints {
-    grid-template-columns: 1fr;
   }
   .is-expanded {
     padding: 0.6rem;

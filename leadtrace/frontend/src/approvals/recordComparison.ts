@@ -7,7 +7,11 @@ import {
 } from "./comparison";
 export type FrozenSnapshot = Record<string, unknown>;
 export type RecordKind =
-  "added" | "removed" | "modified" | "unchanged" | "unknown";
+  | "added"
+  | "removed"
+  | "modified"
+  | "unchanged"
+  | "unknown";
 export interface CompoundRecord {
   compound: Row;
   structures: Row[];
@@ -22,7 +26,7 @@ export interface LineageRecord {
   edges: Row[];
   links: Row[];
   evidence: Row[];
-  compounds: CompoundRecord[];
+  compounds: Pick<Row, "id" | "compound_label">[];
 }
 export interface PairedRecord<T> {
   id: string;
@@ -82,9 +86,9 @@ export function lineageRecord(
     evidence: rows(snapshot, "evidence").filter((x) =>
       links.some((l) => l.evidence_id === x.id),
     ),
-    compounds: [...ids]
-      .map((x) => compoundRecord(snapshot, String(x)))
-      .filter((x): x is CompoundRecord => Boolean(x)),
+    compounds: rows(snapshot, "compounds")
+      .filter((c) => ids.has(c.id))
+      .map((c) => ({ id: c.id, compound_label: c.compound_label })),
   };
 }
 function containsCompoundChange(
@@ -114,9 +118,27 @@ function containsLineageChange(
     edge_evidence_links: record.links,
     evidence: record.evidence,
   };
-  return (
-    (domains[change.domain] ?? []).some((x) => x.id === change.id) ||
-    record.compounds.some((x) => containsCompoundChange(x, change))
+  return (domains[change.domain] ?? []).some((x) => x.id === change.id);
+}
+function nodeIds(record: LineageRecord | null): string[] {
+  return [
+    ...new Set([
+      ...(record?.members.map((x) => String(x.compound_id)) ?? []),
+      ...(record?.edges.flatMap((x) => [
+        String(x.parent_compound_id),
+        String(x.child_compound_id),
+      ]) ?? []),
+    ]),
+  ];
+}
+function membershipChanged(
+  record: PairedRecord<LineageRecord>,
+  change: ScientificChange,
+): boolean {
+  const before = new Set(nodeIds(record.before)),
+    after = new Set(nodeIds(record.after));
+  return [change.before?.compound_id, change.after?.compound_id].some(
+    (id) => id != null && before.has(String(id)) !== after.has(String(id)),
   );
 }
 export function buildRecordComparison(
@@ -174,11 +196,31 @@ export function buildRecordComparison(
       compoundRecord,
       containsCompoundChange,
     ),
-    lineages = records("lineages", lineageRecord, containsLineageChange);
+    lineages = records("lineages", lineageRecord, containsLineageChange).map(
+      (record) => {
+        const changes = record.changes.filter(
+          (c) => c.domain !== "lineage_members" || membershipChanged(record, c),
+        );
+        return {
+          ...record,
+          changes,
+          changed: changes.length > 0,
+          kind:
+            record.kind === "modified" && !changes.length
+              ? ("unchanged" as const)
+              : record.kind,
+        };
+      },
+    );
   const covered = new Set(
     [...compounds, ...lineages].flatMap((r) => r.changes),
   );
-  const changes = result.changes.filter((c) => !covered.has(c));
+  // Membership attributes remain in complete history; only graph membership
+  // changes belong in this approval projection and its summary counts.
+  const reviewChanges = result.changes.filter(
+    (c) => c.domain !== "lineage_members" || covered.has(c),
+  );
+  const changes = reviewChanges.filter((c) => !covered.has(c));
   const article: PairedRecord<FrozenSnapshot> = {
     id: "article",
     label: "文章信息",
@@ -192,15 +234,13 @@ export function buildRecordComparison(
         ? "modified"
         : "unchanged",
   };
-  return { ...result, compounds, lineages, article };
+  return { ...result, changes: reviewChanges, compounds, lineages, article };
 }
 export interface GraphNode {
   id: string;
   label: string;
-  depiction?: string;
   position: { x: number; y: number };
   change: RecordKind;
-  role: string;
 }
 export interface GraphEdge {
   id: string;
@@ -217,15 +257,6 @@ export function lineageGraphPair(record: PairedRecord<LineageRecord>): {
   before: FrozenGraph;
   after: FrozenGraph;
 } {
-  const nodeIds = (r: LineageRecord | null) => [
-    ...new Set([
-      ...(r?.members.map((x) => String(x.compound_id)) ?? []),
-      ...(r?.edges.flatMap((x) => [
-        String(x.parent_compound_id),
-        String(x.child_compound_id),
-      ]) ?? []),
-    ]),
-  ];
   const oldIds = nodeIds(record.before),
     newIds = nodeIds(record.after),
     ids = [...new Set([...oldIds, ...newIds])].sort();
@@ -242,22 +273,11 @@ export function lineageGraphPair(record: PairedRecord<LineageRecord>): {
     const oppositeIds = side === "before" ? newIds : oldIds;
     return {
       nodes: nodeIds(own).map((id) => {
-        const compound = own?.compounds.find((x) => x.compound.id === id),
-          member = own?.members.find((x) => x.compound_id === id);
-        const changed = record.changes.some(
-          (c) =>
-            containsCompoundChange(compound ?? null, c) ||
-            (c.domain === "lineage_members" &&
-              (c.before?.compound_id === id || c.after?.compound_id === id)),
-        );
+        const compound = own?.compounds.find((x) => x.id === id);
         return {
           id,
-          label: String(compound?.compound.compound_label ?? id),
-          depiction: compound?.structures[0]?.depiction_asset_id
-            ? String(compound.structures[0].depiction_asset_id)
-            : undefined,
+          label: String(compound?.compound_label ?? id),
           position: positions.get(id)!,
-          role: String(member?.role ?? ""),
           change:
             record.kind === "unknown"
               ? "unknown"
@@ -265,9 +285,7 @@ export function lineageGraphPair(record: PairedRecord<LineageRecord>): {
                 ? side === "before"
                   ? "removed"
                   : "added"
-                : changed
-                  ? "modified"
-                  : "unchanged",
+                : "unchanged",
         };
       }),
       edges: (own?.edges ?? []).map((edge) => {

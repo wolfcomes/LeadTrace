@@ -1,5 +1,8 @@
 // Approval interface copy only; never translate scientific records.
 export const enApproval: Record<string, string> = {
+  "新增节点": "Node added",
+  "删除节点": "Node removed",
+  "节点未增删": "Node membership unchanged",
   "活性数值": "Activity measurement",
   "分子结构图": "Molecular depiction",
   "名称与说明": "Name and description",
