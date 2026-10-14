@@ -44,8 +44,11 @@ The approval page uses Reviewer-style, read-only article, Compound and Lineage
 records with the comparison baseline on the left and the frozen submission on the
 right. The default directory lists changed records; all records remain available.
 A selected Compound keeps its structure, activities and supporting evidence in
-context. Unchanged sections are collapsed, while changed values and unresolved issues stay
-visible. Matching disclosures expand together on both sides. Original evidence
+context. Only changed fields and measurements expand by default. Unchanged sections and
+fields stay collapsed, including unchanged chemistry after a status edit and
+unchanged measurements after an evidence edit. Issue badges remain visible.
+Changed sections and activities sort before unchanged content in the same order
+on both sides. Matching disclosures expand together on both sides. Original evidence
 crops are collapsed and loaded only when expanded, using verified frozen PDF
 identity and coordinates. Larger region/page views are available on demand.
 

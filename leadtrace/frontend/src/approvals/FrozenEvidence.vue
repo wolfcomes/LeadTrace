@@ -4,6 +4,8 @@ import { t } from "../i18n";
 import { evidenceUsage, type Row } from "./comparison";
 import { validateCrop, useFrozenPdfPool } from "./frozenPdf";
 import { useModalFocus } from "./useModalFocus";
+import { useReviewFocus } from "./reviewFocus";
+import ReviewFields from "./ReviewFields.vue";
 import ReviewDisclosure from "./ReviewDisclosure.vue";
 import FrozenPdfCrop from "./FrozenPdfCrop.vue";
 const props = defineProps<{
@@ -14,6 +16,10 @@ const props = defineProps<{
   changeLabel?: string;
 }>();
 useFrozenPdfPool();
+const focus = useReviewFocus();
+const domain = computed(() =>
+  "compound_id" in props.evidence ? "structure_source_images" : "evidence",
+);
 const expanded = ref(false),
   fullPage = ref(false);
 const page = computed(() => Number(props.evidence.page_number));
@@ -49,7 +55,10 @@ useModalFocus(expanded, modal);
     <ReviewDisclosure
       :id="`evidence:${evidence.id}`"
       :label="heading"
-      :expanded="!sameSource || changeLabel !== '证据未变'"
+      :expanded="
+        (focus.hasComparison && focus.related(domain, evidence.id)) ||
+        (!!changeLabel && !['证据未变', '内容未变'].includes(changeLabel))
+      "
     >
       <template #summary
         ><span class="evidence-caption">{{ t("第 {page} 页", { page }) }}</span
@@ -57,16 +66,27 @@ useModalFocus(expanded, modal);
           t(changeLabel)
         }}</span></template
       >
-      <blockquote v-if="evidence.quoted_text">
-        {{ evidence.quoted_text }}
-      </blockquote>
-      <p v-if="evidence.source_context && evidence.source_context !== heading">
-        {{ evidence.source_context }}
-      </p>
-      <p v-if="evidence.reviewer_note">{{ evidence.reviewer_note }}</p>
-      <p v-if="usage.length" class="evidence-usage">
-        {{ t("支持对象") }}: {{ usage.join(" · ") }}
-      </p>
+      <ReviewFields
+        :row="evidence"
+        :domain="domain"
+        :fields="
+          [
+            'page_number',
+            'kind',
+            'caption',
+            'label',
+            'quoted_text',
+            'source_context',
+            'reviewer_note',
+          ].filter((k) => k in evidence)
+        "
+      />
+      <ReviewDisclosure
+        v-if="usage.length"
+        :id="`evidence-usage:${evidence.id}`"
+        :label="t('支持对象')"
+        ><p class="evidence-usage">{{ usage.join(" · ") }}</p></ReviewDisclosure
+      >
       <ReviewDisclosure
         v-if="sameSource && bounds"
         :id="`evidence-image:${evidence.id}`"
@@ -132,9 +152,7 @@ useModalFocus(expanded, modal);
           >{{ t("打开 Source PDF ↗") }}</a
         >
       </template>
-      <p v-else class="message is-error">
-        {{ t("证据来源与冻结 PDF 不一致，请核对原文版本。") }}
-      </p>
+
       <details v-if="bounds && sameSource" class="evidence-coordinates">
         <summary>{{ t("原文区域") }}</summary>
         {{
@@ -144,6 +162,9 @@ useModalFocus(expanded, modal);
         }}
       </details>
     </ReviewDisclosure>
+    <p v-if="!sameSource" class="message is-error">
+      {{ t("证据来源与冻结 PDF 不一致，请核对原文版本。") }}
+    </p>
     <Teleport to="body"
       ><div
         v-if="expanded && bounds && sameSource"

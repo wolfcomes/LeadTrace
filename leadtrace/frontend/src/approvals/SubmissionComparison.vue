@@ -17,6 +17,7 @@ import {
 } from "./recordLabels";
 import { usePairedActivityAlignment } from "./usePairedActivityAlignment";
 import { useFrozenPdfPool } from "./frozenPdf";
+import { provideReviewFocus } from "./reviewFocus";
 import ReviewDisclosure from "./ReviewDisclosure.vue";
 import { provideReviewDisclosures } from "./reviewDisclosures";
 import FrozenCompoundCard from "./FrozenCompoundCard.vue";
@@ -31,6 +32,14 @@ useFrozenPdfPool();
 const disclosures = provideReviewDisclosures();
 const result = computed(() =>
   buildRecordComparison(props.snapshot, props.comparison),
+);
+provideReviewFocus(
+  computed(() => ({
+    available: result.value.available,
+    changes: result.value.changes,
+    before: props.comparison?.baseline_snapshot ?? {},
+    after: props.snapshot,
+  })),
 );
 const baseline = computed(() => props.comparison?.baseline_snapshot ?? {}),
   sourceSha = computed(() =>
@@ -71,14 +80,30 @@ const selectedLineage = computed(() =>
 const selectedRecord = computed(() =>
   records.value.find((x) => x.id === selected.value),
 );
-const activityIds = computed(() => [
-  ...new Set(
-    [
-      ...(selectedCompound.value?.before?.activities ?? []),
-      ...(selectedCompound.value?.after?.activities ?? []),
-    ].map((x) => String(x.id)),
+const activityIds = computed(() =>
+  [
+    ...new Set(
+      [
+        ...(selectedCompound.value?.before?.activities ?? []),
+        ...(selectedCompound.value?.after?.activities ?? []),
+      ].map((x) => String(x.id)),
+    ),
+  ].sort(
+    (a, b) => Number(activityHasChanges(b)) - Number(activityHasChanges(a)),
   ),
-]);
+);
+function activityHasChanges(id: string) {
+  const evidenceIds = [baseline.value, props.snapshot].flatMap((s) =>
+    rows(s, "activities")
+      .filter((r) => r.id === id)
+      .map((r) => r.evidence_id),
+  );
+  return result.value.changes.some(
+    (c) =>
+      (c.domain === "activities" && c.id === id) ||
+      (c.domain === "evidence" && evidenceIds.includes(c.id)),
+  );
+}
 const sides = ["before", "after"] as const;
 const compoundPair = ref<HTMLElement>();
 usePairedActivityAlignment(compoundPair, () => [selected.value, tab.value]);
@@ -124,6 +149,13 @@ function issueNavigate(issue: { id: string; domain: string }) {
   selected.value = target.recordId;
   selectedEntity.value = target.selection;
 }
+const articleDomains = computed(() =>
+  ["paper", "sections", "source"].sort(
+    (a, b) =>
+      Number(result.value.article.changes.some((c) => c.domain === b)) -
+      Number(result.value.article.changes.some((c) => c.domain === a)),
+  ),
+);
 function evidenceForArticle(snapshot: Record<string, unknown>) {
   const linkedIds = new Set(
     [
@@ -132,7 +164,7 @@ function evidenceForArticle(snapshot: Record<string, unknown>) {
       ...rows(snapshot, "edge_evidence_links"),
     ].map((x) => x.evidence_id),
   );
-  return rows(snapshot, "evidence").filter((x) => !linkedIds.has(x.id));
+  return rows(snapshot, "evidence").filter((x) => !linkedIds.has(x.id)).sort((a,b) => Number(result.value.changes.some(c => c.domain === 'evidence' && c.id === b.id))-Number(result.value.changes.some(c => c.domain === 'evidence' && c.id === a.id)));
 }
 function visibleFields(row: Row) {
   return Object.entries(row).filter(
@@ -350,7 +382,12 @@ function fieldChanged(domain: string, id: unknown, key: string) {
             </h3>
             <template v-if="side === 'after' || result.available"
               ><section
-                v-for="domain in ['paper', 'sections', 'source']"
+                :style="{
+                  order: result.article.changes.some((c) => c.domain === domain)
+                    ? 0
+                    : 10,
+                }"
+                v-for="domain in articleDomains"
                 :key="domain"
               >
                 <h4>{{ t(domainLabels[domain]) }}</h4>
@@ -409,7 +446,15 @@ function fieldChanged(domain: string, id: unknown, key: string) {
                   </template>
                 </div>
               </section>
-              <section>
+              <section
+                :style="{
+                  order: result.article.changes.some(
+                    (c) => c.domain === 'evidence',
+                  )
+                    ? 0
+                    : 10,
+                }"
+              >
                 <h4>{{ t("其他原文证据") }}</h4>
                 <FrozenEvidence
                   v-for="evidence in evidenceForArticle(
@@ -527,6 +572,13 @@ function fieldChanged(domain: string, id: unknown, key: string) {
   </section>
 </template>
 <style scoped>
+.paired-article-records > article {
+  display: flex;
+  flex-direction: column;
+}
+.paired-article-records .record-side-heading {
+  order: -10;
+}
 .submission-comparison {
   padding: 1.25rem;
 }

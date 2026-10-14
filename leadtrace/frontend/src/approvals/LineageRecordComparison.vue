@@ -16,6 +16,8 @@ import FrozenLineageGraph, {
 import FrozenCompoundCard from "./FrozenCompoundCard.vue";
 import { useModalFocus } from "./useModalFocus";
 import { usePairedActivityAlignment } from "./usePairedActivityAlignment";
+import { useReviewFocus } from "./reviewFocus";
+import ReviewFields from "./ReviewFields.vue";
 import ReviewDisclosure from "./ReviewDisclosure.vue";
 import FrozenEvidence from "./FrozenEvidence.vue";
 const props = defineProps<{
@@ -27,6 +29,26 @@ const props = defineProps<{
   available: boolean;
   initialSelection?: string;
 }>();
+const focus = useReviewFocus();
+function relationChanged() {
+  return !props.available || focus.changed("lineage_edges", selectedId.value);
+}
+function relationEvidenceChanged() {
+  return (
+    !props.available ||
+    props.record.changes.some(
+      (c) =>
+        (c.domain === "edge_evidence_links" &&
+          [c.before?.edge_id, c.after?.edge_id].includes(selectedId.value)) ||
+        (c.domain === "evidence" &&
+          ["before", "after"].some((side) =>
+            props.record[side as "before" | "after"]?.links.some(
+              (l) => l.edge_id === selectedId.value && l.evidence_id === c.id,
+            ),
+          )),
+    )
+  );
+}
 const pair = computed(() => lineageGraphPair(props.record)),
   linked = ref(true),
   expanded = ref(false),
@@ -73,16 +95,18 @@ const changeTargets = computed(() => [
       .map((x) => x.id),
   ),
 ]);
-const selectedActivityIds = computed(() => [
-  ...new Set(
-    sides.flatMap(
-      (side) =>
-        props.record[side]?.compounds
-          .find((c) => c.compound.id === selectedId.value)
-          ?.activities.map((a) => String(a.id)) ?? [],
+const selectedActivityIds = computed(() =>
+  focus.sortIds("activities", [
+    ...new Set(
+      sides.flatMap(
+        (side) =>
+          props.record[side]?.compounds
+            .find((c) => c.compound.id === selectedId.value)
+            ?.activities.map((a) => String(a.id)) ?? [],
+      ),
     ),
-  ),
-]);
+  ]),
+);
 const selectedIsEdge = computed(() =>
   edges.value.some((x) => x.id === selectedId.value),
 );
@@ -109,7 +133,7 @@ function evidence(side: "before" | "after") {
     .map((link) => ({
       link,
       evidence: own?.evidence.find((x) => x.id === link.evidence_id),
-    }));
+    })).sort((a,b) => Number(focus.related('edge_evidence_links',b.link.id))-Number(focus.related('edge_evidence_links',a.link.id)));
 }
 function compoundName(id: string) {
   return (
@@ -204,24 +228,12 @@ useModalFocus(expanded, modal);
               reviewState(record[side]!.lineage.lineage_type ?? "unspecified")
             }}</span
           >
-          <ReviewDisclosure
-            v-if="record[side]?.lineage.description"
-            :id="`lineage-description:${record.id}`"
-            :label="t('Lineage 说明')"
-            :expanded="
-              !available ||
-              record.changes.some(
-                (c) =>
-                  c.domain === 'lineages' &&
-                  c.fields.some((f) => f.key === 'description'),
-              )
-            "
-          >
-            <p>{{ record[side]?.lineage.description }}</p>
-          </ReviewDisclosure>
-          <p v-if="record[side]?.lineage.review_hint" class="record-issue">
-            {{ record[side]?.lineage.review_hint }}
-          </p>
+          <ReviewFields
+            v-if="record[side]"
+            :row="record[side]!.lineage"
+            domain="lineages"
+            :fields="['description', 'review_hint']"
+          />
         </div>
         <FrozenLineageGraph
           :graph="pair[side]"
@@ -308,6 +320,7 @@ useModalFocus(expanded, modal);
         </header>
         <template v-if="edge(side)">
           <ReviewDisclosure
+            :style="{ order: 30 }"
             :id="`endpoints:${selectedId}`"
             :label="t('两端化合物详情')"
             v-slot="{ open }"
@@ -343,47 +356,50 @@ useModalFocus(expanded, modal);
             </div>
           </ReviewDisclosure>
           <ReviewDisclosure
+            :style="{ order: relationChanged() ? 0 : 10 }"
             :id="`relation:${selectedId}`"
             :label="t('关系说明')"
             :expanded="
               !available ||
-              edge(side)!.review_status === 'unresolved' ||
-              Boolean(edge(side)!.review_hint) ||
               record.changes.some(
                 (c) => c.domain === 'lineage_edges' && c.id === selectedId,
               )
             "
           >
-            <div class="relation-description">
-              <p>
-                <strong>{{ t("关系类型") }}</strong> ·
-                {{ edge(side)!.relation_type }}
-              </p>
-              <p>
-                <strong>{{ t("结构变化说明") }}</strong>
-              </p>
-              <p>{{ edge(side)!.modification_summary || "—" }}</p>
-              <p>{{ reviewState(edge(side)!.review_status) }}</p>
-            </div>
-            <p v-if="edge(side)!.review_hint" class="record-issue">
-              {{ edge(side)!.review_hint }}
-            </p>
-            <p
-              v-else-if="
-                side === 'after' &&
-                record.changes.some(
-                  (c) => c.id === selectedId && c.issueResolution,
-                )
-              "
-              class="record-resolved"
+            <template #summary
+              ><span
+                v-if="
+                  edge(side)!.review_hint ||
+                  edge(side)!.review_status === 'unresolved'
+                "
+                class="status-chip"
+                >{{ t("待核对") }}</span
+              ></template
             >
-              {{ t("核对提示已解决") }}
-            </p>
+            <ReviewFields
+              :row="edge(side)!"
+              domain="lineage_edges"
+              :fields="[
+                'relation_type',
+                'modification_summary',
+                'review_status',
+                'review_hint',
+              ]"
+            />
           </ReviewDisclosure>
-          <div class="relation-evidence">
-            <h4>{{ t("关系证据") }}</h4>
+          <ReviewDisclosure
+            class="relation-evidence"
+            :id="`relation-evidence:${selectedId}`"
+            :label="t('关系证据')"
+            :expanded="relationEvidenceChanged()"
+            :style="{ order: relationEvidenceChanged() ? 1 : 11 }"
+          >
             <div v-for="item in evidence(side)" :key="String(item.link.id)">
-              <p>{{ t("证据作用") }} · {{ reviewState(item.link.role) }}</p>
+              <ReviewFields
+                :row="item.link"
+                domain="edge_evidence_links"
+                :fields="['role']"
+              />
               <FrozenEvidence
                 v-if="item.evidence"
                 :evidence="item.evidence"
@@ -406,7 +422,7 @@ useModalFocus(expanded, modal);
               <p v-else class="record-issue">{{ t("关联证据不可用") }}</p>
             </div>
             <p v-if="!evidence(side).length">{{ t("无关联证据") }}</p>
-          </div></template
+          </ReviewDisclosure></template
         >
         <p v-else class="record-absent">
           {{
@@ -506,6 +522,7 @@ useModalFocus(expanded, modal);
   min-width: 0;
 }
 .record-side-heading {
+  order: -10;
   margin: 0;
   padding: 0.75rem;
   background: var(--slate-pale);
@@ -621,9 +638,9 @@ useModalFocus(expanded, modal);
     overflow-x: auto;
   }
   .relation-side > .review-disclosure {
-  padding: 0.35rem 0.8rem;
-}
-.relation-endpoints {
+    padding: 0.35rem 0.8rem;
+  }
+  .relation-endpoints {
     grid-template-columns: 1fr;
   }
   .is-expanded {

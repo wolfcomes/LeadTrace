@@ -64,6 +64,11 @@ async function setup(page:Page, body=fixture(), corruptPdf=false) {
 }
 
 async function expandEvidence(evidence: Locator) {
+  const ancestors = evidence.locator('xpath=ancestor::details');
+  for (let i=0; i<await ancestors.count(); i++) {
+    const ancestor=ancestors.nth(i);
+    if (!(await ancestor.evaluate(el => (el as HTMLDetailsElement).open))) await ancestor.locator(':scope > summary').click();
+  }
   const content = evidence.locator(':scope > [data-disclosure]');
   if (!(await content.evaluate(el => (el as HTMLDetailsElement).open))) await content.locator(':scope > summary').click();
   const screenshot = evidence.locator('[data-evidence-image]');
@@ -81,7 +86,7 @@ test('changed records stay visible while unchanged details and screenshots expan
   await expect(page.locator('[data-evidence-thumbnail]')).toHaveCount(0);
   expect(requests.pdfRequests).toHaveLength(0);
   await expect(after.locator('.activity-context')).not.toBeVisible();
-  await expect(after.locator(`[data-disclosure="identity:${ids.compoundB}"]`)).not.toHaveAttribute('open');
+  await expect(after.locator(`[data-disclosure="section:identity:${ids.compoundB}"]`)).not.toHaveAttribute('open');
   await page.screenshot({path:'test-results/approval-records-compact.png',fullPage:true});
   await before.locator(`[data-disclosure="activity-context:${ids.activity}"] > summary`).click();
   await expect(after.locator('.activity-context')).toBeVisible();
@@ -133,6 +138,13 @@ test('whole lineage comparison shares layout and exposes changed relation with f
   await page.locator('.lineage-entry-list > summary').click();
   await page.locator(`[data-lineage-relation][data-edge-id="${ids.edge}"]`).click();
   await expect(before).toHaveAttribute('data-selected-id',ids.edge);await expect(after).toHaveAttribute('data-selected-id',ids.edge);
+  for(const side of ['before','after']) {
+    const card=page.locator(`[data-record-side="${side}"]`);
+    const relation=card.locator(`[data-disclosure="relation:${ids.edge}"]`),evidence=card.locator(`[data-disclosure="relation-evidence:${ids.edge}"]`);
+    await expect(relation).not.toHaveAttribute('open');
+    await expect(evidence).toHaveAttribute('open');
+    expect((await evidence.boundingBox())!.y).toBeLessThan((await relation.boundingBox())!.y);
+  }
   await expect(page.locator('[data-lineage-comparison]')).toContainText('Original synthetic potency');
   await expect(page.locator('[data-lineage-comparison]')).toContainText('Lead 1 was optimized');
   const initial=Number(await before.getAttribute('data-zoom'));
@@ -199,4 +211,34 @@ test('English record review preserves scientific values and translated controls'
   await page.locator('[data-record-tab="lineages"]').click();
   await expect(page.locator('[data-graph-expand]')).not.toContainText('放大对照');
   await expect(page.locator('[data-change-next]')).not.toContainText('下一处变化');
+});
+
+
+test('only changed fields lead both columns while unchanged content stays collapsed',async({page})=>{
+  await page.setViewportSize({width:1536,height:1100});
+  const body=fixture(),current=body.submission.snapshot,previous=body.comparison.baseline_snapshot;
+  previous.structures=structuredClone(current.structures.slice(0,2));
+  previous.activities[0]=structuredClone(current.activities[0]);
+  const unchanged={...current.activities[0],id:extra('401'),assay_name:'Unchanged first assay',evidence_id:null,sort_order:-1};
+  previous.activities.unshift(structuredClone(unchanged));current.activities.unshift(structuredClone(unchanged));
+  current.compounds[1].description='New description';
+  const requests=await setup(page,body);
+  const before=page.locator('[data-record-side="before"]'),after=page.locator('[data-record-side="after"]');
+  for(const side of [before,after]) {
+    await expect(side.locator('.activity-result:visible')).toHaveCount(0);
+    await expect(side.locator('[data-rdkit-depiction]:visible')).toHaveCount(0);
+    await expect(side.locator('[data-review-fields] [data-field="source_context"]').first()).not.toBeVisible();
+    await expect(side.locator('[data-review-fields] [data-field="display_name"]').first()).not.toBeVisible();
+    await expect(side.locator(`[data-disclosure="activity:${ids.activity}"]`)).toHaveAttribute('open');
+    const activity=side.locator(`[data-activity-id="${ids.activity}"]`),plain=side.locator(`[data-activity-id="${unchanged.id}"]`);
+    expect((await activity.boundingBox())!.y).toBeLessThan((await plain.boundingBox())!.y);
+    const active=side.locator('[data-section="activities"]'),structure=side.locator('[data-section="structures"]');
+    expect((await active.boundingBox())!.y).toBeLessThan((await structure.boundingBox())!.y);
+  }
+  await expect(after.getByText('New description',{exact:true})).toBeVisible();
+  const beforeY=(await before.locator('[data-section="activities"]').boundingBox())!.y;
+  expect(Math.abs(beforeY-(await after.locator('[data-section="activities"]').boundingBox())!.y)).toBeLessThan(3);
+  await expect(after.locator('[data-review-fields="evidence:'+ids.evidence+'"] [data-field="quoted_text"]')).toBeVisible();
+  expect(requests.pdfRequests).toHaveLength(0);
+  await page.screenshot({path:'test-results/approval-focus-fields.png',fullPage:true});
 });

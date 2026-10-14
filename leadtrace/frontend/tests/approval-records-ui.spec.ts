@@ -82,6 +82,7 @@ describe("complete approval record presentation", () => {
     };
     const crop = mount(FrozenEvidence, { props: base });
     expect(crop.find("[data-evidence-thumbnail]").exists()).toBe(false);
+    expect(crop.text()).not.toContain("未修改字段");
     await crop.get("[data-evidence-image] > summary").trigger("click");
     expect(crop.find("[data-evidence-thumbnail]").exists()).toBe(true);
     const noBox = mount(FrozenEvidence, {
@@ -118,7 +119,13 @@ describe("outstanding issue navigation", () => {
       "Unchanged relation issue",
     );
     expect(wrapper.get(".relation-side").element.children.length).toBe(4);
-    expect(wrapper.get(`[data-disclosure="relation:${ids.edge}"] .record-issue`).text()).toContain("Unchanged relation issue");
+    expect(
+      wrapper
+        .get(
+          `[data-disclosure="relation:${ids.edge}"] [data-field="review_hint"]`,
+        )
+        .text(),
+    ).toContain("Unchanged relation issue");
   });
   it("keeps an unchanged unresolved relation visible without a free-text hint", async () => {
     const values = props();
@@ -136,7 +143,10 @@ describe("outstanding issue navigation", () => {
       wrapper
         .get(`[data-disclosure="relation:${ids.edge}"]`)
         .attributes("open"),
-    ).toBeDefined();
+    ).toBeUndefined();
+    expect(
+      wrapper.get(`[data-disclosure="relation:${ids.edge}"] > summary`).text(),
+    ).toContain("待核对");
     expect(wrapper.get(".relation-side").element.children.length).toBe(4);
   });
   it("locates an unchanged activity issue in the complete compound entry", async () => {
@@ -219,4 +229,115 @@ describe("nested comparison dialogs", () => {
     expect(document.body.style.overflow).not.toBe("hidden");
     wrapper.unmount();
   });
+});
+
+describe("strict changed-content focus", () => {
+  it("collapses unchanged measurements when only their evidence changed and puts activities first", async () => {
+    const values = props();
+    values.comparison.baseline_snapshot.activities[0].value =
+      frozenSnapshot.activities[0].value;
+    values.comparison.baseline_snapshot.evidence[0].quoted_text =
+      "Old evidence";
+    const wrapper = mount(SubmissionComparison, { props: values });
+    const side = wrapper.get('[data-record-side="after"]');
+    expect(
+      side
+        .get(`[data-disclosure="activity-result:${ids.activity}"]`)
+        .attributes("open"),
+    ).toBeUndefined();
+    expect(
+      side.get('[data-section="activities"]').attributes("data-priority"),
+    ).toBe("0");
+    expect(
+      side.get('[data-section="structures"]').attributes("data-priority"),
+    ).toBe("1");
+    expect(
+      side
+        .get(`[data-disclosure="section:structures:${ids.compoundB}"]`)
+        .attributes("open"),
+    ).toBeUndefined();
+  });
+  it("does not expand unchanged depiction for a status-only structure resolution", async () => {
+    const values = props();
+    values.comparison.baseline_snapshot.structures[1].status =
+      "unresolved" as never;
+    const wrapper = mount(SubmissionComparison, { props: values });
+    const side = wrapper.get('[data-record-side="after"]');
+    expect(
+      side
+        .get(`[data-disclosure="structure-depiction:${ids.structureB}"]`)
+        .attributes("open"),
+    ).toBeUndefined();
+    expect(
+      side
+        .get(
+          `[data-review-fields="structures:${ids.structureB}"] [data-field="status"]`,
+        )
+        .text(),
+    ).toContain("已确认");
+  });
+  it("keeps unchanged unresolved content collapsed with a visible summary badge", async () => {
+    const values = props();
+    values.snapshot = structuredClone(frozenSnapshot);
+    Object.assign(values.snapshot.activities[0], {
+      review_hint: "Still check this",
+    });
+    values.comparison.baseline_snapshot.activities[0] = structuredClone(
+      values.snapshot.activities[0],
+    );
+    values.comparison.baseline_snapshot.compounds[1].description =
+      "Changed description";
+    const wrapper = mount(SubmissionComparison, { props: values });
+    const disclosure = wrapper.get(
+      `[data-disclosure="activity:${ids.activity}"]`,
+    );
+    expect(disclosure.attributes("open")).toBeUndefined();
+    expect(disclosure.get("summary").text()).toContain("待核对");
+  });
+});
+
+describe("member changes are local to the selected lineage", () => {
+  it("opens changed membership detail but leaves global compound identity closed", async () => {
+    const values = props();
+    values.comparison.baseline_snapshot.activities[0].value =
+      frozenSnapshot.activities[0].value;
+    values.comparison.baseline_snapshot.lineage_members[1].role =
+      "root" as never;
+    const wrapper = mount(SubmissionComparison, {
+      props: values,
+      global: { stubs: { FrozenLineageGraph: true } },
+    });
+    await wrapper.get('[data-record-tab="lineages"]').trigger("click");
+    await wrapper
+      .get(`[data-lineage-member][data-compound-id="${ids.compoundB}"]`)
+      .trigger("click");
+    expect(
+      wrapper
+        .get(`[data-disclosure="section:identity:${ids.compoundB}"]`)
+        .attributes("open"),
+    ).toBeDefined();
+    await wrapper.get("[data-change-only]").setValue(false);
+    await wrapper.get('[data-record-tab="compounds"]').trigger("click");
+    await wrapper
+      .get(`[data-record-entry="${ids.compoundB}"]`)
+      .trigger("click");
+    expect(
+      wrapper
+        .get(`[data-disclosure="section:identity:${ids.compoundB}"]`)
+        .attributes("open"),
+    ).toBeUndefined();
+  });
+});
+
+
+it("places changed source evidence before unchanged source occurrences on both sides", () => {
+  const values=props(); values.snapshot=structuredClone(frozenSnapshot);
+  const image={...values.snapshot.structure_source_images[0],compound_id:ids.compoundB};
+  const first={...image,id:'unchanged-image'}, second={...image,id:'changed-image'};
+  values.snapshot.structure_source_images=[first,{...second,page_number:8}];
+  values.comparison.baseline_snapshot.structure_source_images=[structuredClone(first),second];
+  const wrapper=mount(SubmissionComparison,{props:values});
+  for(const side of ['before','after']) {
+    expect(wrapper.get(`[data-record-side="${side}"] [data-section="originals"] [data-frozen-evidence]`).attributes('data-evidence-id')).toBe('changed-image');
+  }
 });

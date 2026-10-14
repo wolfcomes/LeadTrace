@@ -42,7 +42,8 @@ describe("changes-first approval presentation", () => {
     expect(wrapper.find("a").exists()).toBe(false);
     expect(wrapper.find("[data-evidence-image]").exists()).toBe(false);
     expect(wrapper.find("[data-evidence-thumbnail]").exists()).toBe(false);
-    expect(wrapper.get("[data-disclosure]").attributes("open")).toBeDefined();
+    expect(wrapper.get("[data-disclosure]").attributes("open")).toBeUndefined();
+    expect(wrapper.get(".message.is-error").isVisible()).toBe(true);
     expect(wrapper.text()).toContain("证据来源与冻结 PDF 不一致");
   });
 
