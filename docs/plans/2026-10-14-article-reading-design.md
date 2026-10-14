@@ -1,0 +1,5 @@
+# Article information reading and controlled modalities
+
+User approved on2026-10-14: remove routine Abstract provenance/check boilerplate from ordinary reading; retire molecular_forms from display/edit/new extraction; use fixed multi-select modalities (直接靶点调节, PROTAC, 分子胶, 前药, 其他, 待明确). Mechanisms remain separate. Main targets first, concise rows, sources collapsed, hints visible. Reviewer and Admin share presentation, changed evidence remains expanded in comparison.
+
+Preserve historical snapshots, human content and internal provenance. Legacy modality labels are shown with their original wording plus a canonical suggestion only where explicit, and converted only on deliberate reviewer selection/save; no silent scientific rewrites. Unknown terms require a selection rather than being invented. No database migration is needed. Schema retains retired keys for frozen-record compatibility. New AI guidance and deterministic validation discourage retired fields and unsupported modality labels. Frontend deployment on main site is in approved task scope; production science is not bulk rewritten.
