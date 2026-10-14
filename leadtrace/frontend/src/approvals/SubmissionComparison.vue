@@ -184,11 +184,15 @@ function visibleFields(row: Row) {
       ].includes(key),
   );
 }
+function isProvenanceField(row:Row,key:string) {
+  return ['abstract_source','identifiers_source'].includes(key) || (['abstract_status','abstract_note'].includes(key) && !['not_found','needs_review'].includes(String(row.abstract_status)));
+}
+function provenanceFields(row:Row) {return visibleFields(row).filter(([key])=>isProvenanceField(row,key));}
 function articleFields(row: Row, domain: string, changed: boolean) {
   const pairedRow = domain === 'paper' && (
     rows(props.snapshot, 'paper')[0]?.research_profile || rows(baseline.value, 'paper')[0]?.research_profile
   ) ? { ...row, research_profile: row.research_profile ?? {} } : row;
-  return visibleFields(pairedRow).filter(
+  return visibleFields(pairedRow).filter(([key])=>domain!=='paper'||!isProvenanceField(row,key)).filter(
     ([key]) =>
       (!result.value.available ||
         fieldChanged(domain, row.section_key ?? row.id, key)) === changed,
@@ -439,7 +443,7 @@ function fieldChanged(domain: string, id: unknown, key: string) {
                               ),
                             }"
                           >
-                            <ResearchProfileComparison v-if="key === 'research_profile'" :profile="(value ?? {}) as ResearchProfile" :other="(rows(side === 'before' ? snapshot : comparison?.baseline_snapshot ?? {}, 'paper')[0]?.research_profile ?? {}) as ResearchProfile" :available="result.available" />
+                            <ResearchProfileComparison v-if="key === 'research_profile'" :side="side" :profile="(value ?? {}) as ResearchProfile" :other="(rows(side === 'before' ? snapshot : comparison?.baseline_snapshot ?? {}, 'paper')[0]?.research_profile ?? {}) as ResearchProfile" :available="result.available" />
                             <template v-else>{{
                               ["state", "status", "section_key", "abstract_status"].includes(key)
                                 ? reviewState(value)
@@ -450,6 +454,7 @@ function fieldChanged(domain: string, id: unknown, key: string) {
                       </dl>
                     </ReviewDisclosure>
                   </template>
+                  <ReviewDisclosure v-if="domain==='paper' && provenanceFields(row).length" id="article:provenance" :label="t('书目追溯信息')" :expanded="false" data-article-provenance><dl class="article-provenance"><template v-for="[key,value] in provenanceFields(row)" :key="key"><dt>{{t(fieldLabels[key]??key)}}</dt><dd :class="{'field-modified':fieldChanged(domain,row.id,key)}">{{key==='abstract_status'?reviewState(value):textValue(value)}}</dd></template></dl></ReviewDisclosure>
                 </div>
               </section>
               <section

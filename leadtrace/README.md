@@ -99,8 +99,12 @@ and local Preview state remain in ignored `leadtrace-data/`.
 
 Article information includes PMID/PMCID with identifier provenance; original
 Abstract, source locator, check state and missing/review notes; and source-backed
-research profiles. Molecular forms, modalities, mechanisms, diseases and
-optimization goals allow multiple entries. Targets distinguish primary/co-primary,
+research profiles. Modalities use a fixed multi-select vocabulary: direct target
+modulation, PROTAC, molecular glue, prodrug, other and unresolved (canonical stored
+labels are Chinese except PROTAC). Mechanisms, diseases and optimization goals allow
+multiple entries. Molecular forms is retired from new extraction and ordinary UI;
+historical payloads remain compatible. Abstract provenance stays in internal details,
+while ordinary reading shows the original abstract and actionable issues only. Targets distinguish primary/co-primary,
 selectivity, off-target, mechanistic, biomarker and unknown roles; species and gene
 accessions remain optional and must not be inferred from a name alone. Each profile
 entry has its own source and optional review hint. Empty fields do not establish

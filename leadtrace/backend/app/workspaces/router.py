@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.papers.metadata import ArticleMetadata, metadata_values
+from app.papers.metadata import ArticleMetadata, metadata_values, validate_modality_update
 
 from uuid import UUID
 
@@ -261,6 +261,8 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
         def mutation(context) -> MutationChange:
             try:
                 ArticleMetadata.model_validate(metadata_values(context.paper) | updates)
+                if 'research_profile' in updates:
+                    validate_modality_update(context.paper.research_profile or {}, updates['research_profile'])
             except ValueError as exc:
                 raise APIError(422, 'INVALID_ARTICLE_METADATA', str(exc)) from exc
             if "pdb_references" in updates:

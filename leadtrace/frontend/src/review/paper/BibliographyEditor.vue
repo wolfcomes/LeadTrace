@@ -7,7 +7,7 @@ import { paperWorkspaceSchema, type PaperWorkspace } from '../../v2/types';
 import type { PdbReference } from '../../v2/workbench';
 import ArticleMetadata from './ArticleMetadata.vue';
 import ResearchProfileEditor from './ResearchProfileEditor.vue';
-import { abstractStatusLabels } from './articleMetadata';
+import { abstractStatusLabels, revealInvalidField } from './articleMetadata';
 const props = defineProps<{workspace:PaperWorkspace;readOnly?:boolean}>();
 const emit=defineEmits<{mutated:[version:number];conflict:[]}>();
 const auth=useAuthStore();
@@ -37,18 +37,21 @@ async function save() {
     <dl class="workspace-bibliography"><div><dt>{{ t('标题') }}</dt><dd>{{ workspace.bibliography.title }}</dd></div><div><dt>{{ t('期刊') }}</dt><dd>{{ workspace.bibliography.journal }} · {{ workspace.bibliography.publication_year }}</dd></div><div><dt>DOI</dt><dd>{{ workspace.bibliography.doi||t('未报告') }}</dd></div><div><dt>{{ t('卷 / 期') }}</dt><dd>{{ workspace.bibliography.volume }} / {{ workspace.bibliography.issue }}</dd></div></dl>
     <ArticleMetadata :metadata="workspace.bibliography" />
   </details>
-  <form v-else class="bibliography-edit-form" @submit.prevent="save">
+  <form v-else class="bibliography-edit-form" @submit.prevent="save" @invalid.capture="revealInvalidField">
     <label class="form-field">{{ t('标题') }}<input v-model="draft.title" required maxlength="1024"></label>
     <div class="metadata-grid"><label class="form-field">{{ t('期刊') }}<input v-model="draft.journal" required maxlength="255"></label><label class="form-field">{{ t('年份') }}<input v-model.number="draft.publication_year" type="number" min="1000" max="9999" required></label><label class="form-field">Volume<input v-model="draft.volume" required maxlength="64"></label><label class="form-field">Issue<input v-model="draft.issue" required maxlength="64"></label><label class="form-field">DOI<input v-model="draft.doi" maxlength="255" placeholder="10.1021/…"></label></div>
     <div class="metadata-grid">
       <label class="form-field">PMID<input v-model="draft.pmid" data-pmid-input inputmode="numeric" pattern="[1-9][0-9]*" maxlength="20"></label>
       <label class="form-field">PMCID<input v-model="draft.pmcid" data-pmcid-input pattern="[Pp][Mm][Cc][1-9][0-9]*" maxlength="24"></label>
-      <label class="form-field">{{t('标识来源')}}<input v-model="draft.identifiers_source" maxlength="2000" data-identifiers-source></label>
+
     </div>
-    <label class="form-field">{{t('摘要检查状态')}}<select v-model="draft.abstract_status" data-abstract-status-input><option v-if="draft.abstract_status === undefined" :value="undefined" disabled>{{t('状态未标注')}}</option><option v-for="(label,key) in abstractStatusLabels" :key="key" :value="key">{{t(label)}}</option></select></label>
     <label class="form-field">Abstract<textarea v-model="draft.abstract" data-abstract-input rows="7" maxlength="30000" :placeholder="t('按来源填写原文摘要；不要把 AI 总结作为 Abstract。')"></textarea></label>
+    <details class="record-detail" data-bibliography-audit><summary>{{t('书目追溯信息')}}</summary>
+<label class="form-field">{{t('标识来源')}}<textarea v-model="draft.identifiers_source" maxlength="2000" data-identifiers-source></textarea></label>
+    <label class="form-field">{{t('摘要检查状态')}}<select v-model="draft.abstract_status" data-abstract-status-input><option v-if="draft.abstract_status === undefined" :value="undefined" disabled>{{t('状态未标注')}}</option><option v-for="(label,key) in abstractStatusLabels" :key="key" :value="key">{{t(label)}}</option></select></label>
     <label class="form-field">{{ t('摘要来源') }}<input v-model="draft.abstract_source" maxlength="2000" :placeholder="t('例如：PDF 第 1 页，Abstract')"></label>
     <label class="form-field">{{t('摘要检查说明')}}<textarea v-model="draft.abstract_note" data-abstract-note maxlength="2000" :required="draft.abstract_status === 'not_found' || draft.abstract_status === 'needs_review'" :placeholder="t('未找到或待核对时，说明已检查的来源范围和原因。')"></textarea></label>
+    </details>
     <ResearchProfileEditor v-model="draft.research_profile" />
     <h3>{{ t('PDB 引用') }}</h3><p>{{ t('记录文章实际提到的结构编号及用途；三字符配体代码不是 PDB ID。') }}</p>
     <fieldset v-for="(entry,index) in draft.pdb_references" :key="index" class="metadata-grid"><legend>PDB {{ index+1 }}</legend>

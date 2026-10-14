@@ -1,4 +1,6 @@
 export const enArticleMetadata: Record<string,string> = {
+  '直接靶点调节':'Direct target modulation','分子胶':'Molecular glue','前药':'Prodrug','其他':'Other','待明确':'Unresolved','旧词条，待选择':'Legacy term; select a category','原始词条':'Original wording','依据与说明':'Evidence and notes','编号与依据':'Identifiers and evidence','书目追溯信息':'Bibliographic provenance','分类说明（必填）':'Classification explanation (required)','收起摘要':'Collapse abstract','展开完整摘要':'Read full abstract',
+  '小分子抑制剂':'Small-molecule inhibitor','选择性V1a受体拮抗剂':'Selective V1a receptor antagonist','CdSpoVD 小分子抑制剂':'CdSpoVD small-molecule inhibitor','前药特征（43自身亦有活性）':'Prodrug characteristics (43 itself is also active)',
   '待核对':'Needs review',
   '分子形式':'Molecular form','作用模态':'Modality','作用方式':'Mechanism of action','疾病与应用方向':'Disease and application','优化目标':'Optimization goals',
   '研究主题信息':'Research profile','研究靶点与关联基因':'Targets and associated genes','主要靶点':'Primary target','共同主要靶点':'Co-primary target','选择性对照':'Selectivity comparator','脱靶检测':'Off-target assessment','机制相关':'Mechanistic association','生物标志物':'Biomarker','角色待核对':'Role unknown',

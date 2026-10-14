@@ -1,5 +1,6 @@
 """Optional source-backed article metadata, shared by manual and AI inputs."""
 import re
+from collections import Counter
 from typing import ClassVar, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
@@ -35,6 +36,28 @@ ARTICLE_METADATA_DEFAULTS = {
     'abstract_status': 'not_checked', 'abstract_note': None, 'research_profile': {},
 }
 ARTICLE_METADATA_FIELDS = tuple(ARTICLE_METADATA_DEFAULTS)
+
+# New selections use this vocabulary. Historical snapshots remain readable.
+MODALITY_LABELS = ('直接靶点调节', 'PROTAC', '分子胶', '前药', '其他', '待明确')
+
+
+def validate_modality_update(before: dict, after: dict) -> None:
+    """Restrict new manual labels without invalidating historical science."""
+    existing = before.get('modalities', [])
+    legacy_counts = Counter(term['label'] for term in existing if term['label'] not in MODALITY_LABELS)
+    unexplained_counts = Counter((term['label'], term.get('source')) for term in existing
+                                 if term['label'] in ('其他', '待明确') and not (term.get('review_hint') or '').strip())
+    for term in after.get('modalities', []):
+        label = term['label']
+        if label not in MODALITY_LABELS:
+            if legacy_counts[label] < 1:
+                raise ValueError('Choose a modality from the fixed vocabulary')
+            legacy_counts[label] -= 1
+        elif label in ('其他', '待明确') and not (term.get('review_hint') or '').strip():
+            key = (label, term.get('source'))
+            if unexplained_counts[key] < 1:
+                raise ValueError('Other or unresolved modalities require an explanation')
+            unexplained_counts[key] -= 1
 
 
 def metadata_values(paper):

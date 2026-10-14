@@ -5,7 +5,7 @@
 | 项目 | 交付检查 | 权威细则 |
 |---|---|---|
 | 任务身份 | 外部 task/catalog、实际源、input、candidate、目标 Preview 一致；hash/bytes/pages/DOI/题名有来源 | [运行指南](model-runbook.md#输入包与最小阅读) |
-| 文章元数据 | 每篇检查原文 Abstract、来源与状态；缺失原因/omissions；PMID 身份、研究主题来源及靶点角色/物种，不猜基因/疾病 | [提取指南](extraction-guide.md#文章元数据每篇主动检查-abstract-与研究主题) |
+| 文章元数据 | 每篇检查原文 Abstract、来源与状态；缺失原因/omissions；PMID 身份、固定模态词表、研究主题来源及靶点角色/物种，不猜基因/疾病 | [提取指南](extraction-guide.md#文章元数据每篇主动检查-abstract-与研究主题) |
 | Compound 范围 | 源清单完整身份、required＋all-inventory、缺失/歧义/排除；未决不删分母，不按编号补造 | [收录范围](extraction-guide.md#compound-catalogue-scope) |
 | 结构 | 从源确定核心连接/稠合；重新读最终保存结构，核对全体变体映射/重绘及立体、化学形式；代表修好不代表全族已修 | [提取流程](extraction-guide.md#workflow) |
 | 原图 | 自身 locator 含核心＋编号行＋所有定义；实际裁图视觉核对，参考物缺图诚实说明 | [提取流程](extraction-guide.md#workflow) |

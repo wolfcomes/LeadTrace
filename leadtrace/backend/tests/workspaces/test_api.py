@@ -257,3 +257,31 @@ def test_duplicate_doi_returns_safe_conflict_and_rolls_back_aggregate(
         assert paper.doi == "10.1021/acs.jmedchem.4c0001"
         assert workspace.version == 1
         assert event_count == 0
+
+
+def test_modality_vocabulary_preserves_legacy_but_rejects_new_free_text(workspace_fixture):
+    with workspace_fixture.session_factory.begin() as session:
+        paper = session.get(Paper, workspace_fixture.paper_id)
+        paper.research_profile = {'modalities': [{'label': 'Historic inhibitor wording', 'source': 'Page 1'}],
+                                  'molecular_forms': [{'label': 'Historic scaffold', 'source': 'Page 2'}]}
+    csrf = workspace_fixture.login('workspace.reviewer')
+    url = f'/api/v2/workspaces/{workspace_fixture.workspace_id}/bibliography'
+    invalid = workspace_fixture.client.patch(url, headers={'X-CSRF-Token': csrf}, json={
+        'expected_workspace_version': 1,
+        'research_profile': {'modalities': [{'label': 'Invented new modality', 'source': 'Page 1'}]}})
+    assert invalid.status_code == 422
+    assert invalid.json()['code'] == 'INVALID_ARTICLE_METADATA'
+    old = workspace_fixture.client.get(f'/api/v2/workspaces/{workspace_fixture.workspace_id}').json()
+    assert old['version'] == 1
+    kept = workspace_fixture.client.patch(url, headers={'X-CSRF-Token': csrf}, json={
+        'expected_workspace_version': 1, 'title': 'Updated title',
+        'research_profile': old['bibliography']['research_profile']})
+    assert kept.status_code == 200
+    assert kept.json()['bibliography']['research_profile'] == old['bibliography']['research_profile']
+    fixed = workspace_fixture.client.patch(url, headers={'X-CSRF-Token': csrf}, json={
+        'expected_workspace_version': 2, 'research_profile': {
+            **old['bibliography']['research_profile'],
+            'modalities': [{'label': '直接靶点调节', 'source': 'Page 1'},
+                           {'label': '前药', 'source': 'Page 3'}]}})
+    assert fixed.status_code == 200
+    assert len(fixed.json()['bibliography']['research_profile']['modalities']) == 2

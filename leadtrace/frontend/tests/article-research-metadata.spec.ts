@@ -23,7 +23,7 @@ it('shows identifier links, abstract check status, source-backed tags and target
   setLocale('zh-CN');
   const wrapper=mount(ArticleMetadata,{props:{metadata}});
   expect(wrapper.get('[data-pmid-link]').attributes('href')).toBe('https://pubmed.ncbi.nlm.nih.gov/12345678/');
-  for(const text of ['主要靶点','选择性对照','Homo sapiens','Brain penetration','Page 3','已提取']) expect(wrapper.text()).toContain(text);
+  for(const text of ['主要靶点','选择性对照','Homo sapiens','Brain penetration','Page 3']) expect(wrapper.text()).toContain(text);
 });
 it('distinguishes unrecorded abstracts from a checked absence and preserves its explanation', () => {
   setLocale('zh-CN');
@@ -46,7 +46,7 @@ it('keeps unchanged profile groups folded and compares the changed group in pair
     const panel=wrapper.get(`[data-record-side="${side}"]`);
     expect(panel.get('[data-profile-diff-group="optimization_goals"]').attributes('open')).toBeDefined();
     expect(panel.get('[data-profile-diff-group="targets"]').attributes('open')).toBeUndefined();
-    expect(panel.get('[data-profile-diff-group="molecular_forms"]').attributes('open')).toBeUndefined();
+    expect(panel.find('[data-profile-diff-group="molecular_forms"]').exists()).toBe(false);
   }
   expect(wrapper.get('[data-record-side="before"]').text()).toContain('Brain penetration');
   expect(wrapper.get('[data-record-side="after"]').text()).toContain('Oral bioavailability');
@@ -55,7 +55,7 @@ it('keeps unchanged profile groups folded and compares the changed group in pair
 it('does not mislabel legacy recorded abstracts when the migrated response supplies not_checked',()=>{
   setLocale('zh-CN');
   const wrapper=mount(ArticleMetadata,{props:{metadata:{abstract:'Existing source text',abstract_status:'not_checked'}}});
-  expect(wrapper.get('[data-abstract-status]').text()).toBe('已记录，检查状态未标注');
+  expect(wrapper.find('[data-abstract-status]').exists()).toBe(false);
 });
 
 it.each(['added','removed'])('shows both sides when a research profile is entirely %s',async(kind)=>{
@@ -67,4 +67,131 @@ it.each(['added','removed'])('shows both sides when a research profile is entire
   await wrapper.get('[data-record-tab="article"]').trigger('click');
   for(const side of ['before','after'])expect(wrapper.get(`[data-record-side="${side}"]`).find('[data-profile-diff-group="targets"]').exists()).toBe(true);
   expect(wrapper.get(`[data-record-side="${kind==='added'?'before':'after'}"] [data-profile-diff-group="targets"]`).text()).toContain('未记录');
+});
+
+
+it('keeps routine abstract provenance and obsolete molecular forms out of reading',()=>{
+  const wrapper=mount(ArticleMetadata,{props:{metadata:{...metadata,abstract_note:'Routine audit explanation'}}});
+  expect(wrapper.text()).not.toContain('Routine audit explanation');
+  expect(wrapper.text()).not.toContain('PubMed DOI match');
+  expect(wrapper.text()).not.toContain('摘要来源');
+  expect(wrapper.find('[data-profile-group="molecular_forms"]').exists()).toBe(false);
+  expect(wrapper.get('[data-profile-group="optimization_goals"] details').attributes('open')).toBeUndefined();
+});
+it('offers fixed modality selections and preserves legacy payloads during unrelated edits',async()=>{
+  const {default:Editor}=await import('../src/review/paper/ResearchProfileEditor.vue');
+  const profile={molecular_forms:[{label:'Macrocycle',source:'Legacy source'}],modalities:[{label:'抗芽孢形成剂',source:'Page 4'}],mechanisms:[]};
+  const wrapper=mount(Editor,{props:{modelValue:profile}});
+  expect(wrapper.find('[data-edit-group="molecular_forms"]').exists()).toBe(false);
+  expect(wrapper.find('[data-edit-group="modalities"] input[data-term-label]').exists()).toBe(false);
+  expect(wrapper.findAll('[data-modality-choice]').map(x=>x.attributes('value'))).toEqual(['直接靶点调节','PROTAC','分子胶','前药','其他','待明确']);
+  expect(wrapper.text()).toContain('抗芽孢形成剂');
+  await wrapper.get('[data-add-term="mechanisms"]').trigger('click');
+  expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toMatchObject({molecular_forms:profile.molecular_forms,modalities:profile.modalities});
+  await wrapper.get('[data-modality-choice][value="PROTAC"]').setValue(true);
+  expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({modalities:[profile.modalities[0],{label:'PROTAC',source:''}]});
+});
+it('opens only changed evidence and preserves target order across paired records',async()=>{
+  const {default:View}=await import('../src/approvals/ResearchProfileComparison.vue');
+  const profile={targets:[{name:'Comparator',role:'selectivity' as const,source:'Same'},{name:'Main',role:'primary' as const,source:'Updated',review_hint:'Check identity'}]};
+  const other={targets:[{...profile.targets[0]},{...profile.targets[1],role:'selectivity' as const,source:'Original',review_hint:null}]};
+  const wrapper=mount(View,{props:{profile,other,available:true}});
+  const details=wrapper.findAll('[data-target-evidence]');
+  expect(details).toHaveLength(2);
+  expect(details[0].attributes('open')).toBeUndefined();
+  expect(details[1].attributes('open')).toBeDefined();
+  expect(wrapper.findAll('[data-target-card] strong').map(x=>x.text())).toEqual(['Comparator','Main']);
+});
+it('opens enclosing editor disclosures for an invalid required source',async()=>{
+  const {default:Editor}=await import('../src/review/paper/ResearchProfileEditor.vue');
+  const wrapper=mount(Editor,{props:{modelValue:{mechanisms:[{label:'Inhibitor',source:''}]}}});
+  await wrapper.get('[data-term-source]').trigger('invalid');
+  expect(wrapper.get('[data-edit-group="mechanisms"]').attributes('open')).toBeDefined();
+  expect(wrapper.get('[data-term-source]').element.closest('details')?.open).toBe(true);
+});
+
+it('keeps admin provenance in a dedicated folded disclosure while retaining actionable abstract issues',async()=>{
+  const {default:SubmissionComparison}=await import('../src/approvals/SubmissionComparison.vue');
+  const {frozenSnapshot,publicationIds}=await import('./paper-publication-v2-fixtures');
+  const before=structuredClone(frozenSnapshot) as any,after=structuredClone(frozenSnapshot) as any;
+  Object.assign(after.paper,{abstract_source:'Europe PMC record',identifiers_source:'DOI match',abstract_status:'extracted',abstract_note:'Routine explanation'});
+  const wrapper=mount(SubmissionComparison,{props:{paperId:publicationIds.paper,snapshot:after,comparison:{kind:'previous_submission',baseline_submission_number:1,baseline_snapshot:before,events:[],warnings:[]}}});
+  await wrapper.get('[data-record-tab="article"]').trigger('click');
+  const panel=wrapper.get('[data-record-side="after"]');
+  const audit=panel.get('[data-article-provenance]');
+  expect(audit.attributes('open')).toBeUndefined();
+  expect(audit.text()).toContain('Europe PMC record');
+  for(const field of panel.findAll('.article-details'))expect(field.text()).not.toContain('Routine explanation');
+});
+it('requires explanations for new other or unresolved modalities',async()=>{
+  const {default:Editor}=await import('../src/review/paper/ResearchProfileEditor.vue');
+  const wrapper=mount(Editor,{props:{modelValue:{modalities:[]}}});
+  await wrapper.get('[data-modality-choice][value="其他"]').setValue(true);
+  await wrapper.setProps({modelValue:wrapper.emitted('update:modelValue')!.at(-1)![0] as any});
+  expect(wrapper.get('[data-term-hint]').attributes('required')).toBeDefined();
+});
+it('shows canonical display labels while preserving qualified legacy wording in evidence',async()=>{
+  const {default:View}=await import('../src/review/paper/ResearchProfile.vue');
+  const profile={modalities:[{label:'前药特征（43自身亦有活性）',source:'Discussion'}]};
+  const wrapper=mount(View,{props:{profile}});
+  expect(wrapper.get('strong').text()).toBe('前药');
+  expect(wrapper.get('details').text()).toContain('前药特征（43自身亦有活性）');
+  expect(profile.modalities[0].label).toBe('前药特征（43自身亦有活性）');
+});
+
+it.each(['insert','remove','reorder'])('does not unfold unchanged target evidence after %s',async(change)=>{
+ const {default:View}=await import('../src/approvals/ResearchProfileComparison.vue');
+ const a={name:'A',role:'primary' as const,source:'Page 1'},b={name:'B',role:'selectivity' as const,source:'Page 2'},c={name:'C',role:'mechanistic' as const,source:'Page 3'};
+ const other={targets:[a,b]},profile={targets:change==='insert'?[c,a,b]:change==='remove'?[b]:[b,a]};
+ const wrapper=mount(View,{props:{profile,other,available:true}});
+ for(const card of wrapper.findAll('[data-target-card]'))if(['A','B'].includes(card.get('strong').text()))expect(card.get('[data-target-evidence]').attributes('open')).toBeUndefined();
+});
+it('opens removed identifiers on both sides of a target pair',async()=>{
+ const {default:View}=await import('../src/approvals/ResearchProfileComparison.vue');
+ const target={name:'A',role:'primary' as const,source:'Page 1'};
+ for(const [profile,other] of [[{targets:[target]},{targets:[{...target,uniprot_id:'P12345'}]}],[{targets:[{...target,uniprot_id:'P12345'}]},{targets:[target]}]]){
+  const wrapper=mount(View,{props:{profile,other,available:true}});
+  expect(wrapper.get('[data-target-evidence]').attributes('open')).toBeDefined();
+ }
+});
+
+it('pairs terms across insertion and unfolds a source edit on both sides only',async()=>{
+ const {default:View}=await import('../src/approvals/ResearchProfileComparison.vue');
+ const before={mechanisms:[{label:'Inhibitor',source:'Original'},{label:'Reversible',source:'Page 2'}]},after={mechanisms:[{label:'Allosteric',source:'Page 3'},{label:'Inhibitor',source:'Corrected'},{label:'Reversible',source:'Page 2'}]};
+ for(const side of ['before','after'] as const){
+  const wrapper=mount(View,{props:{profile:side==='before'?before:after,other:side==='before'?after:before,side,available:true}});
+  const pairs=wrapper.findAll('[data-profile-pair]');
+  expect(pairs).toHaveLength(3);
+  expect(pairs[1].get('strong').text()).toBe('Inhibitor');
+  expect(pairs[1].get('[data-term-evidence]').attributes('open')).toBeDefined();
+  expect(pairs[2].get('[data-term-evidence]').attributes('open')).toBeUndefined();
+ }
+});
+
+it('keeps newly added article profile evidence folded while showing the new groups',async()=>{
+ const {default:View}=await import('../src/approvals/ResearchProfileComparison.vue');
+ const wrapper=mount(View,{props:{profile:{targets:[{name:'A',role:'primary',source:'New source'}],mechanisms:[{label:'Inhibitor',source:'New source'}]},other:{},available:true}});
+ for(const details of wrapper.findAll('[data-target-evidence],[data-term-evidence]'))expect(details.attributes('open')).toBeUndefined();
+ for(const group of wrapper.findAll('[data-profile-diff-group]'))expect(group.attributes('open')).toBeDefined();
+});
+
+it('keeps unrelated replacement targets separate with both evidence panels folded',async()=>{
+ const {default:View}=await import('../src/approvals/ResearchProfileComparison.vue');
+ const before={targets:[{name:'Target A',role:'primary' as const,source:'Source A'}]},after={targets:[{name:'Target B',role:'primary' as const,source:'Source B'}]};
+ for(const side of ['before','after'] as const){
+  const wrapper=mount(View,{props:{profile:side==='before'?before:after,other:side==='before'?after:before,side,available:true}});
+  expect(wrapper.findAll('[data-profile-pair]')).toHaveLength(2);
+  expect(wrapper.get('[data-target-evidence]').attributes('open')).toBeUndefined();
+ }
+});
+it('pairs unchanged duplicate entries once each without inventing additions and removals',async()=>{
+ const {default:View}=await import('../src/approvals/ResearchProfileComparison.vue');
+ const term={label:'Potency',source:'Page 1'},profile={optimization_goals:[term,{...term}]};
+ for(const side of ['before','after'] as const){
+  const wrapper=mount(View,{props:{profile,other:structuredClone(profile),side,available:true}});
+  expect(wrapper.findAll('[data-profile-pair]')).toHaveLength(2);
+  expect(wrapper.findAll('strong').map(x=>x.text())).toEqual(['Potency','Potency']);
+  expect(wrapper.text()).not.toContain('未记录');
+  for(const evidence of wrapper.findAll('[data-term-evidence]'))expect(evidence.attributes('open')).toBeUndefined();
+ }
 });

@@ -15,6 +15,7 @@ from app.ai_prefill.assistance_contracts import (
     computed_hashes,
 )
 from app.structures.service import _parse_molfile, _parse_smiles
+from app.papers.metadata import MODALITY_LABELS
 
 
 def _issue(code: str, severity: str, path: str, message: str, **kwargs: object) -> ValidationIssue:
@@ -51,6 +52,20 @@ def validate_candidate(
 
     issues: list[ValidationIssue] = []
     bibliography = candidate.payload.bibliography
+    profile = bibliography.research_profile
+    if profile.molecular_forms:
+        issues.append(_issue('MOLECULAR_FORMS_RETIRED', 'needs_review',
+                             'payload.bibliography.research_profile.molecular_forms',
+                             'Molecular forms is retired from new extraction. Preserve historical human data; do not add this group to new candidates.'))
+    for index, term in enumerate(profile.modalities):
+        path = f'payload.bibliography.research_profile.modalities[{index}]'
+        if term.label not in MODALITY_LABELS:
+            issues.append(_issue('MODALITY_OUTSIDE_VOCABULARY', 'needs_review', path + '.label',
+                                 'Select a source-supported modality from the controlled vocabulary; keep pharmacological actions in mechanisms.',
+                                 details={'allowed': list(MODALITY_LABELS), 'recorded': term.label}))
+        elif term.label in ('其他', '待明确') and not (term.review_hint or '').strip():
+            issues.append(_issue('MODALITY_EXPLANATION_MISSING', 'needs_review', path + '.review_hint',
+                                 'Explain the other modality or unresolved classification in review_hint.'))
     if bibliography.abstract_status in ('not_found', 'needs_review'):
         issues.append(_issue('ABSTRACT_UNAVAILABLE', 'needs_review', 'payload.bibliography.abstract',
                              'Abstract needs source review; the supplied absence/review note is not proof of source completeness.',

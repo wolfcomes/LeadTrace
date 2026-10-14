@@ -104,3 +104,5 @@ approval.
 建议固定字段：结构 `connectivity, regiochemistry, stereochemistry, chemical_form`；Activity `compound, assay, metric, value, unit, operator, conditions, source`；Edge `type, endpoints, direction, basis`（合成另加 `steps`）；Lineage `type, scope, components, roles`；截图 `identity, bbox, source`；Evidence `source, content`（有图另加 `bbox`）；证据关联 `identity, role`。任何字段错误或端点身份错误不能被整项 correct 掩盖。候选/清单记录覆盖率与科学通过率分开，缺字段和未查记录不得算作支持。
 
 报告的整体说明聚焦主要错误类别、已查与未查范围、来源限制和后续修补方向；最多列少量代表性特殊问题。不要在摘要重复完整逐项审查清单，也不要根据“未发现警告”推算可信比例。详细记录仍按既有审查契约完整交付。
+
+文章研究主题复核须遵循提取指南的固定模态词表，区别作用模态和药理机制；核查其他/待明确的说明及来源，避免将纯表型直接映射为直接靶点调节。新候选不生成 molecular_forms，历史人工内容仅在授权范围内修补。摘要来源留作内部追溯，正常摘要不新增过程性检查说明。

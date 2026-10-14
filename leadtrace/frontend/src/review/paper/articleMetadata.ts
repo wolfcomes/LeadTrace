@@ -8,8 +8,7 @@ export const articleTargetSchema = z.object({
   source:z.string(),review_hint:z.string().nullable().optional(),
 }).strict();
 export const profileGroups = [
-  {key:'molecular_forms',label:'分子形式',suggestions:['Small molecule','Macrocycle','Peptide','Peptidomimetic']},
-  {key:'modalities',label:'作用模态',suggestions:['Direct target modulation','PROTAC','Molecular glue']},
+  {key:'modalities',label:'作用模态',suggestions:[]},
   {key:'mechanisms',label:'作用方式',suggestions:['Inhibitor','Agonist','Antagonist','Degrader','Covalent','Noncovalent','Reversible','Irreversible','Allosteric']},
   {key:'diseases',label:'疾病与应用方向',suggestions:[]},
   {key:'optimization_goals',label:'优化目标',suggestions:['Potency','Selectivity','Solubility','Metabolic stability','Exposure','Oral bioavailability','Brain penetration','Safety']},
@@ -27,3 +26,21 @@ export const researchMetadataFields = {
   abstract_status:z.enum(['not_checked','extracted','not_found','needs_review']).optional(),abstract_note:z.string().nullable().optional(),
   research_profile:researchProfileSchema.optional(),
 };
+
+export const modalityChoices = ['直接靶点调节','PROTAC','分子胶','前药','其他','待明确'] as const;
+export type ModalityChoice = typeof modalityChoices[number];
+// Display aliases only. Never rewrite a stored scientific statement during unrelated edits.
+const modalityAliases: Record<string,ModalityChoice> = {
+  'Direct target modulation':'直接靶点调节','Molecular glue':'分子胶','Prodrug':'前药',
+  'Other':'其他','Unknown':'待明确','小分子抑制剂':'直接靶点调节',
+  '选择性V1a受体拮抗剂':'直接靶点调节','CdSpoVD 小分子抑制剂':'直接靶点调节',
+  '前药特征（43自身亦有活性）':'前药',
+};
+export function modalityLabel(label:string):ModalityChoice|null {
+  return modalityChoices.includes(label as ModalityChoice) ? label as ModalityChoice : modalityAliases[label]??null;
+}
+export function revealInvalidField(event:Event) {
+  const field=event.target as HTMLElement;
+  let ancestor=field.parentElement;
+  while(ancestor) {if(ancestor instanceof HTMLDetailsElement)ancestor.open=true;ancestor=ancestor.parentElement;}
+}

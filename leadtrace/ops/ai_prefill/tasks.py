@@ -128,7 +128,11 @@ labelled complete identities, including unassayed Methods intermediates. Unresol
 complete identities stay required; generic scaffolds/fragments need explicit ineligibility reasons.
 Check article metadata for every paper: original Abstract text/source/status, explicit
 absence reason and omissions when unavailable, and source-backed research_profile with
-target roles/species. PMID/PMCID need authorized identity evidence; never guess IDs or genes.
+target roles/species. Use only the fixed modality labels in the extraction guide; put
+pharmacological actions in mechanisms. Do not generate molecular_forms in new extraction,
+and preserve unchanged historical human fields during scoped repair. Keep Abstract
+provenance internally; do not add routine process boilerplate to abstract_note.
+PMID/PMCID need authorized identity evidence; never guess IDs or genes.
 Before expensive source checks run deterministic candidate checks, including graph diagnostics.
 No Preview/production access, credentials, database writes or external messaging. This
 task directory is the output boundary; source and bundle are read-only inputs. Do not

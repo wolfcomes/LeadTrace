@@ -45,3 +45,27 @@ def test_target_optional_identifiers_can_be_cleared_and_numeric_ids_are_positive
     for fields in ({'pmid': '0'}, {'pmid': '0123'}, {'pmcid': 'PMC0'}, {'pmcid': 'PMC0123'}):
         with pytest.raises(ValidationError):
             BibliographyCorrection(**fields)
+
+
+def test_manual_modality_edits_require_vocabulary_but_preserve_existing_legacy_rows():
+    from app.papers.metadata import validate_modality_update
+    old = {'modalities': [{'label': 'Legacy action', 'source': 'Page 1'}]}
+    validate_modality_update(old, old)
+    validate_modality_update(old, {'modalities': [{'label': 'Legacy action', 'source': 'Corrected page 2'}]})
+    validate_modality_update(old, {'modalities': [{'label': '直接靶点调节', 'source': 'Page 1'}]})
+    for new in [
+        {'modalities': [{'label': 'Another invented class', 'source': 'Page 1'}]},
+        {'modalities': old['modalities'] * 2},
+        {'modalities': [{'label': '其他', 'source': 'Page 1'}]},
+    ]:
+        with pytest.raises(ValueError):
+            validate_modality_update(old, new)
+    validate_modality_update(old, {'modalities': [{'label': '其他', 'source': 'Page 1', 'review_hint': 'Unusual intervention explicitly described'}]})
+
+
+def test_unexplained_legacy_modality_does_not_allow_new_duplicate():
+    from app.papers.metadata import validate_modality_update
+    old = {'modalities': [{'label': '其他', 'source': 'Page 1'}]}
+    validate_modality_update(old, old)
+    with pytest.raises(ValueError):
+        validate_modality_update(old, {'modalities': old['modalities'] * 2})

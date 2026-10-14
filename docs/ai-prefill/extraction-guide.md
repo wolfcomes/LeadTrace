@@ -497,7 +497,13 @@ Entity `ref` values must not contain `/` (receipt path separator). Use identifie
 
 `pmid` 与 `pmcid` 分别保存 PubMed 数字 ID 和 PMC accession，身份核验依据写 `identifiers_source`。只使用授权来源或冻结的已核验书目记录；DOI 精确匹配并核对题名/年份后才配对。不凭 DOI 格式或标题猜 PMID，也不为补字段扩大工具/网络权限。
 
-`research_profile` 为文章研究主题对象：`molecular_forms`（分子形式）、`modalities`（如 PROTAC/分子胶）、`mechanisms`（作用方式）、`diseases`（疾病/应用）、`optimization_goals`（优化目标）各为多项数组，每项 `{label, source, review_hint?}`。标签保留明确源含义；多维可重叠，不强迫单一类型。每项必须有具体来源位置；未知不猜测，空数组不是“原文未报告”的证明。优化目标与实际达到的结果不同，不能把目标写成成功结论。
+`research_profile` 为文章研究主题对象：`modalities`（作用模态）、`mechanisms`（作用方式/机制）、`diseases`（疾病/应用）、`optimization_goals`（优化目标）各为多项数组，每项 `{label, source, review_hint?}`。每项必须有具体来源位置；未知不猜测，空数组不是“原文未报告”的证明。优化目标与实际达到的结果不同，不能把目标写成成功结论。
+
+`modalities[].label` 仅从固定词表多选：`直接靶点调节`、`PROTAC`、`分子胶`、`前药`、`其他`、`待明确`。干预模态与药理作用分开：抑制剂、激动剂、拮抗剂、共价/非共价、可逆/不可逆、变构等描述放在 `mechanisms`，不能自行扩展模态词表。直接靶点调节需要明确靶点作用依据；仅有表型如抗芽孢形成不能自动推为直接作用。`其他` 和 `待明确` 必须用 `review_hint` 简要解释具体形式或未决依据，不把无信息当成已检查。不为填满字段而猜选项；可多选但各项分别有据。
+
+`molecular_forms` 已退出新提取和普通文章界面。新候选不要生成该组；相关骨架信息确有必要时在机制/优化条目的说明中表达。历史 schema 仍读取该键以保持冻结快照和人工内容兼容；局部修补不批量删除历史值，也不能为了规范词条改写范围外内容。旧模态若无法无歧义归类，保留原词/来源并报告待核对，不能强制映射。
+
+文章阅读区只展示 Abstract 正文；`abstract_source` 和 `identifiers_source` 是内部追溯字段，仍应准确记录。正常 `extracted` 情况下不新增“按 DOI 核对”“管理员补充”“摘要来自某数据库”等过程说明到 `abstract_note`。该说明仅用于实际缺失、冲突或未决问题；不要清除已有人工问题。
 
 `research_profile.targets` 每项为 `{name, role, organism?, gene_symbol?, uniprot_id?, ncbi_gene_id?, source, review_hint?}`。role 为 primary/co_primary/selectivity/off_target/mechanistic/biomarker/unknown，区分主要靶点、共同靶点、选择性对照、脱靶、机制相关和标志物。保留物种，不默认人类；未能确定标准基因或 accession 时只保留来源名称，复合物或表型研究不强配一个基因。不得从靶点常识推断疾病。具体 Compound 属性、活性数值和 Lineage 仍在其原记录中维护。
 
