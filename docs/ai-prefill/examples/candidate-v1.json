@@ -23,11 +23,18 @@
     {
       "path": "payload.activities",
       "reason": "No numeric activity was extracted from the example excerpt."
+    },
+    {
+      "path": "payload.bibliography.abstract",
+      "reason": "Synthetic example excerpt contains no Abstract; complete article not supplied."
     }
   ],
   "payload": {
     "schema_version": 1,
-    "bibliography": {},
+    "bibliography": {
+      "abstract_status": "not_found",
+      "abstract_note": "Synthetic excerpt has no Abstract; only this supplied excerpt was checked."
+    },
     "compounds": [
       {
         "ref": "compound:1",

@@ -98,3 +98,5 @@ that can be found or reasonably reconstructed means no Compound insertion; keep
 the identity/observations in the existing inventory/omissions. Hints never excuse
 known errors or count as scientific confirmation.
 ```
+
+Article metadata is a required checked scope. Follow extraction-guide.md for original Abstract/text/source/status, explicit absence reasons and omissions, PMID/PMCID identity, and source-backed research_profile with target roles/species. Do not infer missing IDs, genes or disease labels. Preserve human edits during repairs. Empty/omitted metadata never means verified absent.

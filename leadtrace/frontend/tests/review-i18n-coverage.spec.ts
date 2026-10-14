@@ -3,10 +3,11 @@ import { join } from 'node:path';
 import { parse } from '@vue/compiler-dom';
 import ts from 'typescript';
 import { expect, it } from 'vitest';
+import { enArticleMetadata } from '../src/i18n/en-article-metadata';
 import { enReview as review } from '../src/i18n/en-review';
 import { enWorkbench } from '../src/i18n/en-workbench';
 import { enProvenance } from '../src/i18n/en-provenance';
-const enReview = {...review,...enWorkbench,...enProvenance};
+const enReview = {...enArticleMetadata,...review,...enWorkbench,...enProvenance};
 const han = /[\u3400-\u9fff]/;
 function files(path: string): string[] {
   return readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(join(path, e.name)) : [join(path, e.name)]);

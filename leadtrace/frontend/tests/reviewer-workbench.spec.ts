@@ -93,3 +93,34 @@ it('rejects a stale Compound detail version before recording its group signature
   await flushPromises();await wrapper.get('button').trigger('click');await flushPromises();expect(writes).toHaveLength(0);
   version.value=2;await wrapper.get('button').trigger('click');await flushPromises();expect(writes).toHaveLength(1);expect(writes[0].signature).toBe('c'.repeat(64));wrapper.unmount();
 });
+
+it('saves source-backed target roles and metadata as one versioned bibliography edit',async()=>{
+  const writes:any[]=[];let ws=workspace();
+  vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL,init?:RequestInit)=>{
+    const path=new URL(String(input),'http://test').pathname;
+    if(path.endsWith('/review-progress'))return response({workspace_id:ws.id,workspace_version:ws.version,tracking_started:false,items:[],sections:[]});
+    if(path.endsWith('/bibliography')&&init?.method==='PATCH'){
+      const body=JSON.parse(String(init.body));writes.push(body);const {expected_workspace_version,...fields}=body;
+      ws={...ws,version:expected_workspace_version+1,bibliography:{...ws.bibliography,...fields}};
+    }
+    return response(ws);
+  }));
+  const {wrapper}=await mountWorkspace('bibliography');
+  await wrapper.get('[data-edit-bibliography]').trigger('click');
+  await wrapper.get('[data-pmid-input]').setValue('12345678');
+  await wrapper.get('[data-identifiers-source]').setValue('PubMed exact DOI match');
+  await wrapper.get('[data-abstract-status-input]').setValue('not_found');
+  await wrapper.get('[data-abstract-note]').setValue('No abstract in supplied source');
+  await wrapper.get('[data-add-target]').trigger('click');
+  await wrapper.get('[data-target-name]').setValue('Target A');
+  await wrapper.get('[data-target-role]').setValue('selectivity');
+  await wrapper.get('[data-target-source]').setValue('Table 2');
+  await wrapper.get('[data-target-organism]').setValue('Homo sapiens');
+  await wrapper.get('[data-add-term="optimization_goals"]').trigger('click');
+  await wrapper.get('[data-edit-group="optimization_goals"] [data-term-label]').setValue('Brain penetration');
+  await wrapper.get('[data-edit-group="optimization_goals"] [data-term-source]').setValue('Page 1');
+  await wrapper.get('form.bibliography-edit-form').trigger('submit');await flushPromises();
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toMatchObject({expected_workspace_version:1,pmid:'12345678',abstract_status:'not_found',abstract_note:'No abstract in supplied source',research_profile:{targets:[{name:'Target A',role:'selectivity',source:'Table 2',organism:'Homo sapiens'}],optimization_goals:[{label:'Brain penetration',source:'Page 1'}]}});
+  wrapper.unmount();
+});

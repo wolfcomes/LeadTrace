@@ -489,8 +489,18 @@ or formal Evaluation.
 
 Entity `ref` values must not contain `/` (receipt path separator). Use identifiers such as `compound:1`, `lineage:sar`, `edge:1-to-2`; printed compound labels and descriptions retain their original punctuation. Candidate validation rejects unsafe refs before Preview apply.
 
-### 可选文章元数据：Abstract 与 PDB
+### 文章元数据：每篇主动检查 Abstract 与研究主题
 
-`bibliography.abstract` 保存原文摘要，`abstract_source` 记录页码/位置；不把模型总结当原文摘要。未找到时省略，不能为填满字段编造。`bibliography.pdb_references` 是提及记录数组，每项包含 `pdb_id`、`usage`（`this_work` / `cited_structure` / `unknown`），以及可选的 `source_page`、`source_context`、`compound_label`、`review_hint`。PDF 页码从 1 开始，不能超过原文件页数。保留用途和来源上下文；只有来源明确配对时才填写 compound_label，不凭 docking 常识猜配体对应。无法确定用途用 unknown 并简要写核对提示。
+每篇任务都必须主动检查文章元数据，不再以“可选字段”为理由略过摘要。优先在授权来源中检查原文 Abstract；将原文保存到 `bibliography.abstract`，位置写入 `abstract_source`，状态设为 `abstract_status: extracted`。保持原文含义和段落，不把模型总结、翻译或 Introduction 当原文摘要。
+
+没有交付摘要时必须写 `abstract_status` 和 `abstract_note`，并在 omissions 加 `payload.bibliography.abstract`：已检查授权来源但未找到为 `not_found`；无法提取、来源冲突或范围未完成为 `needs_review`；确未检查为 `not_checked`，明确列为未完成。`not_found` 只表示已检查范围内未找到，不能推断所有来源都没有。已有摘要的局部修补不得清空或改写人工文本。
+
+`pmid` 与 `pmcid` 分别保存 PubMed 数字 ID 和 PMC accession，身份核验依据写 `identifiers_source`。只使用授权来源或冻结的已核验书目记录；DOI 精确匹配并核对题名/年份后才配对。不凭 DOI 格式或标题猜 PMID，也不为补字段扩大工具/网络权限。
+
+`research_profile` 为文章研究主题对象：`molecular_forms`（分子形式）、`modalities`（如 PROTAC/分子胶）、`mechanisms`（作用方式）、`diseases`（疾病/应用）、`optimization_goals`（优化目标）各为多项数组，每项 `{label, source, review_hint?}`。标签保留明确源含义；多维可重叠，不强迫单一类型。每项必须有具体来源位置；未知不猜测，空数组不是“原文未报告”的证明。优化目标与实际达到的结果不同，不能把目标写成成功结论。
+
+`research_profile.targets` 每项为 `{name, role, organism?, gene_symbol?, uniprot_id?, ncbi_gene_id?, source, review_hint?}`。role 为 primary/co_primary/selectivity/off_target/mechanistic/biomarker/unknown，区分主要靶点、共同靶点、选择性对照、脱靶、机制相关和标志物。保留物种，不默认人类；未能确定标准基因或 accession 时只保留来源名称，复合物或表型研究不强配一个基因。不得从靶点常识推断疾病。具体 Compound 属性、活性数值和 Lineage 仍在其原记录中维护。
+
+`bibliography.pdb_references` 是提及记录数组，每项包含 `pdb_id`、`usage`（`this_work` / `cited_structure` / `unknown`），以及可选的 `source_page`、`source_context`、`compound_label`、`review_hint`。PDF 页码从 1 开始，不能超过原文件页数。保留用途和来源上下文；只有来源明确配对时才填写 compound_label，不凭 docking 常识猜配体对应。无法确定用途用 unknown 并简要写核对提示。
 
 PDB ID 接受传统四字符（例如 1ABC）和扩展格式（例如 pdb_00001abc）；三字符配体代码（ATP 等）、DOI、UniProt ID 不属于此字段。同一个 PDB ID 在不同上下文中可多次出现，不能据此把引用结构认作本文新解析结构。不要查询外部结构反推论文未报告的编号。旧候选可不含这些字段；对既有文章补录仍遵守版本化修改及人工编辑保护。

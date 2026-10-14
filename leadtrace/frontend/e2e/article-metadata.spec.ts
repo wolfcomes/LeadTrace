@@ -1,0 +1,38 @@
+import { expect,test } from '@playwright/test';
+import { adminSubmissionDetail,publicationIds } from '../tests/paper-publication-v2-fixtures';
+
+test('article metadata comparison preserves target roles, sources and collapsed unchanged groups',async({page})=>{
+  const detail=structuredClone(adminSubmissionDetail) as any;
+  const before=structuredClone(detail.submission.snapshot);
+  const profile={molecular_forms:[{label:'Macrocycle',source:'Page 2'}],targets:[{name:'Target A',role:'primary',organism:'Homo sapiens',gene_symbol:'GENEA',source:'Page 1'}],optimization_goals:[{label:'Potency',source:'Abstract'}]};
+  before.paper.research_profile=structuredClone(profile);
+  const current=detail.submission.snapshot.paper;
+  Object.assign(current,{pmid:'12345678',abstract:'Synthetic original abstract.',abstract_source:'Page 1, Abstract',abstract_status:'extracted',research_profile:structuredClone(profile)});
+  current.research_profile.optimization_goals[0]={label:'Brain penetration',source:'Page 3'};
+  detail.comparison={kind:'previous_submission',baseline_submission_number:1,baseline_snapshot:before,events:[],warnings:[]};
+  const writes:string[]=[];
+  await page.route(/\/api\/v[12]\//,async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(!['GET','HEAD'].includes(route.request().method()))writes.push(path);
+    if(path==='/api/v1/auth/session')return route.fulfill({json:{user:{username:'admin',display_name:'Test Admin',role:'admin',must_change_password:false},csrf_token:'synthetic'}});
+    if(path===`/api/v2/admin/submissions/${publicationIds.submission}`)return route.fulfill({json:detail});
+    return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
+  });
+  await page.setViewportSize({width:1440,height:1000});
+  await page.goto(`/admin/submissions/${publicationIds.submission}`);
+  await page.locator('[data-record-tab="article"]').click();
+  const after=page.locator('[data-record-side="after"]');
+  await expect(after).toContainText('12345678');
+  await expect(after).toContainText('Synthetic original abstract.');
+  await expect(after.locator('[data-profile-diff-group="optimization_goals"]')).toHaveAttribute('open');
+  await expect(after.locator('[data-profile-diff-group="targets"]')).not.toHaveAttribute('open');
+  await expect(after.locator('[data-profile-diff-group="molecular_forms"]')).not.toHaveAttribute('open');
+  await expect(after.locator('[data-profile-diff-group="optimization_goals"]')).toContainText('Brain penetration');
+  await after.locator('[data-profile-diff-group="targets"] > summary').click();
+  await expect(after.locator('[data-profile-group="targets"]')).toContainText('主要靶点');
+  await expect(after.locator('[data-profile-group="targets"]')).toContainText('Homo sapiens');
+  await page.screenshot({path:'test-results/article-metadata-approval.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBe(true);
+  expect(writes).toEqual([]);
+});

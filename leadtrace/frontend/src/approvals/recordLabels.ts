@@ -73,11 +73,14 @@ export const fieldLabels: Record<string, string> = {
   highlight_type: "标记类型",
   scope: "适用范围",
   rationale: "选择依据",
+  pmid: "PubMed ID", pmcid: "PubMed Central ID", identifiers_source: "标识来源",
+  abstract_status: "摘要检查状态", abstract_note: "摘要检查说明", research_profile: "研究主题信息",
   abstract: "摘要",
   abstract_source: "摘要来源",
   pdb_references: "PDB 结构引用",
 };
 const stateLabels: Record<string, string> = {
+  not_checked:"尚未检查",extracted:"已提取",not_found:"已检查，未找到",
   draft: "待确认",
   ai_draft: "待确认",
   reviewer_confirmed: "已确认",

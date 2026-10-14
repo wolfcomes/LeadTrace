@@ -114,3 +114,25 @@ def test_unknown_lifecycle_action_is_not_silently_treated_as_workflow_only():
         event('article_lifecycle', {'id':'w1'}, {'id':'w1'}, action='workspace.replace_content')])
     assert baseline is None
     assert warnings
+
+
+def test_bibliography_defaults_omitted_from_snapshot_do_not_break_first_round_baseline():
+    snapshot={'schema_version':1,'paper':{'id':'p','pmid':'123'}}
+    before={'pmid':None,'abstract_status':'not_checked','research_profile':{},'pdb_references':[]}
+    after={**before,'pmid':'123'}
+    original=deepcopy(snapshot)
+    baseline,warnings=reconstruct_reviewer_baseline(snapshot,[event('paper',before,after,action='bibliography.update')])
+    assert warnings==[]
+    assert baseline['paper']=={'id':'p'}
+    assert snapshot==original
+
+
+def test_bibliography_reset_reconstructs_previous_source_backed_values():
+    before={'abstract_status':'extracted','abstract':'Source abstract','abstract_source':'Page 1',
+            'research_profile':{'mechanisms':[{'label':'Inhibitor','source':'Page 1'}]}}
+    after={'abstract_status':'not_checked','abstract':None,'abstract_source':None,'research_profile':{}}
+    baseline,warnings=reconstruct_reviewer_baseline({'schema_version':1,'paper':{'id':'p'}},[event('paper',before,after,action='bibliography.update')])
+    assert warnings==[]
+    assert baseline['paper']=={'id':'p',**before}
+    bad={'schema_version':1,'paper':{'id':'p','abstract_status':'needs_review'}}
+    assert reconstruct_reviewer_baseline(bad,[event('paper',before,after,action='bibliography.update')])[0] is None

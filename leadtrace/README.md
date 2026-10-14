@@ -95,6 +95,26 @@ task entries, delivery self-check, independent audit, Preview
 operations and the persistent handoff. Code/docs are tracked; paper-run artifacts
 and local Preview state remain in ignored `leadtrace-data/`.
 
+## Article research metadata
+
+Article information includes PMID/PMCID with identifier provenance; original
+Abstract, source locator, check state and missing/review notes; and source-backed
+research profiles. Molecular forms, modalities, mechanisms, diseases and
+optimization goals allow multiple entries. Targets distinguish primary/co-primary,
+selectivity, off-target, mechanistic, biomarker and unknown roles; species and gene
+accessions remain optional and must not be inferred from a name alone. Each profile
+entry has its own source and optional review hint. Empty fields do not establish
+absence in the source. Article labels summarize the research; Compound properties,
+measurements and Lineage data remain in their existing records.
+
+Reviewer edits use workspace version checks and audited updates. Frozen submission
+and publication snapshots preserve the metadata, and Admin compares changed groups
+before folded unchanged groups. Old candidates/snapshots omit new default fields
+for compatibility. New backend deployments require additive migration0035.
+AI generation explicitly checks Abstract and records text/source or a reason for
+absence; deterministic checks report gaps without inventing content or blocking
+otherwise reviewable legacy drafts. Scientific approval still belongs to humans.
+
 ## Local verification
 
 Backend tests require an isolated PostgreSQL database whose name ends in

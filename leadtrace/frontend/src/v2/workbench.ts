@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { researchMetadataFields } from '../review/paper/articleMetadata';
 import { apiRequest } from '../api/client';
 export const pdbReferenceSchema = z.object({
   pdb_id: z.string(), usage: z.enum(['this_work','cited_structure','unknown']),
@@ -7,6 +8,7 @@ export const pdbReferenceSchema = z.object({
 }).strict();
 export type PdbReference = z.infer<typeof pdbReferenceSchema>;
 export const articleMetadataFields = {
+  ...researchMetadataFields,
   abstract: z.string().nullable().optional(), abstract_source: z.string().nullable().optional(),
   pdb_references: z.array(pdbReferenceSchema).optional(),
 };

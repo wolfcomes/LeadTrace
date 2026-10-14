@@ -126,6 +126,9 @@ Authorized original source: inputs/source.pdf. Confirm its title/DOI/page count 
 the input identity; report mismatch and stop rather than guessing. Preserve numbered or
 labelled complete identities, including unassayed Methods intermediates. Unresolved
 complete identities stay required; generic scaffolds/fragments need explicit ineligibility reasons.
+Check article metadata for every paper: original Abstract text/source/status, explicit
+absence reason and omissions when unavailable, and source-backed research_profile with
+target roles/species. PMID/PMCID need authorized identity evidence; never guess IDs or genes.
 Before expensive source checks run deterministic candidate checks, including graph diagnostics.
 No Preview/production access, credentials, database writes or external messaging. This
 task directory is the output boundary; source and bundle are read-only inputs. Do not

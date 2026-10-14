@@ -141,9 +141,13 @@ def _reverse(snapshot: dict, event: ChangeEvent) -> None:
         if not isinstance(before, dict) or not isinstance(after, dict) or set(before) != set(after):
             raise _IncompleteHistory('Incomplete historical bibliography')
         paper = snapshot.get('paper', {})
-        if any(paper.get(key) != value for key, value in after.items()):
+        from app.papers.metadata import ARTICLE_METADATA_DEFAULTS
+        if any(paper.get(key, ARTICLE_METADATA_DEFAULTS.get(key)) != value for key, value in after.items()):
             raise _IncompleteHistory('Bibliography history disagrees with frozen content')
         paper.update(deepcopy(before))
+        for key, default in ARTICLE_METADATA_DEFAULTS.items():
+            if key in paper and paper[key] == default:
+                paper.pop(key)
         return
     if event.action == 'section.update' and event.entity_type == 'paper_section_review':
         if not isinstance(before, dict) or not isinstance(after, dict) or set(before) != {'section_key', 'state', 'note'} or set(after) != set(before):

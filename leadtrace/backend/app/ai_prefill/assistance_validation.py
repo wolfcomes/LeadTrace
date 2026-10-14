@@ -50,6 +50,20 @@ def validate_candidate(
     """Return a report; never writes scientific records or touches a database."""
 
     issues: list[ValidationIssue] = []
+    bibliography = candidate.payload.bibliography
+    if bibliography.abstract_status in ('not_found', 'needs_review'):
+        issues.append(_issue('ABSTRACT_UNAVAILABLE', 'needs_review', 'payload.bibliography.abstract',
+                             'Abstract needs source review; the supplied absence/review note is not proof of source completeness.',
+                             abstract_status=bibliography.abstract_status, details={'reason': bibliography.abstract_note}))
+    elif not bibliography.abstract:
+        issues.append(_issue('ABSTRACT_NOT_CHECKED', 'needs_review', 'payload.bibliography.abstract',
+                             'Check the original abstract and record text/source, or an explicit checked status and reason.'))
+    elif bibliography.abstract_status == 'not_checked':
+        issues.append(_issue('ABSTRACT_STATUS_NOT_CHECKED', 'needs_review', 'payload.bibliography.abstract_status',
+                             'An abstract is recorded but its source-check status is not stated.'))
+    if bibliography.abstract and not bibliography.abstract_source:
+        issues.append(_issue('ABSTRACT_SOURCE_MISSING', 'needs_review', 'payload.bibliography.abstract_source',
+                             'The recorded abstract has no source locator.'))
     # Receipts encode references as path segments. Reject ambiguous segments at
     # the assistance boundary without changing legacy payload serialization.
     references = [

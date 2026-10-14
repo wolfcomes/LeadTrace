@@ -23,6 +23,8 @@ import { provideReviewDisclosures } from "./reviewDisclosures";
 import FrozenCompoundCard from "./FrozenCompoundCard.vue";
 import FrozenEvidence from "./FrozenEvidence.vue";
 import LineageRecordComparison from "./LineageRecordComparison.vue";
+import ResearchProfileComparison from "./ResearchProfileComparison.vue";
+import type { ResearchProfile } from "../review/paper/articleMetadata";
 const props = defineProps<{
   snapshot: Record<string, unknown>;
   comparison?: Comparison;
@@ -183,7 +185,10 @@ function visibleFields(row: Row) {
   );
 }
 function articleFields(row: Row, domain: string, changed: boolean) {
-  return visibleFields(row).filter(
+  const pairedRow = domain === 'paper' && (
+    rows(props.snapshot, 'paper')[0]?.research_profile || rows(baseline.value, 'paper')[0]?.research_profile
+  ) ? { ...row, research_profile: row.research_profile ?? {} } : row;
+  return visibleFields(pairedRow).filter(
     ([key]) =>
       (!result.value.available ||
         fieldChanged(domain, row.section_key ?? row.id, key)) === changed,
@@ -427,18 +432,19 @@ function fieldChanged(domain: string, id: unknown, key: string) {
                           ><dt>{{ t(fieldLabels[key] ?? key) }}</dt>
                           <dd
                             :class="{
-                              'field-modified': fieldChanged(
+                              'field-modified': key !== 'research_profile' && fieldChanged(
                                 domain,
                                 row.section_key ?? row.id,
                                 key,
                               ),
                             }"
                           >
-                            {{
-                              ["state", "status", "section_key"].includes(key)
+                            <ResearchProfileComparison v-if="key === 'research_profile'" :profile="(value ?? {}) as ResearchProfile" :other="(rows(side === 'before' ? snapshot : comparison?.baseline_snapshot ?? {}, 'paper')[0]?.research_profile ?? {}) as ResearchProfile" :available="result.available" />
+                            <template v-else>{{
+                              ["state", "status", "section_key", "abstract_status"].includes(key)
                                 ? reviewState(value)
                                 : textValue(value)
-                            }}
+                            }}</template>
                           </dd></template
                         >
                       </dl>
