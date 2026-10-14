@@ -111,6 +111,8 @@ entry has its own source and optional review hint. Empty fields do not establish
 absence in the source. Article labels summarize the research; Compound properties,
 measurements and Lineage data remain in their existing records.
 
+Reviewer article reading uses six modules in two desktop columns with fixed headers and independently scrolling bodies; mobile reading uses one column. Original evidence quotations and source/page locators expand on demand. Optional crops load only when opened and use verified frozen PDF identity. Admin comparisons align corresponding entries and synchronize scrolling, with changed evidence expanded and unchanged content folded. Evidence supplements preserve existing metadata and immutable submission history while leaving replacement submissions pending approval.
+
 Reviewer edits use workspace version checks and audited updates. Frozen submission
 and publication snapshots preserve the metadata, and Admin compares changed groups
 before folded unchanged groups. Old candidates/snapshots omit new default fields
