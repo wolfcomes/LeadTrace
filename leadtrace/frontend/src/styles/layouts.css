@@ -129,7 +129,7 @@
 .task-table-section { overflow: hidden; }
 .molecule-queue-heading { align-items: center; }
 .creation-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 30px; align-items: start; }
-.workspace-header { align-items: flex-end; }
+.workspace-header { min-width: 0; align-items: flex-end; }
 .editor-view { display: grid; gap: 38px; }
 .domain-editors { display: grid; gap: 16px; }
 .paper-field-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 14px; }
