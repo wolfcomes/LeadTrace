@@ -99,9 +99,7 @@ and local Preview state remain in ignored `leadtrace-data/`.
 
 Article information includes PMID/PMCID with identifier provenance; original
 Abstract, source locator, check state and missing/review notes; and source-backed
-research profiles. Modalities use a fixed multi-select vocabulary: direct target
-modulation, PROTAC, molecular glue, prodrug, other and unresolved (canonical stored
-labels are Chinese except PROTAC). Mechanisms, diseases and optimization goals allow
+research profiles. Molecule types retain the compatible `modalities` key and use two fixed multi-select groups in one card: primary types (small-molecule inhibitor, agonist, antagonist, inverse agonist, activator, modulator with unresolved detail, PROTAC, molecular glue, other, unresolved) and supplementary features (allosteric modulation, covalent action, macrocyclic, peptide/peptidomimetic, prodrug). Classifications describe the optimized series, with independent source evidence, and never automatically reinterpret old broad labels. Mechanisms, diseases and optimization goals allow
 multiple entries. Molecular forms is retired from new extraction and ordinary UI;
 historical payloads remain compatible. Abstract provenance stays in internal details,
 while ordinary reading shows the original abstract and actionable issues only. Targets distinguish primary/co-primary,

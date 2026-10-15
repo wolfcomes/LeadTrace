@@ -46,7 +46,7 @@ def test_noncanonical_modalities_and_retired_form_are_flagged_without_mutating_l
 
 
 def test_fixed_modalities_are_accepted_and_other_unknown_require_explanation():
-    for label in ['直接靶点调节', 'PROTAC', '分子胶', '前药', '其他', '待明确']:
+    for label in ['小分子抑制剂', '小分子激动剂', '小分子拮抗剂', '小分子反向激动剂', '小分子激活剂', '小分子调节剂（作用待细分）', 'PROTAC', '分子胶', '其他', '待明确', '变构调节', '共价作用', '大环类', '肽／肽模拟物', '前药']:
         payload = AiPrefillPayload.model_validate({'schema_version': 1, 'bibliography': {
             'research_profile': {'modalities': [{'label': label, 'source': 'Page 1', 'review_hint': 'Source supports an unusual intervention; classification pending' if label in ['其他', '待明确'] else None}]}}})
         assert not any(x.code.startswith('MODALITY_') for x in validate_candidate(make(payload)).issues)

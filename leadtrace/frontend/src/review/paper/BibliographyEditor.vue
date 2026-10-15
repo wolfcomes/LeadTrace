@@ -26,6 +26,8 @@ async function save() {
     editing.value=false;emit('mutated',result.version);
   } catch(reason) {
     if(reason instanceof ApiError&&reason.code==='WORKSPACE_VERSION_CONFLICT') {error.value='文章信息已更新，请保留当前输入并重新核对。';emit('conflict');}
+    else if(reason instanceof ApiError && reason.code==='INVALID_ARTICLE_METADATA' && reason.serverMessage==='Select at least one primary molecule type') error.value='分子类型未保存：非空分类至少选择一项主要类型。';
+    else if(reason instanceof ApiError && reason.code==='INVALID_ARTICLE_METADATA' && reason.serverMessage==='Duplicate molecule type labels are not allowed') error.value='分子类型未保存：同一类型不能重复选择，请合并或删除重复条目。';
     else error.value='文章信息未保存，请检查标识、来源、摘要状态及必填字段。';
   } finally {busy.value=false;}
 }

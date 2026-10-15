@@ -1,4 +1,4 @@
-# Supplement missing article metadata in a pending submission
+# Supplement article metadata in a pending submission
 
 Use this operation only for an explicitly authorized administrative supplement.
 It is an operator service, not a Reviewer impersonation or a scientific approval.
@@ -19,7 +19,8 @@ The normal Reviewer editor remains the path for editing an open draft.
 4. The service accepts missing article metadata, including source-bounded PDB
    mentions. Explicit cleanup of an existing Abstract note additionally requires
    its exact current value in `expected_existing={"abstract_note": old_value}`;
-   other populated metadata cannot be replaced through this operation.
+   other populated metadata cannot be replaced except through the explicitly
+   scoped molecule-type classification mode below.
    Existing bibliography section notes are preserved by default. Removing a
    prior generated section note requires `expected_section_note=old_value` and
    an exact current-value match; an unexpected human edit is never cleared.
@@ -40,11 +41,11 @@ The normal Reviewer editor remains the path for editing an open draft.
 
 An identical request replays its existing replacement. A stale baseline,
 non-Admin actor, non-metadata field, or attempt to replace a populated field
-without the supported exact-value Abstract-note check is rejected. Let any
+outside the supported exact-baseline modes is rejected. Let any
 exception roll back the complete transaction. Do not change
 versions, snapshots, assignments or confirmations to force an operation through.
 Different follow-up corrections require fresh inspection and a separately
-authorized operation; this service deliberately supports additive supplements.
+authorized operation; populated-field edits remain limited to the modes below.
 
 ## Evidence-only additions to populated metadata
 
@@ -77,3 +78,46 @@ and final revision self-checks. Missing SI and unsupported entries stay explicit
 Use a new run directory after a failed model invocation; do not overwrite frozen
 tasks or replay completed applies. A provider authentication/balance failure is
 not an extraction result and must not become an empty article patch.
+
+## Reclassify molecule types in pending articles
+
+Use this mode only when the user has explicitly authorized replacing the article
+classification. Pass `expected_classification_baseline` as the exact full current
+`research_profile` object (not a wrapper containing that field). `updates` must
+contain only `research_profile`, with all groups except `modalities` unchanged,
+including group presence, entry order, whitespace, nulls, omitted keys and prior
+evidence. Only the `modalities` array may be replaced. This mode cannot be mixed
+with `expected_existing`, `expected_evidence_baseline` or section-note cleanup.
+
+Select at least one main type: 小分子抑制剂、小分子激动剂、小分子拮抗剂、
+小分子反向激动剂、小分子激活剂、小分子调节剂（作用待细分）、PROTAC、分子胶、
+其他、待明确. Optional supplementary features are 变构调节、共价作用、大环类、
+肽／肽模拟物、前药. Labels cannot repeat. Every selected label needs its own
+nonempty source explanation and evidence; 其他 and 待明确 also require a
+`review_hint` explaining the classification. Classify the optimized series,
+not background/comparator compounds. Do not infer inhibitor activity from the
+legacy broad label 直接靶点调节 or treat a peptide as a conventional small molecule.
+A peptide inhibitor can be 其他 (explain peptide inhibitor) + 肽／肽模拟物; include
+大环类 only with support. Different series must be identified in explanations.
+
+The service validates the entire profile and all supplied evidence, including
+main-PDF page bounds/hash and crop geometry, while preserving the original JSON
+shape after validation. It binds the full baseline into the idempotency identity,
+checks the actual live profile and the usual frozen hash/workspace version, and
+rejects an unchanged classification. Old submission snapshots stay immutable;
+only a new pending, bibliography-unconfirmed replacement is created. A repeat of
+the identical successful request returns that replacement. A changed proposal or
+baseline requires a fresh current submission, never a forced version reset.
+
+Freeze and review each proposed replacement with the selected scientific runtime
+and a distinct fresh reviewer before applying. Rehearse against the verified
+production backup, check the exact current queue and all proposal identities,
+and verify unchanged non-classification scientific data and old snapshots after
+application. Missing SI and unresolved classifications remain explicit. This is
+not scientific approval and grants no authority for unrelated data edits.
+
+The ordinary manual editor uses the same 15 labels. When a nonempty label
+selection changes it must include a main type and contain no duplicates. Empty
+classification remains allowed in ordinary drafts; unchanged historical labels
+and source/evidence-only edits remain compatible. This manual path does not add
+the stricter operator-mode requirement for per-label evidence.

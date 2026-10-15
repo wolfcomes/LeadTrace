@@ -96,12 +96,24 @@ ARTICLE_METADATA_DEFAULTS = {
 ARTICLE_METADATA_FIELDS = tuple(ARTICLE_METADATA_DEFAULTS)
 
 # New selections use this vocabulary. Historical snapshots remain readable.
-MODALITY_LABELS = ('直接靶点调节', 'PROTAC', '分子胶', '前药', '其他', '待明确')
+MOLECULE_PRIMARY_LABELS = (
+    '小分子抑制剂', '小分子激动剂', '小分子拮抗剂', '小分子反向激动剂',
+    '小分子激活剂', '小分子调节剂（作用待细分）', 'PROTAC', '分子胶', '其他', '待明确',
+)
+MOLECULE_FEATURE_LABELS = ('变构调节', '共价作用', '大环类', '肽／肽模拟物', '前药')
+MODALITY_LABELS = MOLECULE_PRIMARY_LABELS + MOLECULE_FEATURE_LABELS
 
 
 def validate_modality_update(before: dict, after: dict) -> None:
     """Restrict new manual labels without invalidating historical science."""
     existing = before.get('modalities', [])
+    selected = after.get('modalities', [])
+    labels = [term['label'] for term in selected]
+    if labels and Counter(labels) != Counter(term['label'] for term in existing):
+        if len(labels) != len(set(labels)):
+            raise ValueError('Duplicate molecule type labels are not allowed')
+        if not any(label in MOLECULE_PRIMARY_LABELS for label in labels):
+            raise ValueError('Select at least one primary molecule type')
     legacy_counts = Counter(term['label'] for term in existing if term['label'] not in MODALITY_LABELS)
     unexplained_counts = Counter((term['label'], term.get('source')) for term in existing
                                  if term['label'] in ('其他', '待明确') and not (term.get('review_hint') or '').strip())

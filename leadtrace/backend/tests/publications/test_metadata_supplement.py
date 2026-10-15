@@ -339,3 +339,151 @@ def test_evidence_shape_errors_are_rejected_as_invalid_patches(baseline):
     from app.publications.metadata_supplement import validate_evidence_additions
     with pytest.raises(ValueError):
         validate_evidence_additions(baseline, deepcopy(baseline))
+
+
+def classification_baseline(f):
+    profile = {
+        'modalities': [{'label': '直接靶点调节', 'source': 'Legacy classification'}],
+        'mechanisms': [{'label': 'Human mechanism', 'source': '  Preserve spaces  '}],
+        'targets': [{'name': 'Human target', 'source': 'Page 1'}],
+        'diseases': [],
+    }
+    with f.session_factory.begin() as session:
+        session.get(Paper, f.paper_id).research_profile = profile
+    return profile
+
+
+def classification_update(before):
+    after = deepcopy(before)
+    after['modalities'] = [{
+        'label': '小分子抑制剂', 'source': 'Optimized series, page 1',
+        'evidence': [{'source_kind': 'main_pdf', 'page_number': 1, 'quoted_text': 'Synthetic inhibitor evidence.'}],
+    }, {
+        'label': '变构调节', 'source': 'Binding mode, page 1',
+        'evidence': [{'source_kind': 'main_pdf', 'page_number': 1, 'quoted_text': 'Synthetic allosteric evidence.'}],
+    }]
+    return after
+
+
+def test_classification_replacement_is_scoped_pending_immutable_and_idempotent(publication_fixture):
+    f = publication_fixture
+    before = classification_baseline(f)
+    first = f.submit()
+    original = deepcopy(first.snapshot)
+    after = classification_update(before)
+    with f.session_factory.begin() as session:
+        second = amend(f, session, first, updates={'research_profile': after}, expected_classification_baseline=before)
+        assert second.snapshot['paper']['research_profile'] == after
+        assert session.get(Paper, f.paper_id).research_profile == after
+        assert session.get(PaperSubmission, first.id).snapshot == original
+        assert session.get(PaperSubmission, first.id).content_hash == first.content_hash
+        assert second.content_hash == canonical_snapshot_hash(second.snapshot)
+        assert {k: v for k, v in second.snapshot['paper'].items() if k != 'research_profile'} == {
+            k: v for k, v in original['paper'].items() if k != 'research_profile'}
+        for key in original:
+            if key not in {'paper', 'workspace_version', 'sections'}:
+                assert second.snapshot[key] == original[key]
+        assert next(x for x in second.snapshot['sections'] if x['section_key'] == 'bibliography')['state'] == 'pending'
+        assert second.reviewer_note is None
+        pending = PublicationService().list_pending_submissions(session, actor=session.get(User, f.admin_id))
+        assert [x.submission.id for x in pending] == [second.id]
+        assert not list(session.scalars(select(PublishedPaperVersion)))
+        assert AuditService().verify_chain(session).valid
+        second_id = second.id
+    with f.session_factory.begin() as session:
+        assert amend(f, session, first, updates={'research_profile': after}, expected_classification_baseline=before).id == second_id
+        assert len(list(session.scalars(select(PaperSubmission)))) == 2
+    changed_baseline = deepcopy(before)
+    changed_baseline['modalities'][0]['source'] = 'Changed request baseline'
+    with pytest.raises(RuntimeError, match='Workspace changed'):
+        with f.session_factory.begin() as session:
+            amend(f, session, first, updates={'research_profile': after}, expected_classification_baseline=changed_baseline)
+
+
+@pytest.mark.parametrize('case', [
+    'stale_baseline', 'stale_version', 'other_group', 'group_removed', 'group_added',
+    'extra_field', 'cleanup_note', 'cleanup_empty', 'cleanup_section', 'evidence_mode',
+    'no_primary', 'empty', 'unknown', 'duplicate', 'no_source', 'no_evidence',
+    'blank_quote', 'unexplained', 'page', 'hash', 'bad_crop', 'external_no_url',
+    'invalid_baseline', 'unchanged', 'other_group_source',
+])
+def test_classification_replacement_rejects_unsafe_changes_atomically(publication_fixture, case):
+    f = publication_fixture
+    before = classification_baseline(f)
+    if case == 'other_group_source':
+        before['mechanisms'][0]['evidence'] = [{'source_kind': 'main_pdf', 'quoted_text': 'Existing invalid page', 'page_number': 2}]
+        with f.session_factory.begin() as session:
+            session.get(Paper, f.paper_id).research_profile = before
+    first = f.submit()
+    original = deepcopy(first.snapshot)
+    after = classification_update(before)
+    baseline = deepcopy(before)
+    options = {}
+    updates = {'research_profile': after}
+    if case == 'stale_baseline': baseline['modalities'][0]['source'] = 'Stale'
+    if case == 'stale_version': options['expected_workspace_version'] = first.workspace_version + 1
+    if case == 'other_group': after['mechanisms'][0]['source'] = 'Changed'
+    if case == 'group_removed': after.pop('diseases')
+    if case == 'group_added': after['optimization_goals'] = []
+    if case == 'extra_field': updates['pmid'] = '12345'
+    if case == 'cleanup_note': options['expected_existing'] = {'abstract_note': None}
+    if case == 'cleanup_empty': options['expected_existing'] = {}
+    if case == 'cleanup_section': options['expected_section_note'] = ''
+    if case == 'evidence_mode': options['expected_evidence_baseline'] = {'research_profile': before}
+    if case == 'no_primary': after['modalities'] = after['modalities'][1:]
+    if case == 'empty': after['modalities'] = []
+    if case == 'unknown': after['modalities'][0]['label'] = '直接靶点调节'
+    if case == 'duplicate': after['modalities'].append(deepcopy(after['modalities'][0]))
+    if case == 'no_source': after['modalities'][0]['source'] = '  '
+    if case == 'no_evidence': after['modalities'][0]['evidence'] = []
+    if case == 'blank_quote': after['modalities'][0]['evidence'][0]['quoted_text'] = '  '
+    if case == 'unexplained': after['modalities'][0]['label'] = '其他'
+    if case == 'page': after['modalities'][0]['evidence'][0]['page_number'] = 2
+    if case == 'hash': after['modalities'][0]['evidence'][0]['source_sha256'] = 'f' * 64
+    if case == 'bad_crop': after['modalities'][0]['evidence'][0]['bbox'] = {'x': 0.9, 'y': 0, 'width': 0.2, 'height': 0.1}
+    if case == 'external_no_url': after['modalities'][0]['evidence'][0]['source_kind'] = 'external'
+    if case == 'invalid_baseline': baseline = []
+    if case == 'unchanged': after['modalities'] = deepcopy(before['modalities'])
+    with pytest.raises((ValueError, RuntimeError)):
+        with f.session_factory.begin() as session:
+            amend(f, session, first, updates=updates, expected_classification_baseline=baseline, **options)
+    with f.session_factory() as session:
+        assert session.get(PaperSubmission, first.id).snapshot == original
+        assert session.get(Paper, f.paper_id).research_profile == before
+        assert session.get(PaperWorkspace, f.workspace_id).version == first.workspace_version
+        assert len(list(session.scalars(select(PaperSubmission)))) == 1
+        assert not list(session.scalars(select(AdminDecision)))
+
+
+def test_classification_accepts_each_fixed_type_with_its_own_evidence():
+    from app.papers.metadata import MOLECULE_PRIMARY_LABELS, MOLECULE_FEATURE_LABELS
+    from app.publications.metadata_supplement import validate_classification_replacement
+    template = classification_update({})['modalities'][0]
+    for label in MOLECULE_PRIMARY_LABELS:
+        term = deepcopy(template) | {'label': label}
+        if label in ('其他', '待明确'):
+            term['review_hint'] = 'Peptide series or unresolved molecular classification explained.'
+        validate_classification_replacement({}, {'modalities': [term]})
+    for label in MOLECULE_FEATURE_LABELS:
+        feature = deepcopy(template) | {'label': label}
+        validate_classification_replacement({}, {'modalities': [template, feature]})
+
+
+@pytest.mark.parametrize('modalities', [None, [None], [{'label': []}], [
+    {'label': '其他', 'source': 'Page 1', 'evidence': [{}], 'review_hint': 123},
+]])
+def test_classification_shape_errors_are_invalid_patches(modalities):
+    from app.publications.metadata_supplement import validate_classification_replacement
+    with pytest.raises(ValueError):
+        validate_classification_replacement({}, {'modalities': modalities})
+
+
+def test_classification_preserves_json_scalar_types_in_other_groups():
+    from app.publications.metadata_supplement import validate_classification_replacement
+    before = {'mechanisms': [{'label': 'Human', 'source': 'Page 1', 'evidence': [
+        {'source_kind': 'main_pdf', 'page_number': 1, 'quoted_text': 'Human evidence'},
+    ]}]}
+    after = classification_update(before)
+    after['mechanisms'][0]['evidence'][0]['page_number'] = True
+    with pytest.raises(ValueError, match='preserve all other profile groups'):
+        validate_classification_replacement(before, after)

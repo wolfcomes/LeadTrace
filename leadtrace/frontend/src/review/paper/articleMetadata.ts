@@ -16,7 +16,7 @@ export const articleTargetSchema = z.object({
   source:z.string(),review_hint:z.string().nullable().optional(),evidence:z.array(articleEvidenceSchema).optional(),
 }).strict();
 export const profileGroups = [
-  {key:'modalities',label:'作用模态',suggestions:[]},
+  {key:'modalities',label:'分子类型',suggestions:[]},
   {key:'mechanisms',label:'作用方式',suggestions:['Inhibitor','Agonist','Antagonist','Degrader','Covalent','Noncovalent','Reversible','Irreversible','Allosteric']},
   {key:'diseases',label:'疾病与应用方向',suggestions:[]},
   {key:'optimization_goals',label:'优化目标',suggestions:['Potency','Selectivity','Solubility','Metabolic stability','Exposure','Oral bioavailability','Brain penetration','Safety']},
@@ -35,13 +35,17 @@ export const researchMetadataFields = {
   research_profile:researchProfileSchema.optional(),
 };
 
-export const modalityChoices = ['直接靶点调节','PROTAC','分子胶','前药','其他','待明确'] as const;
+export const primaryMoleculeTypes = ['小分子抑制剂','小分子激动剂','小分子拮抗剂','小分子反向激动剂','小分子激活剂','小分子调节剂（作用待细分）','PROTAC','分子胶','其他','待明确'] as const;
+export const supplementaryMoleculeFeatures = ['变构调节','共价作用','大环类','肽／肽模拟物','前药'] as const;
+export const modalityChoiceGroups = [
+  {key:'primary',label:'主要类型',choices:primaryMoleculeTypes},
+  {key:'supplementary',label:'补充特征',choices:supplementaryMoleculeFeatures},
+] as const;
+export const modalityChoices = [...primaryMoleculeTypes,...supplementaryMoleculeFeatures] as const;
 export type ModalityChoice = typeof modalityChoices[number];
-// Display aliases only. Never rewrite a stored scientific statement during unrelated edits.
+// Display aliases only. Broad historical classifications remain legacy terms, never inferred types.
 const modalityAliases: Record<string,ModalityChoice> = {
-  'Direct target modulation':'直接靶点调节','Molecular glue':'分子胶','Prodrug':'前药',
-  'Other':'其他','Unknown':'待明确','小分子抑制剂':'直接靶点调节',
-  '选择性V1a受体拮抗剂':'直接靶点调节','CdSpoVD 小分子抑制剂':'直接靶点调节',
+  'Molecular glue':'分子胶','Prodrug':'前药','Other':'其他','Unknown':'待明确',
   '前药特征（43自身亦有活性）':'前药',
 };
 export function modalityLabel(label:string):ModalityChoice|null {

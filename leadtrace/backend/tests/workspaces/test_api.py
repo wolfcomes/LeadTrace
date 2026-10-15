@@ -282,7 +282,7 @@ def test_modality_vocabulary_preserves_legacy_but_rejects_new_free_text(workspac
     fixed = workspace_fixture.client.patch(url, headers={'X-CSRF-Token': csrf}, json={
         'expected_workspace_version': 2, 'research_profile': {
             **old['bibliography']['research_profile'],
-            'modalities': [{'label': '直接靶点调节', 'source': 'Page 1'},
+            'modalities': [{'label': '小分子抑制剂', 'source': 'Page 1'},
                            {'label': '前药', 'source': 'Page 3'}]}})
     assert fixed.status_code == 200
     assert len(fixed.json()['bibliography']['research_profile']['modalities']) == 2

@@ -84,7 +84,7 @@ it('offers fixed modality selections and preserves legacy payloads during unrela
   const wrapper=mount(Editor,{props:{modelValue:profile}});
   expect(wrapper.find('[data-edit-group="molecular_forms"]').exists()).toBe(false);
   expect(wrapper.find('[data-edit-group="modalities"] input[data-term-label]').exists()).toBe(false);
-  expect(wrapper.findAll('[data-modality-choice]').map(x=>x.attributes('value'))).toEqual(['直接靶点调节','PROTAC','分子胶','前药','其他','待明确']);
+  expect(wrapper.findAll('[data-modality-choice]').map(x=>x.attributes('value'))).toEqual(['小分子抑制剂','小分子激动剂','小分子拮抗剂','小分子反向激动剂','小分子激活剂','小分子调节剂（作用待细分）','PROTAC','分子胶','其他','待明确','变构调节','共价作用','大环类','肽／肽模拟物','前药']);
   expect(wrapper.text()).toContain('抗芽孢形成剂');
   await wrapper.get('[data-add-term="mechanisms"]').trigger('click');
   expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toMatchObject({molecular_forms:profile.molecular_forms,modalities:profile.modalities});
@@ -247,4 +247,50 @@ it('renders a paired PDB placeholder when a historical snapshot has no PDB field
   await wrapper.get('[data-record-tab=article]').trigger('click');
   expect(wrapper.get('[data-record-side=before] [data-pdb-comparison]').text()).toContain('未记录');
   expect(wrapper.get('[data-record-side=after] [data-pdb-comparison]').text()).toContain('1ABC');
+});
+
+
+it('groups molecule types and supplementary features without reclassifying broad legacy terms',async()=>{
+ const {default:Editor}=await import('../src/review/paper/ResearchProfileEditor.vue');
+ const {modalityLabel}=await import('../src/review/paper/articleMetadata');
+ const quote={source_kind:'main_pdf' as const,quoted_text:'Synthetic classification evidence.',page_number:1};
+ const profile={modalities:[{label:'直接靶点调节',source:'Existing broad classification',evidence:[quote]},{label:'小分子抑制剂',source:'Inhibitor source',evidence:[quote]},{label:'大环类',source:'Macrocycle source',evidence:[quote]}]};
+ const original=structuredClone(profile);
+ const editor=mount(Editor,{props:{modelValue:profile}});
+ expect(editor.get('[data-edit-group=modalities] > summary').text()).toContain('分子类型');
+ expect(editor.get('[data-modality-choice-group=primary]').findAll('input')).toHaveLength(10);
+ expect(editor.get('[data-modality-choice-group=supplementary]').findAll('input')).toHaveLength(5);
+ expect(editor.get<HTMLSelectElement>('[data-legacy-modality]').element.value).toBe('直接靶点调节');
+ expect(modalityLabel('小分子抑制剂')).toBe('小分子抑制剂');
+ expect(modalityLabel('直接靶点调节')).toBeNull();
+ expect(modalityLabel('Direct target modulation')).toBeNull();
+ await editor.get('[data-modality-choice][value="共价作用"]').setValue(true);
+ expect((editor.emitted('update:modelValue')!.at(-1)![0] as any).modalities.slice(0,3)).toEqual(original.modalities);
+ const reader=mount(ArticleMetadata,{props:{metadata:{research_profile:profile}}});
+ expect(reader.findAll('[data-article-module=modalities]')).toHaveLength(1);
+ expect(reader.get('[data-article-module=modalities] h3').text()).toContain('分子类型');
+ expect(reader.get('[data-modality-group=primary]').text()).toContain('主要类型');
+ expect(reader.get('[data-modality-group=primary] strong').text()).toBe('小分子抑制剂');
+ expect(reader.get('[data-modality-group=supplementary]').text()).toContain('补充特征');
+ expect(reader.get('[data-modality-group=supplementary] strong').text()).toBe('大环类');
+ expect(reader.get('[data-modality-group=legacy] strong').text()).toBe('直接靶点调节');
+ for(const evidence of reader.findAll('[data-term-evidence]'))expect(evidence.attributes('open')).toBeUndefined();
+ expect(profile).toEqual(original);
+});
+
+it('keeps evidence-change indices bound to their terms after molecule-type grouping',async()=>{
+ const {default:View}=await import('../src/review/paper/ResearchProfile.vue');
+ const wrapper=mount(View,{props:{profile:{modalities:[{label:'共价作用',source:'Feature'},{label:'小分子抑制剂',source:'Type'}]},evidenceChanges:{modalities:[0]}}});
+ expect(wrapper.get('[data-modality-group=supplementary] details').attributes('open')).toBeDefined();
+ expect(wrapper.get('[data-modality-group=primary] details').attributes('open')).toBeUndefined();
+});
+
+
+it('explains primary selection and prevents duplicate choices when replacing a legacy term',async()=>{
+ const {default:Editor}=await import('../src/review/paper/ResearchProfileEditor.vue');
+ const profile={modalities:[{label:'直接靶点调节',source:'Legacy source'},{label:'小分子抑制剂',source:'Existing source'}]};
+ const wrapper=mount(Editor,{props:{modelValue:profile}});
+ expect(wrapper.get('[data-edit-group=modalities]').text()).toContain('非空分类至少选择一项主要类型；补充特征可多选。');
+ expect(wrapper.get('[data-legacy-modality] option[value="小分子抑制剂"]').attributes('disabled')).toBeDefined();
+ expect(wrapper.get('[data-legacy-modality] option[value="共价作用"]').attributes('disabled')).toBeUndefined();
 });

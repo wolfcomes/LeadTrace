@@ -12,7 +12,7 @@ const props=defineProps<{sourceContext?:ArticleSourceContext;metadata:{abstract?
 useFrozenPdfPool();
 const issue=computed(()=>props.metadata.abstract_status==='not_found'||props.metadata.abstract_status==='needs_review');
 const expanded=ref(false);
-const modules=[{key:'modalities',label:'作用模态'},{key:'mechanisms',label:'作用方式'},{key:'targets',label:'研究靶点与关联基因'},{key:'optimization_goals',label:'优化目标'},{key:'diseases',label:'疾病与应用方向'},{key:'pdb',label:'PDB'}] as const;
+const modules=[{key:'modalities',label:'分子类型'},{key:'mechanisms',label:'作用方式'},{key:'targets',label:'研究靶点与关联基因'},{key:'optimization_goals',label:'优化目标'},{key:'diseases',label:'疾病与应用方向'},{key:'pdb',label:'PDB'}] as const;
 const usageLabels = {this_work:'本文结构',cited_structure:'引用结构',unknown:'用途待核对'};
 </script>
 <template><section class="article-metadata"><div v-if="metadata.pmid || metadata.pmcid" class="identifier-links"><a v-if="metadata.pmid" data-pmid-link :href="`https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(metadata.pmid)}/`" target="_blank" rel="noopener">PMID: {{metadata.pmid}} ↗</a><a v-if="metadata.pmcid" :href="`https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(metadata.pmcid)}/`" target="_blank" rel="noopener">PMCID: {{metadata.pmcid}} ↗</a></div>

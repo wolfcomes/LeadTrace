@@ -13,7 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.audit.service import AuditService, canonical_content_hash
 from app.catalog.models import PaperSource
-from app.papers.metadata import ArticleMetadata, ARTICLE_METADATA_DEFAULTS, metadata_values
+from app.papers.metadata import (
+    ArticleMetadata, ARTICLE_METADATA_DEFAULTS, MODALITY_LABELS, MOLECULE_PRIMARY_LABELS,
+    metadata_values, validate_article_evidence_sources,
+)
 from app.publications.models import AdminDecisionAction
 from app.publications.service import PublicationService
 from app.users.models import User, UserRole
@@ -71,6 +74,34 @@ def validate_evidence_additions(before: dict, after: dict) -> None:
         raise ValueError('Evidence supplement must add evidence')
 
 
+def validate_classification_replacement(before: dict, after: dict) -> None:
+    """Reclassify only article molecule types, retaining all other profile JSON."""
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        raise ValueError('Classification baseline and update must be profile objects')
+    if canonical_content_hash({k: v for k, v in before.items() if k != 'modalities'}) != canonical_content_hash({
+        k: v for k, v in after.items() if k != 'modalities'
+    }):
+        raise ValueError('Classification replacement must preserve all other profile groups')
+    terms = after.get('modalities')
+    if not isinstance(terms, list) or not terms or any(not isinstance(term, dict) for term in terms):
+        raise ValueError('Classification replacement requires molecule type entries')
+    labels = [term.get('label') for term in terms]
+    if any(not isinstance(label, str) or label not in MODALITY_LABELS for label in labels):
+        raise ValueError('Choose molecule types from the fixed vocabulary')
+    if len(labels) != len(set(labels)):
+        raise ValueError('Duplicate molecule type labels are not allowed')
+    if not any(label in MOLECULE_PRIMARY_LABELS for label in labels):
+        raise ValueError('At least one primary molecule type is required')
+    for term in terms:
+        if not isinstance(term.get('source'), str) or not term['source'].strip() or not term.get('evidence'):
+            raise ValueError('Molecule types require meaningful sources and evidence')
+        hint = term.get('review_hint')
+        if term['label'] in ('其他', '待明确') and (not isinstance(hint, str) or not hint.strip()):
+            raise ValueError('Other or unresolved molecule types require an explanation')
+    if before.get('modalities') == terms:
+        raise ValueError('Classification replacement must change molecule types')
+
+
 def supplement_metadata(
     session: Session, *, submission_id: UUID, content_hash: str,
     expected_workspace_version: int, updates: dict, reason: str,
@@ -78,12 +109,19 @@ def supplement_metadata(
     expected_existing: dict | None = None,
     expected_section_note: str | None = None,
     expected_evidence_baseline: dict | None = None,
+    expected_classification_baseline: dict | None = None,
 ) -> PaperSubmission:
     if actor.role is not UserRole.ADMIN or not actor.is_enabled:
         raise PermissionError('An enabled Admin is required')
     reason = reason.strip()
     if not reason or not updates or not set(updates) <= FIELDS:
         raise ValueError('A reason and an article-metadata-only patch are required')
+    if expected_classification_baseline is not None:
+        if expected_existing is not None or expected_evidence_baseline is not None or expected_section_note is not None:
+            raise ValueError('Classification replacement cannot be combined with other supplement modes')
+        if set(updates) != {'research_profile'}:
+            raise ValueError('Classification replacement updates research_profile only')
+        validate_classification_replacement(expected_classification_baseline, updates['research_profile'])
     expected_existing = expected_existing or {}
     if not set(expected_existing) <= {'abstract_note'} or not set(expected_existing) <= set(updates):
         raise ValueError('Only an explicitly matched Abstract note may be replaced')
@@ -114,6 +152,8 @@ def supplement_metadata(
         request_identity['expected_section_note'] = expected_section_note
     if expected_evidence_baseline is not None:
         request_identity['expected_evidence_baseline'] = expected_evidence_baseline
+    if expected_classification_baseline is not None:
+        request_identity['expected_classification_baseline'] = expected_classification_baseline
     key = 'metadata-supplement:' + canonical_content_hash(request_identity)
     replay = session.scalar(select(PaperSubmission).where(
         PaperSubmission.workspace_id == original.workspace_id,
@@ -143,7 +183,14 @@ def supplement_metadata(
             raise ValueError('Evidence baseline changed; preserve current human edits')
         # Validate above but retain exact historical serialization and human fields.
         patch.update({field: deepcopy(updates[field]) for field in expected_evidence_baseline})
+    if expected_classification_baseline is not None:
+        if canonical_content_hash(paper.research_profile) != canonical_content_hash(expected_classification_baseline):
+            raise ValueError('Classification baseline changed; preserve current human edits')
+        # Validate the complete profile above; do not normalize untouched human JSON.
+        patch['research_profile'] = deepcopy(updates['research_profile'])
     for field, value in patch.items():
+        if expected_classification_baseline is not None and field == 'research_profile':
+            continue
         if expected_evidence_baseline is not None and field in expected_evidence_baseline:
             continue
         if field in expected_existing:
@@ -159,11 +206,9 @@ def supplement_metadata(
     source = session.get(PaperSource, paper.source_id)
     if source is None:
         raise ValueError('Article source is missing')
-    for entries in [*patch.get('research_profile', {}).values(), patch.get('pdb_references', [])]:
-        for entry in entries:
-            for evidence in entry.get('evidence', []):
-                if evidence['source_kind'] == 'main_pdf' and (evidence['page_number'] > source.page_count or (evidence.get('source_sha256') and evidence['source_sha256'] != source.sha256)):
-                    raise ValueError('Article evidence page or source identity mismatch')
+    validate_article_evidence_sources(
+        {field: validated[field] for field in patch}, page_count=source.page_count, sha256=source.sha256,
+    )
     section = session.scalar(select(PaperSectionReview).where(
         PaperSectionReview.workspace_id == workspace.id,
         PaperSectionReview.section_key == PaperSection.BIBLIOGRAPHY,

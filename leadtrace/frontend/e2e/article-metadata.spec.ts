@@ -42,7 +42,7 @@ test('article metadata comparison preserves target roles, sources and collapsed 
 test('reviewer article cards and fixed modalities fit mobile with a long title and preserve legacy data',async({page})=>{
   const id=(n:number)=>`92000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
   const paper=id(1),wid=id(2);
-  let ws:any={id:wid,review_task_id:id(3),assigned_reviewer_id:id(4),state:'editing',version:1,task_status:'assigned',bibliography:{paper_id:paper,paper_key:'SYNTHETIC-ARTICLE',title:'Synthetic '+ 'UnbrokenScientificTitle'.repeat(8)+' article profile',journal:'UI test',publication_year:2026,volume:'1',issue:'1',doi:null,abstract:'Original source abstract.',abstract_source:'Europe PMC routine provenance',abstract_status:'extracted',abstract_note:'Routine check note',research_profile:{molecular_forms:[{label:'Legacy macrocycle',source:'Page 1'}],modalities:[{label:'抗芽孢形成剂',source:'Page 2'}],targets:[{name:'Comparator',role:'selectivity',source:'Table 2'},{name:'Main target',role:'primary',organism:'Homo sapiens',gene_symbol:'GENE',source:'Page 3',review_hint:'Confirm species',evidence:[{source_kind:'main_pdf',quoted_text:'Exact source sentence for the main target.',page_number:3}]}]}},source:{asset_id:id(5),source_root_key:'source_pdfs',source_key:'synthetic.pdf',sha256:'a'.repeat(64),page_count:5},sections:['bibliography','compounds','structures','lineages','edge_evidence','activities'].map(section_key=>({section_key,state:'pending',note:null}))};
+  let ws:any={id:wid,review_task_id:id(3),assigned_reviewer_id:id(4),state:'editing',version:1,task_status:'assigned',bibliography:{paper_id:paper,paper_key:'SYNTHETIC-ARTICLE',title:'Synthetic '+ 'UnbrokenScientificTitle'.repeat(8)+' article profile',journal:'UI test',publication_year:2026,volume:'1',issue:'1',doi:null,abstract:'Original source abstract.',abstract_source:'Europe PMC routine provenance',abstract_status:'extracted',abstract_note:'Routine check note',research_profile:{molecular_forms:[{label:'Legacy macrocycle',source:'Page 1'}],modalities:[{label:'直接靶点调节',source:'Page 2'},{label:'小分子抑制剂',source:'Page 2'},{label:'大环类',source:'Page 2'}],targets:[{name:'Comparator',role:'selectivity',source:'Table 2'},{name:'Main target',role:'primary',organism:'Homo sapiens',gene_symbol:'GENE',source:'Page 3',review_hint:'Confirm species',evidence:[{source_kind:'main_pdf',quoted_text:'Exact source sentence for the main target.',page_number:3}]}]}},source:{asset_id:id(5),source_root_key:'source_pdfs',source_key:'synthetic.pdf',sha256:'a'.repeat(64),page_count:5},sections:['bibliography','compounds','structures','lineages','edge_evidence','activities'].map(section_key=>({section_key,state:'pending',note:null}))};
   const writes:any[]=[];
   await page.route('**/api/v*/**',async route=>{
     const path=new URL(route.request().url()).pathname;
@@ -62,6 +62,11 @@ test('reviewer article cards and fixed modalities fit mobile with a long title a
   await expect(page.getByText('Europe PMC routine provenance',{exact:true})).toHaveCount(0);
   await expect(page.locator('[data-target-evidence]').first()).not.toHaveAttribute('open');
   await expect(page.locator('[data-article-module]')).toHaveCount(6);
+  await expect(page.locator('[data-article-module=modalities] h3')).toContainText('分子类型');
+  await expect(page.locator('[data-modality-group=primary]')).toContainText('小分子抑制剂');
+  await expect(page.locator('[data-modality-group=supplementary]')).toContainText('大环类');
+  await expect(page.locator('[data-modality-group=legacy]')).toContainText('直接靶点调节');
+  await expect(page.locator('[data-modality-group] [data-term-evidence][open]')).toHaveCount(0);
   const moduleBoxes=await page.locator('[data-article-module]').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y,h:r.height};}));
   expect(moduleBoxes[0]!.y).toBe(moduleBoxes[1]!.y);expect(moduleBoxes[1]!.x).toBeGreaterThan(moduleBoxes[0]!.x);expect(moduleBoxes[0]!.h).toBe(220);expect(moduleBoxes[2]!.h).toBe(320);
   await page.locator('[data-target-evidence] > summary').first().click();
@@ -73,7 +78,9 @@ test('reviewer article cards and fixed modalities fit mobile with a long title a
   await page.locator('[data-edit-bibliography]').click();
   await expect(page.locator('[data-edit-group="molecular_forms"]')).toHaveCount(0);
   await page.locator('[data-edit-group="modalities"] > summary').click();
-  await expect(page.locator('[data-modality-choice]')).toHaveCount(6);
+  await expect(page.locator('[data-modality-choice]')).toHaveCount(15);
+  await expect(page.locator('[data-modality-choice-group=primary] input')).toHaveCount(10);
+  await expect(page.locator('[data-modality-choice-group=supplementary] input')).toHaveCount(5);
   await page.locator('[data-modality-choice][value="PROTAC"]').check();
   await page.locator('[data-edit-group="modalities"] > summary').click();
   await page.locator('[data-save-bibliography]').click();
@@ -86,7 +93,7 @@ test('reviewer article cards and fixed modalities fit mobile with a long title a
   await page.locator('[data-save-bibliography]').click();
   await expect.poll(()=>writes.length).toBe(1);
   expect(writes[0].research_profile.molecular_forms).toEqual([{label:'Legacy macrocycle',source:'Page 1'}]);
-  expect(writes[0].research_profile.modalities[0]).toEqual({label:'抗芽孢形成剂',source:'Page 2'});
+  expect(writes[0].research_profile.modalities.slice(0,3)).toEqual([{label:'直接靶点调节',source:'Page 2'},{label:'小分子抑制剂',source:'Page 2'},{label:'大环类',source:'Page 2'}]);
   expect(writes[0].abstract_note).toBe('Routine check note');
   expect(writes[0].research_profile.targets[1].evidence[0].quoted_text).toBe('Exact source sentence for the main target.');
 });

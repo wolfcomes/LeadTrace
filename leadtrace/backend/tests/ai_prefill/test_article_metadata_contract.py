@@ -52,7 +52,7 @@ def test_manual_modality_edits_require_vocabulary_but_preserve_existing_legacy_r
     old = {'modalities': [{'label': 'Legacy action', 'source': 'Page 1'}]}
     validate_modality_update(old, old)
     validate_modality_update(old, {'modalities': [{'label': 'Legacy action', 'source': 'Corrected page 2'}]})
-    validate_modality_update(old, {'modalities': [{'label': '直接靶点调节', 'source': 'Page 1'}]})
+    validate_modality_update(old, {'modalities': [{'label': '小分子抑制剂', 'source': 'Page 1'}]})
     for new in [
         {'modalities': [{'label': 'Another invented class', 'source': 'Page 1'}]},
         {'modalities': old['modalities'] * 2},
@@ -95,3 +95,27 @@ def test_article_evidence_rejects_untraceable_or_unsafe_sources(quote):
     from app.papers.metadata import ArticleEvidence
     with pytest.raises(ValidationError):
         ArticleEvidence.model_validate(quote)
+
+
+def test_molecule_type_vocabulary_and_legacy_broad_label_remain_distinct():
+    from app.papers.metadata import MODALITY_LABELS, validate_modality_update
+    assert len(MODALITY_LABELS) == 15
+    assert '直接靶点调节' not in MODALITY_LABELS
+    old = {'modalities': [{'label': '直接靶点调节', 'source': 'Legacy page 1'}]}
+    validate_modality_update(old, old)
+    with pytest.raises(ValueError):
+        validate_modality_update({}, old)
+
+
+def test_manual_molecule_type_changes_require_main_type_and_unique_labels():
+    from app.papers.metadata import validate_modality_update
+    def term(label):
+        return {'label': label, 'source': 'Page 1'}
+    old = {'modalities': [term('直接靶点调节'), term('直接靶点调节')]}
+    # Historical duplicates and broad labels remain editable without reclassification.
+    validate_modality_update(old, {'modalities': [term('直接靶点调节') | {'source': 'Updated page'}, term('直接靶点调节')]})
+    validate_modality_update(old, {'modalities': []})
+    validate_modality_update(old, {'modalities': [term('小分子抑制剂'), term('大环类')]})
+    for labels in [['大环类'], ['前药'], ['小分子抑制剂', '小分子抑制剂'], ['直接靶点调节']]:
+        with pytest.raises(ValueError):
+            validate_modality_update(old, {'modalities': [term(label) for label in labels]})
