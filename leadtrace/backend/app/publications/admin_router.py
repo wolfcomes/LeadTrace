@@ -12,6 +12,7 @@ from app.api.errors import APIError
 from app.config import Settings
 from app.database import get_db_session
 from app.publications.models import AdminDecision, PublishedPaperVersion
+from app.publications.reviewer_rounds import get_reviewer_round_review, list_reviewer_rounds
 from app.publications.schemas import (
     AdminDecisionRequest,
     AdminDecisionResponse,
@@ -158,11 +159,15 @@ def create_admin_publications_router(settings: Settings) -> APIRouter:
     @router.get("", response_model=AdminSubmissionListResponse)
     @declare_route_access(RouteAccess.PERMISSION, Action.APPROVE_CHANGESET)
     def list_pending_submissions(
+        reviewer_rounds: bool = False,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
     ) -> AdminSubmissionListResponse:
         try:
             with session.begin():
+                if reviewer_rounds:
+                    items = list_reviewer_rounds(session, actor=principal)
+                    return AdminSubmissionListResponse(items=items, total=len(items))
                 pending = service.list_pending_submissions(session, actor=principal)
                 items = []
                 for item in pending:
@@ -182,28 +187,31 @@ def create_admin_publications_router(settings: Settings) -> APIRouter:
                     )
         except DecisionForbiddenError as error:
             raise _translate_decision_error(error) from error
-        return AdminSubmissionListResponse(items=items, total=len(items))
+        return JSONResponse(AdminSubmissionListResponse(items=items, total=len(items)).model_dump(
+            mode='json', exclude={'items': {'__all__': {'reviewer_round_number', 'review_status', 'submitted_by_name', 'review_warning', 'review_entry_id'}}}))
 
     @router.get("/{submission_id}", response_model=AdminSubmissionDetailResponse)
     @declare_route_access(RouteAccess.PERMISSION, Action.APPROVE_CHANGESET)
     def get_submission(
         submission_id: UUID,
         include_comparison: bool = False,
+        reviewer_rounds: bool = False,
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
     ) -> AdminSubmissionDetailResponse | JSONResponse:
         try:
             with session.begin():
-                review = service.get_submission_review(
-                    session,
-                    submission_id=submission_id,
-                    actor=principal,
-                )
+                navigation = None
+                if reviewer_rounds:
+                    review, navigation = get_reviewer_round_review(session, submission_id=submission_id, actor=principal)
+                else:
+                    review = service.get_submission_review(session, submission_id=submission_id, actor=principal)
                 response = AdminSubmissionDetailResponse(
                     submission=_submission_response(review.submission),
                     bibliography=_bibliography(review.submission.snapshot),
                     change_events=[_event_response(event) for event in review.change_events],
                     reviewer_diff=[_event_response(event) for event in review.reviewer_diff],
+                    review_rounds=navigation,
                     **({"comparison": SubmissionComparisonResponse(
                         kind=review.comparison_kind,
                         baseline_submission_number=review.baseline_submission_number,
@@ -214,12 +222,13 @@ def create_admin_publications_router(settings: Settings) -> APIRouter:
                             review.reviewer_submission, from_attributes=True,
                         ) if review.reviewer_submission is not None else None),
                         supplement_count=review.supplement_count,
-                    )} if include_comparison else {}),
+                    )} if include_comparison or reviewer_rounds else {}),
                 )
-                if not include_comparison:
+                if not reviewer_rounds:
                     # Older clients validate exact keys. Exclude only the new top-level
                     # field, preserving all existing nested defaults and null values.
-                    return JSONResponse(response.model_dump(mode="json", exclude={"comparison"}))
+                    return JSONResponse(response.model_dump(mode="json", exclude=(
+                        {'review_rounds'} if include_comparison else {'comparison', 'review_rounds'})))
                 return response
         except (
             DecisionForbiddenError,

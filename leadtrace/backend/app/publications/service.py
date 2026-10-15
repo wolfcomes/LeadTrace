@@ -437,6 +437,15 @@ class PublicationService:
         ):
             raise DecisionStateConflictError("Submission is not awaiting Admin review")
         if action is AdminDecisionAction.APPROVE:
+            from app.publications.reviewer_rounds import is_reviewer_submission
+            boundary = session.scalar(select(ChangeEvent).where(
+                ChangeEvent.entity_type == 'paper_submission',
+                ChangeEvent.entity_id == submission.id,
+                ChangeEvent.workspace_id == submission.workspace_id,
+                ChangeEvent.action == 'workspace.submit',
+            ))
+            if not is_reviewer_submission(submission, boundary):
+                raise DecisionStateConflictError('Only an actual Reviewer submission can be approved; additions require Reviewer review and resubmission')
             self._require_verified_source(session, paper)
 
         decision = AdminDecision(

@@ -76,17 +76,31 @@ unresolved issue resolutions, cleared hints, deletions and evidence reassignment
 remain visible. Complete frozen content and all actors' history expand on demand.
 Approval still applies to the entire frozen submission and its content hash.
 
-Administrative metadata supplements retain the originating Reviewer round's
-comparison baseline across consecutive supplements. The current comparison includes
-both Reviewer changes and subsequent additions with their recorded actors. The
-original Reviewer submission and note appear separately, with a link to that
-immutable submission; this does not attest to later additions. Explicit supplement
-links are verified against submission identity, hashes and history boundaries.
-A genuine Reviewer resubmission begins a new comparison round. Invalid or missing
-supplement history produces a warning rather than an apparently empty diff.
+Admin navigation lists genuine Reviewer submissions only, with their original
+submitter, time, note and decision. The directory offers pending and all-submission
+views, including returned and approved articles. Historical versions are read-only;
+only the latest pending Reviewer snapshot/hash is actionable. Real return decisions
+on later technical snapshots remain visible as follow-up context with their original
+identity and reason, rather than being confused with automatic supplement closures.
 
-The Admin detail API exposes the read-only projection with
-`?include_comparison=true`; its default response retains the legacy shape.
+Explicit metadata-supplement links are verified against identities, frozen hashes,
+history boundaries and unchanged non-metadata science. Supplements appear in a
+separate, initially collapsed comparison and do not inflate Reviewer change counts.
+Later Reviewer rounds reference the preceding real Reviewer submission. Verified
+metadata supplements form the human-edit baseline for affected fields, so subsequent
+human corrections remain visible. The UI identifies this baseline, and the original
+preceding snapshot remains accessible through navigation. Missing or invalid history
+produces warnings and read-only directory entries, never fabricated versions.
+
+Post-submission additions require Reviewer checking and resubmission; technical
+supplement snapshots cannot be approved. Return them through the existing audited
+workflow, retaining all draft content, scientific viewing receipts, human notes and
+unchanged confirmations. See the article metadata supplement runbook.
+
+Admin clients opt in with `reviewer_rounds=true` on list and detail requests.
+`include_comparison=true` without that option retains the earlier comparison API;
+the default responses preserve their legacy shape. These are display projections,
+not changes to immutable submissions or historical actors.
 
 ## Interface language
 

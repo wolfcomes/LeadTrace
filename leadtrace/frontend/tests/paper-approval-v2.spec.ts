@@ -37,6 +37,80 @@ describe("paper-centric Admin approval", () => {
   beforeEach(installAdmin);
   afterEach(() => vi.unstubAllGlobals());
 
+  it("navigates actual Reviewer versions with dates and keeps old decisions read-only", async () => {
+    const olderId = '00000000-0000-4000-8000-000000000777';
+    const version = (id: string, round: number) => ({
+      id, paper_id: submission.paper_id, workspace_id: submission.workspace_id,
+      submission_number: round === 1 ? 1 : 4, round_number: round,
+      submitted_by_id: submission.submitted_by_id, submitted_by_name: 'Original Reviewer',
+      submitted_at: round === 1 ? '2026-10-10T02:00:00Z' : '2026-10-15T04:00:00Z',
+      content_hash: submission.content_hash, reviewer_note: 'Reviewer note',
+      status: round === 1 ? 'supplemented' : 'pending', decision: null,
+    });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const older = String(input).includes(olderId);
+      return jsonResponse({ ...structuredClone(adminSubmissionDetail),
+        submission: { ...structuredClone(submission), id: older ? olderId : submission.id },
+        review_rounds: { requested_submission_id: older ? olderId : submission.id,
+          selected_round_number: older ? 1 : 2, can_decide: !older,
+          versions: [version(olderId, 1), version(submission.id, 2)], supplements: [], warnings: [] },
+      });
+    }));
+    const { wrapper, router } = await mountAt(`/admin/submissions/${publicationIds.submission}`);
+    const navigation = wrapper.get('[data-review-version-navigation]');
+    expect(navigation.text()).toContain('第 2 / 2 次提交');
+    expect(navigation.text()).toContain('Original Reviewer');
+    expect(navigation.text()).toContain('2026');
+    await wrapper.get('[data-decision-reason]').setValue('Do not carry this to another version');
+    await wrapper.get('[data-previous-review-version]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toContain(olderId);
+    expect(wrapper.get('[data-review-version-navigation]').text()).toContain('第 1 / 2 次提交');
+    expect(wrapper.find('[data-approve-submission]').exists()).toBe(false);
+    expect(wrapper.get('[data-historical-review]').text()).toContain('只读');
+    await wrapper.get('[data-next-review-version]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-decision-reason]').element as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('keeps post-submit AI supplements folded and outside the Reviewer comparison', async () => {
+    const after = structuredClone(submission.snapshot);
+    Object.assign(after.paper, { abstract: 'AI-only abstract' });
+    const original = { ...structuredClone(adminSubmissionDetail), review_rounds: {
+      requested_submission_id: submission.id, selected_round_number: 1, can_decide: false,
+      versions: [{ id: submission.id, paper_id: submission.paper_id, workspace_id: submission.workspace_id,
+        submission_number: submission.submission_number, round_number: 1,
+        submitted_by_id: submission.submitted_by_id, submitted_by_name: 'Reviewer',
+        submitted_at: submission.submitted_at, content_hash: submission.content_hash,
+        reviewer_note: submission.reviewer_note, status: 'awaiting_reviewer', decision: null }],
+      supplements: [{ phase: 'after_submission', count: 2, submitted_at: submission.submitted_at,
+        snapshot: after, comparison: { kind: 'previous_submission', baseline_submission_number: null,
+          baseline_snapshot: submission.snapshot, events: [], warnings: [] } }], warnings: [] } };
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(original)));
+    const { wrapper } = await mountAt(`/admin/submissions/${publicationIds.submission}`);
+    const panel = wrapper.get('[data-ai-supplements]');
+    expect(panel.attributes('open')).toBeUndefined();
+    expect(panel.text()).toContain('提交后补填');
+    expect(wrapper.text()).not.toContain('AI-only abstract');
+    expect(wrapper.find('[data-approve-submission]').exists()).toBe(false);
+    (panel.element as HTMLDetailsElement).open = true;
+    await panel.trigger('toggle');
+    expect(panel.text()).toContain('AI-only abstract');
+  });
+
+  it('filters pending Reviewer submissions while retaining access to returned versions', async () => {
+    const technicalId = '00000000-0000-4000-8000-000000000778';
+    const items = [{ ...adminSubmissionList.items[0], reviewer_round_number: 1,
+      review_entry_id: technicalId, submitted_by_name: 'Reviewer', review_status: 'awaiting_reviewer' }];
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ items, total: 1 })));
+    const { wrapper } = await mountAt('/admin/submissions');
+    expect(wrapper.find('[data-submission-row]').exists()).toBe(false);
+    await wrapper.get('[data-all-review-submissions]').trigger('click');
+    expect(wrapper.get('[data-submission-row]').text()).toContain('待 Reviewer 核对补填');
+    expect(wrapper.get('[data-submission-row]').text()).toContain('第 1 次提交');
+    expect(wrapper.get('[data-open-submission]').attributes('href')).toBe(`/admin/submissions/${technicalId}`);
+  });
+
   it("shows the originating Reviewer note separately after metadata supplements", async () => {
     const originalId = "00000000-0000-4000-8000-000000000777";
     const payload = { ...structuredClone(adminSubmissionDetail),

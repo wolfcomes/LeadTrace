@@ -5,8 +5,9 @@ import ArticleMetadata from "../review/paper/ArticleMetadata.vue";
 import ReviewHint from "../review/paper/ReviewHint.vue";
 import { statusLabel } from "../i18n/status";
 import { t, locale } from "../i18n";
-import { computed, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { reviewVersionStatus } from './reviewVersionLabels';
 import { lineageTypeLabels } from "../v2/types";
 import { ApiError } from "../api/client";
 import { useAuthStore } from "../auth/store";
@@ -19,6 +20,7 @@ import FrozenEvidence from "./FrozenEvidence.vue";
 
 type State = "loading" | "ready" | "not-found" | "error";
 const route = useRoute();
+const router = useRouter();
 const auth = useAuthStore();
 const state = ref<State>("loading");
 const detail = ref<AdminSubmissionDetail | null>(null);
@@ -29,6 +31,15 @@ const acting = ref<"approve" | "request_changes" | null>(null);
 const decision = ref<DecisionMutation | null>(null);
 const error = ref<string | null>(null);
 const errorRequestId = ref<string>();
+const supplementOpen = ref<Record<string, boolean>>({});
+let loadSequence = 0;
+const rounds = computed(() => detail.value?.review_rounds);
+const versions = computed(() => rounds.value?.versions ?? []);
+const selectedVersion = computed(() => versions.value.find(v => v.id === detail.value?.submission.id));
+const selectedIndex = computed(() => versions.value.findIndex(v => v.id === detail.value?.submission.id));
+const previousVersion = computed(() => versions.value[selectedIndex.value - 1]);
+const nextVersion = computed(() => selectedIndex.value >= 0 ? versions.value[selectedIndex.value + 1] : undefined);
+const canDecide = computed(() => rounds.value ? rounds.value.can_decide : true);
 const snapshot = computed(() => detail.value?.submission.snapshot ?? null);
 function highlightDepiction(compoundId: string): string | undefined {
   const asset = snapshot.value?.structures.find(s => s.compound_id === compoundId)?.depiction_asset_id;
@@ -44,7 +55,13 @@ const sourceImagesByCompound = computed(() => {
   }
   return grouped;
 });
-const decisionDisabled = computed(() => !detail.value || !reason.value.trim() || acting.value !== null || decision.value !== null);
+const decisionDisabled = computed(() => !canDecide.value || !detail.value || !reason.value.trim() || acting.value !== null || decision.value !== null);
+
+function chooseVersion(event: Event) {
+  const id = (event.target as HTMLSelectElement).value;
+  if (acting.value || !versions.value.some(v => v.id === id)) return;
+  void router.push({ name: 'admin-submission-detail', params: { submissionId: id } });
+}
 
 function adminAssetUrl(assetId: string): string {
   return `/api/v1/assets/${encodeURIComponent(assetId)}/content`;
@@ -63,16 +80,24 @@ function formatDate(value: string): string {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Shanghai" }).format(new Date(value));
 }
 async function load(): Promise<void> {
+  const sequence = ++loadSequence;
+  const requestedId = String(route.params.submissionId ?? '');
   state.value = "loading";
   fullContentOpen.value = false;
   historyOpen.value = false;
+  supplementOpen.value = {};
+  reason.value = '';
   detail.value = null;
   decision.value = null;
   error.value = null;
+  errorRequestId.value = undefined;
   try {
-    detail.value = await getAdminSubmission(String(route.params.submissionId ?? ""));
+    const response = await getAdminSubmission(requestedId);
+    if (sequence !== loadSequence) return;
+    detail.value = response;
     state.value = "ready";
   } catch (caught) {
+    if (sequence !== loadSequence) return;
     errorRequestId.value = caught instanceof ApiError ? caught.requestId : undefined;
     if (caught instanceof ApiError && caught.status === 404) state.value = "not-found";
     else {
@@ -82,13 +107,20 @@ async function load(): Promise<void> {
   }
 }
 async function decide(action: "approve" | "request_changes"): Promise<void> {
-  if (!detail.value || !reason.value.trim() || acting.value || decision.value) return;
+  if (!canDecide.value || !detail.value || !reason.value.trim() || acting.value || decision.value) return;
+  const sequence = loadSequence;
   acting.value = action;
   error.value = null;
   const current = detail.value.submission;
   try {
-    decision.value = await decideSubmission(current.id, { content_hash: current.content_hash, action, reason: reason.value.trim() }, `${action}-${current.id}-${current.content_hash}`, auth.csrfToken);
+    const result = await decideSubmission(current.id, { content_hash: current.content_hash, action, reason: reason.value.trim() }, `${action}-${current.id}-${current.content_hash}`, auth.csrfToken);
+    if (sequence !== loadSequence) return;
+    decision.value = result;
+    const version = versions.value.find(v => v.id === current.id);
+    if (version) { version.status = result.decision.action; version.decision = result.decision; }
+    if (rounds.value) rounds.value.can_decide = false;
   } catch (caught) {
+    if (sequence !== loadSequence) return;
     errorRequestId.value = caught instanceof ApiError ? caught.requestId : undefined;
     error.value = caught instanceof ApiError && caught.kind === "conflict" ? "Submission 状态或内容哈希已经变化，请返回队列后重新核对。" : "审批决定未能保存。";
   } finally {
@@ -96,6 +128,7 @@ async function decide(action: "approve" | "request_changes"): Promise<void> {
   }
 }
 watch(() => route.params.submissionId, load, { immediate: true });
+onBeforeUnmount(() => { loadSequence++; });
 </script>
 
 <template>
@@ -106,9 +139,27 @@ watch(() => route.params.submissionId, load, { immediate: true });
     <section v-else-if="state === 'error'" class="page-state" role="alert"><span class="state-symbol is-error" aria-hidden="true">!</span><h1>{{ t(error ?? "") }} <small v-if="errorRequestId">{{ t("请求编号：{requestId}", { requestId: errorRequestId }) }}</small></h1><button class="button-secondary" type="button" @click="load">{{ t("重新加载") }}</button></section>
     <FrozenSubmissionScope v-else-if="detail && snapshot" :key="detail.submission.id">
       <header class="page-heading">
-        <div><p class="eyebrow">IMMUTABLE SUBMISSION · #{{ detail.submission.submission_number }}</p><h1>{{ detail.bibliography.title }}</h1><p>{{ detail.bibliography.journal }} · {{ detail.bibliography.publication_year }} · {{ detail.bibliography.volume }}({{ detail.bibliography.issue }})</p><a class="button-secondary source-pdf-link" data-source-pdf :href="sourcePdfUrl()" target="_blank" rel="noopener">{{ t("打开 Source PDF ↗") }}</a></div>
+        <div><p class="eyebrow">REVIEWER SUBMISSION · #{{ selectedVersion?.round_number ?? detail.submission.submission_number }}</p><h1>{{ detail.bibliography.title }}</h1><p>{{ detail.bibliography.journal }} · {{ detail.bibliography.publication_year }} · {{ detail.bibliography.volume }}({{ detail.bibliography.issue }})</p><a class="button-secondary source-pdf-link" data-source-pdf :href="sourcePdfUrl()" target="_blank" rel="noopener">{{ t("打开 Source PDF ↗") }}</a></div>
         <dl class="submission-identity"><div><dt>Paper</dt><dd><code>{{ detail.bibliography.paper_key }}</code></dd></div><div><dt>Content hash</dt><dd><code>{{ detail.submission.content_hash }}</code></dd></div><div><dt>{{ t("提交时间") }}</dt><dd>{{ formatDate(detail.submission.submitted_at) }}</dd></div></dl>
       </header>
+      <section v-if="rounds" class="review-version-navigation panel" data-review-version-navigation :aria-label="t('Reviewer 提交版本')">
+        <nav class="review-version-controls">
+          <RouterLink v-if="previousVersion && !acting" class="button-secondary" data-previous-review-version :to="{ name: 'admin-submission-detail', params: { submissionId: previousVersion.id } }">{{ t('← 上一版') }}</RouterLink>
+          <span v-else class="button-secondary is-disabled" aria-disabled="true">{{ t('← 上一版') }}</span>
+          <label><span>{{ t('第 {number} / {total} 次提交', { number: selectedVersion?.round_number ?? '—', total: versions.length }) }}</span>
+            <select :value="detail.submission.id" :disabled="!!acting" :aria-label="t('选择提交版本')" @change="chooseVersion">
+              <option v-for="version in versions" :key="version.id" :value="version.id">{{ t('第 {number} 次提交', { number: version.round_number }) }} · {{ formatDate(version.submitted_at) }} · {{ reviewVersionStatus(version.status) }}</option>
+            </select>
+          </label>
+          <RouterLink v-if="nextVersion && !acting" class="button-secondary" data-next-review-version :to="{ name: 'admin-submission-detail', params: { submissionId: nextVersion.id } }">{{ t('下一版 →') }}</RouterLink>
+          <span v-else class="button-secondary is-disabled" aria-disabled="true">{{ t('下一版 →') }}</span>
+        </nav>
+        <div v-if="selectedVersion" class="review-version-meta"><strong>{{ selectedVersion.submitted_by_name }}</strong><time :datetime="selectedVersion.submitted_at">{{ formatDate(selectedVersion.submitted_at) }}</time><span class="status-chip">{{ reviewVersionStatus(selectedVersion.status) }}</span></div>
+        <p v-if="selectedVersion?.status === 'awaiting_reviewer'">{{ t('本次提交后的补填尚未由 Reviewer 确认；保留原有修改与确认，只需核对新增或受影响内容后重新提交。') }}</p>
+        <p v-if="rounds.supplements.some(s => s.phase === 'before_submission')">{{ t('人工修改以补填后的底稿为参照；上次提交的原始内容可切换版本查看。') }}</p>
+        <div v-if="selectedVersion?.followup_decision" class="review-followup" data-followup-decision><strong>{{ t('后续退回／补填核对要求') }}</strong> · {{ formatDate(selectedVersion.followup_decision.decided_at) }}<p>{{ selectedVersion.followup_decision.reason }}</p></div>
+        <p v-for="warning in rounds.warnings" :key="warning" class="message is-error">{{ warning }}</p>
+      </section>
       <p v-if="detail.submission.reviewer_note" class="reviewer-attestation panel"><strong>{{ t("提交说明") }}</strong><span>{{ detail.submission.reviewer_note }}</span></p>
       <section v-if="detail.comparison?.reviewer_submission" class="original-reviewer-submission panel" data-original-reviewer-submission>
         <header><strong>{{ t("原 Reviewer 提交 · 第 {number} 次", { number: detail.comparison.reviewer_submission.submission_number }) }}</strong><span>{{ formatDate(detail.comparison.reviewer_submission.submitted_at) }}</span></header>
@@ -118,6 +169,11 @@ watch(() => route.params.submissionId, load, { immediate: true });
       </section>
       <p v-if="error" class="message inline-feedback is-error" role="alert">{{ t(error ?? "") }} <small v-if="errorRequestId">{{ t("请求编号：{requestId}", { requestId: errorRequestId }) }}</small></p>
       <SubmissionComparison :snapshot="snapshot" :comparison="detail.comparison" :paper-id="detail.submission.paper_id" />
+      <details v-for="supplement in rounds?.supplements ?? []" :key="supplement.phase" class="panel approval-supplements" data-ai-supplements @toggle="supplementOpen[supplement.phase] = ($event.target as HTMLDetailsElement).open">
+        <summary>{{ t(supplement.phase === 'after_submission' ? '提交后补填 · 待 Reviewer 核对' : '本轮 AI 预填／补填 · 不计入 Reviewer 修改') }} <small>· {{ formatDate(supplement.submitted_at) }}</small></summary>
+        <p>{{ t('补填单独展示；操作来源保留在历史中，不代表 Reviewer 已确认。') }}</p>
+        <SubmissionComparison v-if="supplementOpen[supplement.phase]" :snapshot="supplement.snapshot" :comparison="supplement.comparison" :paper-id="detail.submission.paper_id" />
+      </details>
       <details class="panel approval-full-content" data-full-submission @toggle="fullContentOpen = ($event.target as HTMLDetailsElement).open">
         <summary>{{ t("查看完整提交内容") }}</summary>
         <template v-if="fullContentOpen">
@@ -180,6 +236,12 @@ watch(() => route.params.submissionId, load, { immediate: true });
           <strong>{{ t(decision.decision.action === 'approve' ? '已批准并发布' : '已退回 Reviewer 修改') }}</strong><p>{{ decision.decision.reason }}</p>
           <RouterLink v-if="decision.published_version" class="button-secondary" data-published-paper-link :to="{ name: 'paper-detail', params: { paperId: decision.published_version.paper_id } }">{{ t("查看正式文章 →") }}</RouterLink>
         </div>
+        <div v-else-if="!canDecide" class="historical-review" data-historical-review>
+          <strong>{{ t('此版本只读，不能重复审批。') }}</strong>
+          <template v-if="selectedVersion?.decision"><p>{{ reviewVersionStatus(selectedVersion.status) }} · {{ formatDate(selectedVersion.decision.decided_at) }}</p><p class="decision-reason">{{ selectedVersion.decision.reason }}</p></template>
+          <p v-else-if="selectedVersion?.status === 'awaiting_reviewer'">{{ t('待 Reviewer 核对补填并重新提交后，再进行审批。') }}</p>
+          <RouterLink v-if="nextVersion" class="button-secondary" :to="{ name: 'admin-submission-detail', params: { submissionId: versions[versions.length - 1]?.id } }">{{ t('查看最新提交 →') }}</RouterLink>
+        </div>
         <template v-else>
           <label class="form-field"><span>{{ t("决定理由（必填）") }}</span><textarea v-model="reason" data-decision-reason rows="4" :placeholder="t('记录批准依据，或明确需要 Reviewer 修改的内容。')"></textarea></label>
           <div class="decision-actions"><button class="button-secondary" data-request-changes type="button" :disabled="decisionDisabled" @click="decide('request_changes')">{{ t("退回修改") }}</button><button class="button-primary" data-approve-submission type="button" :disabled="decisionDisabled" @click="decide('approve')">{{ t("批准并发布") }}</button></div>
@@ -195,4 +257,15 @@ watch(() => route.params.submissionId, load, { immediate: true });
 .original-reviewer-submission blockquote { margin: .75rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .approval-full-content, .approval-full-history { margin: 1rem 0; }
 .approval-full-content > summary, .approval-full-history > summary { cursor: pointer; font-weight: 600; padding: .5rem; }
+.review-version-navigation { margin: 1rem 0; padding: 1rem; }
+.review-version-controls, .review-version-meta { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.review-version-controls label { display: grid; flex: 1; gap: .4rem; min-width: 0; }
+.review-version-controls select { width: 100%; min-width: 0; max-width: 100%; padding: .5rem; }
+.review-version-meta { margin-top: .75rem; }
+.review-version-navigation p, .decision-reason { white-space: pre-wrap; overflow-wrap: anywhere; }
+.is-disabled { opacity: .5; }
+.approval-supplements { margin: 1rem 0; padding: 1rem; }
+.approval-supplements > summary { cursor: pointer; font-weight: 600; }
+.approval-supplements small { font-weight: 400; }
+@media (max-width: 640px) { .review-version-controls label { order: -1; flex-basis: 100%; } }
 </style>

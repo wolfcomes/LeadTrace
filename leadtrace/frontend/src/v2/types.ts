@@ -529,6 +529,11 @@ export const paperSubmissionSchema = z.object({
 });
 
 export const adminSubmissionListItemSchema = z.object({
+  reviewer_round_number: z.number().int().positive().nullable().optional(),
+  review_status: z.enum(['pending', 'approve', 'request_changes', 'awaiting_reviewer', 'supplemented', 'superseded', 'unavailable']).nullable().optional(),
+  submitted_by_name: z.string().nullable().optional(),
+  review_warning: z.string().nullable().optional(),
+  review_entry_id: uuidSchema.nullable().optional(),
   submission_id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -565,6 +570,26 @@ export const submissionComparisonSchema = z.object({
 }).strict();
 
 export const adminSubmissionDetailSchema = z.object({
+  review_rounds: z.object({
+    requested_submission_id: uuidSchema,
+    selected_round_number: z.number().int().positive().nullable(),
+    can_decide: z.boolean(),
+    versions: z.array(z.object({
+      id: uuidSchema, paper_id: uuidSchema, workspace_id: uuidSchema,
+      submission_number: z.number().int().positive(), round_number: z.number().int().positive(),
+      submitted_by_id: uuidSchema, submitted_by_name: z.string(),
+      submitted_at: timestampSchema, content_hash: sha256Schema, reviewer_note: z.string().nullable(),
+      status: z.enum(['pending', 'approve', 'request_changes', 'awaiting_reviewer', 'supplemented', 'superseded', 'unavailable']),
+      decision: z.lazy(() => adminDecisionSchema).nullable(),
+      followup_decision: z.lazy(() => adminDecisionSchema).nullable().optional(),
+    }).strict()),
+    supplements: z.array(z.object({
+      phase: z.enum(['before_submission', 'after_submission']), count: z.number().int().positive(),
+      submitted_at: timestampSchema, snapshot: frozenPaperSnapshotSchema,
+      comparison: submissionComparisonSchema,
+    }).strict()),
+    warnings: z.array(z.string()),
+  }).strict().nullable().optional(),
   comparison: submissionComparisonSchema.optional(),
   submission: paperSubmissionSchema,
   bibliography: bibliographySchema,
@@ -572,6 +597,22 @@ export const adminSubmissionDetailSchema = z.object({
   reviewer_diff: z.array(changeEventSchema),
 }).strict().superRefine((value, context) => {
   const { paper_id: paperId, workspace_id: workspaceId } = value.submission;
+  const rounds = value.review_rounds;
+  if (rounds) {
+    const selected = rounds.versions.find(v => v.round_number === rounds.selected_round_number);
+    if (rounds.versions.some((v, index) => v.paper_id !== paperId || v.workspace_id !== workspaceId
+      || v.round_number !== index + 1 || (v.decision && (v.decision.submission_id !== v.id
+        || v.decision.content_hash !== v.content_hash || v.decision.paper_id !== paperId)))
+      || new Set(rounds.versions.map(v => v.id)).size !== rounds.versions.length
+      || (rounds.selected_round_number !== null && (!selected || selected.id !== value.submission.id
+        || selected.content_hash !== value.submission.content_hash))
+      || (rounds.can_decide && (!selected || selected.status !== 'pending'
+        || selected.round_number !== rounds.versions.length))
+      || rounds.supplements.some(s => s.snapshot.paper.id !== paperId
+        || s.comparison.events.some(e => e.paper_id !== paperId || e.workspace_id !== workspaceId))) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Reviewer round identity mismatch' });
+    }
+  }
   const origin = value.comparison?.reviewer_submission;
   if (origin && (origin.paper_id !== paperId || origin.workspace_id !== workspaceId
     || origin.submission_number >= value.submission.submission_number

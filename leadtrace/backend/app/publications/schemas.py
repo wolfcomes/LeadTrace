@@ -90,6 +90,11 @@ class AdminSubmissionListItem(PublicationProjection):
     submitted_at: datetime
     paper_key: str
     title: str
+    reviewer_round_number: int | None = None
+    review_status: str | None = None
+    submitted_by_name: str | None = None
+    review_warning: str | None = None
+    review_entry_id: UUID | None = None
 
 
 class AdminSubmissionListResponse(PublicationProjection):
@@ -133,12 +138,38 @@ class SubmissionComparisonResponse(PublicationProjection):
     supplement_count: int = 0
 
 
+class ReviewerRoundVersion(ReviewerSubmissionSummary):
+    round_number: int
+    submitted_by_name: str
+    status: Literal['pending', 'approve', 'request_changes', 'awaiting_reviewer', 'supplemented', 'superseded', 'unavailable']
+    decision: AdminDecisionResponse | None = None
+    followup_decision: AdminDecisionResponse | None = None
+
+
+class SupplementComparison(PublicationProjection):
+    phase: Literal['before_submission', 'after_submission']
+    count: int
+    submitted_at: datetime
+    snapshot: dict[str, Any]
+    comparison: SubmissionComparisonResponse
+
+
+class ReviewerRoundsResponse(PublicationProjection):
+    requested_submission_id: UUID
+    selected_round_number: int | None
+    versions: list[ReviewerRoundVersion]
+    can_decide: bool
+    supplements: list[SupplementComparison]
+    warnings: list[str]
+
+
 class AdminSubmissionDetailResponse(PublicationProjection):
     submission: SubmissionResponse
     bibliography: BibliographyResponse
     change_events: list[ChangeEventResponse]
     reviewer_diff: list[ChangeEventResponse]
     comparison: SubmissionComparisonResponse | None = None
+    review_rounds: ReviewerRoundsResponse | None = None
 
 
 class PublishedPaperListItem(PublicationProjection):

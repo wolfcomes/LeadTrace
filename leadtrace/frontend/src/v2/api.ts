@@ -510,12 +510,12 @@ export function submitWorkspace(
 }
 
 export function listAdminSubmissions(): Promise<AdminSubmissionList> {
-  return apiRequest("/api/v2/admin/submissions", adminSubmissionListSchema);
+  return apiRequest("/api/v2/admin/submissions?reviewer_rounds=true", adminSubmissionListSchema);
 }
 
 export function getAdminSubmission(submissionId: string): Promise<AdminSubmissionDetail> {
   return apiRequest(
-    `/api/v2/admin/submissions/${encodeURIComponent(submissionId)}?include_comparison=true`,
+    `/api/v2/admin/submissions/${encodeURIComponent(submissionId)}?include_comparison=true&reviewer_rounds=true`,
     adminSubmissionDetailSchema,
   );
 }

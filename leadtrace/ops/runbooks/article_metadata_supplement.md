@@ -33,16 +33,25 @@ The normal Reviewer editor remains the path for editing an open draft.
    notes receive no special administrator-supplement label or fabricated
    Reviewer confirmation.
    Compound/Lineage viewing receipts remain valid for unchanged scientific data.
-5. Verify original submission hashes, unaffected scientific tables, the unchanged
-   pending queue count, Admin change provenance, new metadata in the comparison,
-   and the audit chain before reopening writes. Consecutive replacements retain
-   the originating Reviewer round's comparison baseline, so Reviewer edits and
-   subsequent supplements remain visible together with their actual attribution.
-   Verify that `reviewer_diff` matches the originating round, routine confirmations
-   stay folded, and the original Reviewer note is displayed separately with its
-   immutable submission link. New metadata remains unconfirmed. A genuine Reviewer
-   resubmission begins a new round; an invalid supplement link must show a warning.
-   No publication is created.
+5. After the final supplement in the authorized batch, call
+   `app.publications.supplement_review.return_supplement_for_review` in a transaction,
+   passing the latest `submission_id`, `content_hash`, `expected_workspace_version`,
+   enabled Admin `actor`, clear `reason`, and `request_id`. Explain that only additions
+   and their dependencies require checking; prior work is retained. The helper verifies
+   the supplement chain and live baseline, then uses the normal request-changes
+   service. It retains content, all section states/notes and viewing receipts, increments
+   workflow versions normally, records the actual Admin actor, and is idempotent.
+   Already-returned or superseded articles must not be reset or returned again using
+   stale inputs. An identical completed helper request can be replayed safely.
+6. Verify original snapshot hashes, unaffected scientific tables and confirmations,
+   editable Reviewer draft state, `changes_requested` task state and audit chain.
+   The technical snapshot is excluded from the Reviewer approval queue. The article
+   remains accessible under All submissions with its original Reviewer date/note,
+   separate folded additions, and the real subsequent return reason. Only a new
+   genuine Reviewer submission becomes approvable; technical supplement approval
+   is rejected even with the correct hash. Reviewer-only navigation uses
+   `reviewer_rounds=true`. Invalid links show explicit warnings rather than silently
+   hiding changes. No scientific approval or publication is created by this operation.
 
 An identical request replays its existing replacement. A stale baseline,
 non-Admin actor, non-metadata field, or attempt to replace a populated field
@@ -62,7 +71,8 @@ fields and previous evidence must remain byte-shape-equivalent JSON. Do not use
 `expected_existing`, section-note cleanup, or a generic populated-field replace.
 The ordinary submission hash/workspace version/frozen content checks still apply.
 Main-PDF pages and optional SHA values are checked against PaperSource. The old
-submission remains immutable, and its replacement is pending/unconfirmed.
+submission remains immutable, and its replacement is unconfirmed; complete the
+return-to-Reviewer step after the final supplement.
 No scientific approval, deployment, or arbitrary metadata overwrite is implied.
 
 ## Missing metadata and evidence in one replacement
