@@ -29,17 +29,27 @@ FIELDS = frozenset(ARTICLE_METADATA_DEFAULTS)
 
 def validate_evidence_additions(before: dict, after: dict) -> None:
     """Allow only appended evidence; identity, order and all human fields stay exact."""
+    if not isinstance(before, dict) or not isinstance(after, dict) or not before:
+        raise ValueError('Evidence baseline and update must be nonempty metadata objects')
     additions = 0
     def entries(old, new):
         nonlocal additions
+        if not isinstance(old, list) or not isinstance(new, list):
+            raise ValueError('Evidence metadata entries must be lists')
         if len(old) != len(new):
             raise ValueError('Evidence supplement must preserve every entry')
         for a, b in zip(old, new):
+            if not isinstance(a, dict) or not isinstance(b, dict):
+                raise ValueError('Evidence metadata entries must be objects')
             if {k: v for k, v in a.items() if k != 'evidence'} != {k: v for k, v in b.items() if k != 'evidence'}:
                 raise ValueError('Evidence supplement cannot change existing scientific fields')
             if 'evidence' in a and 'evidence' not in b:
                 raise ValueError('Evidence supplement cannot remove evidence fields')
             previous, current = a.get('evidence', []), b.get('evidence', [])
+            if not isinstance(previous, list) or not isinstance(current, list):
+                raise ValueError('Entry evidence must be a list')
+            if any(not isinstance(item, dict) for item in previous + current):
+                raise ValueError('Entry evidence must contain objects')
             additions += len(current) - len(previous)
             if current[:len(previous)] != previous or len(current) < len(previous):
                 raise ValueError('Evidence supplement must retain prior evidence')
@@ -47,6 +57,8 @@ def validate_evidence_additions(before: dict, after: dict) -> None:
         raise ValueError('Evidence baseline must cover every updated metadata field')
     for field in before:
         if field == 'research_profile':
+            if not isinstance(before[field], dict) or not isinstance(after[field], dict):
+                raise ValueError('Research profile evidence requires profile objects')
             if set(before[field]) != set(after[field]):
                 raise ValueError('Evidence supplement must preserve profile groups')
             for group in before[field]:
@@ -78,7 +90,12 @@ def supplement_metadata(
     if expected_evidence_baseline is not None:
         if expected_existing or expected_section_note is not None:
             raise ValueError('Evidence supplements cannot clean up other metadata')
-        validate_evidence_additions(expected_evidence_baseline, updates)
+        if (not isinstance(expected_evidence_baseline, dict) or not expected_evidence_baseline
+                or not set(expected_evidence_baseline) <= set(updates)):
+            raise ValueError('Evidence baseline must be a nonempty subset of updated metadata fields')
+        validate_evidence_additions(expected_evidence_baseline, {
+            field: updates[field] for field in expected_evidence_baseline
+        })
     original = session.get(PaperSubmission, submission_id)
     if original is None:
         raise ValueError('Submission not found')
@@ -125,9 +142,9 @@ def supplement_metadata(
         if any(getattr(paper, field) != baseline for field, baseline in expected_evidence_baseline.items()):
             raise ValueError('Evidence baseline changed; preserve current human edits')
         # Validate above but retain exact historical serialization and human fields.
-        patch = deepcopy(updates)
+        patch.update({field: deepcopy(updates[field]) for field in expected_evidence_baseline})
     for field, value in patch.items():
-        if expected_evidence_baseline is not None:
+        if expected_evidence_baseline is not None and field in expected_evidence_baseline:
             continue
         if field in expected_existing:
             if getattr(paper, field) != expected_existing[field] or value == expected_existing[field]:

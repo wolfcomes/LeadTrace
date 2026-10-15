@@ -58,3 +58,22 @@ The ordinary submission hash/workspace version/frozen content checks still apply
 Main-PDF pages and optional SHA values are checked against PaperSource. The old
 submission remains immutable, and its replacement is pending/unconfirmed.
 No scientific approval, deployment, or arbitrary metadata overwrite is implied.
+
+## Missing metadata and evidence in one replacement
+
+`expected_evidence_baseline` may cover a nonempty subset of `updates`. The matched
+fields remain strictly evidence-only, including exact old JSON shape and order;
+every other updated field must still be missing under the normal metadata
+rules. This allows a new research profile or PMID and evidence for existing PDB
+mentions to appear together in one immutable pending replacement. Empty or
+non-subset baselines and replacement of any other populated field are rejected.
+Evidence mode cannot be combined with Abstract-note or section-note cleanup.
+
+For a batch, freeze the complete current pending queue and record per-paper
+submission hash, workspace version and source identity. Verify already-completed
+papers without adding duplicate excerpts. Keep each producer's candidate and
+fresh review distinct; bind final patches to actual frozen guides, source hashes
+and final revision self-checks. Missing SI and unsupported entries stay explicit.
+Use a new run directory after a failed model invocation; do not overwrite frozen
+tasks or replay completed applies. A provider authentication/balance failure is
+not an extraction result and must not become an empty article patch.

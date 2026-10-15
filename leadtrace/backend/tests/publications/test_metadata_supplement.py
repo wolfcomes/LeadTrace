@@ -222,3 +222,120 @@ def test_evidence_supplement_rejects_nonadditive_or_stale_patch(publication_fixt
     with f.session_factory() as s:
         assert len(list(s.scalars(select(PaperSubmission)))) == 1
         assert not list(s.scalars(select(AdminDecision)))
+
+
+@pytest.mark.parametrize('evidence_field', ['research_profile', 'pdb_references'])
+def test_combined_missing_metadata_and_evidence_preserves_human_fields(publication_fixture, evidence_field):
+    f = publication_fixture
+    existing = {
+        'research_profile': {'mechanisms': [{'label': 'Inhibitor', 'source': '  Human explanation  '}]},
+        'pdb_references': [{'pdb_id': '1abc', 'source_page': 1, 'source_context': '  Human context  '}],
+    }[evidence_field]
+    with f.session_factory.begin() as s:
+        setattr(s.get(Paper, f.paper_id), evidence_field, existing)
+    first = f.submit()
+    original = deepcopy(first.snapshot)
+    after = deepcopy(existing)
+    entries = after['mechanisms'] if evidence_field == 'research_profile' else after
+    entries[0]['evidence'] = [{'source_kind': 'main_pdf', 'quoted_text': 'Exact source words.', 'page_number': 1}]
+    missing = {'pdb_references': [{'pdb_id': '2abc', 'source_page': 1}]} if evidence_field == 'research_profile' else {
+        'research_profile': {'mechanisms': [{'label': '  Inhibitor  ', 'source': 'Page 1'}]},
+    }
+    updates = PATCH | missing | {evidence_field: after, 'pmid': ' 38126712 '}
+    baseline = {evidence_field: existing}
+    with f.session_factory.begin() as s:
+        second = amend(f, s, first, updates=updates, expected_evidence_baseline=baseline)
+        assert second.snapshot['paper'][evidence_field] == after
+        assert second.snapshot['paper']['pmid'] == '38126712'
+        if evidence_field == 'research_profile':
+            assert second.snapshot['paper']['pdb_references'][0]['pdb_id'] == '2ABC'
+        else:
+            assert second.snapshot['paper']['research_profile']['mechanisms'][0]['label'] == 'Inhibitor'
+        assert s.get(PaperSubmission, first.id).snapshot == original
+        assert s.get(PaperSubmission, first.id).content_hash == first.content_hash
+        assert second.content_hash == canonical_snapshot_hash(second.snapshot)
+        for key, value in original.items():
+            if key not in {'paper', 'workspace_version', 'sections'}:
+                assert second.snapshot[key] == value
+        for key, value in original['paper'].items():
+            if key not in updates:
+                assert second.snapshot['paper'][key] == value
+        assert not list(s.scalars(select(PublishedPaperVersion)))
+        pending = PublicationService().list_pending_submissions(s, actor=s.get(User, f.admin_id))
+        assert [x.submission.id for x in pending] == [second.id]
+        assert next(x for x in second.snapshot['sections'] if x['section_key'] == 'bibliography')['state'] == 'pending'
+        assert AuditService().verify_chain(s).valid
+        second_id = second.id
+    with f.session_factory.begin() as s:
+        assert amend(f, s, first, updates=updates, expected_evidence_baseline=baseline).id == second_id
+        assert len(list(s.scalars(select(PaperSubmission)))) == 2
+
+
+@pytest.mark.parametrize('case', [
+    'empty_baseline', 'list_baseline', 'missing_key', 'scalar_field',
+    'invalid_profile', 'invalid_group', 'invalid_entry', 'invalid_evidence',
+    'overwrite', 'default_value', 'cleanup_note', 'cleanup_section',
+    'new_source_page', 'new_source_hash', 'stale_baseline',
+])
+def test_combined_supplement_rejects_unsafe_updates_atomically(publication_fixture, case):
+    f = publication_fixture
+    existing = {'mechanisms': [{'label': 'Inhibitor', 'source': 'Human explanation'}]}
+    with f.session_factory.begin() as s:
+        paper = s.get(Paper, f.paper_id)
+        paper.research_profile = existing
+        paper.pmid = '12345'
+    first = f.submit()
+    original = deepcopy(first.snapshot)
+    after = deepcopy(existing)
+    after['mechanisms'][0]['evidence'] = [{'source_kind': 'main_pdf', 'quoted_text': 'Exact source words.', 'page_number': 1}]
+    updates = {'research_profile': after, 'pmcid': 'PMC12345'}
+    baseline = {'research_profile': deepcopy(existing)}
+    options = {}
+    if case == 'empty_baseline': baseline = {}
+    if case == 'list_baseline': baseline = ['research_profile']
+    if case == 'missing_key': baseline['pdb_references'] = []
+    if case == 'scalar_field': baseline['pmcid'] = None
+    if case == 'invalid_profile': baseline['research_profile'] = []
+    if case == 'invalid_group': baseline['research_profile']['mechanisms'] = None
+    if case == 'invalid_entry': baseline['research_profile']['mechanisms'] = [None]
+    if case == 'invalid_evidence': baseline['research_profile']['mechanisms'][0]['evidence'] = None
+    if case == 'overwrite': updates['pmid'] = '54321'
+    if case == 'default_value': updates['pmcid'] = None
+    if case == 'cleanup_note':
+        updates['abstract_note'] = 'Replacement'
+        options['expected_existing'] = {'abstract_note': None}
+    if case == 'cleanup_section': options['expected_section_note'] = 'Previous note'
+    if case in {'new_source_page', 'new_source_hash'}:
+        updates['pdb_references'] = [{'pdb_id': '1ABC', 'evidence': [{
+            'source_kind': 'main_pdf', 'quoted_text': 'New entry source.', 'page_number': 1,
+        }]}]
+        evidence = updates['pdb_references'][0]['evidence'][0]
+        if case == 'new_source_page': evidence['page_number'] = 2
+        else: evidence['source_sha256'] = 'f' * 64
+    if case == 'stale_baseline':
+        baseline['research_profile']['mechanisms'][0]['source'] = 'Older explanation'
+        after['mechanisms'][0]['source'] = 'Older explanation'
+    with pytest.raises(ValueError):
+        with f.session_factory.begin() as s:
+            amend(f, s, first, updates=updates, expected_evidence_baseline=baseline, **options)
+    with f.session_factory() as s:
+        assert s.get(PaperSubmission, first.id).snapshot == original
+        assert s.get(PaperSubmission, first.id).content_hash == first.content_hash
+        assert s.get(Paper, f.paper_id).research_profile == existing
+        assert s.get(Paper, f.paper_id).pmid == '12345'
+        assert s.get(Paper, f.paper_id).pmcid is None
+        assert s.get(PaperWorkspace, f.workspace_id).version == first.workspace_version
+        assert len(list(s.scalars(select(PaperSubmission)))) == 1
+        assert not list(s.scalars(select(AdminDecision)))
+
+
+@pytest.mark.parametrize('baseline', [
+    [], {'research_profile': []}, {'research_profile': {'mechanisms': None}},
+    {'research_profile': {'mechanisms': [None]}},
+    {'research_profile': {'mechanisms': [{'label': 'A', 'source': 'Page 1', 'evidence': None}]}},
+    {'pdb_references': None},
+])
+def test_evidence_shape_errors_are_rejected_as_invalid_patches(baseline):
+    from app.publications.metadata_supplement import validate_evidence_additions
+    with pytest.raises(ValueError):
+        validate_evidence_additions(baseline, deepcopy(baseline))

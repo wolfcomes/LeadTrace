@@ -67,3 +67,7 @@
 - 全文编号/标签身份清点；能找到或合理推导完整结构才写入 Compound。有依据但不确定/冲突的已收录项用统一 review_hint（⚠ 需核对），无法推导的留 inventory required＋omissions，不建空结构卡；测量、结构、SAR、合成分别报告。带缺陷草稿经用户授权可显示，但不能标为科学批准。科学数据、资产和数据库不从 Preview 导入生产。
 
 本机定位线索：持久根 `/data/home/zhangzhiyong/lead_optimization_collection/leadtrace-data/`，保留 worktree `.worktrees/ai-prefill-tools`，Preview descriptor `ai-prefill-preview-20260920.C191Fl/current-instance.json`。操作前验证当前实例和交接；换机器不执行旧绝对路径，不输出 credentials。
+
+### 已有待审文章的批量文章信息补齐
+
+先冻结当前待审清单和逐篇版本/hash；按[文章元数据补填操作说明](../../leadtrace/ops/runbooks/article_metadata_supplement.md)处理缺失信息与原文证据，保留已有人工内容和不可变提交。科学生产仍读取本次冻结的[提取指南](extraction-guide.md)、[自检指南](self-check-guide.md)，新会话复核使用[审查协议](quality-audit-protocol.md)。已完成文章只核对覆盖，不重复增加证据。模型鉴权/余额错误必须记为执行失败，不能解释为论文无相关信息；恢复后创建新任务并重新核对在线版本，不覆盖旧任务包。
