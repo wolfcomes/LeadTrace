@@ -37,6 +37,32 @@ describe("paper-centric Admin approval", () => {
   beforeEach(installAdmin);
   afterEach(() => vi.unstubAllGlobals());
 
+  it("shows the originating Reviewer note separately after metadata supplements", async () => {
+    const originalId = "00000000-0000-4000-8000-000000000777";
+    const payload = { ...structuredClone(adminSubmissionDetail),
+      submission: { ...structuredClone(adminSubmissionDetail.submission), reviewer_note: null },
+    };
+    const comparison = {
+      kind: "reviewer_start", baseline_submission_number: null,
+      baseline_snapshot: structuredClone(submission.snapshot), events: [], warnings: [],
+      supplement_count: 2,
+      reviewer_submission: {
+        id: originalId, paper_id: submission.paper_id, workspace_id: submission.workspace_id,
+        submission_number: 1, submitted_by_id: submission.submitted_by_id,
+        submitted_at: submission.submitted_at, content_hash: "a".repeat(64),
+        reviewer_note: "Original review caveat remains important",
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ ...payload, comparison })));
+    const { wrapper } = await mountAt(`/admin/submissions/${publicationIds.submission}`);
+    const origin = wrapper.get("[data-original-reviewer-submission]");
+    expect(origin.text()).toContain("Original review caveat remains important");
+    expect(origin.text()).toContain("后续补填内容仍需审批");
+    expect(origin.get("a").attributes("href")).toBe(`/admin/submissions/${originalId}`);
+    expect(wrapper.find(".reviewer-attestation").exists()).toBe(false);
+    expect(wrapper.get("[data-submission-review]").text()).toContain(submission.content_hash);
+  });
+
   it("lists pending submissions and opens the frozen Paper review", async () => {
     const requests: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

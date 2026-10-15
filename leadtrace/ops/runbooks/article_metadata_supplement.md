@@ -35,9 +35,14 @@ The normal Reviewer editor remains the path for editing an open draft.
    Compound/Lineage viewing receipts remain valid for unchanged scientific data.
 5. Verify original submission hashes, unaffected scientific tables, the unchanged
    pending queue count, Admin change provenance, new metadata in the comparison,
-   and the audit chain before reopening writes. The replacement compares with
-   the preceding frozen submission; earlier Reviewer changes remain in its
-   original submission and complete history. No publication is created.
+   and the audit chain before reopening writes. Consecutive replacements retain
+   the originating Reviewer round's comparison baseline, so Reviewer edits and
+   subsequent supplements remain visible together with their actual attribution.
+   Verify that `reviewer_diff` matches the originating round, routine confirmations
+   stay folded, and the original Reviewer note is displayed separately with its
+   immutable submission link. New metadata remains unconfirmed. A genuine Reviewer
+   resubmission begins a new round; an invalid supplement link must show a warning.
+   No publication is created.
 
 An identical request replays its existing replacement. A stale baseline,
 non-Admin actor, non-metadata field, or attempt to replace a populated field

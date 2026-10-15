@@ -555,6 +555,13 @@ export const submissionComparisonSchema = z.object({
   baseline_snapshot: z.record(z.unknown()).nullable(),
   events: z.array(changeEventSchema),
   warnings: z.array(z.string()),
+  reviewer_submission: z.object({
+    id: uuidSchema, paper_id: uuidSchema, workspace_id: uuidSchema,
+    submission_number: z.number().int().positive(), submitted_by_id: uuidSchema,
+    submitted_at: timestampSchema, content_hash: sha256Schema,
+    reviewer_note: z.string().nullable(),
+  }).strict().nullable().optional(),
+  supplement_count: z.number().int().nonnegative().optional(),
 }).strict();
 
 export const adminSubmissionDetailSchema = z.object({
@@ -565,6 +572,12 @@ export const adminSubmissionDetailSchema = z.object({
   reviewer_diff: z.array(changeEventSchema),
 }).strict().superRefine((value, context) => {
   const { paper_id: paperId, workspace_id: workspaceId } = value.submission;
+  const origin = value.comparison?.reviewer_submission;
+  if (origin && (origin.paper_id !== paperId || origin.workspace_id !== workspaceId
+    || origin.submission_number >= value.submission.submission_number
+    || origin.id === value.submission.id)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Original Reviewer submission identity mismatch" });
+  }
   if (value.bibliography.paper_id !== paperId
     || [...value.change_events, ...value.reviewer_diff, ...(value.comparison?.events ?? [])].some(
       (event) => event.paper_id !== paperId || event.workspace_id !== workspaceId,

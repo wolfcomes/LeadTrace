@@ -22,6 +22,7 @@ from app.publications.schemas import (
     DecisionMutationResponse,
     PublishedPaperVersionResponse,
     SubmissionComparisonResponse,
+    ReviewerSubmissionSummary,
 )
 from app.publications.service import (
     DecisionForbiddenError,
@@ -209,6 +210,10 @@ def create_admin_publications_router(settings: Settings) -> APIRouter:
                         baseline_snapshot=review.baseline_snapshot,
                         events=[_event_response(event) for event in review.comparison_events],
                         warnings=list(review.comparison_warnings),
+                        reviewer_submission=(ReviewerSubmissionSummary.model_validate(
+                            review.reviewer_submission, from_attributes=True,
+                        ) if review.reviewer_submission is not None else None),
+                        supplement_count=review.supplement_count,
                     )} if include_comparison else {}),
                 )
                 if not include_comparison:

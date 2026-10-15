@@ -110,6 +110,12 @@ watch(() => route.params.submissionId, load, { immediate: true });
         <dl class="submission-identity"><div><dt>Paper</dt><dd><code>{{ detail.bibliography.paper_key }}</code></dd></div><div><dt>Content hash</dt><dd><code>{{ detail.submission.content_hash }}</code></dd></div><div><dt>{{ t("提交时间") }}</dt><dd>{{ formatDate(detail.submission.submitted_at) }}</dd></div></dl>
       </header>
       <p v-if="detail.submission.reviewer_note" class="reviewer-attestation panel"><strong>{{ t("提交说明") }}</strong><span>{{ detail.submission.reviewer_note }}</span></p>
+      <section v-if="detail.comparison?.reviewer_submission" class="original-reviewer-submission panel" data-original-reviewer-submission>
+        <header><strong>{{ t("原 Reviewer 提交 · 第 {number} 次", { number: detail.comparison.reviewer_submission.submission_number }) }}</strong><span>{{ formatDate(detail.comparison.reviewer_submission.submitted_at) }}</span></header>
+        <p>{{ t("保留本轮 Reviewer 修改及确认记录；后续补填内容仍需审批。") }}</p>
+        <blockquote v-if="detail.comparison.reviewer_submission.reviewer_note">{{ detail.comparison.reviewer_submission.reviewer_note }}</blockquote>
+        <RouterLink :to="{ name: 'admin-submission-detail', params: { submissionId: detail.comparison.reviewer_submission.id } }">{{ t("查看原 Reviewer 提交 →") }}</RouterLink>
+      </section>
       <p v-if="error" class="message inline-feedback is-error" role="alert">{{ t(error ?? "") }} <small v-if="errorRequestId">{{ t("请求编号：{requestId}", { requestId: errorRequestId }) }}</small></p>
       <SubmissionComparison :snapshot="snapshot" :comparison="detail.comparison" :paper-id="detail.submission.paper_id" />
       <details class="panel approval-full-content" data-full-submission @toggle="fullContentOpen = ($event.target as HTMLDetailsElement).open">
@@ -184,6 +190,9 @@ watch(() => route.params.submissionId, load, { immediate: true });
 </template>
 
 <style scoped>
+.original-reviewer-submission { margin: 1rem 0; padding: 1rem; }
+.original-reviewer-submission header { display: flex; gap: .75rem; flex-wrap: wrap; }
+.original-reviewer-submission blockquote { margin: .75rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .approval-full-content, .approval-full-history { margin: 1rem 0; }
 .approval-full-content > summary, .approval-full-history > summary { cursor: pointer; font-weight: 600; padding: .5rem; }
 </style>

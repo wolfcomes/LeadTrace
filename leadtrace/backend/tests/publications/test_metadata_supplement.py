@@ -51,7 +51,11 @@ def test_supplement_preserves_frozen_science_and_records_admin_origin(publicatio
         pending = PublicationService().list_pending_submissions(s, actor=admin)
         assert [x.submission.id for x in pending] == [second.id]
         review = PublicationService().get_submission_review(s, submission_id=second.id, actor=admin)
-        assert review.baseline_snapshot == original
+        # This fixture contains no recorded Reviewer mutations. A supplement
+        # must preserve that uncertainty instead of hiding it behind a new baseline.
+        assert review.baseline_snapshot is None
+        assert review.comparison_warnings
+        assert review.reviewer_submission.id == first.id
         assert any(e.action == 'bibliography.update' and e.actor_kind.value == 'admin' for e in review.comparison_events)
         section_event = next(e for e in review.comparison_events if e.action == 'section.update')
         assert section_event.before_value['section_key'] == section_event.after_value['section_key'] == 'bibliography'

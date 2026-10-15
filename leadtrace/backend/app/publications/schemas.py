@@ -112,12 +112,25 @@ class ChangeEventResponse(PublicationProjection):
     occurred_at: datetime
 
 
+class ReviewerSubmissionSummary(PublicationProjection):
+    id: UUID
+    paper_id: UUID
+    workspace_id: UUID
+    submission_number: int
+    submitted_by_id: UUID
+    submitted_at: datetime
+    content_hash: str
+    reviewer_note: str | None
+
+
 class SubmissionComparisonResponse(PublicationProjection):
     kind: Literal["previous_submission", "reviewer_start", "unavailable"]
     baseline_submission_number: int | None
     baseline_snapshot: dict[str, Any] | None
     events: list[ChangeEventResponse]
     warnings: list[str]
+    reviewer_submission: ReviewerSubmissionSummary | None = None
+    supplement_count: int = 0
 
 
 class AdminSubmissionDetailResponse(PublicationProjection):

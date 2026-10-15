@@ -80,6 +80,8 @@ class SubmissionReview:
     baseline_snapshot: dict | None
     comparison_events: tuple[ChangeEvent, ...]
     comparison_warnings: tuple[str, ...]
+    reviewer_submission: PaperSubmission | None = None
+    supplement_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +100,48 @@ def _actor(actor: DecisionActor) -> tuple[UUID, UserRole]:
 
 
 class PublicationService:
+    @staticmethod
+    def _supplement_origin(
+        session: Session, submission: PaperSubmission, events: tuple[ChangeEvent, ...],
+    ) -> tuple[PaperSubmission, int, int] | None:
+        """Follow explicit frozen supplement links, never infer from actor alone."""
+        boundaries = {
+            event.entity_id: (index, event) for index, event in enumerate(events)
+            if event.entity_type == 'paper_submission' and event.action == 'workspace.submit'
+        }
+        current, count = submission, 0
+        while current.id in boundaries:
+            index, boundary = boundaries[current.id]
+            after = boundary.after_value or {}
+            if (after.get('submission_id') != str(current.id)
+                    or after.get('content_hash') != current.content_hash
+                    or boundary.actor_id != current.submitted_by_id):
+                break
+            if after.get('metadata_supplement') is not True:
+                if (boundary.actor_kind is ChangeActorKind.REVIEWER
+                        and boundary.actor_id == current.submitted_by_id):
+                    return current, index, count
+                break
+            before = boundary.before_value or {}
+            try:
+                parent_id = UUID(before.get('submission_id', ''))
+            except (ValueError, TypeError, AttributeError):
+                break
+            parent = session.get(PaperSubmission, parent_id)
+            if (boundary.actor_kind is not ChangeActorKind.ADMIN
+                    or parent is None
+                    or parent.paper_id != submission.paper_id
+                    or parent.workspace_id != submission.workspace_id
+                    or parent.review_task_id != submission.review_task_id
+                    or parent.submission_number != current.submission_number - 1
+                    or before.get('content_hash') != parent.content_hash
+                    or parent.id not in boundaries
+                    or boundaries[parent.id][0] >= index):
+                break
+            current = parent
+            count += 1
+        return None
+
     @staticmethod
     def _require_admin(actor: DecisionActor) -> None:
         _, role = _actor(actor)
@@ -166,6 +210,29 @@ class PublicationService:
                 .order_by(ChangeEvent.occurred_at, ChangeEvent.id)
             )
         )
+        if (boundary.after_value or {}).get('metadata_supplement') is True:
+            origin = self._supplement_origin(session, submission, events)
+            if origin is None:
+                return SubmissionReview(
+                    submission, paper, events, (), 'unavailable', None, None, (),
+                    ('Metadata supplement history cannot be verified; inspect the original submissions and complete history.',),
+                )
+            reviewer_submission, origin_index, count = origin
+            original_review = self.get_submission_review(
+                session, submission_id=reviewer_submission.id, actor=actor,
+            )
+            round_events = original_review.comparison_events + events[origin_index + 1:]
+            return SubmissionReview(
+                submission, paper, events,
+                tuple(event for event in round_events
+                      if event.actor_kind is ChangeActorKind.REVIEWER
+                      and event.action != 'workspace.submit'),
+                original_review.comparison_kind,
+                original_review.baseline_submission_number,
+                original_review.baseline_snapshot, round_events,
+                original_review.comparison_warnings,
+                reviewer_submission, count,
+            )
         previous_submission = session.scalar(
             select(PaperSubmission)
             .where(

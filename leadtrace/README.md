@@ -76,6 +76,15 @@ unresolved issue resolutions, cleared hints, deletions and evidence reassignment
 remain visible. Complete frozen content and all actors' history expand on demand.
 Approval still applies to the entire frozen submission and its content hash.
 
+Administrative metadata supplements retain the originating Reviewer round's
+comparison baseline across consecutive supplements. The current comparison includes
+both Reviewer changes and subsequent additions with their recorded actors. The
+original Reviewer submission and note appear separately, with a link to that
+immutable submission; this does not attest to later additions. Explicit supplement
+links are verified against submission identity, hashes and history boundaries.
+A genuine Reviewer resubmission begins a new comparison round. Invalid or missing
+supplement history produces a warning rather than an apparently empty diff.
+
 The Admin detail API exposes the read-only projection with
 `?include_comparison=true`; its default response retains the legacy shape.
 

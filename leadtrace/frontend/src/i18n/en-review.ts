@@ -317,5 +317,9 @@ export const enReview: Record<string, string> = {
   "已显示 {count} / {total} 幅结构 · {edges} 条关系": "Showing {count} / {total} structures · {edges} relationships",
   "{count} 个化合物 · {edges} 条关系": "{count} compounds · {edges} relationships",
   "未分类": "Unclassified",
-  "待分类": "Unclassified"
+  "待分类": "Unclassified",
+  "原 Reviewer 提交 · 第 {number} 次": "Original Reviewer submission · #{number}",
+  "保留本轮 Reviewer 修改及确认记录；后续补填内容仍需审批。": "Reviewer changes and confirmations from this round are retained; subsequent additions still require approval.",
+  "查看原 Reviewer 提交 →": "View original Reviewer submission →",
+  "Metadata supplement history cannot be verified; inspect the original submissions and complete history.": "Metadata supplement history cannot be verified; inspect the original submissions and complete history."
 };
