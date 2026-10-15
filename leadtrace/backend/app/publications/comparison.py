@@ -32,7 +32,8 @@ _NUMERIC = {'x0', 'y0', 'x1', 'y1', 'value'}
 # These mutate workflow, not scientific content. Sections are deliberately NOT
 # skipped: not_reported and clearing a section note must remain reviewable.
 _WORKFLOW = {'workspace.submit', 'paper.review_assigned', 'submission.request_changes',
-             'submission.approve', 'submission.approve_with_unresolved', 'assignment.recall'}
+             'submission.approve', 'submission.approve_with_unresolved', 'assignment.recall',
+             'workspace.metadata_revision_started'}
 
 
 class _IncompleteHistory(ValueError):
@@ -137,7 +138,7 @@ def _reverse(snapshot: dict, event: ChangeEvent) -> None:
     if _restore_bundle(snapshot, event):
         return
     before, after = event.before_value, event.after_value
-    if event.entity_type == 'paper' and event.action in {'bibliography.update', 'paper.update'}:
+    if event.entity_type == 'paper' and event.action in {'bibliography.update', 'paper.update', 'bibliography.ai_supplement'}:
         if not isinstance(before, dict) or not isinstance(after, dict) or set(before) != set(after):
             raise _IncompleteHistory('Incomplete historical bibliography')
         paper = snapshot.get('paper', {})

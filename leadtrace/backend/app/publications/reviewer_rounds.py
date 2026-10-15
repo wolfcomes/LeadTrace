@@ -6,7 +6,9 @@ from uuid import UUID
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from app.papers.metadata import ARTICLE_METADATA_DEFAULTS
+from app.audit.models import AuditEvent
+from app.audit.service import canonical_content_hash
+from app.papers.metadata import ARTICLE_METADATA_DEFAULTS, ArticleMetadata, validate_article_evidence_sources
 from app.papers.models import Paper
 from app.publications.models import AdminDecision
 from app.publications.schemas import (
@@ -52,6 +54,34 @@ def _metadata_only(parent: PaperSubmission, child: PaperSubmission) -> bool:
         and science(parent.snapshot) == science(child.snapshot))
 
 
+def _path_value(paper, path):
+    value = paper
+    for key in path:
+        if isinstance(value, dict):
+            value = value.get(key, ARTICLE_METADATA_DEFAULTS.get(key, []))
+        elif isinstance(value, list) and isinstance(key, int) and key < len(value):
+            value = value[key]
+        else:
+            return None
+    return value
+
+
+def _set_path(paper, path, value):
+    for key in path[:-1]:
+        paper = paper.setdefault(key, {}) if isinstance(paper, dict) else paper[key]
+    paper[path[-1]] = deepcopy(value)
+
+
+def _apply_metadata_paths(paper, changes):
+    if any(_path_value(paper, path) not in (before, after) for path, before, after in changes):
+        return False
+    # Evidence may only be appended if the historical entry still has the same
+    # identity. Its path is checked separately by the caller's audited delta.
+    for path, _before, after in changes:
+        _set_path(paper, path, after)
+    return True
+
+
 class RoundHistory:
     def __init__(self, session: Session, workspace_id: UUID):
         self.session = session
@@ -66,6 +96,9 @@ class RoundHistory:
         self.supplements: dict[UUID, list[PaperSubmission]] = {}
         self.origins: dict[UUID, PaperSubmission] = {}
         self.warnings: list[str] = []
+        self.metadata_audits = list(session.scalars(select(AuditEvent).where(
+            AuditEvent.action == 'paper.article_metadata_supplement',
+            AuditEvent.details['workspace_id'].astext == str(workspace_id))))
         for submission in self.submissions:
             boundary = self.boundaries.get(submission.id)
             if not boundary or (boundary.after_value or {}).get('metadata_supplement') is not True:
@@ -130,6 +163,115 @@ class RoundHistory:
                 baseline_submission_number=None, baseline_snapshot=origin.snapshot,
                 events=[_event(e) for e in self.events[start:end]], warnings=[]))
 
+    def metadata_delta(self, event, source):
+        """An AI label alone is never authority to hide a recorded change."""
+        from app.publications.draft_metadata import additive_metadata_delta, validated_runtime_provenance
+        try:
+            audits = [a for a in self.metadata_audits if a.details.get('change_event_id') == str(event.id)]
+            if len(audits) != 1:
+                raise ValueError('missing or ambiguous audit binding')
+            audit = audits[0]
+            details = audit.details
+            identity = details.get('request_identity', {})
+            if (event.actor_kind is not ChangeActorKind.AI or event.actor_id is not None
+                    or event.entity_type != 'paper' or event.entity_id != event.paper_id
+                    or audit.target_type != 'paper' or audit.target_id != event.paper_id
+                    or audit.paper_id != event.paper_id or audit.result != 'success'
+                    or details.get('source_sha256') != source['sha256']
+                    or details.get('workspace_id') != str(event.workspace_id)
+                    or details.get('event_payload_sha256') != canonical_content_hash({'before': event.before_value, 'after': event.after_value})
+                    or details.get('request_payload_sha256') != canonical_content_hash(identity)
+                    or identity.get('actor_id') != str(audit.actor_id)
+                    or identity.get('request_id') != audit.request_id
+                    or identity.get('workspace_id') != str(event.workspace_id)
+                    or identity.get('expected_snapshot_hash') != audit.before_hash
+                    or identity.get('provenance') != details.get('provenance')):
+                raise ValueError('audit identity or content mismatch')
+            validated_runtime_provenance(details['provenance'], source['sha256'])
+            changes = additive_metadata_delta(event.before_value, event.after_value)
+            # Use partial validation for the changed fields: an abstract/status
+            # companion can already exist outside this particular event.
+            class PartialMetadata(ArticleMetadata):
+                partial_metadata = True
+            PartialMetadata.model_validate(event.after_value)
+            validate_article_evidence_sources(event.after_value, page_count=source['page_count'], sha256=source['sha256'])
+            return changes
+        except (ValueError, TypeError, KeyError, AttributeError):
+            warning = f'Metadata supplement {event.id} cannot be verified; inspect its additions in the full submission or main comparison.'
+            if warning not in self.warnings:
+                self.warnings.append(warning)
+            return None
+
+    def rewind_metadata_before_review(self, baseline, events):
+        """Recover the AI-only start before the earliest human edit.
+
+        The ordinary reconstruction starts at that human edit and therefore
+        already contains earlier fills. Reverse their verified chain first so
+        chronological replay can show every evidence addition exactly once.
+        An unbound older event cannot be silently inherited into that baseline.
+        """
+        if baseline is None:
+            return None
+        result = deepcopy(baseline)
+        for event in reversed(events):
+            if event.action != 'bibliography.ai_supplement':
+                continue
+            changes = self.metadata_delta(event, baseline['source'])
+            if changes is None:
+                return None
+            if any(_path_value(result['paper'], path) != after for path, _, after in changes):
+                self.warnings.append(f'Metadata supplement {event.id} predates the Reviewer boundary but cannot be reversed safely; the comparison is unavailable.')
+                return None
+            for path, before, _after in reversed(changes):
+                _set_path(result['paper'], path, before)
+        return result
+
+    def draft_supplement_projection(self, events, phase, baseline, existing=None):
+        """Merge additive paths into a comparison baseline and one folded phase."""
+        if baseline is None:
+            # Still validate attribution so unavailable histories remain explicit.
+            for event in events:
+                if event.action == 'bibliography.ai_supplement':
+                    self.metadata_delta(event, self.submissions[0].snapshot['source'])
+            return None
+        starting = deepcopy(existing.comparison.baseline_snapshot if existing else baseline)
+        adjusted = deepcopy(baseline)
+        count = existing.count if existing else 0
+        projected_events = list(existing.comparison.events) if existing else []
+        latest_time = existing.submitted_at if existing else None
+        for event in events:
+            if event.action != 'bibliography.ai_supplement':
+                continue
+            changes = self.metadata_delta(event, baseline['source'])
+            if changes is None:
+                continue
+            # For evidence deltas, also check all non-evidence fields of the
+            # referenced historical entry before applying to a human baseline.
+            identity_ok = all(
+                {k: v for k, v in (_path_value(adjusted['paper'], path[:-1]) or {}).items() if k != 'evidence'}
+                == {k: v for k, v in (_path_value(event.before_value, path[:-1]) or {}).items() if k != 'evidence'}
+                for path, _, _ in changes if path[-1] == 'evidence')
+            if not identity_ok or not _apply_metadata_paths(adjusted['paper'], changes):
+                self.warnings.append(f'Metadata supplement {event.id} overlaps a prior human change; the original comparison is retained.')
+                continue
+            # A fill before the earliest Reviewer edit is already in the human
+            # starting state. Show its original empty value only in the folded
+            # supplement comparison, never remove it from the human baseline.
+            if not existing:
+                for path, before, after in changes:
+                    if _path_value(starting['paper'], path) == after:
+                        _set_path(starting['paper'], path, before)
+            count += 1
+            projected_events.append(_event(event))
+            latest_time = event.occurred_at
+        if count == 0:
+            return None
+        baseline['paper'] = deepcopy(adjusted['paper'])
+        return SupplementComparison(phase=phase, count=count, submitted_at=latest_time,
+            snapshot=adjusted, comparison=SubmissionComparisonResponse(kind='previous_submission',
+                baseline_submission_number=None, baseline_snapshot=starting,
+                events=projected_events, warnings=[]))
+
 
 def get_reviewer_round_review(session: Session, *, submission_id: UUID, actor
         ) -> tuple[SubmissionReview, ReviewerRoundsResponse]:
@@ -147,12 +289,12 @@ def get_reviewer_round_review(session: Session, *, submission_id: UUID, actor
     index = history.reviewer.index(selected)
     review = service.get_submission_review(session, submission_id=selected.id, actor=actor)
     supplements = []
+    selected_end = history.indices[history.boundaries[selected.id].id] + 1
     if index:
         previous = history.reviewer[index - 1]
         baseline = deepcopy(previous.snapshot)
         prefill = history.supplement_projection(previous, 'before_submission')
         if prefill:
-            supplements.append(prefill)
             # Use only verified metadata additions as the human-edit starting point.
             # The real preceding snapshot remains accessible through version navigation.
             for field in ARTICLE_METADATA_DEFAULTS:
@@ -164,8 +306,10 @@ def get_reviewer_round_review(session: Session, *, submission_id: UUID, actor
             if section:
                 baseline['sections'] = [deepcopy(section) if s['section_key'] == 'bibliography' else s for s in baseline['sections']]
         start = history.indices[history.boundaries[previous.id].id] + 1
-        end = history.indices[history.boundaries[selected.id].id] + 1
-        events = history.events[start:end]
+        events = history.events[start:selected_end]
+        prefill = history.draft_supplement_projection(events, 'before_submission', baseline, prefill)
+        if prefill:
+            supplements.append(prefill)
         human_events = tuple(e for e in events if e.actor_kind is ChangeActorKind.REVIEWER)
         review = replace(review, comparison_kind='previous_submission',
             baseline_submission_number=index, baseline_snapshot=baseline,
@@ -173,11 +317,25 @@ def get_reviewer_round_review(session: Session, *, submission_id: UUID, actor
             reviewer_diff=tuple(e for e in human_events if e.action != 'workspace.submit'),
             comparison_warnings=tuple(history.warnings), reviewer_submission=None, supplement_count=0)
     else:
-        review = replace(review, comparison_events=tuple(e for e in review.comparison_events
-            if e.actor_kind is ChangeActorKind.REVIEWER))
+        baseline = deepcopy(review.baseline_snapshot)
+        first_human = next((i for i, e in enumerate(history.events[:selected_end])
+            if e.actor_kind is ChangeActorKind.REVIEWER and e.action != 'workspace.submit'), selected_end)
+        baseline = history.rewind_metadata_before_review(baseline, history.events[:first_human])
+        prefill = history.draft_supplement_projection(history.events[:selected_end], 'before_submission', baseline)
+        if prefill:
+            supplements.append(prefill)
+        review = replace(review, baseline_snapshot=baseline,
+            comparison_kind=review.comparison_kind if baseline is not None else 'unavailable',
+            comparison_events=tuple(e for e in review.comparison_events if e.actor_kind is ChangeActorKind.REVIEWER),
+            comparison_warnings=tuple([*review.comparison_warnings, *history.warnings]))
     after = history.supplement_projection(selected, 'after_submission')
+    after_end = history.indices[history.boundaries[history.reviewer[index + 1].id].id] if index + 1 < len(history.reviewer) else len(history.events)
+    after_baseline = deepcopy(after.snapshot if after else selected.snapshot)
+    after = history.draft_supplement_projection(history.events[selected_end:after_end],
+        'after_submission', after_baseline, after)
     if after:
         supplements.append(after)
+    review = replace(review, comparison_warnings=tuple(dict.fromkeys([*review.comparison_warnings, *history.warnings])))
     return review, ReviewerRoundsResponse(requested_submission_id=submission_id,
         selected_round_number=index + 1, versions=versions, can_decide=history.can_decide(selected),
         supplements=supplements, warnings=history.warnings)

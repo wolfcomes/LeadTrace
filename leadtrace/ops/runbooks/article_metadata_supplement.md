@@ -1,8 +1,104 @@
-# Supplement article metadata in a pending submission
+# Supplement article metadata in existing drafts and submissions
 
 Use this operation only for an explicitly authorized administrative supplement.
 It is an operator service, not a Reviewer impersonation or a scientific approval.
-The normal Reviewer editor remains the path for editing an open draft.
+The normal Reviewer editor remains the path for human corrections. Select the
+operator entry below from the actual current workspace state; do not create a
+technical submission merely to fill an editable draft.
+
+## Add missing metadata to an editable draft
+
+For an authorized batch, sort successfully prefilled articles by paper key and
+freeze each workspace ID/version, `canonical_snapshot_hash(build_paper_snapshot(...))`,
+source SHA/page identity and existing article metadata. Keep already complete
+articles unchanged. Preserve each actual producer run, its fresh scientific
+review and the final accepted proposal in the ignored run directory. The
+supervisor reads structured outputs and identity metadata, not source pages or
+native scientific reasoning logs. Missing information stays absent; reported SI
+or bibliographic gaps do not justify invented fields.
+
+After a verified production backup and rehearsal, call this operator in one
+transaction with an enabled Admin actor:
+
+```python
+from app.publications.draft_metadata import supplement_draft_metadata
+
+receipt = supplement_draft_metadata(
+    session, workspace_id=workspace_id,
+    expected_workspace_version=baseline_version,
+    expected_snapshot_hash=baseline_hash,
+    updates=accepted_metadata_patch, reason=authorized_reason,
+    actor=admin, request_id=unique_request_id, provenance=runtime_provenance,
+)
+```
+
+The patch accepts only `ARTICLE_METADATA_DEFAULTS` fields. Scalars must be
+missing. A partial `research_profile` fills absent/empty groups; populated groups
+remain exact, with safe appended evidence as the only supported change. A full
+profile is also accepted when all populated groups are retained exactly. Do not
+add `molecular_forms`; retain existing legacy values. Populated PDB references
+allow appended evidence only, preserving every existing entry, key and order.
+New molecule types use the fixed main/feature vocabulary below with evidence.
+Article schemas, main-source SHA/pages and crop geometry are validated. New SI
+evidence requires a separately verified SI source and is not accepted by this
+main-source-only operator. Empty/default patches, overwrites, stale baselines,
+removed/read-only workspaces, corrupt sources and active AI/crop jobs are rejected.
+
+`provenance` is a valid `ProvenanceInput` tied to the actual run: source and final
+candidate file SHA, acceptance-evidence SHA, frozen guide-bundle SHA, adapter,
+model, completion time, eligible production stage and `completed`/`partial`
+outcome are required. Preserve truthful verification strength: Codex runs use
+`requested_only`; do not invent `request_observed`. Failed/mismatched runs cannot
+be delivered. The service records this evidence in audit without manufacturing
+an `AiProvenance` row. The operator may append separately verified repair and
+independent-review provenance in the same transaction. Use the receipt's version
+as the repair's applied version; independently record the final snapshot hash
+after provenance append, since `receipt.after_hash` describes the earlier
+post-metadata snapshot.
+
+The draft version increases once, bibliography becomes pending with its existing
+note preserved, and ordinary draft task status/assignee remain unchanged.
+Compound/Lineage data, viewing signatures, receipts and other sections stay
+unchanged. No submission or decision is created. An identical successful request
+returns its stored receipt; reusing its identity for a different payload fails.
+Let exceptions roll back the transaction and inspect a fresh baseline rather than
+resetting versions or forcing an old proposal onto new human edits.
+
+## Explicit supplemental revision of an already published article
+
+This requires separate user authorization. Supply `allow_published_revision=True`
+and the exact `expected_published_version_id` in addition to the frozen workspace
+hash/version above. The service requires the same approved workspace to match
+the current published scientific snapshot and rejects another active generation.
+It reopens that workspace/task as editing/assigned, retaining the original
+Reviewer, scientific IDs, confirmations and receipts. Versions increment normally.
+The current published pointer, frozen published snapshot, old submissions and
+real decisions are unchanged; public APIs continue to serve the old published
+version until the Reviewer submits and Admin approves the supplemental revision.
+An actual `workspace.metadata_revision_started` event/audit records this transition.
+
+## Approval display and attribution
+
+Draft delivery records `bibliography.ai_supplement` with AI actor kind and no
+human actor ID, plus an actual Admin `paper.article_metadata_supplement` audit
+binding the workspace, event ID, canonical before/after payload hash, source,
+request identity and validated runtime provenance. Only additive deltas with
+that exact verified binding are excluded from Reviewer modification counts.
+The projection applies changed field/group/evidence paths; it never copies an
+entire research profile over unrelated human changes. This works in the first
+Reviewer round even when the AI fill follows human edits, as well as later
+rounds. Human corrections after AI fill stay visible. Invalid/unbound histories
+warn and remain in the main comparison when a reliable baseline exists. If an
+unverified older event prevents safe starting-state reconstruction, the comparison
+is explicitly unavailable and the complete immutable submission stays inspectable.
+
+Supplement additions appear in one folded context per before/after phase,
+combined with existing verified technical supplement history. Additions to a
+returned or reopened draft can be inspected from the latest immutable Reviewer
+submission before resubmission; they do not become an approvable version.
+Reviewer-only navigation and legacy API shapes remain unchanged.
+
+## Supplement an existing pending submission
 
 1. Read fresh production submission/workspace metadata and record the submission
    ID, content hash, workspace version, DOI and article identity. Obtain missing

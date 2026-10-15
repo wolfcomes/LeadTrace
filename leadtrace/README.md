@@ -142,6 +142,13 @@ AI generation explicitly checks Abstract and records text/source or a reason for
 absence; deterministic checks report gaps without inventing content or blocking
 otherwise reviewable legacy drafts. Scientific approval still belongs to humans.
 
+Authorized metadata batches can fill existing drafts through the version/hash
+checked operator in [the metadata supplement runbook](ops/runbooks/article_metadata_supplement.md).
+It preserves populated human fields, assignment and scientific viewing receipts;
+AI additions are shown separately from human changes using audited field/group
+deltas. Explicit supplemental revisions retain the published snapshot until a
+new Reviewer submission is approved. This path needs no schema migration.
+
 ## Local verification
 
 Backend tests require an isolated PostgreSQL database whose name ends in
