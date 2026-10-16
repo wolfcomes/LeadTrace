@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-16",
+  "version": "2026-10-16.1",
   "sections": [
     {
       "id": "start",
@@ -182,7 +182,7 @@
             ],
             [
               "文章级分子标注",
-              "包括研究起点、后续优化起点和论文优选。先录入 Compound 和来源 Evidence，再点击“添加文章标注”，选择分子、类别、适用范围、依据和审核状态。"
+              "包括研究起点、枢纽分子和论文优选。先录入 Compound 和来源 Evidence，再点击“添加文章标注”，选择分子、类别、适用范围、依据和审核状态。"
             ],
             [
               "保存与区段确认",
@@ -208,7 +208,7 @@
             ],
             [
               "Article-level compound annotations",
-              "Study starts, subsequent optimization starts and paper-prioritized compounds. Create the Compound and source Evidence first, then Add article annotation and choose compound, role, scope, support and review status."
+              "Study starts, hub compounds and paper-prioritized compounds. Create the Compound and source Evidence first, then Add article annotation and choose compound, role, scope, support and review status."
             ],
             [
               "Saving and section confirmation",
@@ -574,10 +574,10 @@
       ]
     },
     {
-      "title_zh": "08 · Lineage：先分清 SAR 与合成",
-      "title_en": "08 · Lineage: distinguish SAR from synthesis",
-      "zh": "SAR 记录设计和结构比较，synthesis 记录实际合成路线。同一起点、同一优化主题的一组分子优先放在一张图；选出新的基准分子并围绕它开展新一组优化时，优先从该分子处拆分。短链不必逐步拆图，独立分支可以分开。拆分后复用 Compound，保留全部有依据的关系与证据，不按编号顺序或仅为连通而连边。",
-      "en": "SAR records design and structural comparison; synthesis records chemical routes. Keep a group with the same starting point and optimization theme together. Prefer splitting at a selected new baseline when it starts another group of optimization compounds. Keep short chains together; independent branches may be separated. Reuse Compounds and preserve all supported relationships and evidence; never connect by label order or merely for connectivity.",
+      "title_zh": "08 · Lineage：每张图按什么逻辑构建",
+      "title_en": "08 · Lineage: how to construct each graph",
+      "zh": "每张 SAR Lineage 图应围绕“共同起点或基准＋一个明确的优化主题＋有依据的分子关系”构建。先确定本图回答什么优化问题，再选择节点和边。同一基准下的一组探索优先放在一起；枢纽分子成为新基准并展开新一组优化时，优先在它处分图。synthesis 则按实际前体到产物的路线单独构建，不能混入 SAR 设计关系。",
+      "en": "Build each SAR Lineage around a common starting point or baseline, a clear optimization theme, and supported relationships. Define the question the graph answers before choosing nodes and edges. Keep exploration around the same baseline together; prefer splitting at a hub compound when it becomes the baseline for a new optimization group. Build synthesis Lineages separately from actual precursor-to-product routes, without mixing in SAR design relationships.",
       "id": "lineages",
       "blocks": [
         {
@@ -638,17 +638,26 @@
         {
           "type": "steps",
           "zh": [
-            "先在 Lineage 名称和描述中写清起点、优化主题与范围，例如“以 3 为起点的侧链优化”；合成路线另建 synthesis 组。不要用整篇文章题名代替分组理由。",
-            "把属于同一逻辑路线或比较系列的成员放在一起。图上分散时，先判断是否只是布局，再检查是否漏 Member/Edge、选错端点或混入独立路线。",
-            "若缺少来源支持，先写疑点；不要为了视觉连通而添加无依据的关系。如果确为独立系列/路线，再按科学逻辑分组。SAR 的证据可能只支持部分成对关系，应如实记录。",
-            "共同中间体通向多个产物时允许分叉，不要把所有产物串成一条线。跨组共用分子可复用同一个 Compound。"
+            "先分清图的类别。SAR 图表达设计演进或结构比较；synthesis 图表达实际合成转化。相同 Compound 可出现在两类图中，但不能把两种边混成一条优化线路。",
+            "先写一句本图要回答的问题：“以哪个分子／哪些有依据的共同基准为起点，围绕哪个位点、骨架或性质问题，比较哪一组分子？”例如“以 3 为基准的侧链优化，探索代谢稳定性”。名称和描述应能说明这件事。",
+            "按这个问题选成员。纳入同一组探索中有依据的分子，包括没有改善或未被优选的分子。不要把整篇文章、整张 Table 或所有结构相似的分子自动装进一张图；缺乏关系依据的分子仍保留在 Compound 清单。",
+            "逐条确定直接关系。若 2、3、4 都以 1 为基准，就画 1→2、1→3、1→4；若 5、6 是从 3 开展的新一轮设计，就从 3 连出。每条边核对端点、方向、关系含义和 Evidence；不凭编号、活性高低或结构相似性推断优化先后。",
+            "再判断是否分图。同一基准、同一主题的一组探索优先合并；独立主题形成各自完整的分支时可拆；选出枢纽分子并开展新一组优化时优先在该处分开。短链通常合并，依赖大量交叉比较或汇合的分支也优先保留在一起。具体情形见下表。",
+            "最后检查衔接与完整性。拆图时复用同一个 Compound，说明前后 Lineage 与枢纽分子的衔接，逐条核对没有漏 Member、Edge 或 Evidence；不能为连通或填满图而编造、重复关系。确认科学关系后再整理点线布局。"
           ],
           "en": [
-            "State the starting compound, optimization theme and scope in the Lineage name and description, for example “Side-chain optimization from 3.” Keep synthesis in a separate synthesis group. The paper title alone is not a grouping rationale.",
-            "Keep members of a logical route or comparison series together. For a fragmented diagram, distinguish layout spacing from missing members/edges, incorrect endpoints or unrelated routes.",
-            "Record missing support as uncertainty rather than inventing connecting edges. Split truly independent series/routes on scientific grounds. SAR evidence may support only some pairwise relationships.",
-            "Allow branching from a shared intermediate to several products; do not force products into a linear chain. Reuse the same Compound across relevant groups."
+            "Choose the graph category first. SAR graphs express design evolution or structural comparison; synthesis graphs express actual chemical transformations. The same Compound may occur in both categories, but do not mix the two kinds of edges into one optimization route.",
+            "Write the graph’s question first: which compound or supported common baselines start the group, which site/scaffold/property problem is explored, and which compounds are compared? For example, “Side-chain optimization from 3 to explore metabolic stability.” The name and description should explain this scope.",
+            "Select members for that question. Include supported members of the exploration group, including unsuccessful and non-prioritized compounds. Do not automatically place an entire paper, table or set of similar structures in one graph. Keep compounds without supported relationships in the Compound catalog.",
+            "Establish direct relationships individually. If 2, 3 and 4 all use 1 as baseline, draw 1→2, 1→3 and 1→4. If 5 and 6 are designed from 3, connect them from 3. Check each edge’s endpoints, direction, meaning and Evidence; labels, potency rankings and structural resemblance do not establish optimization chronology.",
+            "Then decide whether to split. Prefer one graph for exploration around the same baseline and theme. Independent themes forming complete branches may be split; prefer splitting at a hub compound when it starts a new optimization group. Keep short chains together, and usually retain branches with extensive cross-comparisons or convergence in one graph. See the decision table below.",
+            "Finally audit continuity and completeness. Reuse the same Compound across graphs, describe the adjoining Lineages and hub compound, and check for missing members, edges or evidence. Do not invent or duplicate relationships to connect or populate graphs. Arrange the compact graph only after establishing the science."
           ]
+        },
+        {
+          "type": "example",
+          "zh": "每张 SAR 图的描述模板（按原文填写）\n共同起点／基准：Compound …\n本图优化主题：…\n成员范围：…（注明系列、位点或相关表图）\n连边依据：作者明确的设计关系／有范围限定的 SAR 比较；对应 Evidence …\n与其他图的衔接：Compound … 为枢纽分子，承接／引出 Lineage …；没有衔接则说明不适用。\n\n若无法写清共同基准或主题，先重新检查分组；若关系证据不足，保留疑点，不靠布局制造完整路线。",
+          "en": "Description template for each SAR graph (complete from the source)\nShared start / baseline: Compound …\nOptimization theme: …\nMember scope: … (series, site or relevant tables/figures)\nEdge support: explicit author design relationships / scoped SAR comparisons; Evidence …\nConnections: Compound … is the hub linking from/to Lineage …; state not applicable if no connection exists.\n\nIf the baseline or theme cannot be explained, revisit grouping. If relationship support is missing, retain uncertainty rather than using layout to manufacture a complete route."
         },
         {
           "type": "note",
@@ -681,7 +690,7 @@
             [
               "只有连续两三步，虽有后续起点但没有独立的新一批探索",
               "通常合并",
-              "中间节点可同时承担后续优化起点的意义。"
+              "中间节点可同时承担枢纽分子的意义。"
             ],
             [
               "分支之间依赖交叉比较、汇合或多条跨组关系",
@@ -718,7 +727,7 @@
             [
               "A continuous two- or three-step chain without a separate new exploration batch",
               "Usually keep together",
-              "An intermediate can also serve as a subsequent optimization starting point."
+              "An intermediate can also serve as a hub compound."
             ],
             [
               "Branches depend on cross-comparisons, convergence or many cross-group relationships",
@@ -738,14 +747,14 @@
             "虚构拆分示例：作者先比较 1→2、1→3、1→4，再选 3 开展一批侧链优化。",
             "前图 A：1（root） → 2、3、4（本图 terminal）",
             "后图 B：3（root） → 5、6、7（本图 terminal）",
-            "3 是后续优化起点，两图使用同一个 Compound。",
+            "3 是枢纽分子，两图使用同一个 Compound。",
             "若作者明确优选 6，在文章信息中为 6 添加“论文优选”，不由末端位置推断。"
           ],
           "en": [
             "Fictional split: the authors compare 1→2, 1→3 and 1→4, then select 3 for a batch of side-chain optimization.",
             "Graph A: 1 (root) → 2, 3, 4 (local terminals)",
             "Graph B: 3 (root) → 5, 6, 7 (local terminals)",
-            "3 is the subsequent optimization starting point; both graphs use the same Compound.",
+            "3 is the hub compound; both graphs use the same Compound.",
             "If the authors prioritize 6, add its paper-prioritized article annotation; do not infer it from terminal position."
           ]
         },
@@ -781,8 +790,8 @@
       "id": "roles",
       "title_zh": "09 · Root、Intermediate、Terminal 与文章标注",
       "title_en": "09 · Local roles versus article annotations",
-      "zh": "root / intermediate / terminal 只描述当前图内的位置：root 包括初始起点，也包括本图从上一轮承接的后续优化起点；terminal 只是本图末端。“后续优化起点”描述分子的设计用途，“文章优选分子”对应文章信息中的“论文优选”。位置、用途和作者选择分别核对，可同时成立。",
-      "en": "Root / intermediate / terminal describe local graph position. A root may be an original start or a subsequent optimization starting point inherited from an earlier group; terminal means only the end of this graph. Subsequent-start significance describes design use, while paper-prioritized compounds use the existing article annotation. Check position, use and author choice separately; they can coexist.",
+      "zh": "root / intermediate / terminal 只描述当前图内的位置：root 包括初始起点，也包括本图从上一轮承接的枢纽分子；terminal 只是本图末端。“枢纽分子”描述分子的设计用途，“文章优选分子”对应文章信息中的“论文优选”。位置、用途和作者选择分别核对，可同时成立。",
+      "en": "Root / intermediate / terminal describe local graph position. A root may be an original start or a hub compound inherited from an earlier group; terminal means only the end of this graph. Hub-compound significance describes design use, while paper-prioritized compounds use the existing article annotation. Check position, use and author choice separately; they can coexist.",
       "blocks": [
         {
           "type": "table",
@@ -794,7 +803,7 @@
             ],
             [
               "root",
-              "当前图的局部起点或比较基准；可为初始起点，也可为上一轮选出的后续优化起点；允许多个 root",
+              "当前图的局部起点或比较基准；可为初始起点，也可为上一轮选出的枢纽分子；允许多个 root",
               "不自动等于整篇研究起点"
             ],
             [
@@ -823,7 +832,7 @@
               "不是所有 terminal，也不是你自己挑最低 IC50"
             ],
             [
-              "后续优化起点",
+              "枢纽分子",
               "原文支持以该分子为基准继续开展下一组优化；可兼有 root / intermediate / terminal 角色",
               "不是每个有出边的节点，也不自动等于文章优选"
             ]
@@ -865,11 +874,16 @@
               "Every terminal or the reviewer’s lowest-IC50 choice"
             ],
             [
-              "Subsequent optimization starting point",
+              "Hub compound",
               "Source-supported baseline for a further optimization group; compatible with root / intermediate / terminal position",
               "Not every node with an outgoing edge, and not automatically paper-prioritized"
             ]
           ]
+        },
+        {
+          "type": "note",
+          "zh": "“枢纽分子”指作者在研究过程中选定为后续一组优化基准、起承接作用的分子。这里的“枢纽”是设计过程中的作用，不按节点连线数量判断；不要求有多个分支，也不意味着活性最好或作者最终优选。",
+          "en": "A hub compound is a molecule the authors select during the study as the baseline for a further optimization group. “Hub” describes its role in the design process, not its number of graph connections. It need not have multiple branches, the best potency or final prioritized status."
         },
         {
           "type": "paragraph",
@@ -878,8 +892,8 @@
         },
         {
           "type": "note",
-          "zh": "网站已支持独立的“后续优化起点”文章标注。在“文章信息 → 添加文章标注”中选择该类别，关联同一个 Compound、填写后续优化的系列／Lineage 范围和作者选择理由，并选择来源 Evidence。标注会随该分子显示在 Compound 与 Lineage 图中；它不会自动拆图或修改 root / intermediate / terminal。跨图复用时，在 Lineage 描述补充前后衔接；同一分子可兼有“研究起点”“后续优化起点”“论文优选”，但每项都应有明确依据。",
-          "en": "The website supports a separate Subsequent optimization starting point article annotation. Under Article information → Add article annotation, select this role, link the existing Compound, specify the subsequent series/Lineage scope and author rationale, and choose source Evidence. The annotation appears with the compound in Compound views and Lineage graphs; it does not automatically split graphs or change root / intermediate / terminal. Describe links between successive groups in their Lineage descriptions. One compound may carry study-start, subsequent-start and paper-prioritized annotations, each with explicit support."
+          "zh": "网站已支持独立的“枢纽分子”文章标注。在“文章信息 → 添加文章标注”中选择该类别，关联同一个 Compound、填写后续优化的系列／Lineage 范围和作者选择理由，并选择来源 Evidence。标注会随该分子显示在 Compound 与 Lineage 图中；它不会自动拆图或修改 root / intermediate / terminal。跨图复用时，在 Lineage 描述补充前后衔接；同一分子可兼有“研究起点”“枢纽分子”“论文优选”，但每项都应有明确依据。",
+          "en": "The website supports a separate Hub compound article annotation. Under Article information → Add article annotation, select this role, link the existing Compound, specify the subsequent series/Lineage scope and author rationale, and choose source Evidence. The annotation appears with the compound in Compound views and Lineage graphs; it does not automatically split graphs or change root / intermediate / terminal. Describe links between successive groups in their Lineage descriptions. One compound may carry study-start, hub-compound and paper-prioritized annotations, each with explicit support."
         }
       ]
     },
@@ -1006,10 +1020,10 @@
       ]
     },
     {
-      "title_zh": "12 · 给研究起点／后续优化起点／论文优选添加依据",
-      "title_en": "12 · Support study starts, subsequent starts and prioritized compounds",
-      "zh": "在文章信息页关联本篇 Compound 与已有 Evidence，记录研究起点、后续优化起点或论文优选、适用系列/范围及作者选择理由。每类可有多个分子，同一分子可兼任。先在 Evidence 库保存原文依据；标注卡片保留 PDF 页码与原文。研究起点不等于每条合成路线的原料；论文优选不等于所有 terminal 或最低 IC50。待审核、已确认、待解决分别显示，阅读不会自动确认；未记录不代表文章没有此类分子。修改理由、身份或来源后重新核对，需核对提示要显式清除。",
-      "en": "On the article information page, link a Compound and existing Evidence, record its study-start, subsequent-start or paper-prioritized role, study/series scope and author rationale. Multiple compounds and coexisting annotations are allowed. Save source support in the Evidence library first; cards retain the PDF page and quotation. A study start is not every synthesis reagent; a prioritized compound is not every terminal or the lowest IC50. Draft, confirmed and unresolved states remain visible. Viewing never confirms; unrecorded does not mean absent. Recheck after changing identity, rationale or source, and explicitly clear resolved verification hints.",
+      "title_zh": "12 · 给研究起点／枢纽分子／论文优选添加依据",
+      "title_en": "12 · Support study starts, hub compounds and prioritized compounds",
+      "zh": "在文章信息页关联本篇 Compound 与已有 Evidence，记录研究起点、枢纽分子或论文优选、适用系列/范围及作者选择理由。每类可有多个分子，同一分子可兼任。先在 Evidence 库保存原文依据；标注卡片保留 PDF 页码与原文。研究起点不等于每条合成路线的原料；论文优选不等于所有 terminal 或最低 IC50。待审核、已确认、待解决分别显示，阅读不会自动确认；未记录不代表文章没有此类分子。修改理由、身份或来源后重新核对，需核对提示要显式清除。",
+      "en": "On the article information page, link a Compound and existing Evidence, record its study-start, hub-compound or paper-prioritized role, study/series scope and author rationale. Multiple compounds and coexisting annotations are allowed. Save source support in the Evidence library first; cards retain the PDF page and quotation. A study start is not every synthesis reagent; a prioritized compound is not every terminal or the lowest IC50. Draft, confirmed and unresolved states remain visible. Viewing never confirms; unrecorded does not mean absent. Recheck after changing identity, rationale or source, and explicitly clear resolved verification hints.",
       "id": "highlights",
       "blocks": [
         {
@@ -1029,8 +1043,8 @@
         },
         {
           "type": "paragraph",
-          "zh": "“后续优化起点”用于原文明确选出一个分子、以它为基准开展下一组优化的情况。适用范围写明后续系列或 Lineage 名称；理由解释为何选它、后续探索什么；Evidence 支持这个选择和承接关系。不要仅因有出边就添加标签。保存为待审核后，需要人工核实并设为已确认，或保留待解决及具体问题。相同分子同类别同范围不重复建立；新的范围可单独记录。",
-          "en": "Use Subsequent optimization starting point when the source explicitly selects a compound as the baseline for another optimization group. Name the subsequent series or Lineage in Scope, explain the choice and exploration in Rationale, and link Evidence supporting that transition. An outgoing edge alone is insufficient. Draft annotations require explicit human confirmation or an unresolved disposition with a specific issue. Do not duplicate the same compound, role and scope; a distinct scope may have its own annotation."
+          "zh": "“枢纽分子”用于原文明确选出一个分子、以它为基准开展下一组优化的情况。适用范围写明后续系列或 Lineage 名称；理由解释为何选它、后续探索什么；Evidence 支持这个选择和承接关系。不要仅因有出边就添加标签。保存为待审核后，需要人工核实并设为已确认，或保留待解决及具体问题。相同分子同类别同范围不重复建立；新的范围可单独记录。",
+          "en": "Use Hub compound when the source explicitly selects a compound as the baseline for another optimization group. Name the subsequent series or Lineage in Scope, explain the choice and exploration in Rationale, and link Evidence supporting that transition. An outgoing edge alone is insufficient. Draft annotations require explicit human confirmation or an unresolved disposition with a specific issue. Do not duplicate the same compound, role and scope; a distinct scope may have its own annotation."
         },
         {
           "type": "note",
@@ -1482,7 +1496,7 @@
           "type": "question",
           "zh": {
             "question": "Compound 3 在前图是 terminal，又被选作下一批优化起点，是否矛盾？",
-            "answer": "不矛盾。terminal 只指前图末端；若有新基准和新一批优化，可在后图复用同一个 Compound 3 并设为 root，描述衔接与依据。若只是短链，可留在同图作 intermediate。后续优化起点不自动等于论文优选；作者选择另核对。"
+            "answer": "不矛盾。terminal 只指前图末端；若有新基准和新一批优化，可在后图复用同一个 Compound 3 并设为 root，描述衔接与依据。若只是短链，可留在同图作 intermediate。枢纽分子不自动等于论文优选；作者选择另核对。"
           },
           "en": {
             "question": "Can Compound 3 be terminal in one graph and start the next optimization batch?",

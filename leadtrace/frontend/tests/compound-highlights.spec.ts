@@ -63,7 +63,7 @@ it('requires a fresh review disposition after editing a confirmed assertion',asy
 });
 
 
-it('creates an evidence-backed subsequent optimization start and displays its own bilingual label',async()=>{
+it('creates an evidence-backed hub compound and displays its own bilingual label',async()=>{
  const writes=mock();const wrapper=mount(host());await flushPromises();await fill(wrapper);
  const option=wrapper.find('option[value="optimization_start"]');expect(option.exists()).toBe(true);
  await wrapper.get('[data-highlight-role]').setValue('optimization_start');
@@ -71,7 +71,7 @@ it('creates an evidence-backed subsequent optimization start and displays its ow
  await wrapper.get('form').trigger('submit');await flushPromises();
  expect(writes[0].body).toMatchObject({role:'optimization_start',review_status:'draft',evidence_id:ids.evidence[0]});
  expect(wrapper.findAll('.highlight-card')).toHaveLength(1);
- expect(wrapper.text()).toContain('后续优化起点');
- setLocale('en');await flushPromises();expect(wrapper.text()).toContain('Subsequent optimization starting point');
+ expect(wrapper.text()).toContain('枢纽分子');
+ setLocale('en');await flushPromises();expect(wrapper.text()).toContain('Hub compound');
  wrapper.unmount();
 });

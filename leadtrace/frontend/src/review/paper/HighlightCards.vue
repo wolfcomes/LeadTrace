@@ -11,7 +11,7 @@ defineEmits<{edit:[item:DisplayHighlight];remove:[item:DisplayHighlight]}>();
 const roles=highlightRoles;
 </script>
 <template><section class="paper-highlights" data-paper-highlights>
-  <h2>{{ t('文章级分子标注') }}</h2><p>{{ t('研究起点、后续优化起点与论文优选由文章依据决定，独立于 Lineage 的 root / intermediate / terminal。') }}</p>
+  <h2>{{ t('文章级分子标注') }}</h2><p>{{ t('研究起点、枢纽分子与论文优选由文章依据决定，独立于 Lineage 的 root / intermediate / terminal。') }}</p>
   <section v-for="role in roles" :key="role"><h3>{{ t(highlightRole(role)) }}</h3>
     <p v-if="!items.some(x=>x.role===role)" class="section-empty">{{ t('尚未记录有来源依据的标注；不代表文章没有此类分子。') }}</p>
     <div class="highlight-card-grid"><article v-for="item in items.filter(x=>x.role===role)" :key="item.id" class="highlight-card" :data-highlight-status="item.review_status">

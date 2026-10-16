@@ -97,7 +97,7 @@ const stateLabels: Record<string, string> = {
   contradicts: "反驳",
   context: "上下文",
   study_start: "研究起点",
-  optimization_start: "后续优化起点",
+  optimization_start: "枢纽分子",
   paper_selected: "论文优选",
   unspecified: "待分类",
   sar: "SAR / 结构优化",

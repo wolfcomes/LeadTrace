@@ -47,7 +47,7 @@ test('article roles persist with evidence and independent status across article 
  await page.locator('[data-workspace-tab]').filter({hasText:/^Lineage$/}).click();
  const graph=page.locator('[data-lineage-graph]');await expect(graph).toHaveAttribute('data-node-count','2');
  await expect.poll(()=>graph.evaluate((el:any)=>(el._cyreg?.cy?.nodes().map((n:any)=>n.data('label'))??[]).join('|'))).toContain('Paper-prioritized compound ?');
- await expect.poll(()=>graph.evaluate((el:any)=>(el._cyreg?.cy?.nodes().map((n:any)=>n.data('label'))??[]).join('|'))).toContain('Subsequent optimization starting point');
+ await expect.poll(()=>graph.evaluate((el:any)=>(el._cyreg?.cy?.nodes().map((n:any)=>n.data('label'))??[]).join('|'))).toContain('Hub compound');
  expect(lineage.members[1]!.role).toBe('terminal');
  expect(highlights[1].review_status).toBe('draft');
 });

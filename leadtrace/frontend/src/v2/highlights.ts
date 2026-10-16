@@ -16,5 +16,5 @@ export const listHighlights=(id:string)=>apiRequest(`/api/v2/workspaces/${id}/co
 export const saveHighlight=(workspaceId:string,id:string|undefined,body:HighlightInput,version:number,csrfToken:string|null)=>apiRequest(id?`/api/v2/compound-highlights/${id}`:`/api/v2/workspaces/${workspaceId}/compound-highlights`,mutationSchema,{method:id?'PATCH':'POST',csrfToken,body:{...body,expected_workspace_version:version}});
 export const deleteHighlight=(id:string,version:number,csrfToken:string|null)=>apiRequest(`/api/v2/compound-highlights/${id}`,z.object({deleted_highlight_id:z.string().uuid(),workspace_version:z.number()}),{method:'DELETE',csrfToken,body:{expected_workspace_version:version}});
 export const highlightRoles = ['study_start','optimization_start','paper_selected'] as const;
-export const highlightRole=(role:DisplayHighlight['role'])=>({study_start:'研究起点',optimization_start:'后续优化起点',paper_selected:'论文优选'}[role]);
+export const highlightRole=(role:DisplayHighlight['role'])=>({study_start:'研究起点',optimization_start:'枢纽分子',paper_selected:'论文优选'}[role]);
 export const highlightStatus=(status:DisplayHighlight['review_status'])=>({draft:'标注待审核',reviewer_confirmed:'标注已确认',unresolved:'标注待解决'}[status]);

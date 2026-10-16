@@ -1,6 +1,6 @@
 # Reviewer illustrated handbook
 
-Version: 2026-10-16
+Version: 2026-10-16.1
 
 > Generated from `leadtrace/frontend/src/review/help/reviewer-guide.json`. Edit that source and run `python leadtrace/ops/reviewer/render_guide.py`.
 
@@ -48,7 +48,7 @@ Start with the Article information tab. It contains bibliography and Abstract, s
 | Bibliography and Abstract | Verify title, journal, year, DOI, PMID / PMCID and the original abstract. Use Edit bibliography; provenance and abstract check state are in bibliographic traceability details. Expand long abstracts. |
 | Six research-information modules | Molecule types, mechanisms, targets and genes, optimization goals, disease context, and PDB. Desktop modules use two columns and independent scrolling. Use Edit bibliography and expand the relevant module to edit. |
 | Evidence and sources | Expand evidence/identifier details to inspect quotations, locations and hints. Use the source-page or source-region controls; if no crop button is available, check the source link and page. |
-| Article-level compound annotations | Study starts, subsequent optimization starts and paper-prioritized compounds. Create the Compound and source Evidence first, then Add article annotation and choose compound, role, scope, support and review status. |
+| Article-level compound annotations | Study starts, hub compounds and paper-prioritized compounds. Create the Compound and source Evidence first, then Add article annotation and choose compound, role, scope, support and review status. |
 | Saving and section confirmation | Check the saved display. AI prefill, opening the page or saving an edit does not establish section review. Check new content and uncertainties, then explicitly confirm through the section review controls. Blank does not automatically mean unreported. |
 
 1. Match the title, DOI, journal and year, and confirm that Source PDF belongs to this paper. Stop work on a mismatched source and report it.
@@ -141,9 +141,9 @@ Evidence provides a checkable source. Use quoted text for verbatim wording, Capt
 
 > A missing generated crop does not mean missing source data; an existing image does not prove correctness. A table spanning pages may require several source locations, which should be identified in the reviewer note.
 
-## 08 · Lineage: distinguish SAR from synthesis
+## 08 · Lineage: how to construct each graph
 
-SAR records design and structural comparison; synthesis records chemical routes. Keep a group with the same starting point and optimization theme together. Prefer splitting at a selected new baseline when it starts another group of optimization compounds. Keep short chains together; independent branches may be separated. Reuse Compounds and preserve all supported relationships and evidence; never connect by label order or merely for connectivity.
+Build each SAR Lineage around a common starting point or baseline, a clear optimization theme, and supported relationships. Define the question the graph answers before choosing nodes and edges. Keep exploration around the same baseline together; prefer splitting at a hub compound when it becomes the baseline for a new optimization group. Build synthesis Lineages separately from actual precursor-to-product routes, without mixing in SAR design relationships.
 
 | Category | Question answered | Possible source support | Avoid |
 |---|---|---|---|
@@ -151,10 +151,23 @@ SAR records design and structural comparison; synthesis records chemical routes.
 | synthesis | Which precursors give which products? | Scheme arrows, methods and explicit multistep paths | Treating improved activity as synthesis |
 | Isolated control | Why is this molecule present without an optimization relationship? | Initial comparisons or an external reference standard | Inventing an edge merely to connect every node |
 
-1. State the starting compound, optimization theme and scope in the Lineage name and description, for example “Side-chain optimization from 3.” Keep synthesis in a separate synthesis group. The paper title alone is not a grouping rationale.
-2. Keep members of a logical route or comparison series together. For a fragmented diagram, distinguish layout spacing from missing members/edges, incorrect endpoints or unrelated routes.
-3. Record missing support as uncertainty rather than inventing connecting edges. Split truly independent series/routes on scientific grounds. SAR evidence may support only some pairwise relationships.
-4. Allow branching from a shared intermediate to several products; do not force products into a linear chain. Reuse the same Compound across relevant groups.
+1. Choose the graph category first. SAR graphs express design evolution or structural comparison; synthesis graphs express actual chemical transformations. The same Compound may occur in both categories, but do not mix the two kinds of edges into one optimization route.
+2. Write the graph’s question first: which compound or supported common baselines start the group, which site/scaffold/property problem is explored, and which compounds are compared? For example, “Side-chain optimization from 3 to explore metabolic stability.” The name and description should explain this scope.
+3. Select members for that question. Include supported members of the exploration group, including unsuccessful and non-prioritized compounds. Do not automatically place an entire paper, table or set of similar structures in one graph. Keep compounds without supported relationships in the Compound catalog.
+4. Establish direct relationships individually. If 2, 3 and 4 all use 1 as baseline, draw 1→2, 1→3 and 1→4. If 5 and 6 are designed from 3, connect them from 3. Check each edge’s endpoints, direction, meaning and Evidence; labels, potency rankings and structural resemblance do not establish optimization chronology.
+5. Then decide whether to split. Prefer one graph for exploration around the same baseline and theme. Independent themes forming complete branches may be split; prefer splitting at a hub compound when it starts a new optimization group. Keep short chains together, and usually retain branches with extensive cross-comparisons or convergence in one graph. See the decision table below.
+6. Finally audit continuity and completeness. Reuse the same Compound across graphs, describe the adjoining Lineages and hub compound, and check for missing members, edges or evidence. Do not invent or duplicate relationships to connect or populate graphs. Arrange the compact graph only after establishing the science.
+
+```text
+Description template for each SAR graph (complete from the source)
+Shared start / baseline: Compound …
+Optimization theme: …
+Member scope: … (series, site or relevant tables/figures)
+Edge support: explicit author design relationships / scoped SAR comparisons; Evidence …
+Connections: Compound … is the hub linking from/to Lineage …; state not applicable if no connection exists.
+
+If the baseline or theme cannot be explained, revisit grouping. If relationship support is missing, retain uncertainty rather than using layout to manufacture a complete route.
+```
 
 > The key split criterion is a new optimization baseline followed by a new group of exploration, not every new table, objective or branch. One root may support several branches, and a graph may have several source-supported roots.
 
@@ -163,7 +176,7 @@ SAR records design and structural comparison; synthesis records chemical routes.
 | One start, one site/theme, a batch of substituent changes | Keep together | Retain the common baseline and parallel comparisons. |
 | One start, distinct sites/scaffolds, each forming an independent optimization group | May split by branch | Each group needs its own theme and scope; a single substituent change is insufficient. |
 | One or several compounds selected from a batch each start another optimization batch | Prefer splitting at the new baseline | Keep incoming relationships in the preceding graph; reuse the compound as root in the next. |
-| A continuous two- or three-step chain without a separate new exploration batch | Usually keep together | An intermediate can also serve as a subsequent optimization starting point. |
+| A continuous two- or three-step chain without a separate new exploration batch | Usually keep together | An intermediate can also serve as a hub compound. |
 | Branches depend on cross-comparisons, convergence or many cross-group relationships | Prefer keeping together | Do not obscure key connections; each relationship still needs support. |
 | Only a different Table/Scheme, more nodes, or an objective shift from potency to PK | Insufficient on its own | Check the baseline, theme and relationships; address crowding through layout first. |
 
@@ -171,7 +184,7 @@ SAR records design and structural comparison; synthesis records chemical routes.
 Fictional split: the authors compare 1→2, 1→3 and 1→4, then select 3 for a batch of side-chain optimization.
 Graph A: 1 (root) → 2, 3, 4 (local terminals)
 Graph B: 3 (root) → 5, 6, 7 (local terminals)
-3 is the subsequent optimization starting point; both graphs use the same Compound.
+3 is the hub compound; both graphs use the same Compound.
 If the authors prioritize 6, add its paper-prioritized article annotation; do not infer it from terminal position.
 ```
 
@@ -190,7 +203,7 @@ A branching example Lineage. Check its category and grouping rationale, then mem
 
 ## 09 · Local roles versus article annotations
 
-Root / intermediate / terminal describe local graph position. A root may be an original start or a subsequent optimization starting point inherited from an earlier group; terminal means only the end of this graph. Subsequent-start significance describes design use, while paper-prioritized compounds use the existing article annotation. Check position, use and author choice separately; they can coexist.
+Root / intermediate / terminal describe local graph position. A root may be an original start or a hub compound inherited from an earlier group; terminal means only the end of this graph. Hub-compound significance describes design use, while paper-prioritized compounds use the existing article annotation. Check position, use and author choice separately; they can coexist.
 
 | Name | How to decide | Does not mean |
 |---|---|---|
@@ -200,11 +213,13 @@ Root / intermediate / terminal describe local graph position. A root may be an o
 | unspecified | Role not yet determined; further review needed | A permanent shortcut around review |
 | Study starting point | An author-supported starting molecule for this study/series | Every reagent or first material in a synthesis |
 | Paper-prioritized compound | A molecule the authors explicitly choose to advance, with rationale | Every terminal or the reviewer’s lowest-IC50 choice |
-| Subsequent optimization starting point | Source-supported baseline for a further optimization group; compatible with root / intermediate / terminal position | Not every node with an outgoing edge, and not automatically paper-prioritized |
+| Hub compound | Source-supported baseline for a further optimization group; compatible with root / intermediate / terminal position | Not every node with an outgoing edge, and not automatically paper-prioritized |
+
+> A hub compound is a molecule the authors select during the study as the baseline for a further optimization group. “Hub” describes its role in the design process, not its number of graph connections. It need not have multiple branches, the best potency or final prioritized status.
 
 The same Compound can have different roles in different Lineages. A study can have several starts and priorities, and one molecule may carry both annotations. The key is the authors’ scope and rationale, not row order.
 
-> The website supports a separate Subsequent optimization starting point article annotation. Under Article information → Add article annotation, select this role, link the existing Compound, specify the subsequent series/Lineage scope and author rationale, and choose source Evidence. The annotation appears with the compound in Compound views and Lineage graphs; it does not automatically split graphs or change root / intermediate / terminal. Describe links between successive groups in their Lineage descriptions. One compound may carry study-start, subsequent-start and paper-prioritized annotations, each with explicit support.
+> The website supports a separate Hub compound article annotation. Under Article information → Add article annotation, select this role, link the existing Compound, specify the subsequent series/Lineage scope and author rationale, and choose source Evidence. The annotation appears with the compound in Compound views and Lineage graphs; it does not automatically split graphs or change root / intermediate / terminal. Describe links between successive groups in their Lineage descriptions. One compound may carry study-start, hub-compound and paper-prioritized annotations, each with explicit support.
 
 ## 10 · Editing a Lineage in graph and forms
 
@@ -242,16 +257,16 @@ Keep graph labels short and specific to the edge, such as “side-chain replacem
 
 Use the Edge tab to check endpoints, meaning and disposition one relationship at a time. Sources justify the edge; a tidy graph does not.
 
-## 12 · Support study starts, subsequent starts and prioritized compounds
+## 12 · Support study starts, hub compounds and prioritized compounds
 
-On the article information page, link a Compound and existing Evidence, record its study-start, subsequent-start or paper-prioritized role, study/series scope and author rationale. Multiple compounds and coexisting annotations are allowed. Save source support in the Evidence library first; cards retain the PDF page and quotation. A study start is not every synthesis reagent; a prioritized compound is not every terminal or the lowest IC50. Draft, confirmed and unresolved states remain visible. Viewing never confirms; unrecorded does not mean absent. Recheck after changing identity, rationale or source, and explicitly clear resolved verification hints.
+On the article information page, link a Compound and existing Evidence, record its study-start, hub-compound or paper-prioritized role, study/series scope and author rationale. Multiple compounds and coexisting annotations are allowed. Save source support in the Evidence library first; cards retain the PDF page and quotation. A study start is not every synthesis reagent; a prioritized compound is not every terminal or the lowest IC50. Draft, confirmed and unresolved states remain visible. Viewing never confirms; unrecorded does not mean absent. Recheck after changing identity, rationale or source, and explicitly clear resolved verification hints.
 
 1. Read the Introduction, Results/Discussion and conclusion for explicit starting-point or advancement statements; verify labels and aliases against figures/tables.
 2. Save the quotation and physical PDF page in Evidence, then choose Add article annotation on Article information.
 3. Select the Compound, role, scope (whole study or Series A), author rationale and source Evidence. Potency, selectivity, PK, brain exposure or in vivo effects belong in the rationale only when supported.
 4. Confirm only after verification. Use unresolved with an explanation for identity/support conflicts. Recheck after changing identity, rationale or evidence rather than carrying forward the old judgment.
 
-Use Subsequent optimization starting point when the source explicitly selects a compound as the baseline for another optimization group. Name the subsequent series or Lineage in Scope, explain the choice and exploration in Rationale, and link Evidence supporting that transition. An outgoing edge alone is insufficient. Draft annotations require explicit human confirmation or an unresolved disposition with a specific issue. Do not duplicate the same compound, role and scope; a distinct scope may have its own annotation.
+Use Hub compound when the source explicitly selects a compound as the baseline for another optimization group. Name the subsequent series or Lineage in Scope, explain the choice and exploration in Rationale, and link Evidence supporting that transition. An outgoing edge alone is insufficient. Draft annotations require explicit human confirmation or an unresolved disposition with a specific issue. Do not duplicate the same compound, role and scope; a distinct scope may have its own annotation.
 
 > The most potent in vitro compound may have been abandoned for poor exposure. An external drug comparator appearing in Figure 1 is not automatically a study starting point.
 
