@@ -97,3 +97,36 @@ def test_repair_and_accept_require_admin_csrf_and_saved_review(workspace_fixture
     assert f.client.post(url+'/repair',json=repair).status_code==403
     assert f.client.post(url+'/accept',json=accept).status_code==403
     settings.ai_task_worker_enabled=False
+
+
+def test_revision_api_uses_current_draft_and_retry_retains_instructions(workspace_fixture,monkeypatch,tmp_path):
+    from app.ai_prefill.service import AiPrefillService
+    from app.ai_prefill.contracts import AiPrefillPayload
+    from app.ai_tasks.models import AiTask
+    from app.workspaces.models import PaperWorkspace, WorkspaceState
+    from uuid import UUID
+    f=workspace_fixture;settings=f.client.app.state.settings
+    settings.ai_task_worker_enabled=True;settings.ai_task_root=tmp_path/'jobs'
+    settings.ai_task_presets=[{'id':'synthetic','label':'Test','adapter':'codex','model':'gpt-test','efforts':['high'],'default_effort':'high'}]
+    monkeypatch.setattr('app.ai_tasks.service.shutil.which',lambda _: '/bin/synthetic')
+    token=f.login('workspace.admin');headers={'X-CSRF-Token':token}
+    with f.session_factory.begin() as s:
+        service=AiPrefillService();run=service.queue(s,workspace_id=f.workspace_id,requested_by_id=f.admin_id,engine='synthetic',engine_version='1').run
+        assert service.apply(s,run_id=run.id,payload=AiPrefillPayload.model_validate({'schema_version':1,'compounds':[{'ref':'c1','compound_label':'1','structure':{'smiles':'C'}}]})).applied
+        version=s.get(PaperWorkspace,f.workspace_id).version
+    url=f'/api/v2/admin/papers/{f.paper_id}/ai-tasks'
+    body={'action':'revise','instructions':'Check lineage scope','preset_id':'synthetic','reasoning_effort':'high','expected_workspace_id':str(f.workspace_id),'expected_task_version':1,'expected_workspace_version':version,'idempotency_key':str(uuid4())}
+    assert f.client.post(url,json=body).status_code==403
+    assert f.client.post(url,json={**body,'instructions':' '},headers=headers).status_code==422
+    assert f.client.post(url,json={**body,'expected_workspace_version':version-1},headers=headers).status_code==409
+    response=f.client.post(url,json=body,headers=headers);assert response.status_code==200,response.text
+    job=response.json();assert job['action']=='revise' and not job['can_accept']
+    assert f.client.post(url,json=body,headers=headers).json()['id']==job['id']
+    assert f.client.post(url,json={**body,'instructions':'Different instruction'},headers=headers).status_code==409
+    f.client.post(f"/api/v2/admin/ai-tasks/{job['id']}/cancel",headers=headers)
+    retried=f.client.post(f"/api/v2/admin/ai-tasks/{job['id']}/retry",headers=headers,json={'idempotency_key':str(uuid4())})
+    assert retried.status_code==200,retried.text
+    with f.session_factory() as s:assert s.get(AiTask,UUID(retried.json()['id'])).config['instructions']==body['instructions']
+    token=f.login('workspace.reviewer')
+    assert f.client.post(url,json=body,headers={'X-CSRF-Token':token}).status_code==403
+    settings.ai_task_worker_enabled=False

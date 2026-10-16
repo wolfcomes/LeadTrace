@@ -19,7 +19,7 @@ export const aiJobSchema = z.object({
   paper_title: z.string(),
   workspace_id: z.string().nullable(),
   workspace_version: z.number().nullable(),
-  action: z.enum(["prefill", "review", "repair"]),
+  action: z.enum(["prefill", "review", "repair", "revise"]),
   preset_id: z.string(),
   model: z.string(),
   reasoning_effort: z.string(),
@@ -38,6 +38,7 @@ export const aiJobSchema = z.object({
   result_summary: z.record(z.unknown()),
   can_deliver: z.boolean().optional(),
   can_repair: z.boolean().optional(),
+  can_revise: z.boolean().optional(),
   can_accept: z.boolean().optional(),
   can_cancel: z.boolean(),
   can_retry: z.boolean(),
@@ -89,7 +90,8 @@ export type AiJob = z.infer<typeof aiJobSchema>;
 export type AiTaskPage = z.infer<typeof aiTaskPageSchema>;
 export type PaperManagement = z.infer<typeof paperManagementSchema>;
 export interface StartAiTask {
-  action: "prefill" | "review";
+  action: "prefill" | "review" | "revise";
+  instructions?: string;
   preset_id: string;
   reasoning_effort: string;
   timeout_seconds: number;
@@ -205,7 +207,7 @@ export const aiRepairProposalSchema = z.object({
   remaining_findings: z.number(),
 });
 export const aiReviewReportSchema = z.object({
-  report_kind: z.enum(['prefill', 'review', 'repair']).optional(),
+  report_kind: z.enum(['prefill', 'review', 'repair', 'revise']).optional(),
   repair_proposal_status: z.enum(['ready', 'no_changes', 'unavailable']).nullish(),
   repair_proposal_errors: z.array(z.string()).optional(),
   repair_proposal_reason: z.string().nullish(),

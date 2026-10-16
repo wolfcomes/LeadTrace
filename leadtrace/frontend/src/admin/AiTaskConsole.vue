@@ -45,10 +45,21 @@ const recallSnapshot = ref<PaperManagement>();
 const confirmKey = ref("");
 const reports = ref<Record<string, AiReviewReport>>({});
 const reportLoading = ref("");
+const revisionSnapshot = ref<PaperManagement>();
+const revisionInstructions = ref("");
+const revisionModel = ref("");
+const revisionEffort = ref("");
+const revisionMinutes = ref(60);
+const revisionPreset = computed(() => presets.value.find(p => p.id === revisionModel.value));
+watch(revisionModel, () => setPresetDefault(revisionModel.value, revisionEffort));
+const canStartRevision = computed(() => !busy.value && Boolean(revisionSnapshot.value) &&
+  revisionInstructions.value.trim().length > 0 && revisionInstructions.value.length <= 12000 &&
+  modelReady(revisionPreset.value, revisionEffort.value) && Number.isInteger(revisionMinutes.value) &&
+  revisionMinutes.value >= 1 && revisionMinutes.value <= 120);
 const dialogElement = ref<HTMLElement>();
 let previousFocus: HTMLElement | null = null;
 const dialogOpen = computed(() =>
-  Boolean(resetSnapshot.value || recallSnapshot.value),
+  Boolean(resetSnapshot.value || recallSnapshot.value || revisionSnapshot.value),
 );
 watch(dialogOpen, async (open) => {
   if (open)
@@ -60,7 +71,7 @@ watch(dialogOpen, async (open) => {
   if (open)
     (
       dialogElement.value?.querySelector<HTMLElement>(
-        "input, button:not([disabled])",
+        "textarea, input, button:not([disabled])",
       ) ?? dialogElement.value
     )?.focus();
   else previousFocus?.focus();
@@ -70,12 +81,13 @@ function dialogKeydown(event: KeyboardEvent): void {
     event.preventDefault();
     resetSnapshot.value = undefined;
     recallSnapshot.value = undefined;
+    revisionSnapshot.value = undefined;
     return;
   }
   if (event.key !== "Tab" || !dialogElement.value) return;
   const focusable = Array.from(
     dialogElement.value.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
     ),
   );
   const first = focusable[0],
@@ -295,7 +307,10 @@ async function load(initial = false): Promise<void> {
         : Promise.resolve(undefined),
     ]);
     if (disposed || token !== generation) return;
+    const delivered = page.items.some(job => job.action === "revise" && job.delivery_state === "applied" &&
+      payload.value?.items.some(old => old.id === job.id && old.delivery_state !== "applied"));
     payload.value = page;
+    if (delivered) emit("changed");
     management.value = article;
     if (!concurrencyDirty.value)
       concurrency.value = page.settings.max_concurrent;
@@ -327,6 +342,7 @@ watch(
     loading.value = true;
     resetSnapshot.value = undefined;
     recallSnapshot.value = undefined;
+    revisionSnapshot.value = undefined;
     void load(true);
   },
   { immediate: true },
@@ -404,6 +420,46 @@ async function start(action: "prefill" | "review") {
     });
     requestKeys.delete(signature);
   }, "AI 任务已进入队列。");
+}
+async function openRevision(job: AiJob) {
+  if (busy.value || paperIsActive(job)) return;
+  const token = generation;
+  busy.value = true; error.value = "";
+  try {
+    const current = await fetchPaperManagement(job.paper_id);
+    if (disposed || token !== generation) return;
+    if (!current.workspace_id || current.workspace_id !== job.workspace_id ||
+        !["assigned", "unassigned", "changes_requested"].includes(current.assignment_state)) {
+      error.value = t("当前草稿不可编辑，请刷新后重试。"); return;
+    }
+    revisionInstructions.value = "";
+    revisionModel.value = presets.value.find(p => p.id === job.preset_id && p.available)?.id ?? presets.value.find(p => p.available)?.id ?? "";
+    setPresetDefault(revisionModel.value, revisionEffort);
+    revisionMinutes.value = 60;
+    revisionSnapshot.value = current;
+  } catch (reason) { error.value = describeError(reason); }
+  finally { busy.value = false; }
+}
+async function startRevision() {
+  const current = revisionSnapshot.value;
+  if (!canStartRevision.value || !current) return;
+  const input: Omit<StartAiTask, "idempotency_key"> = {
+    action: "revise", instructions: revisionInstructions.value.trim(),
+    preset_id: revisionModel.value, reasoning_effort: revisionEffort.value,
+    timeout_seconds: revisionMinutes.value * 60,
+    expected_workspace_id: current.workspace_id, expected_workspace_version: current.workspace_version,
+    expected_task_version: current.task_version,
+  };
+  const signature = JSON.stringify([current.paper_id, input]);
+  await mutate(async () => {
+    await createAiTask(current.paper_id, {...input, idempotency_key: keyFor(signature)});
+    requestKeys.delete(signature);
+    revisionSnapshot.value = undefined;
+  }, "AI 修订已进入队列，完成后自动更新草稿。");
+}
+function revisionCounts(job: AiJob) {
+  const counts = (job.result_summary.revision_changes as {counts?: Record<string, {added: number; updated: number; removed: number}>} | undefined)?.counts;
+  return Object.values(counts ?? {}).reduce((sum, x) => ({added: sum.added + x.added, updated: sum.updated + x.updated, removed: sum.removed + x.removed}), {added: 0, updated: 0, removed: 0});
 }
 function cancel(job: AiJob) {
   void mutate(
@@ -765,7 +821,7 @@ function summary(job: AiJob): [string, string][] {
               <RouterLink v-if="!paperId" :to="`/admin/papers/${job.paper_id}`"
                 >{{ job.paper_key }} · {{ job.paper_title }}</RouterLink
               ><strong
-                >{{ t(job.action === "repair" ? "修补方案" : job.action === "prefill" ? "首次生成" : "独立检查") }} ·
+                >{{ t(job.action === "revise" ? "AI 修订" : job.action === "repair" ? "修补方案" : job.action === "prefill" ? "首次生成" : "独立检查") }} ·
                 {{ job.model }} / {{ job.reasoning_effort }}</strong
               >
             </div>
@@ -837,9 +893,9 @@ function summary(job: AiJob): [string, string][] {
             </div>
           </dl>
           <div v-if="reports[job.id]" class="ai-console-report">
-            <h4>{{ t(job.action === 'repair' ? '修补方案' : job.action === 'prefill' ? '生成与自检报告' : '独立复核报告') }}</h4>
+            <h4>{{ t(job.action === 'revise' ? '修订与自检报告' : job.action === 'repair' ? '修补方案' : job.action === 'prefill' ? '生成与自检报告' : '独立复核报告') }}</h4>
             <p v-if="job.action === 'prefill'" class="inline-feedback is-warning">{{ t('导入草稿不代表科学审核通过') }}</p>
-            <p>{{ t(job.action === 'prefill' ? '写入后工作区版本' : '复核版本') }} · {{ reports[job.id].reviewed_workspace_version }}</p>
+            <p>{{ t(job.action !== 'review' ? '写入后工作区版本' : '复核版本') }} · {{ reports[job.id].reviewed_workspace_version }}</p>
             <AiReportOverview :report="reports[job.id]" />
             <template v-if="job.can_accept && reports[job.id].proposal">
               <p class="inline-feedback">{{ t('接受后将把以上修改写入草稿，不重新调用模型。草稿版本已变化时会拒绝写入，保留人工修改。') }}</p>
@@ -847,7 +903,13 @@ function summary(job: AiJob): [string, string][] {
             </template>
           </div>
           <p v-if="job.can_deliver" class="inline-feedback">{{ t("使用已保存的生成结果，不重新调用模型。导入前会重新检查当前草稿，保留人工修改。") }}</p>
+          <p v-if="job.action === 'revise' && job.result_summary.revision_changes" data-revision-summary class="inline-feedback">
+            {{ t('新增') }} {{ revisionCounts(job).added }} · {{ t('修改') }} {{ revisionCounts(job).updated }} · {{ t('删除') }} {{ revisionCounts(job).removed }}
+            <span v-if="job.delivery_state === 'applied'"> · {{ t('受影响内容需要重新查看，仍需人工审核。') }}</span>
+            <span v-else> · {{ t('没有实际变更，草稿和查看状态保持不变。') }}</span>
+          </p>
           <div class="ai-console-actions">
+            <button v-if="job.can_revise" class="button-secondary" data-open-revision :disabled="busy || paperIsActive(job)" @click="openRevision(job)">{{ t('AI 修订') }}</button>
             <button v-if="job.can_deliver" class="button-primary" data-deliver-job :disabled="busy" @click="deliver(job)">{{ t("重新导入已生成结果") }}</button>
             <button
               v-if="job.result_summary.report_available"
@@ -856,7 +918,7 @@ function summary(job: AiJob): [string, string][] {
               :disabled="Boolean(reportLoading)"
               @click="viewReport(job)"
             >
-              {{ t(job.action === "repair" ? (reports[job.id] ? "收起修补方案" : "查看修补方案") : job.action === "prefill" ? (reports[job.id] ? "收起生成报告" : "查看生成报告") : (reports[job.id] ? "收起复核报告" : "查看复核报告")) }}</button
+              {{ t(job.action === "revise" ? (reports[job.id] ? "收起修订报告" : "查看修订报告") : job.action === "repair" ? (reports[job.id] ? "收起修补方案" : "查看修补方案") : job.action === "prefill" ? (reports[job.id] ? "收起生成报告" : "查看生成报告") : (reports[job.id] ? "收起复核报告" : "查看复核报告")) }}</button
             ><button
               v-if="job.can_cancel"
               class="button-secondary"
@@ -935,19 +997,39 @@ function summary(job: AiJob): [string, string][] {
       </section>
     </template>
     <div
-      v-if="resetSnapshot || recallSnapshot"
+      v-if="dialogOpen"
       class="ai-console-dialog-backdrop"
       @keydown="dialogKeydown"
     >
       <section
         ref="dialogElement"
         class="panel ai-console-dialog"
+        :class="{ 'ai-revision-dialog': revisionSnapshot }"
         role="dialog"
         tabindex="-1"
         aria-modal="true"
-        :aria-label="t(resetSnapshot ? '归档并清空工作区' : '收回分配')"
+        :aria-label="t(revisionSnapshot ? 'AI 修订' : resetSnapshot ? '归档并清空工作区' : '收回分配')"
       >
-        <template v-if="resetSnapshot"
+        <template v-if="revisionSnapshot">
+          <h2>{{ t('AI 修订') }} · {{ revisionSnapshot.paper_key }}</h2>
+          <p>{{ t('基于当前 Reviewer 草稿启动新会话，完成后自动更新变化部分；受影响内容需要重新查看。') }}</p>
+          <p>{{ t('目标版本') }} · {{ revisionSnapshot.workspace_version }}</p>
+          <label class="form-field">{{ t('修订要求') }}
+            <textarea v-model="revisionInstructions" data-revision-instructions rows="6" maxlength="12000" :disabled="busy" :placeholder="t('例如：按最新规则检查 Lineage 分图和枢纽分子，保留未受影响的人工修改。')" />
+          </label>
+          <div class="ai-revision-settings">
+          <label class="form-field">{{ t('模型') }}<select v-model="revisionModel" data-revision-model :disabled="busy"><option v-for="p in presets" :key="p.id" :value="p.id" :disabled="!p.available">{{ p.label }}</option></select></label>
+          <label class="form-field">{{ t('推理强度') }}<select v-model="revisionEffort" data-revision-effort :disabled="busy"><option v-for="effort in revisionPreset?.efforts ?? []" :key="effort" :value="effort">{{ effort }}</option></select></label>
+          <label class="form-field">{{ t('单阶段运行时限（分钟）') }}<input v-model.number="revisionMinutes" type="number" min="1" max="120" :disabled="busy" /></label>
+          </div>
+          <p class="inline-feedback">{{ t('运行期间草稿如有变化，将保留 AI 结果而不覆盖。已提交和已发布版本不会更新。') }}</p>
+          <p v-if="error" role="alert" class="inline-feedback is-error">{{ error }}</p>
+          <div class="ai-console-actions">
+            <button class="button-secondary" :disabled="busy" @click="revisionSnapshot = undefined">{{ t('取消') }}</button>
+            <button class="button-primary" data-start-revision :disabled="!canStartRevision" @click="startRevision">{{ t('开始修订并自动更新草稿') }}</button>
+          </div>
+        </template>
+        <template v-else-if="resetSnapshot"
           ><h2>{{ t("归档并清空工作区") }}</h2>
           <p>
             {{

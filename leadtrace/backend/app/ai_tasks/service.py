@@ -88,7 +88,7 @@ def enqueue(session:Session,settings:Settings,*,paper_id:UUID,actor_id:UUID,requ
         task=session.get(ReviewTask,workspace.review_task_id)
     elif (request.expected_workspace_id!=workspace.id or request.expected_workspace_version!=workspace.version or request.expected_task_version!=task.version):
         raise TaskError('WORKSPACE_CHANGED','The working draft changed; reload before starting')
-    if workspace.state!=WorkspaceState.EDITING:raise TaskError('WORKSPACE_READ_ONLY','The current draft is not editable')
+    if workspace.state!=WorkspaceState.EDITING or task.status.value in {'archived','approved','submitted'}:raise TaskError('WORKSPACE_READ_ONLY','The current draft is not editable')
     if request.action=='prefill':
         reason=AiPrefillService().unavailable_reason(session,workspace=workspace)
         if reason:raise TaskError('FIRST_GENERATION_REQUIRES_BLANK','First generation requires an untouched blank draft; archive and restart to generate again')
@@ -101,9 +101,9 @@ def enqueue(session:Session,settings:Settings,*,paper_id:UUID,actor_id:UUID,requ
         idempotency_key=str(request.idempotency_key),request_digest=digest,action=request.action,
         preset_id=preset['id'],adapter=preset['adapter'],model=preset['model'],reasoning_effort=request.reasoning_effort,
         workspace_version=workspace.version,task_version=task.version,source_sha256=source.sha256,
-        timeout_seconds=request.timeout_seconds,state='queued',delivery_state='pending' if request.action=='prefill' else 'not_applicable',stage='queued',
+        timeout_seconds=request.timeout_seconds,state='queued',delivery_state='pending' if request.action in {'prefill','revise'} else 'not_applicable',stage='queued',
         attempt=parent_job.attempt+1 if parent_job else 1,parent_job_id=parent_job.id if parent_job else None,
-        config={'auto_review':request.auto_review.model_dump() if request.auto_review else None},result_summary={})
+        config={'auto_review':request.auto_review.model_dump() if request.auto_review else None, **({'instructions':request.instructions} if request.action=='revise' else {})},result_summary={})
     session.add(job);session.flush()
     return job
 
@@ -152,5 +152,8 @@ def job_response(session,job):
         summary['proposal']={k:v for k,v in job.result_summary['proposal'].items() if k!='changes'}
     return {**{k:getattr(job,k) for k in fields},'result_summary':summary,'paper_key':paper.paper_key,'paper_title':paper.title,
             'can_repair':False,
+            'can_revise':workspace is not None and workspace.state==WorkspaceState.EDITING and
+                job.action in {'prefill','revise'} and job.state not in OPEN and
+                (job.delivery_state=='applied' or (job.action=='revise' and job.result_summary.get('revision_changes',{}).get('total_changes')==0)),
             'can_accept':current and job.action in {'repair','review'} and job.state=='proposal_ready' and job.delivery_state!='applied',
             'can_deliver':can_deliver_saved(job),'can_cancel':job.state in OPEN,'can_retry':job.action!='repair' and job.state in RETRYABLE and job.delivery_state!='applied'}

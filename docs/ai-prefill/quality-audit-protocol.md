@@ -41,6 +41,7 @@ CompoundInventory v1 使用 [已有 schema](schemas/compound-inventory-v1.json)�
 - 结构与 crop 分别记录。先从源独立形成共核的连接/稠合/anchor 判断，再检查候选文件实际编码的图及其重绘；不能沿用生产者“已通过”的核心。将该源核心映射到各实际变体，结构变化、保护基与立体仍逐项核查。发现共性错误扩查整族，未查变体留明确状态；不以可解析、分子式、相同 SMILES 片段或固定环大小禁令判定身份。实际渲染唯一最终 bbox 一次，映射其支持的完整身份。未看图则 uncertain，不能以代表图、近似 crop 或 locator 存在声称全量核实。
 - SAR/合成分开查类型/端点/方向/依据；同 pair 可同时成立，但不能只复制反应理由充当 SAR。无 quote 不自动错，有 quote 不免检。制备事件一次记底物/产物/条件/定位并关联边，制备数不等于边数。
 - Lineage 逐组范围、分量/孤点、角色冲突和解释，逐 Compound 两类参与及原因，论文优选理由/未知，按 [分组规则](extraction-guide.md#lineage-grouping-roles-and-participation) 核查。不能为连通补边或恢复已否决关系。
+- 每张 SAR 图独立核对共同起点/比较基线、优化主题、源支持的关系及拆合理由。同主题并行批次通常合并；独立主题可拆；枢纽成为新批次基线时优先拆；短链通常保留，重要交叉比较/汇合优先同图。表格/Scheme、节点数、目标变化或枢纽标签本身不能单独决定拆分。核查跨图复用 Compound、局部 terminal→root 的衔接，以及拆合是否遗漏失败/未选分支、方向、比较上下文或证据，是否重复同一科学关系。两条 SAR 入边不代表两底物共同合成。
 - 发现矛盾先回源复核 expected，保存审查修订轨迹；原文矛盾与提取错误分开。源未提供 SI 不等于正文 Methods 信息也不存在。
 
 核对 review_hint 与实际源依据和疑点是否一致：完整结构可由共享骨架、R 基或反应关系合理重构，不要求每个分子都单独画出；仅有编号范围而无可推导图仍不收录。提示不能使已知错误或未核项判为 correct；既核查无依据的猜测，也指出有依据候选被过度遗漏。解决疑点可建议清除提示，未决提示须保留；原冻结候选不修改。合并复核任务先保存原候选的独立审查，再在同一会话将支持的修改另存为方案候选并自检；审查的 hash、逐项结论与统计仍绑定原候选，不能用修补后的值改写原审查或宣称再次独立通过。无依据或未完成的修补保留未决，接受由 Admin 显式操作且不调用模型。
@@ -67,7 +68,8 @@ Lineage 修补复核须先保存本次范围内独立的源制备/比较清单�
 
 ### Article Compound highlights
 
-For study_start / paper_selected annotations, follow extraction-guide.md's
+For `study_start` / `optimization_start` (枢纽分子 / Hub compound) /
+`paper_selected` annotations, follow extraction-guide.md's
 article-level definitions. Before candidate comparison, create an independent
 role matrix from the Abstract, Introduction/Design, Results/SAR and
 Discussion/Conclusion. For every row check the exact author statement, scope,
@@ -75,6 +77,15 @@ all compounds named by that statement, selection rationale, linked Compound
 structure and Evidence identity together. Neither the lowest/first label, first
 table or scheme entry, terminal degree, last synthetic product, in-vivo/PK
 appearance, nor strongest single-assay activity establishes a paper choice.
+
+Independently verify each hub's author-supported use as a design baseline or
+transition into further optimization and its specific series/batch. A branching
+node, synthetic intermediate, shared node or split boundary alone does not prove
+this role. A hub may be terminal in one graph and root in the next, but the local
+roles remain separate from the article assertion. Multiple hubs and overlapping
+article roles are allowed with independent support; article-selected graph labels
+must refer to the same `paper_selected` highlights used in article information.
+Do not demand a split at every hub or infer a hub from every split.
 
 Multiple study starts and multiple paper-selected compounds are valid. A single
 row covering only one member of an explicitly named set is

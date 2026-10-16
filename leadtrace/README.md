@@ -337,3 +337,12 @@ with bounded producer self-check, fresh-context review with a repair proposal in
 queue defaults to four concurrent tasks globally and one open task per paper.
 [Admin operations and configuration](../docs/ai-prefill/admin-console.md) describe
 model presets, independent review coverage, archives and restart recovery.
+
+Directed **AI revision** on imported records starts a fresh session from the current
+reviewer draft and the Admin's instruction. It reuses the frozen selfcheck runner
+and automatically applies validated deltas with strict source/version guards;
+there is no proposal-acceptance step for this action. Changed/new/dependent groups
+require viewing again, with affected scientific confirmations pending. Unchanged
+records, human notes and audit history survive; no-op leaves workspace version
+and viewing unchanged. Submitted/published snapshots are not edited. No new
+schema migration is needed for the `revise` action.

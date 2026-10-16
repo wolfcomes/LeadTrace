@@ -11,7 +11,7 @@
 | 原图 | 自身 locator 含核心＋编号行＋所有定义；实际裁图视觉核对，参考物缺图诚实说明 | [提取流程](extraction-guide.md#workflow) |
 | 测量 | 全部可用源测量清点与 tuple 匹配；准确率和覆盖分开，剂量/条件/误差/单位/ND 正确 | [自检七项](self-check-guide.md#先程序检查再源核查) |
 | 关系 | SAR/合成分开，真实端点/直接与多步/共同反应物/AI 推断限制；缺引文不自动否定 | [提取流程](extraction-guide.md#workflow) |
-| Lineage | 源事件/比较→逐边映射与遗漏，逐组角色/分量处置，每个 Compound 双类型参与，优选独立；账本完整不等于科学确认 | [分组规则](extraction-guide.md#lineage-grouping-roles-and-participation) |
+| Lineage | 源事件/比较→逐边映射与遗漏，每图基线/主题与拆合理由，跨图 Compound 复用及关系/证据无遗漏；逐组角色/分量与双类型参与，研究起点/枢纽/优选标签独立；账本完整不等于科学确认 | [分组规则](extraction-guide.md#lineage-grouping-roles-and-participation) |
 | 修订保留 | 精确 parent、变更/依赖范围、有效审查继承、未受影响数据/人工编辑保留、无意外差异 | [运行指南](model-runbook.md#已有候选自检修补入口) |
 | 自检 | 最终文件 hash、七项实际检查、确定问题/未决、真实 edge refs；局部检查不冒充全篇 | [自检交付](self-check-guide.md#最终绑定与交付) |
 | 简化提示 | 有依据的完整候选存在具体不确定/冲突时写 review_hint；统一 ⚠，不分级；无可推导结构不收录，已知错误不能用提示掩盖 | [推导与提示](extraction-guide.md#source-supported-inference-and-simple-review-hints) |

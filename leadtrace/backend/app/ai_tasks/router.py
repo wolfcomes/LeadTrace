@@ -48,7 +48,7 @@ def create_ai_tasks_router(settings:Settings):
         from app.ai_tasks.execution import report_for
         with session.begin():
             job=load(session,job_id)
-            if job.state in service.OPEN or (job.action=='prefill' and not job.result_summary.get('report_available')):
+            if job.state in service.OPEN or (job.action in {'prefill','revise'} and not job.result_summary.get('report_available')):
                 raise APIError(409,'REPORT_NOT_READY','Task check report is not available yet')
             try:return report_for(settings,job)
             except service.TaskError as e:raise error(e) from None
@@ -120,7 +120,7 @@ def create_ai_tasks_router(settings:Settings):
                     from app.ai_tasks.repair import enqueue_repair
                     review_id=UUID(old.config['review_job_id'])
                     return service.job_response(session,enqueue_repair(session,settings,review_id=review_id,actor_id=principal.user_id,request=RepairRequest(preset_id=old.preset_id,reasoning_effort=old.reasoning_effort,timeout_seconds=old.timeout_seconds,idempotency_key=body.idempotency_key)))
-                request=StartTask(action=old.action,preset_id=old.preset_id,reasoning_effort=old.reasoning_effort,expected_workspace_id=old.workspace_id,expected_task_version=old.task_version,expected_workspace_version=old.workspace_version,timeout_seconds=old.timeout_seconds,idempotency_key=body.idempotency_key,auto_review=old.config.get('auto_review'))
+                request=StartTask(action=old.action,preset_id=old.preset_id,reasoning_effort=old.reasoning_effort,expected_workspace_id=old.workspace_id,expected_task_version=old.task_version,expected_workspace_version=old.workspace_version,timeout_seconds=old.timeout_seconds,idempotency_key=body.idempotency_key,auto_review=old.config.get('auto_review'),instructions=old.config.get('instructions'))
                 return service.job_response(session,service.enqueue(session,settings,paper_id=old.paper_id,actor_id=principal.user_id,request=request,parent_job=old))
         except service.TaskError as e:raise error(e) from None
         except (ValueError,OSError):raise APIError(409,'REVIEW_UNAVAILABLE','The saved review could not be verified; no retry was started') from None

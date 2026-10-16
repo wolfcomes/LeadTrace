@@ -19,9 +19,11 @@
 | 声称修复的条数多于实际字段差异 | 逐反馈核对父/最终值与源依据，明细重算；Activity 用测量 tuple＋来源匹配，不靠 compound 汇总或行号猜 |
 | 修补新增 Compound，却沿用旧测量/参与覆盖 | 扩查新增身份的观察、定位和双类型关系；旧记录无损不等于新增范围完整 |
 | 所有 SAR 叶节点被称为 lead | 分开图位置、比较 baseline、论文优选；优选须源支持，可有多个或未知 |
+| 按表格/节点数机械拆图，或把短链每个 intermediate 都拆成新图 | 每张 SAR 图先定基线、主题和关系依据；同主题批次/短链通常合并，独立主题可拆，枢纽进入新批次时优先拆，交叉比较/汇合优先保留；拆合核对全量关系与证据，不漏失败分支 |
+| 把高出度、共享节点或合成中间体自动标为枢纽分子 | `optimization_start` 须有作者将其作为后续设计基线/转折的依据及 scope；不依赖度数、不自动拆图，跨图复用 Compound，局部 terminal/root 与文章标签独立 |
 | 研究起点/论文优选沿用首编号、首表行、最后产物或单项最强活性 | 回到 Abstract/Introduction/Results/Conclusion 建立 role matrix；逐一记录作者明确点名的全部分子、scope 和选择语句。多起点/多优选分别建 highlight，不能压成一个 |
 | Compound 角色正确但 Evidence 只证明存在、合成、单项活性、PK 或体内出现 | 将其分类为 `evidence_linkage_error`，保留 Compound/role，换成明确支持角色身份的正文、摘要、图题或结论 Evidence |
-| 一篇文章有文献 hit、内部 lead 和后续候选，却只保留一条 article-level highlight | 分开 `study_start` 与 `paper_selected` 的 scope；内部 lead、文献起点和并列候选分别记录，找不到明确选择时保持 unresolved |
+| 一篇文章有文献 hit、内部 lead 和后续候选，却只保留一条 article-level highlight | 独立判断 `study_start`、`optimization_start` 与 `paper_selected` 的 scope；内部 lead、文献起点、枢纽和并列候选分别按源支持记录，找不到明确角色依据时保持 unresolved |
 | 文章写的是多个并列 candidate，却把某一个最强 assay 分子当唯一终点 | 核对作者的 selection/advanced/developed/lead wording 和后续 panel；保留全部被明确推进的分子，单项 assay 不足以构成 paper_selected |
 | 审查 expected 与 candidate 冲突 | 双方都可能错，回源放大核对；不要盲改候选。审查内部矛盾先修正审查，保留原记录 |
 | 审查称 raw token/条件缺失，或把统计歧义计为数值抄错 | 先查最终字段/context 的实际内容，再评语义；值、统计/条件和来源分开判定，保留源措辞与未决 |

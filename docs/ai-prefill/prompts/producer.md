@@ -50,6 +50,10 @@ Build source preparation/comparison records before graph assembly. Deliver the
 self-check guide's lineage evidence mapping for every edge, group and Compound's
 two participation types, plus omitted relations and selection claims. Keep explicit
 uncertainty in the actual molecular identity, not only surrounding prose.
+For each SAR graph, state baseline, theme and relationship basis. Apply the guide's
+split/merge decisions and fictional examples: a hub starting a new batch favors a
+split; short chains need not split, and meaningful convergence must be preserved.
+Reuse Compound refs across graphs and retain unsuccessful branches and Evidence.
 
 For article-level `compound_highlights`, first build a source role matrix from
 Abstract/Introduction/Design, Results/SAR and Discussion/Conclusion. Record the
@@ -59,6 +63,10 @@ last synthetic product, terminal graph position, PK/in-vivo appearance, or the
 strongest single assay. `study_start` may contain both a literature hit and an
 internal lead; `paper_selected` may contain multiple explicitly advanced
 compounds. Preserve all named members instead of compressing a set to one.
+`optimization_start` means 枢纽分子 / Hub compound: an author-supported design
+baseline or transition into further optimization. Check its series scope and
+Evidence independently of `study_start`, `paper_selected` and local graph roles;
+branching, an intermediate position or a split boundary is not proof of a hub.
 Evidence must support the role identity; an activity row, synthesis scheme, PK
 table or in-vivo figure alone is insufficient unless its surrounding source
 language explicitly makes the selection. If no explicit choice is found, keep

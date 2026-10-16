@@ -114,7 +114,7 @@ class AiTaskCoordinator:
                     job.stage=job.state;job.finished_at=now();job.heartbeat_at=now()
                     job.error_code=None if cancelled else 'WORKER_INTERRUPTED'
                     job.error_message=None if cancelled else 'The previous worker stopped. Artifacts were preserved; this task was not automatically rerun.'
-                    job.delivery_state='conflict' if job.result_summary.get('invalidated') else ('not_applied' if job.action=='prefill' else 'not_applicable')
+                    job.delivery_state='conflict' if job.result_summary.get('invalidated') else ('not_applied' if job.action in {'prefill','revise'} else 'not_applicable')
                 except (ValueError,OSError,KeyError):
                     job.stage='orphaned_process';job.error_code='PROCESS_STILL_ACTIVE';job.error_message='A prior task process may still be active; capacity is retained until its exit is confirmed.'
     def execute(self,job_id):
@@ -172,4 +172,4 @@ class AiTaskCoordinator:
             if not job or job.owner!=self.owner:return
             job.state='superseded' if job.result_summary.get('invalidated') else 'cancelled'
             job.stage=job.state;job.finished_at=now();job.heartbeat_at=now()
-            job.delivery_state='conflict' if job.result_summary.get('invalidated') else ('not_applied' if job.action=='prefill' else 'not_applicable')
+            job.delivery_state='conflict' if job.result_summary.get('invalidated') else ('not_applied' if job.action in {'prefill','revise'} else 'not_applicable')

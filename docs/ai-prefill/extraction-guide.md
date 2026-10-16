@@ -318,6 +318,53 @@ locators and both relationship types, even during a lineage-only repair.
   merely to obtain a tree; flag cycles for interpretation rather than silently
   deleting edges. Never restore a rejected edge based on numbering or appearance.
 
+### Decide the scientific question and SAR graph boundaries
+
+For each SAR graph, identify a common starting point or explicit comparison
+baseline, a clear optimization theme, and source-supported relationships. State
+the scientific question before choosing members and edges. A graph can contain
+multiple documented baselines or convergent comparisons; this principle does not
+require a single-root tree. Keep synthesis relationships in separate graphs.
+
+| Situation | Grouping decision |
+|---|---|
+| One baseline and one theme, with a batch of parallel analogues | Usually keep one graph, including unsuccessful and unselected branches. |
+| One root with independently meaningful optimization series, sites or scaffold branches | May split by theme; reuse the same Compound as the local root where supported. Branching alone does not require splitting. |
+| A selected compound becomes the design baseline for a new exploration batch | Prefer splitting at this hub: it may be terminal in the preceding graph and root in the next. Explain the transition and cite its basis. |
+| A short two/three-step progression within one theme | Usually keep together. Neither an intermediate nor a hub annotation automatically requires a new graph. |
+| Extensive cross-comparisons or convergence are needed to understand the relationships | Prefer keeping the related comparisons together; retain every supported incoming edge. |
+
+Table/Scheme boundaries, compound count, or a change of objective alone do not
+decide graph boundaries. For every proposed split/merge, explain the scientific
+scope and check the before/after relationship inventory. Reuse existing Compound
+refs across groups rather than creating duplicate compounds. Preserve supported
+relationships, unsuccessful branches, Evidence links, directions and comparison
+contexts; do not duplicate the same scientific relationship just to populate
+both graphs. Record unresolved or unrepresented relationships explicitly.
+
+Each graph description should state: baseline(s), optimization theme, member
+scope, relationship/evidence basis, and links to adjacent graphs via shared
+compounds where applicable. Choose an edge's parent from the actual direct design
+baseline or comparison in the source, not label order, similarity or potency rank.
+Keep compounds without an established relationship in the catalog; do not invent
+an arrow to make a complete-looking graph.
+
+The following examples are fictional decision aids, not source evidence:
+
+- `1 → 2/3/4`, one site and theme: one graph; retain unsuccessful `4`.
+- First batch `1 → 2/3/4`, then the authors use `3` as the baseline for a new
+  batch `3 → 5/6/7`: prefer two graphs sharing Compound `3`. Its local roles
+  are terminal then root; add a hub highlight only with source support. If the
+  authors prioritize `6`, give `6` a separate `paper_selected` highlight.
+- `10 → 11/12` explores a side chain and `10 → 21/22` explores an independent
+  ring series: two theme-based graphs can share `10`. Its two branches alone
+  do not establish a hub highlight.
+- `30 → 31 → 32`, a short progression: usually one graph; `31` is not
+  automatically a hub merely because it is intermediate.
+- `40 → 41/42`, plus independently supported comparisons `41 → 43` and
+  `42 → 43`: keep the convergence when it clarifies SAR. Two incoming SAR
+  edges do not assert a joint synthesis from two reactants.
+
 ### Separate graph position from scientific role
 
 | Context | Meaning and current representation |
@@ -329,25 +376,38 @@ locators and both relationship types, even during a lineage-only repair.
 | SAR baseline / comparison entry | A documented baseline may be `root`; a graph entry inferred only from direction must be described as such. Other members may remain `unspecified` with their comparison role explained. Do not impose synthesis roles on a parallel comparison. |
 
 Roles are scoped to a particular Lineage. The same Compound can be a synthesis
-intermediate and a SAR baseline. Check roles again after adding/deleting/moving
+intermediate and a SAR baseline, or terminal in one SAR graph and root in the
+next. SAR intermediate means an intermediate design/comparison position, not
+necessarily a synthetic intermediate. A local SAR root can be an initial study
+starting point or a later hub used as that graph's baseline. Check roles again after adding/deleting/moving
 edges. Surface conflicts with existing human annotations for reconciliation;
 do not silently overwrite them using degree counts.
 
-### Article-level starting points and prioritized compounds
+### Article-level starting points, hub compounds and prioritized compounds
 
-Use optional payload compound_highlights for source-backed study_start and
-paper_selected assertions. These are orthogonal to Lineage roles, not a fourth
+Use optional payload compound_highlights for source-backed `study_start`,
+`optimization_start` (枢纽分子 / Hub compound), and `paper_selected` assertions.
+These are orthogonal to Lineage roles, not a fourth
 member role and not the biological target. A study starting point is the hit/lead
 from which the authors pursue this work, not every synthetic reagent. A
 paper-prioritized compound is explicitly selected or advanced by the authors on
 combined evidence, not every terminal or the best number in one assay.
 
+A hub compound is used by the authors as a design baseline or transition into
+further optimization. Record the named batch/series and the source-supported
+transition in scope and rationale. It need not have multiple outgoing branches,
+be the most potent compound, or be paper-prioritized. Graph degree, position,
+splitting, and synthetic-intermediate status alone never establish this role.
+Keep the storage key `optimization_start`; do not invent a `hub` role or replace
+the local `root/intermediate/terminal/unspecified` member roles. A hub highlight
+does not automatically split or otherwise change a graph.
+
 Each annotation requires a unique ref, compound_ref, evidence_ref, role, nonblank
 scope (whole paper or named study/series), and rationale. Optional review_hint
 records ambiguity. The Compound and Evidence must be present in the same payload.
 Evidence must locate the author statement using actual PDF page and quotation or
-region; rationale explains the selection and retains its limits. Multiple starts,
-multiple prioritized compounds, and both roles on one Compound are allowed;
+region; rationale explains the role and retains its limits. Multiple starts,
+multiple hubs, multiple prioritized compounds, and multiple roles on one Compound are allowed;
 do not duplicate the same compound/role/scope. AI cannot set review_status: apply
 always creates draft annotations, requiring an explicit human disposition later.
 
@@ -382,13 +442,17 @@ highlighted crop without selection language. For example, a strong CA-II value
 does not establish a dual CA/MAO-B paper-selected compound when the second target
 is inactive or the compound is absent from the paper's follow-up panel.
 
-Treat the two roles independently. `study_start` may contain both a literature
+Treat the three roles independently. `study_start` may contain both a literature
 hit and the paper's internal lead when the article uses both scopes; state the
 scope in `scope` and do not collapse them into one label. `paper_selected` may
 contain several compounds when the authors name a set of leads, candidates, or
 parallel endpoints. Add one highlight per compound/role/scope, or leave the
 role unresolved when the source does not justify a single choice. Never replace
-a multi-compound conclusion with the strongest-looking member.
+a multi-compound conclusion with the strongest-looking member. `optimization_start`
+records supported design transitions in the relevant series. The same Compound
+may also be `study_start` or `paper_selected` when each assertion has its own
+supported scope and rationale. Article information and graph badges refer to
+these same highlights; do not create a separate graph-only prioritized label.
 
 When reviewing an existing row, use one of these dispositions in the audit
 record: `role_identity_error` (the compound conflicts with the source),

@@ -557,3 +557,12 @@
   .ai-console-lifecycle { padding: 18px; }
   .ai-console-health { gap: 10px 16px; }
 }
+
+.ai-revision-dialog { padding: 1.5rem; }
+.ai-revision-settings { display: grid; grid-template-columns: 2fr 1fr 1.3fr; gap: 1rem; }
+.ai-revision-settings .form-field { min-width: 0; }
+.ai-revision-dialog textarea { resize: vertical; min-height: 8rem; }
+@media (max-width: 600px) {
+  .ai-revision-dialog { padding: 1rem; }
+  .ai-revision-settings { grid-template-columns: 1fr; gap: 0; }
+}

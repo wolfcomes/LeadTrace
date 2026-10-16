@@ -146,7 +146,7 @@ def _row_snapshot(row):
 
 
 def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPrefillPayload,
-                after: AiPrefillPayload, baseline_snapshot: dict, entity_refs: dict[str,str], job_id) -> dict:
+                after: AiPrefillPayload, baseline_snapshot: dict, entity_refs: dict[str,str], job_id, automatic_revision: bool = False) -> dict:
     """Apply a proposal atomically inside caller's transaction (never commit)."""
     current=build_paper_snapshot(session,workspace.id)
     if workspace.state != WorkspaceState.EDITING or canonical_snapshot_hash(_snapshot_identity(current)) != canonical_snapshot_hash(_snapshot_identity(baseline_snapshot)):
@@ -324,8 +324,9 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
     for domain,row,prior,action in records:
         if domain=='locators' and action!='delete' and row.crop_status==CropStatus.PENDING:
             image_service.render_source_image_crop(session,source_image=row,actor_id=actor_id)
+    audit_metadata={'repair_job_id':str(job_id), **({'requested_by_id':str(actor_id),'delivery_mode':'automatic_revision'} if automatic_revision else {'accepted_by_id':str(actor_id)})}
     for domain,row,prior,action in records:
-        metadata={'repair_job_id':str(job_id),'accepted_by_id':str(actor_id)}
+        metadata=audit_metadata
         session.add(ChangeEvent(paper_id=workspace.paper_id,workspace_id=workspace.id,
             entity_type=ENTITY_TYPES[domain],entity_id=row.id,action=f'{ENTITY_TYPES[domain]}.repair_{action}',
             before_value={**prior,'_repair':metadata} if prior else None,
@@ -343,7 +344,7 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
             prior=_row_snapshot(section);section.state=PaperSectionState.PENDING
             session.add(ChangeEvent(paper_id=workspace.paper_id,workspace_id=workspace.id,entity_type='paper_section_review',
                 entity_id=section.id,action='paper_section_review.repair_invalidate',before_value=prior,
-                after_value={**_row_snapshot(section),'_repair':{'repair_job_id':str(job_id),'accepted_by_id':str(actor_id)}},actor_kind=ChangeActorKind.AI,actor_id=None))
+                after_value={**_row_snapshot(section),'_repair':audit_metadata},actor_kind=ChangeActorKind.AI,actor_id=None))
     workspace.version+=1;session.flush()
     entity_map={}
     prefixes={'compounds':'compounds','structures':'compounds','lineages':'lineages','evidence':'evidence','locators':'structure_locators','highlights':'compound_highlights'}
@@ -364,13 +365,13 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
 
 
 def apply_delta(session, *, settings, workspace, source, actor_id, before: AiPrefillPayload,
-                after: AiPrefillPayload, baseline_snapshot: dict, entity_refs: dict[str,str], job_id) -> dict:
+                after: AiPrefillPayload, baseline_snapshot: dict, entity_refs: dict[str,str], job_id, automatic_revision: bool = False) -> dict:
     from app.jobs.service import transaction_created_files, cleanup_transaction_created_files
     existing=transaction_created_files(session)
     try:
         with session.begin_nested():
             return _apply_delta(session,settings=settings,workspace=workspace,source=source,actor_id=actor_id,
-                before=before,after=after,baseline_snapshot=baseline_snapshot,entity_refs=entity_refs,job_id=job_id)
+                before=before,after=after,baseline_snapshot=baseline_snapshot,entity_refs=entity_refs,job_id=job_id,automatic_revision=automatic_revision)
     except Exception:
         cleanup_transaction_created_files(session,transaction_created_files(session)-existing)
         raise

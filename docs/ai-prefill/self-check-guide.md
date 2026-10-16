@@ -50,6 +50,8 @@
 
 - 源制备/比较单元有稳定 ID、具体位置、标签映射和未决；每条最终 Edge 都关联核验记录，另列源中已见但未表达的关系。
 - 每个 Lineage 有范围、分量/孤点、组内角色和跨组衔接处置；每个 Compound 分别有 SAR 与 synthesis 的参与状态、原因及证据或明确未查。
+- 每张 SAR 图先说明共同起点/比较基线、优化主题和关系依据。同基线同主题的并行批次通常合并；独立主题可拆；枢纽分子成为新一批探索的基线时优先在此拆分；短链通常保留，多处交叉比较/汇合优先放在一起。不能只按表格、Scheme、节点数或目标变化拆图，也不能见到枢纽就强制拆图。
+- 拆合前后核对源关系清单，保留失败/未选分支、方向、比较上下文和证据，不为填满图重复科学关系或造边。同一 Compound 跨图复用，前图 terminal 可为后图 root；SAR intermediate 不等于合成中间体。每图描述写清基线、主题、成员范围、边的依据和相邻图衔接。
 - 优选结论独立记录范围/理由/来源；共享核心、裁图或事件可复用，但列出所有依赖 refs 及逐项结论。
 - 检查所有最终 refs 是否有记录、有无重复/失效映射，并核对 `checked` 与实际已查/未查/未决范围。`verified` 字符串、记录齐全、零孤点都不是科学证明；未决端点依赖不能被概括为整条关系全字段已确认。
 
@@ -87,12 +89,21 @@
 
 ### Article Compound highlights
 
-For study_start / paper_selected annotations, follow extraction-guide.md's
+For `study_start` / `optimization_start` (枢纽分子 / Hub compound) /
+`paper_selected` annotations, follow extraction-guide.md's
 article-level definitions. Build a role matrix before accepting the draft:
 author wording/location, study or series scope, every named compound, and
 whether the source is an explicit role statement or only supporting observation.
 Reject numbering heuristics (lowest/first label, first table/scheme row, last
 product), graph-degree heuristics, and single-assay/PK/in-vivo heuristics.
+
+For each hub, verify that the authors use it as a design baseline or transition
+into further optimization, with the specific series/batch and supporting Evidence.
+An intermediate, shared node, split boundary or branching node is not sufficient.
+Multiple hubs and overlapping article roles are valid when independently supported;
+neither a hub nor a local root automatically means paper-selected. Keep the
+`optimization_start` storage key and existing local member roles. Article
+highlights and graph labels must reference the same Compound/role assertions.
 
 Allow multiple `study_start` compounds when the paper distinguishes a literature
 hit from an internal lead, and allow multiple `paper_selected` compounds when

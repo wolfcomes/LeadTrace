@@ -58,6 +58,9 @@ candidate/producer claims. Check missing source events and deleted edges as well
 existing edges. Reconcile field-level dependency defects with edge verdicts and the
 summary; endpoint correctness is not full-record correctness. Explicitly map shared
 checked crops to all dependent locator refs, and list any assigned refs not checked.
+Apply the extraction guide's SAR split/merge rules: check baseline, theme,
+cross-group continuity and retained comparisons, including unsuccessful branches.
+Neither a hub annotation nor a Table/Scheme boundary automatically requires a split.
 
 For article-level Compound highlights, independently build a role matrix before
 reading the draft rows. Verify author wording, scope, every named start/selected
@@ -68,6 +71,10 @@ single-assay potency as invalid role heuristics. Distinguish
 multi-compound set was collapsed), and `evidence_linkage_error` (role is right
 but Evidence proves only existence/assay/PK). Report all named candidates and
 keep an unresolved outcome when the source does not support a single choice.
+Also verify `optimization_start` (枢纽分子 / Hub compound): source-supported use as
+a design baseline or transition into further optimization, with its series scope.
+It is independent of `study_start`, `paper_selected` and local graph roles; degree,
+synthetic-intermediate status and graph splitting alone do not establish a hub.
 
 Preserve raw review records and any corrected review version. C+E+U=N, report N/P,
 confirmed_fraction=C/N, optional resolved_accuracy=C/(C+E). Keep unknown population

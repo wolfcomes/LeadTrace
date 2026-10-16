@@ -37,6 +37,10 @@ Compound even without Activity; generic/open fragments do not become guessed
 molecules. Review edges after coverage changes. After edge moves/deletions, recheck
 group scope, members, roles and per-type participation. Preserve multi-substrate
 context, comparisons' limits, paper selection evidence and rejected relations.
+For SAR regrouping, apply the guide's baseline/theme and split/merge rules; preserve
+the relationship inventory and shared Compound identity. Verify source-backed
+`optimization_start` (枢纽分子 / Hub compound) separately from local roles and
+paper selection; neither add hubs from degree counts nor split at every hub.
 For crop changes inspect final crops and every dependent compound's locator set.
 Pure organization changes are not fresh verification of all scientific content.
 

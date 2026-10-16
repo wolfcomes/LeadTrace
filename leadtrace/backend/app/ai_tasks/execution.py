@@ -75,14 +75,20 @@ def prepare_job(session_factory,settings,job_id):
         if job.action=='repair':
             from app.ai_tasks.repair import prepare_repair
             kwargs=prepare_repair(session,settings,job,root,workspace)
-        elif job.action=='review':
+        elif job.action in {'review','revise'}:
             preferred=job_directory(settings,job.parent_job_id)/'job/outputs/compound-inventory.json' if job.parent_job_id else None
             inventory_path,inventory=inventory_for(settings,source.sha256,preferred)
             snapshot=build_paper_snapshot(session,workspace.id)
             empty=CandidateEnvelope(envelope_version=1,candidate_id='snapshot-'+str(job.id),experiment_id=package.experiment_id,
                 source=identity,producer=ProducerProvenance(kind='human-assisted',engine='workspace-export',engine_version='admin-console-v1',generated_at=now()),
                 recipe=CandidateRecipe(guide_version=GUIDE_VERSION),payload=AiPrefillPayload(schema_version=1))
-            try:payload,refs,review_metadata=_payload_from_snapshot(empty,snapshot,{},snapshot['paper'])
+            notes=[]
+            try:
+                if job.action=='revise':
+                    from app.ai_tasks.revision import export_revision_baseline
+                    payload,refs,review_metadata,notes=export_revision_baseline(empty,snapshot)
+                else:
+                    payload,refs,review_metadata=_payload_from_snapshot(empty,snapshot,{},snapshot['paper'])
             except ValueError:raise TaskError('DRAFT_NOT_REPRESENTABLE','Current draft has unresolved structures/relations or notes that the candidate format cannot preserve; resolve them before this review.') from None
             candidate=empty.model_copy(update={'payload':payload})
             save_json(root/'current-candidate.json',candidate.model_dump(mode='json'))
@@ -90,9 +96,13 @@ def prepare_job(session_factory,settings,job_id):
             save_json(root/'workspace-snapshot.json',snapshot)
             save_json(root/'review-export.json',{'workspace_id':str(workspace.id),'workspace_version':workspace.version,'entity_refs':refs,'review_metadata':review_metadata,'inventory_sha256':sha256(inventory_path.read_bytes()).hexdigest()})
             save_json(root/'repair-baseline.json',{'snapshot':snapshot,'entity_refs':refs})
-            job.config={**job.config,'review_with_repair':True,'baseline_sha256':sha256((root/'repair-baseline.json').read_bytes()).hexdigest()}
-            kwargs={'candidate_path':root/'current-candidate.json','inventory_path':root/'compound-inventory.json','review_with_repair':True}
-        prepare_task(entry='selfcheck' if job.action=='repair' else job.action,input_path=root/'input.json',output=root/'job',adapter=job.adapter,model=job.model,
+            job.config={**job.config,'review_with_repair':job.action=='review','baseline_sha256':sha256((root/'repair-baseline.json').read_bytes()).hexdigest()}
+            kwargs={'candidate_path':root/'current-candidate.json','inventory_path':root/'compound-inventory.json','review_with_repair':job.action=='review'}
+            if job.action=='revise':
+                save_json(root/'feedback.json',{'instructions':job.config['instructions'],'protected_reviewer_notes':notes,
+                    'scope_policy':'Use the frozen current reviewer draft as the sole baseline. Make source-supported changes requested by the user and check affected dependencies. Preserve unchanged refs, list ordering, human edits and notes. Include all populated fields of retained records explicitly; omission must never clear human content. For metadata lists without stable refs, explicitly include the previously populated field keys on each item, using valid null/empty values for unknown or intentionally cleared fields. Protected reviewer notes are read-only context, retained by the server. Return the complete revised candidate and an honest scoped self-check; never claim independent review or full-paper verification from local checks. Do not access the database or apply data.'})
+                kwargs.update(feedback_path=root/'feedback.json',workspace_id=str(workspace.id),workspace_version=workspace.version)
+        prepare_task(entry='selfcheck' if job.action in {'repair','revise'} else job.action,input_path=root/'input.json',output=root/'job',adapter=job.adapter,model=job.model,
             reasoning_effort=job.reasoning_effort,python_executable=str(settings.ai_task_python or Path(sys.executable)),**kwargs)
         job.stage='prepared'
         job.heartbeat_at=now()
@@ -103,7 +113,7 @@ def report_for(settings,job):
     from app.ai_tasks.producer_report import producer_report,read_artifact
     from app.ai_tasks.report_overview import build_overview,read_review_rows,actionable_review_rows
     directory=job_directory(settings,job.id)/'job'
-    if job.action in {'prefill','repair'}:
+    if job.action in {'prefill','repair','revise'}:
         saved=job.result_summary.get('producer_report')
         report=dict(saved) if saved else None
         try:
@@ -122,6 +132,8 @@ def report_for(settings,job):
             # Historical saved diagnostics remain readable without claiming unknown totals.
             report={**report,'overview_unavailable':True}
         result={'job_id':str(job.id),'reviewed_workspace_version':job.result_summary.get('applied_workspace_version',job.workspace_version),**report}
+        if job.action=='revise':
+            result.update(report_kind='revise',revision_changes=job.result_summary.get('revision_changes'))
         if job.action=='repair':
             result.update(report_kind='repair',proposal=job.result_summary.get('proposal'))
         return result
@@ -176,11 +188,11 @@ def deliver_result(session_factory,settings,job_id,state,*,deliver_saved=False,d
         if not saved_eligible and job.state not in {'running','validating','cancel_requested'}:
             return  # Replayed/stale completion cannot rewrite terminal state.
         if job.state=='cancel_requested' or job.result_summary.get('invalidated'):
-            job.state='superseded' if job.result_summary.get('invalidated') else 'cancelled';job.stage=job.state;job.finished_at=now();return
+            job.state='superseded' if job.result_summary.get('invalidated') else 'cancelled';job.stage=job.state;job.delivery_state='not_applied' if job.action in {'prefill','revise'} else 'not_applicable';job.finished_at=now();return
         previous_delivery={'state':job.state,'error_code':job.error_code,'error_message':job.error_message} if saved_eligible else None
         outcome=state['status'];job.state='validating';job.stage='validating'
         if outcome in {'cancelled','timed_out','failed','configuration_mismatch'}:
-            job.state=outcome;job.stage=outcome;job.delivery_state='not_applied' if job.action=='prefill' else 'not_applicable'
+            job.state=outcome;job.stage=outcome;job.delivery_state='not_applied' if job.action in {'prefill','revise'} else 'not_applicable'
             job.error_code={'failed':'RUN_FAILED','timed_out':'TIME_LIMIT','cancelled':'CANCELLED','configuration_mismatch':'CONFIGURATION_MISMATCH'}[outcome]
             job.error_message={'failed':'Model execution or output validation failed. Check model credentials/capabilities and the operator diagnostics before retrying.','timed_out':'The configured time limit was reached; saved outputs were preserved.','cancelled':'The model process was stopped.','configuration_mismatch':'Observed request configuration differs from the selected settings.'}[outcome]
             if (job.action=='review' and job.config.get('review_with_repair')
@@ -195,6 +207,9 @@ def deliver_result(session_factory,settings,job_id,state,*,deliver_saved=False,d
                         'repair_proposal_errors':['The task stopped before completing its repair proposal; the validated baseline audit is available.']}
                 except (ValueError,OSError):
                     pass
+        elif job.action=='revise' and outcome in {'ready_for_independent_review','needs_revision','partial'}:
+            from app.ai_tasks.revision import deliver_revision
+            deliver_revision(s,settings,job,state,workspace,task,source)
         elif job.action=='repair' and outcome in {'ready_for_independent_review','needs_revision','partial'}:
             from app.ai_tasks.repair import finish_proposal
             finish_proposal(s,settings,job,state,workspace,task,source)

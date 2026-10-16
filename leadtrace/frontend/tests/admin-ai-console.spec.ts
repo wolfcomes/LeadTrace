@@ -528,3 +528,46 @@ it.each(['unavailable', 'no_changes'] as const)('preserves the audit view when p
   expect(w.find(status==='unavailable'?'[data-proposal-unavailable]':'[data-proposal-no-changes]').exists()).toBe(true);
   if(status==='no_changes')expect(w.text()).toContain('Source evidence is inconclusive.');
 });
+
+it.each(['zh-CN','en'])('starts directed revision against refreshed current draft without acceptance (%s)', async language => {
+  locale.value=language as 'zh-CN'|'en';
+  reportJob({action:'prefill',delivery_state:'applied',can_revise:true});
+  const w=render();await flushPromises();
+  vi.mocked(api.fetchPaperManagement).mockResolvedValue({...management,workspace_version:9,task_version:4} as never);
+  await w.get('[data-open-revision]').trigger('click');await flushPromises();
+  expect(w.get('[data-start-revision]').attributes('disabled')).toBeDefined();
+  expect(w.get('[role="dialog"]').text()).toContain('9');
+  await w.get('[data-revision-instructions]').setValue('  Recheck lineage grouping only  ');
+  await w.get('[data-revision-effort]').setValue('high');
+  await w.get('[data-start-revision]').trigger('click');await flushPromises();
+  expect(api.createAiTask).toHaveBeenCalledWith('paper',expect.objectContaining({action:'revise',instructions:'Recheck lineage grouping only',expected_workspace_version:9,expected_task_version:4,expected_workspace_id:'workspace',reasoning_effort:'high',idempotency_key:expect.any(String)}));
+  expect(api.acceptAiRepair).not.toHaveBeenCalled();
+  expect(w.find('[role="dialog"]').exists()).toBe(false);
+});
+
+it('blocks revision of a submitted draft and preserves instruction on request failure', async () => {
+  reportJob({action:'prefill',delivery_state:'applied',can_revise:true});
+  vi.mocked(api.fetchPaperManagement).mockResolvedValue({...management,assignment_state:'submitted'} as never);
+  const w=render();await flushPromises();
+  await w.get('[data-open-revision]').trigger('click');await flushPromises();
+  expect(w.find('[role="dialog"]').exists()).toBe(false);
+  expect(api.createAiTask).not.toHaveBeenCalled();
+  vi.mocked(api.fetchPaperManagement).mockResolvedValue(management as never);
+  await w.get('[data-open-revision]').trigger('click');await flushPromises();
+  await w.get('[data-revision-instructions]').setValue('Preserve this instruction');
+  vi.mocked(api.createAiTask).mockRejectedValueOnce(new Error('Network failure'));
+  await w.get('[data-start-revision]').trigger('click');await flushPromises();
+  expect(w.get('[data-revision-instructions]').element).toHaveProperty('value','Preserve this instruction');
+});
+
+it('announces a completed automatic revision to its article container once', async () => {
+  vi.useFakeTimers();
+  reportJob({action:'revise',state:'running',delivery_state:'pending',can_cancel:true});
+  const w=render({paperId:'paper'});await flushPromises();
+  reportJob({action:'revise',state:'completed',delivery_state:'applied',result_summary:{revision_changes:{total_changes:1,counts:{compounds:{added:1,updated:0,removed:0}}}}});
+  await vi.advanceTimersByTimeAsync(5000);await flushPromises();
+  expect(w.emitted('changed')).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(5000);await flushPromises();
+  expect(w.emitted('changed')).toHaveLength(1);
+  expect(w.find('[data-accept-repair]').exists()).toBe(false);
+});

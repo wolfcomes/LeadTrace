@@ -1,5 +1,19 @@
 /** Admin lifecycle and AI queue interface; scientific output stays in its original language. */
 export const enAiConsole: Readonly<Record<string, string>> = {
+  "AI 修订": "AI revision",
+  "修订要求": "Revision instructions",
+  "修订与自检报告": "Revision and self-check report",
+  "查看修订报告": "View revision report",
+  "收起修订报告": "Hide revision report",
+  "开始修订并自动更新草稿": "Start revision and update draft automatically",
+  "AI 修订已进入队列，完成后自动更新草稿。": "AI revision queued; changes will be saved to the draft automatically.",
+  "当前草稿不可编辑，请刷新后重试。": "The current draft is not editable. Refresh and try again.",
+  "基于当前 Reviewer 草稿启动新会话，完成后自动更新变化部分；受影响内容需要重新查看。": "Start a fresh session using the current reviewer draft. Changes are saved automatically; affected content must be viewed again.",
+  "例如：按最新规则检查 Lineage 分图和枢纽分子，保留未受影响的人工修改。": "For example: check Lineage grouping and hub compounds using the latest guide; preserve unaffected human edits.",
+  "运行期间草稿如有变化，将保留 AI 结果而不覆盖。已提交和已发布版本不会更新。": "If the draft changes during execution, the AI result is preserved without overwriting it. Submitted and published versions are unchanged.",
+  "受影响内容需要重新查看，仍需人工审核。": "Affected content must be viewed again and still requires human review.",
+  "没有实际变更，草稿和查看状态保持不变。": "No actual changes; draft content and viewing state are unchanged.",
+
   "在一次新上下文任务中复核当前已保存草稿并生成修补方案；使用同一模型和推理强度，接受后才更新草稿。": "One fresh-context task reviews the saved draft and prepares corrections using the same model and reasoning effort. The draft changes only when you accept.",
   "以下复核统计对应修改前草稿；同一次任务生成的修补方案尚未经过另一次独立复核。": "Review statistics describe the original draft. Corrections proposed in this same task have not received another independent review.",
   "本轮未产出可接受的修补方案，复核报告已保留；未修改草稿，也未追加模型调用。": "No applicable repair proposal was produced. The review report is preserved; the draft is unchanged and no extra model task was started.",
