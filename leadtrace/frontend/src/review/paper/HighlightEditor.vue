@@ -4,7 +4,7 @@ import { t } from '../../i18n';
 import { ApiError } from '../../api/client';
 import { useAuthStore } from '../../auth/store';
 import { listCompounds,listEvidence,structureDepictionUrl } from '../../v2/api';
-import { saveHighlight,deleteHighlight,type HighlightInput,type DisplayHighlight } from '../../v2/highlights';
+import { saveHighlight,deleteHighlight,highlightRole,highlightRoles,type HighlightInput,type DisplayHighlight } from '../../v2/highlights';
 import type { Compound,Evidence,PaperWorkspace } from '../../v2/types';
 import { useHighlights } from './useHighlights';
 import HighlightCards from './HighlightCards.vue';
@@ -64,7 +64,8 @@ async function remove(){
  <form v-if="editing" data-highlight-form @submit.prevent="save">
  <fieldset :disabled="busy||readOnly"><legend>{{ t('文章级分子标注') }}</legend>
  <label class="form-field">Compound<select v-model="form.compound_id" data-highlight-compound required><option value="" disabled>{{ t('选择 Compound') }}</option><option v-for="c in compounds" :key="c.id" :value="c.id">{{ c.compound_label }} · {{ c.display_name }}</option></select></label>
- <label class="form-field">{{ t('标注类别') }}<select v-model="form.role" data-highlight-role><option value="study_start">{{ t('研究起点') }}</option><option value="paper_selected">{{ t('论文优选') }}</option></select></label>
+ <label class="form-field">{{ t('标注类别') }}<select v-model="form.role" data-highlight-role><option v-for="role in highlightRoles" :key="role" :value="role">{{ t(highlightRole(role)) }}</option></select></label>
+ <p v-if="form.role==='optimization_start'" data-optimization-start-help>{{ t('用于作者选出某分子后，以它为基准开展下一批优化；请写明后续系列及原文依据。该标注不会自动拆分 Lineage 或改变节点角色。') }}</p>
  <label class="form-field">{{ t('适用范围') }}<input v-model="form.scope" data-highlight-scope required maxlength="512" :placeholder="t('例如：全文，或 Series A 的先导优化')"></label>
  <label class="form-field">{{ t('作者选择理由') }}<textarea v-model="form.rationale" data-highlight-rationale required maxlength="10000" rows="3" :placeholder="t('说明作者为何以此为起点或优先推进，不能仅凭编号或单项活性判断。')"></textarea></label>
  <label class="form-field">{{ t('来源 Evidence') }}<select v-model="form.evidence_id" data-highlight-evidence required><option value="" disabled>{{ t('选择来源证据') }}</option><option v-for="e in evidence" :key="e.id" :value="e.id">{{ t('PDF 页码') }} {{ e.page_number }} · {{ e.caption||e.quoted_text?.slice(0,100)||e.id }}</option></select></label>

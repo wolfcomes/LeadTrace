@@ -1,4 +1,5 @@
 from uuid import UUID
+import pytest
 from sqlalchemy import select
 from app.compounds.models import CompoundHighlight
 from app.workspaces.models import ChangeEvent, PaperWorkspace, WorkspaceState
@@ -18,9 +19,11 @@ def seed(ctx):
     return headers,base,data
 
 
-def test_highlight_boundaries_versions_evidence_history_and_frozen_projection(science_api_context):
+@pytest.mark.parametrize("role", ["study_start", "paper_selected", "optimization_start"])
+def test_highlight_boundaries_versions_evidence_history_and_frozen_projection(science_api_context, role):
     ctx=science_api_context
     headers,base,data=seed(ctx)
+    data["role"] = role
     assert ctx.client.post(base+'/compound-highlights',json=data).status_code==403
     response=ctx.client.post(base+'/compound-highlights',headers=headers,json=data)
     assert response.status_code==201,response.text
@@ -33,6 +36,7 @@ def test_highlight_boundaries_versions_evidence_history_and_frozen_projection(sc
         assert snap['compound_highlights'][0]['id']==hid
         public=PublishedPaperSnapshotResponse.model_validate(snap).model_dump(mode='json')
         assert public['compound_highlights'][0]['rationale']==data['rationale']
+        assert public['compound_highlights'][0]['role']==role
         assert 'workspace_id' not in public['compound_highlights'][0]
         assert any(b.code=='COMPOUND_HIGHLIGHT_NOT_REVIEWED' for b in validate_submission(session,ctx.first.workspace_id).blockers)
         event=session.scalar(select(ChangeEvent).where(ChangeEvent.entity_id==UUID(hid)))
@@ -75,3 +79,21 @@ def test_highlight_invalidates_group_viewing_and_allows_multiple_roles(science_a
         session.get(PaperWorkspace,ctx.first.workspace_id).state=WorkspaceState.SUBMITTED
     blocked=ctx.client.patch('/api/v2/compound-highlights/'+response.json()['highlight']['id'],headers=headers,json={'expected_workspace_version':5,'scope':'Other'})
     assert blocked.status_code==409,blocked.text
+
+
+def test_new_annotation_prevents_lossy_schema_downgrade(science_api_context, postgresql_database_url):
+    from alembic import command
+    from sqlalchemy.exc import IntegrityError
+    from tests.conftest import _alembic_config
+    ctx = science_api_context
+    headers, base, data = seed(ctx)
+    created = ctx.client.post(base+'/compound-highlights', headers=headers,
+                              json={**data, 'role': 'optimization_start'})
+    assert created.status_code == 201, created.text
+    config = _alembic_config(postgresql_database_url)
+    with pytest.raises(IntegrityError):
+        command.downgrade(config, '0035_article_metadata')
+    assert ctx.client.get(base+'/compound-highlights').json()['items'] == [created.json()['highlight']]
+    with ctx.session_factory.begin() as session:
+        from sqlalchemy import text
+        assert session.scalar(text('SELECT version_num FROM alembic_version')) == '0036_optimization_start'

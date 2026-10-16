@@ -212,7 +212,8 @@
         "role": {
           "enum": [
             "study_start",
-            "paper_selected"
+            "paper_selected",
+            "optimization_start"
           ],
           "title": "Role",
           "type": "string"

@@ -319,11 +319,12 @@ offline distribution and maintenance: [Reviewer documentation](../docs/reviewer/
 `python leadtrace/ops/reviewer/render_guide.py`; CI/local check uses `--check`.
 
 Article information also supports evidence-backed Compound highlights: study
-starting points and paper-prioritized compounds. These are independent of local
+starting points, subsequent optimization starting points (`optimization_start`), and paper-prioritized compounds. These are independent of local
 Lineage topology. Multiple roles/scopes are supported, with explicit draft,
 reviewer-confirmed or unresolved dispositions. Viewing does not confirm a role;
 editing an assertion requires a new disposition. Annotation changes invalidate
 related Compound/Lineage viewing signatures. Draft annotations block submission.
+The subsequent-start label is added through Article information → Add article annotation, with scope, rationale and Evidence; it appears on Compound cards and Lineage nodes without changing local roles or splitting graphs. Deployments require additive migration `0036_optimization_start`, which expands only the highlight role constraint and does not backfill scientific assertions.
 Highlights are versioned, frozen, projected on publication and exported with
 separate review metadata; AI apply always creates drafts. Legacy candidates and
 snapshots without highlights retain their serialized shape. Empty means

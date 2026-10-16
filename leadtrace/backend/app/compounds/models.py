@@ -88,7 +88,7 @@ class CompoundHighlight(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKeyConstraint(["evidence_id", "paper_id", "workspace_id"],
             ["evidence.id", "evidence.paper_id", "evidence.workspace_id"], ondelete="RESTRICT"),
         UniqueConstraint("workspace_id", "compound_id", "role", "scope", name="uq_compound_highlights_identity"),
-        CheckConstraint("role IN ('study_start', 'paper_selected')", name="ck_highlight_role"),
+        CheckConstraint("role IN ('study_start', 'paper_selected', 'optimization_start')", name="ck_highlight_role"),
         CheckConstraint("review_status IN ('draft', 'reviewer_confirmed', 'unresolved')", name="ck_highlight_review"),
         CheckConstraint("btrim(scope) <> '' AND btrim(rationale) <> ''", name="ck_highlight_required"),
         CheckConstraint("created_by_kind IN ('reviewer','admin','ai','system')", name="ck_highlight_creator"),

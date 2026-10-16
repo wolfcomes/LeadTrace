@@ -28,7 +28,7 @@ test('article roles persist with evidence and independent status across article 
   return reply({workspace_version:version,items:[],total:0});
  });
  await page.goto('/review/papers/'+paper+'?workspace='+wid);
- for(const [i,role,status] of [[0,'study_start','reviewer_confirmed'],[1,'paper_selected','draft']] as const){
+ for(const [i,role,status] of [[0,'study_start','reviewer_confirmed'],[1,'paper_selected','draft'],[1,'optimization_start','reviewer_confirmed']] as const){
   await page.locator('[data-add-highlight]').click();
   await page.locator('[data-highlight-compound]').selectOption(compounds[i]!.id);
   await page.locator('[data-highlight-role]').selectOption(role);
@@ -39,7 +39,7 @@ test('article roles persist with evidence and independent status across article 
   await page.locator('[data-save-highlight]').click();
   await expect(page.locator('[data-highlight-form]')).toHaveCount(0);
  }
- await expect(page.locator('.highlight-card')).toHaveCount(2);expect(highlights.map(x=>x.review_status)).toEqual(['reviewer_confirmed','draft']);
+ await expect(page.locator('.highlight-card')).toHaveCount(3);expect(highlights.map(x=>x.review_status)).toEqual(['reviewer_confirmed','draft','reviewer_confirmed']);
  await page.locator('[data-language-switch]').selectOption('en');
  await expect(page.locator('[data-paper-highlights]')).toContainText('Paper-prioritized compound');
  await page.evaluate(()=>window.scrollTo(0,0));
@@ -47,5 +47,7 @@ test('article roles persist with evidence and independent status across article 
  await page.locator('[data-workspace-tab]').filter({hasText:/^Lineage$/}).click();
  const graph=page.locator('[data-lineage-graph]');await expect(graph).toHaveAttribute('data-node-count','2');
  await expect.poll(()=>graph.evaluate((el:any)=>(el._cyreg?.cy?.nodes().map((n:any)=>n.data('label'))??[]).join('|'))).toContain('Paper-prioritized compound ?');
+ await expect.poll(()=>graph.evaluate((el:any)=>(el._cyreg?.cy?.nodes().map((n:any)=>n.data('label'))??[]).join('|'))).toContain('Subsequent optimization starting point');
+ expect(lineage.members[1]!.role).toBe('terminal');
  expect(highlights[1].review_status).toBe('draft');
 });

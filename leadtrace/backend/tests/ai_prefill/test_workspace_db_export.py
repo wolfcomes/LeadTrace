@@ -298,13 +298,14 @@ def test_export_preserves_hints_and_explicit_clearing(preview_ai_context, previe
     assert parent.payload.lineages[0].edges[0].review_hint
 
 
-def test_highlights_roundtrip_as_draft_with_separate_review_metadata(preview_ai_context, preview_settings):
+@pytest.mark.parametrize("role", ["study_start", "optimization_start"])
+def test_highlights_roundtrip_as_draft_with_separate_review_metadata(preview_ai_context, preview_settings, role):
     from app.compounds.models import CompoundHighlight
     from app.ai_prefill.assistance_verification import verify_application_receipt
     from app.ai_prefill.preview_models import ApplicationReceipt
     payload = complete_payload()
     payload['compound_highlights'] = [{'ref':'highlight:start', 'compound_ref':payload['compounds'][0]['ref'],
-        'evidence_ref':payload['evidence'][0]['ref'], 'role':'study_start', 'scope':'Series A', 'rationale':'Synthetic author statement',
+        'evidence_ref':payload['evidence'][0]['ref'], 'role':role, 'scope':'Series A', 'rationale':'Synthetic author statement',
         'review_hint':'Verify attribution'}]
     context = preview_ai_context
     parent, application_id = _apply(context, preview_settings, payload)

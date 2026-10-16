@@ -75,7 +75,7 @@ class AiCompoundHighlight(ReviewHintModel):
     ref: str = Field(min_length=1, max_length=255)
     compound_ref: str = Field(min_length=1, max_length=255)
     evidence_ref: str = Field(min_length=1, max_length=255)
-    role: Literal["study_start", "paper_selected"]
+    role: Literal["study_start", "paper_selected", "optimization_start"]
     scope: str = Field(min_length=1, max_length=512)
     rationale: str = Field(min_length=1, max_length=10_000)
 

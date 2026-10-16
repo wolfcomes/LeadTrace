@@ -9,7 +9,7 @@ const domainLabels: Record<string, string> = {
   compounds: 'Compound', compound: 'Compound', activities: 'Activity', activity: 'Activity',
   lineages: 'Lineage', lineage_groups: 'Lineage', edges: 'Edge', edge: 'Edge', evidence: 'Evidence',
   screenshots: '截图', structure_locators: '结构来源截图', structures: '结构',
-  compound_highlights: '研究起点／论文优选', highlights: '研究起点／论文优选',
+  compound_highlights: '文章级分子标注', highlights: '文章级分子标注',
   lineage_members: 'Lineage 节点', members: 'Lineage 节点', edge_evidence_links: 'Edge 与证据关联',
   locators: '结构来源截图', links: 'Edge 与证据关联', bibliography: '文章信息', groups: 'Lineage',
 };

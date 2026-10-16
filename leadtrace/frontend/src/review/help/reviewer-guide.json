@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-08",
+  "version": "2026-10-16",
   "sections": [
     {
       "id": "start",
@@ -150,12 +150,72 @@
       ]
     },
     {
-      "title_zh": "03 · 先核对文章，再做完整清点",
-      "title_en": "03 · Identify the paper and inventory every compound",
+      "title_zh": "03 · 文章信息：从这里开始审核，再清点分子",
+      "title_en": "03 · Start with article information, then inventory compounds",
       "zh": "核对题名、DOI 和 PDF。收录所有有编号或标签且结构可确定的 Compound，包括无活性数据的原料、中间体和对照。示例仅演示格式，不应复制为论文事实。",
       "en": "Verify title, DOI and PDF. Include every numbered or labelled Compound with a determinable structure, including starting materials, intermediates and controls without activity data. Examples illustrate format and are not paper facts.",
       "id": "identity",
       "blocks": [
+        {
+          "type": "paragraph",
+          "zh": "打开任务后先看“文章信息”页签。这里包括书目信息与 Abstract、六个研究信息模块，以及文章级分子标注。先理解论文的研究范围，再进入 Compound 和 Lineage；详细字段标准见第 12–13 节。",
+          "en": "Start with the Article information tab. It contains bibliography and Abstract, six research-information modules, and article-level compound annotations. Establish the study scope before reviewing Compounds and Lineages; detailed field guidance is in sections 12–13."
+        },
+        {
+          "type": "table",
+          "zh": [
+            [
+              "区域",
+              "怎么看、怎么修改"
+            ],
+            [
+              "基础信息与 Abstract",
+              "先核对题名、期刊、年份、DOI、PMID / PMCID 和原文摘要。点击“编辑基础信息”修改，书目来源与摘要检查状态在“书目追溯信息”中；长摘要可展开全文。"
+            ],
+            [
+              "六个研究信息模块",
+              "分子类型、作用方式、研究靶点与关联基因、优化目标、疾病与应用方向、PDB。桌面端左右两列，模块内独立滚动；进入“编辑基础信息”后展开对应模块修改。"
+            ],
+            [
+              "依据与原文",
+              "展开“依据与说明／编号与依据”核对摘录、位置与提示；按“打开对应原文”或“查看原图区域”核实。没有原图按钮时仍可按来源链接和页码核对。"
+            ],
+            [
+              "文章级分子标注",
+              "包括研究起点、后续优化起点和论文优选。先录入 Compound 和来源 Evidence，再点击“添加文章标注”，选择分子、类别、适用范围、依据和审核状态。"
+            ],
+            [
+              "保存与区段确认",
+              "保存后核对实际显示。AI 预填、打开页面或保存修改都不等于文章信息区段已经核对完成；确认新增内容和疑点后，按区段审核控件明确确认。空白不自动表示未报告。"
+            ]
+          ],
+          "en": [
+            [
+              "Area",
+              "How to read and edit"
+            ],
+            [
+              "Bibliography and Abstract",
+              "Verify title, journal, year, DOI, PMID / PMCID and the original abstract. Use Edit bibliography; provenance and abstract check state are in bibliographic traceability details. Expand long abstracts."
+            ],
+            [
+              "Six research-information modules",
+              "Molecule types, mechanisms, targets and genes, optimization goals, disease context, and PDB. Desktop modules use two columns and independent scrolling. Use Edit bibliography and expand the relevant module to edit."
+            ],
+            [
+              "Evidence and sources",
+              "Expand evidence/identifier details to inspect quotations, locations and hints. Use the source-page or source-region controls; if no crop button is available, check the source link and page."
+            ],
+            [
+              "Article-level compound annotations",
+              "Study starts, subsequent optimization starts and paper-prioritized compounds. Create the Compound and source Evidence first, then Add article annotation and choose compound, role, scope, support and review status."
+            ],
+            [
+              "Saving and section confirmation",
+              "Check the saved display. AI prefill, opening the page or saving an edit does not establish section review. Check new content and uncertainties, then explicitly confirm through the section review controls. Blank does not automatically mean unreported."
+            ]
+          ]
+        },
         {
           "type": "steps",
           "zh": [
@@ -516,8 +576,8 @@
     {
       "title_zh": "08 · Lineage：先分清 SAR 与合成",
       "title_en": "08 · Lineage: distinguish SAR from synthesis",
-      "zh": "SAR 记录设计和结构比较，synthesis 记录实际合成路线；不要仅凭编号顺序连边。同一逻辑路线的节点属于同一 Lineage；独立路线可分开。root 是路线起点，intermediate 为途中节点，terminal 为路线终点；terminal 不自动表示最佳活性或作者最终候选。作者研究起点与优选分子在文章级标注中记录。孤立对照不必强行连边，在 Compound 描述说明其用途及不入 lineage 的理由。",
-      "en": "SAR describes design and structural comparison; synthesis describes chemical routes. Never connect compounds solely by label order. Keep one logical route together; separate independent routes. Root starts a route, intermediate is internal, terminal ends it. Terminal does not automatically mean best activity or nominated lead; record author starting points and prioritized compounds in article annotations. Do not force isolated controls into a lineage: document their purpose and exclusion in the Compound description.",
+      "zh": "SAR 记录设计和结构比较，synthesis 记录实际合成路线。同一起点、同一优化主题的一组分子优先放在一张图；选出新的基准分子并围绕它开展新一组优化时，优先从该分子处拆分。短链不必逐步拆图，独立分支可以分开。拆分后复用 Compound，保留全部有依据的关系与证据，不按编号顺序或仅为连通而连边。",
+      "en": "SAR records design and structural comparison; synthesis records chemical routes. Keep a group with the same starting point and optimization theme together. Prefer splitting at a selected new baseline when it starts another group of optimization compounds. Keep short chains together; independent branches may be separated. Reuse Compounds and preserve all supported relationships and evidence; never connect by label order or merely for connectivity.",
       "id": "lineages",
       "blocks": [
         {
@@ -578,17 +638,121 @@
         {
           "type": "steps",
           "zh": [
-            "先用一句话写该 Lineage 的共同问题，例如“比较同一骨架对位取代基”；另一个 Lineage 可写“制备该系列终产物的共同合成路线”。",
+            "先在 Lineage 名称和描述中写清起点、优化主题与范围，例如“以 3 为起点的侧链优化”；合成路线另建 synthesis 组。不要用整篇文章题名代替分组理由。",
             "把属于同一逻辑路线或比较系列的成员放在一起。图上分散时，先判断是否只是布局，再检查是否漏 Member/Edge、选错端点或混入独立路线。",
             "若缺少来源支持，先写疑点；不要为了视觉连通而添加无依据的关系。如果确为独立系列/路线，再按科学逻辑分组。SAR 的证据可能只支持部分成对关系，应如实记录。",
             "共同中间体通向多个产物时允许分叉，不要把所有产物串成一条线。跨组共用分子可复用同一个 Compound。"
           ],
           "en": [
-            "Describe one common question for the group, such as “compare para substituents on a shared scaffold.” Use another group for its shared synthetic route.",
+            "State the starting compound, optimization theme and scope in the Lineage name and description, for example “Side-chain optimization from 3.” Keep synthesis in a separate synthesis group. The paper title alone is not a grouping rationale.",
             "Keep members of a logical route or comparison series together. For a fragmented diagram, distinguish layout spacing from missing members/edges, incorrect endpoints or unrelated routes.",
             "Record missing support as uncertainty rather than inventing connecting edges. Split truly independent series/routes on scientific grounds. SAR evidence may support only some pairwise relationships.",
             "Allow branching from a shared intermediate to several products; do not force products into a linear chain. Reuse the same Compound across relevant groups."
           ]
+        },
+        {
+          "type": "note",
+          "zh": "拆分的核心是“是否出现新的优化基准和新一组探索”，不是每次换 Table、换优化目标或出现分叉就拆图。一个 root 可以对应多个优化分支；一个图也可以有多个有依据的 root。",
+          "en": "The key split criterion is a new optimization baseline followed by a new group of exploration, not every new table, objective or branch. One root may support several branches, and a graph may have several source-supported roots."
+        },
+        {
+          "type": "table",
+          "zh": [
+            [
+              "情形",
+              "建议",
+              "判断依据"
+            ],
+            [
+              "同一起点，同一位点或主题的一批取代变化",
+              "合并",
+              "保留共同基准和并列关系。"
+            ],
+            [
+              "同一起点，不同位点或骨架，各自形成独立的一组优化",
+              "可按分支拆分",
+              "每组有独立主题和范围；仅换一个取代基不够。"
+            ],
+            [
+              "从上一批选出 1 个或几个分子，分别展开下一批优化",
+              "优先在新基准处分开",
+              "前图保留到该分子的关系；后图复用它作为 root。"
+            ],
+            [
+              "只有连续两三步，虽有后续起点但没有独立的新一批探索",
+              "通常合并",
+              "中间节点可同时承担后续优化起点的意义。"
+            ],
+            [
+              "分支之间依赖交叉比较、汇合或多条跨组关系",
+              "优先合并",
+              "避免拆分掩盖关键联系；每条关系仍需独立依据。"
+            ],
+            [
+              "仅因为换 Table / Scheme、节点多或目标由活性转向 PK",
+              "不足以单独决定拆分",
+              "先检查共同基准、主题和实际关系；仅拥挤先调整布局。"
+            ]
+          ],
+          "en": [
+            [
+              "Situation",
+              "Recommendation",
+              "Rationale"
+            ],
+            [
+              "One start, one site/theme, a batch of substituent changes",
+              "Keep together",
+              "Retain the common baseline and parallel comparisons."
+            ],
+            [
+              "One start, distinct sites/scaffolds, each forming an independent optimization group",
+              "May split by branch",
+              "Each group needs its own theme and scope; a single substituent change is insufficient."
+            ],
+            [
+              "One or several compounds selected from a batch each start another optimization batch",
+              "Prefer splitting at the new baseline",
+              "Keep incoming relationships in the preceding graph; reuse the compound as root in the next."
+            ],
+            [
+              "A continuous two- or three-step chain without a separate new exploration batch",
+              "Usually keep together",
+              "An intermediate can also serve as a subsequent optimization starting point."
+            ],
+            [
+              "Branches depend on cross-comparisons, convergence or many cross-group relationships",
+              "Prefer keeping together",
+              "Do not obscure key connections; each relationship still needs support."
+            ],
+            [
+              "Only a different Table/Scheme, more nodes, or an objective shift from potency to PK",
+              "Insufficient on its own",
+              "Check the baseline, theme and relationships; address crowding through layout first."
+            ]
+          ]
+        },
+        {
+          "type": "flow",
+          "zh": [
+            "虚构拆分示例：作者先比较 1→2、1→3、1→4，再选 3 开展一批侧链优化。",
+            "前图 A：1（root） → 2、3、4（本图 terminal）",
+            "后图 B：3（root） → 5、6、7（本图 terminal）",
+            "3 是后续优化起点，两图使用同一个 Compound。",
+            "若作者明确优选 6，在文章信息中为 6 添加“论文优选”，不由末端位置推断。"
+          ],
+          "en": [
+            "Fictional split: the authors compare 1→2, 1→3 and 1→4, then select 3 for a batch of side-chain optimization.",
+            "Graph A: 1 (root) → 2, 3, 4 (local terminals)",
+            "Graph B: 3 (root) → 5, 6, 7 (local terminals)",
+            "3 is the subsequent optimization starting point; both graphs use the same Compound.",
+            "If the authors prioritize 6, add its paper-prioritized article annotation; do not infer it from terminal position."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "zh": "拆分前后逐条核对 Member、Edge 和 Evidence：示例中的 1→3 留在 A，3→5/6/7 放在 B，不漏边，也不为填满两图重复建立同一科学关系。两图描述注明衔接分子及前后 Lineage 名称；新增 Node 时选择已有 Compound，不复制结构、Activity 或化合物身份。若拆分使真实的跨组关系无法清楚保留，合并相关组。未成功或未被优选的分支仍要保留；没有关系依据的分子仍可留在 Compound 清单。",
+          "en": "Audit members, edges and evidence before and after splitting: keep 1→3 in A and 3→5/6/7 in B. Do not omit edges or duplicate a scientific relationship just to populate both graphs. Name the shared compound and adjoining Lineages in their descriptions. Add existing Compounds as nodes rather than copying identities, structures or Activities. Merge groups if splitting prevents clear retention of real cross-group relationships. Preserve unsuccessful and non-prioritized branches; compounds without supported relationships may remain in the Compound catalog."
         },
         {
           "type": "flow",
@@ -617,8 +781,8 @@
       "id": "roles",
       "title_zh": "09 · Root、Intermediate、Terminal 与文章标注",
       "title_en": "09 · Local roles versus article annotations",
-      "zh": "Lineage 角色描述分子在当前组中的位置；“研究起点／论文优选”描述作者在整篇研究或指定系列中的选择。两者分别核对。",
-      "en": "A Lineage role describes position within that group. Study starting point / paper-prioritized annotations describe author choices for the study or a named series. Review them separately.",
+      "zh": "root / intermediate / terminal 只描述当前图内的位置：root 包括初始起点，也包括本图从上一轮承接的后续优化起点；terminal 只是本图末端。“后续优化起点”描述分子的设计用途，“文章优选分子”对应文章信息中的“论文优选”。位置、用途和作者选择分别核对，可同时成立。",
+      "en": "Root / intermediate / terminal describe local graph position. A root may be an original start or a subsequent optimization starting point inherited from an earlier group; terminal means only the end of this graph. Subsequent-start significance describes design use, while paper-prioritized compounds use the existing article annotation. Check position, use and author choice separately; they can coexist.",
       "blocks": [
         {
           "type": "table",
@@ -630,7 +794,7 @@
             ],
             [
               "root",
-              "当前有向关系组的起点；核对关系方向和上下文",
+              "当前图的局部起点或比较基准；可为初始起点，也可为上一轮选出的后续优化起点；允许多个 root",
               "不自动等于整篇研究起点"
             ],
             [
@@ -640,7 +804,7 @@
             ],
             [
               "terminal",
-              "当前组末端节点；没有继续向后的已记录关系",
+              "当前图的末端，图内没有后续出边；可在下一图继续优化",
               "不自动等于最好活性、最终药物或论文优选"
             ],
             [
@@ -657,6 +821,11 @@
               "论文优选",
               "作者明确选择优先推进的分子，有选择依据",
               "不是所有 terminal，也不是你自己挑最低 IC50"
+            ],
+            [
+              "后续优化起点",
+              "原文支持以该分子为基准继续开展下一组优化；可兼有 root / intermediate / terminal 角色",
+              "不是每个有出边的节点，也不自动等于文章优选"
             ]
           ],
           "en": [
@@ -667,7 +836,7 @@
             ],
             [
               "root",
-              "A starting node in the directed group; check direction and context",
+              "A local starting point or comparison baseline, either an original start or a subsequent start selected earlier; multiple roots are allowed",
               "Automatically a study starting point"
             ],
             [
@@ -677,7 +846,7 @@
             ],
             [
               "terminal",
-              "An endpoint with no further recorded outgoing relationship",
+              "A local endpoint with no outgoing edge in this graph; optimization may continue in the next graph",
               "Best potency, final medicine or author-prioritized compound"
             ],
             [
@@ -694,6 +863,11 @@
               "Paper-prioritized compound",
               "A molecule the authors explicitly choose to advance, with rationale",
               "Every terminal or the reviewer’s lowest-IC50 choice"
+            ],
+            [
+              "Subsequent optimization starting point",
+              "Source-supported baseline for a further optimization group; compatible with root / intermediate / terminal position",
+              "Not every node with an outgoing edge, and not automatically paper-prioritized"
             ]
           ]
         },
@@ -701,6 +875,11 @@
           "type": "paragraph",
           "zh": "同一个 Compound 在不同 Lineage 可以有不同角色。一个研究可以有多个起点和多个优选；同一分子也可能兼任。判断关键是“作者在什么范围、为什么这样选”，不是分子排在第几行。",
           "en": "The same Compound can have different roles in different Lineages. A study can have several starts and priorities, and one molecule may carry both annotations. The key is the authors’ scope and rationale, not row order."
+        },
+        {
+          "type": "note",
+          "zh": "网站已支持独立的“后续优化起点”文章标注。在“文章信息 → 添加文章标注”中选择该类别，关联同一个 Compound、填写后续优化的系列／Lineage 范围和作者选择理由，并选择来源 Evidence。标注会随该分子显示在 Compound 与 Lineage 图中；它不会自动拆图或修改 root / intermediate / terminal。跨图复用时，在 Lineage 描述补充前后衔接；同一分子可兼有“研究起点”“后续优化起点”“论文优选”，但每项都应有明确依据。",
+          "en": "The website supports a separate Subsequent optimization starting point article annotation. Under Article information → Add article annotation, select this role, link the existing Compound, specify the subsequent series/Lineage scope and author rationale, and choose source Evidence. The annotation appears with the compound in Compound views and Lineage graphs; it does not automatically split graphs or change root / intermediate / terminal. Describe links between successive groups in their Lineage descriptions. One compound may carry study-start, subsequent-start and paper-prioritized annotations, each with explicit support."
         }
       ]
     },
@@ -729,6 +908,11 @@
             "Drag nodes; enable edge bending to drag diamond control handles. Choose Save layout. Point and structure modes keep separate layouts.",
             "Reload layout discards unsaved positions in the current mode; grid rearrangement changes presentation. Moving nodes or bending edges does not change endpoints or scientific review status."
           ]
+        },
+        {
+          "type": "paragraph",
+          "zh": "查看整体线路时可先用简短点线图：尽量让起点在左、后续优化向右，同批并列分子上下排列，具体结构再到 Compound 中查看。布局不是关系依据；1 同时比较 2、3、4 时画分叉，不画成 1→2→3→4。若实际直接基准是 3，后续分子就从 3 连出，不一律连回最初的 1。有依据的汇合或多个父节点可以保留，不必强行画成树。",
+          "en": "For an overview, start with compact nodes and arrows: place starts on the left, subsequent optimization to the right and parallel analogues vertically. Inspect structures in Compound details. Layout does not establish relationships: comparisons of 1 against 2, 3 and 4 form a branch, not 1→2→3→4. If 3 is the direct baseline, connect its derivatives from 3 rather than from the original 1. Retain supported convergence and multiple parents instead of forcing a tree."
         },
         {
           "type": "figure",
@@ -809,6 +993,11 @@
           ]
         },
         {
+          "type": "paragraph",
+          "zh": "图上文字保持简短，优先说明该条边的具体结构变化，例如“侧链替换”“缩环”。在关系详情中分别写清结构改动、优化目标与实际观察结果，并核对本条边的端点和证据；不要把一条边的解释套用到整组。仅同表出现、结构相似或活性排序，不能证明真实的优化先后。",
+          "en": "Keep graph labels short and specific to the edge, such as “side-chain replacement” or “ring contraction.” In relationship details, distinguish the structural change, optimization goal and observed result, and verify this edge’s endpoints and evidence. Do not apply one edge’s explanation to the whole group. Shared table membership, structural similarity or potency ranking do not establish optimization chronology."
+        },
+        {
           "type": "figure",
           "zh": "Edge 页签用于逐条核对端点、关系和审核状态。证据说明为何可以建立这条边，不能只凭图画得顺眼。",
           "en": "Use the Edge tab to check endpoints, meaning and disposition one relationship at a time. Sources justify the edge; a tidy graph does not.",
@@ -817,10 +1006,10 @@
       ]
     },
     {
-      "title_zh": "12 · 给研究起点／论文优选添加依据",
-      "title_en": "12 · Supporting study-start / priority annotations",
-      "zh": "在文章信息页关联本篇 Compound 与已有 Evidence，记录研究起点或论文优选、适用系列/范围及作者选择理由。每类可有多个分子，同一分子可兼任。先在 Evidence 库保存原文依据；标注卡片保留 PDF 页码与原文。研究起点不等于每条合成路线的原料；论文优选不等于所有 terminal 或最低 IC50。待审核、已确认、待解决分别显示，阅读不会自动确认；未记录不代表文章没有此类分子。修改理由、身份或来源后重新核对，需核对提示要显式清除。",
-      "en": "On the article information page, link a Compound and existing Evidence, record its study-start or paper-prioritized role, study/series scope and author rationale. Multiple compounds and both roles are allowed. Save source support in the Evidence library first; cards retain the PDF page and quotation. A study start is not every synthesis reagent; a prioritized compound is not every terminal or the lowest IC50. Draft, confirmed and unresolved states remain visible. Viewing never confirms; unrecorded does not mean absent. Recheck after changing identity, rationale or source, and explicitly clear resolved verification hints.",
+      "title_zh": "12 · 给研究起点／后续优化起点／论文优选添加依据",
+      "title_en": "12 · Support study starts, subsequent starts and prioritized compounds",
+      "zh": "在文章信息页关联本篇 Compound 与已有 Evidence，记录研究起点、后续优化起点或论文优选、适用系列/范围及作者选择理由。每类可有多个分子，同一分子可兼任。先在 Evidence 库保存原文依据；标注卡片保留 PDF 页码与原文。研究起点不等于每条合成路线的原料；论文优选不等于所有 terminal 或最低 IC50。待审核、已确认、待解决分别显示，阅读不会自动确认；未记录不代表文章没有此类分子。修改理由、身份或来源后重新核对，需核对提示要显式清除。",
+      "en": "On the article information page, link a Compound and existing Evidence, record its study-start, subsequent-start or paper-prioritized role, study/series scope and author rationale. Multiple compounds and coexisting annotations are allowed. Save source support in the Evidence library first; cards retain the PDF page and quotation. A study start is not every synthesis reagent; a prioritized compound is not every terminal or the lowest IC50. Draft, confirmed and unresolved states remain visible. Viewing never confirms; unrecorded does not mean absent. Recheck after changing identity, rationale or source, and explicitly clear resolved verification hints.",
       "id": "highlights",
       "blocks": [
         {
@@ -839,6 +1028,11 @@
           ]
         },
         {
+          "type": "paragraph",
+          "zh": "“后续优化起点”用于原文明确选出一个分子、以它为基准开展下一组优化的情况。适用范围写明后续系列或 Lineage 名称；理由解释为何选它、后续探索什么；Evidence 支持这个选择和承接关系。不要仅因有出边就添加标签。保存为待审核后，需要人工核实并设为已确认，或保留待解决及具体问题。相同分子同类别同范围不重复建立；新的范围可单独记录。",
+          "en": "Use Subsequent optimization starting point when the source explicitly selects a compound as the baseline for another optimization group. Name the subsequent series or Lineage in Scope, explain the choice and exploration in Rationale, and link Evidence supporting that transition. An outgoing edge alone is insufficient. Draft annotations require explicit human confirmation or an unresolved disposition with a specific issue. Do not duplicate the same compound, role and scope; a distinct scope may have its own annotation."
+        },
+        {
           "type": "note",
           "zh": "某分子在体外最强，但作者因暴露量差而放弃，不能标为论文优选。某化合物只作为外部药物对照，也不能因为出现在 Figure 1 就标为研究起点。",
           "en": "The most potent in vitro compound may have been abandoned for poor exposure. An external drug comparator appearing in Figure 1 is not automatically a study starting point."
@@ -846,23 +1040,88 @@
       ]
     },
     {
-      "title_zh": "13 · Abstract 与 PDB：来源和用途要分开",
-      "title_en": "13 · Abstract and PDB: preserve source and usage",
-      "zh": "Abstract 保存原文摘要及来源，不使用 AI 总结冒充。PDB ID 支持传统四字符与 pdb_ 前缀扩展格式；ATP 等三字符配体代码不是 PDB ID。区分本文结构、引用结构、用途待核对；记录页码和上下文。仅来源明确时关联 Compound。空白只代表未记录，不能自动判定文章未报告。",
-      "en": "Store the original abstract with provenance, not an AI summary. PDB IDs support legacy four-character and extended pdb_ formats. Three-character ligand codes such as ATP are not PDB IDs. Distinguish this-work structures, cited structures and unknown usage; record page and context. Pair with a Compound only when explicit in the source. Empty means unrecorded, not proven absent.",
+      "title_zh": "13 · 文章信息：摘要、分子类型、靶点与证据",
+      "title_en": "13 · Article information: abstract, molecule types, targets and evidence",
+      "zh": "文章信息需同时核对书目身份、原文摘要、分子类型、作用方式、研究靶点与关联基因、优化目标、疾病方向和 PDB。AI 补填仍是待核对内容。模块可独立滚动，依据与原图默认折叠；请展开并检查完整内容。空白表示未记录，不表示原文未报告。",
+      "en": "Check bibliographic identity, source abstract, molecule types, mechanisms, targets and genes, optimization goals, disease context and PDB references. AI supplements still require review. Modules scroll independently and evidence/crops start collapsed; expand them to check all content. Empty means unrecorded, not unreported by the paper.",
       "id": "metadata",
       "blocks": [
         {
+          "type": "table",
+          "zh": [
+            [
+              "模块",
+              "核对要点"
+            ],
+            [
+              "PMID / PMCID",
+              "PMID 是 PubMed 数字编号，PMCID 带 PMC 前缀；打开链接核对题名、DOI 和年份，不能填成同名文章或引用文献的编号。"
+            ],
+            [
+              "分子类型",
+              "从现有词条选择；非空分类至少有一项“主要类型”，补充特征可多选。如大环抑制剂选“小分子抑制剂”＋“大环类”，变构抑制剂选“小分子抑制剂”＋“变构调节”。不重复选同一词条；新选“其他／待明确”须说明原因。"
+            ],
+            [
+              "作用方式",
+              "记录来源支持的作用机制，分清直接证据与推测；不把分子类型标签当作机制已证实的依据。"
+            ],
+            [
+              "研究靶点与关联基因",
+              "核对靶点名称、研究角色、物种、基因符号及 UniProt / NCBI Gene 编号。主要靶点、选择性对照、脱靶检测、机制相关和生物标志物分别判断；不能把检测面板全当主要靶点，也不能凭缩写猜基因或物种。"
+            ],
+            [
+              "优化目标／疾病与应用方向",
+              "区分作者想改善的性质与实际达到的结果；区分研究应用方向与已经证实的治疗效果。每项都保留依据。"
+            ]
+          ],
+          "en": [
+            [
+              "Module",
+              "Checks"
+            ],
+            [
+              "PMID / PMCID",
+              "PMID is numeric; PMCID includes the PMC prefix. Open links and match title, DOI and year; do not use another paper’s or a cited reference’s identifier."
+            ],
+            [
+              "Molecule types",
+              "Choose existing terms. A nonempty classification needs at least one primary type; supplementary features may be combined. A macrocyclic inhibitor uses Small-molecule inhibitor + Macrocyclic; an allosteric inhibitor uses Small-molecule inhibitor + Allosteric modulation. Avoid duplicate terms; explain newly selected Other / Unclear entries."
+            ],
+            [
+              "Mechanisms",
+              "Record source-supported mechanisms and distinguish evidence from hypotheses. A molecule-type label alone does not establish a mechanism."
+            ],
+            [
+              "Targets and associated genes",
+              "Check target name, study role, organism, gene symbol and UniProt / NCBI Gene identifiers. Distinguish primary targets, selectivity controls, off-target assays, mechanistic targets and biomarkers. Do not classify an entire assay panel as primary targets or infer genes/species from abbreviations."
+            ],
+            [
+              "Optimization goals / disease context",
+              "Distinguish intended property improvements from achieved results, and intended applications from demonstrated therapeutic effects. Keep support for each entry."
+            ]
+          ]
+        },
+        {
+          "type": "note",
+          "zh": "左右模块有各自的滚动区域，不能只核对第一屏。展开“依据与说明／编号与依据”阅读原文摘录；编辑时还可展开“原文摘录”。“查看原图区域”仅在有匹配当前主文 PDF 的定位信息时显示；没有截图按钮时，按“打开对应原文”或来源链接核对，不能把文字摘录当作已经看过原图。补充材料要写材料名称及页码，外部来源要保留链接；引文忠实保留原文，解释另写在依据说明。",
+          "en": "The side-by-side modules scroll independently; review beyond the first visible screen. Expand evidence or identifier details to read quotations; the editor also has a source-quotation section. View source region appears only when crop coordinates match the current main PDF. Without that button, use the source-page or source link; reading a quotation is not viewing the source image. Identify supplementary material and page, retain external links, and keep quotations faithful while putting explanations in the rationale."
+        },
+        {
+          "type": "paragraph",
+          "zh": "PDB ID 支持传统四字符与 pdb_ 前缀扩展格式；ATP 等三字符配体代码不是 PDB ID。区分本文结构、引用结构和用途待核对，记录页码及上下文，仅在来源明确配对时关联 Compound。",
+          "en": "PDB IDs support the traditional four-character and extended pdb_ formats; a three-character ligand code such as ATP is not a PDB ID. Distinguish structures from this work, cited structures and unknown usage; retain pages and context, and link a Compound only when the source explicitly pairs it with the structure."
+        },
+        {
           "type": "steps",
           "zh": [
-            "点击“编辑基础信息”填写原文 Abstract 和来源。摘要翻译或自己的概括不能替换原文摘要。",
+            "点击“编辑基础信息”填写原文 Abstract；来源和检查状态位于“书目追溯信息”。摘要翻译或自己的概括不能替换原文摘要。“已提取”不等于 reviewer 已确认；“已检查，未找到”或“待核对”要说明范围与原因。",
             "在正文、结构解析方法和 Accession Codes 中查找 Protein Data Bank / PDB，逐个记录明确编号。先确认它是结构编号，不是配体三字码、基因编号或实验耗材型号。",
             "判断用途：本文新测定并沉积的实验结构填“本文结构”；下载已有坐标做 docking、结构比较或分子置换填“引用结构”；无法判断时填“用途待核对”并说明。",
             "填写 PDF 实际页码和来源上下文。只有原文明确结构与分子身份配对时才填关联 Compound；对接了化合物 7 并不证明该 PDB 晶体里就是 7。",
             "同一编号多次出现通常合并说明用途和补充页码。原文编号或蛋白名冲突时保留来源并写需核对，不静默改成自己觉得更合理的编号。"
           ],
           "en": [
-            "Use Edit basic information to enter the original Abstract and provenance. Do not replace the abstract with a translation or summary.",
+            "Use Edit bibliography for the source Abstract; its source and check status are under bibliographic traceability details. A translation or summary cannot replace the original abstract. Extracted does not mean reviewer-confirmed; explain scope and reasons for Not found or Needs review.",
             "Search text, structure methods and Accession Codes for Protein Data Bank / PDB. Distinguish structure accessions from three-character ligand codes, gene accessions and equipment codes.",
             "Use this-work for newly determined/deposited experimental structures; cited-structure for existing coordinates used in docking, comparison or molecular replacement. Explain uncertain usage.",
             "Record the physical PDF page and context. Associate a Compound only with explicit source support: docking compound 7 does not establish that the deposited crystal ligand is 7.",
@@ -994,6 +1253,53 @@
           ]
         },
         {
+          "type": "table",
+          "zh": [
+            [
+              "提交后的情形",
+              "如何处理"
+            ],
+            [
+              "退回修改",
+              "退回修改会恢复同一工作区的编辑状态，已保存内容、人工说明及未变化的确认不会被清空；不需要从空白重新做整篇。先查看退回原因，再复核本次改动、依赖项和失效的查看记录，提交前仍需完成整篇确认。"
+            ],
+            [
+              "AI 补填",
+              "AI 补填的文章信息不作为 reviewer 的人工修改计数，但仍属于需要核对的当前内容。提交后发生补充时，需完成相关复核并重新提交，不能把旧提交的审批当作对新增内容的批准。"
+            ],
+            [
+              "重新提交",
+              "Admin 按真实的 reviewer 提交版本查看提交时间、意见与版本差异；仅保存草稿不会生成新提交。重新提交时在 Reviewer note 写清处理结果与未决问题。"
+            ],
+            [
+              "已发布文章的修订",
+              "已发布文章的补充修订在新一轮批准前保留原发布版；新提交获批后成为当前发布版，旧发布记录保留。草稿修改或退回本身不会直接替换已发布内容。"
+            ]
+          ],
+          "en": [
+            [
+              "After submission",
+              "What to do"
+            ],
+            [
+              "Returned for changes",
+              "Return for changes reopens the same workspace without clearing saved content, human notes or unchanged confirmations. You do not restart from an empty paper. Read the return reason, recheck changes, dependencies and invalidated viewing receipts, then complete the whole-paper confirmation before submitting again."
+            ],
+            [
+              "AI supplements",
+              "AI article supplements do not count as human Reviewer edits, but remain current content requiring review. Additions after submission require relevant checks and resubmission; approval of an older submission cannot approve new content."
+            ],
+            [
+              "Resubmission",
+              "Admin navigates actual Reviewer submissions with timestamps, notes and version comparisons; saving a draft alone creates no new submission. Explain completed corrections and unresolved issues in the Reviewer note when resubmitting."
+            ],
+            [
+              "Revising a published paper",
+              "For a revision of a published paper, the existing publication remains current until the new submission is approved. Approval makes the new version current and retains the old publication record. Draft edits or return for changes do not directly replace published content."
+            ]
+          ]
+        },
+        {
           "type": "figure",
           "zh": "教学示例故意保留一个待处理项：点击问题定位并核对，完成前不要勾选整篇确认。",
           "en": "This teaching example intentionally retains a blocker. Open it and resolve the issue before final whole-paper confirmation.",
@@ -1050,6 +1356,10 @@
             [
               "不懂杂环、立体化学或实验指标",
               "记录化合物编号、PDF 页码、具体位置和问题，交给负责人；不要猜测或伪造确定性。"
+            ],
+            [
+              "Source PDF 打不开或提示暂时不可用",
+              "先重试；仍失败时记录 paper ID、题名及错误提示交给负责人。来源无法核对时保留待核对状态，不为修复访问而删除或重复新建文章。"
             ]
           ],
           "en": [
@@ -1092,6 +1402,10 @@
             [
               "Unfamiliar ring, stereochemistry or assay",
               "Record compound label, PDF page, exact location and question for your supervisor; do not guess."
+            ],
+            [
+              "Source PDF fails to open or is temporarily unavailable",
+              "Retry; if it persists, report paper ID, title and the error to the supervisor. Keep source-dependent items pending when the source cannot be checked; do not delete or duplicate the paper to fix access."
             ]
           ]
         }
@@ -1162,6 +1476,17 @@
           "en": {
             "question": "Can you submit after clicking every group to viewed?",
             "answer": "No. Viewed does not establish scientific review. Resolve structure/edge/annotation dispositions, source issues and submission blockers, then give final whole-paper confirmation."
+          }
+        },
+        {
+          "type": "question",
+          "zh": {
+            "question": "Compound 3 在前图是 terminal，又被选作下一批优化起点，是否矛盾？",
+            "answer": "不矛盾。terminal 只指前图末端；若有新基准和新一批优化，可在后图复用同一个 Compound 3 并设为 root，描述衔接与依据。若只是短链，可留在同图作 intermediate。后续优化起点不自动等于论文优选；作者选择另核对。"
+          },
+          "en": {
+            "question": "Can Compound 3 be terminal in one graph and start the next optimization batch?",
+            "answer": "Yes. Terminal means a local endpoint. If 3 becomes the baseline for a new batch, reuse the same Compound as root in the next graph and document the connection and support. A short chain can stay together with 3 as intermediate. A subsequent start is not automatically paper-prioritized; check author choice separately."
           }
         }
       ]

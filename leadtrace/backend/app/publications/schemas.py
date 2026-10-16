@@ -323,7 +323,7 @@ class PublishedCompoundHighlight(PublishedSnapshotProjection):
     id: UUID
     compound_id: UUID
     evidence_id: UUID
-    role: Literal['study_start', 'paper_selected']
+    role: Literal['study_start', 'paper_selected', 'optimization_start']
     scope: str
     rationale: str
     review_hint: str | None = None

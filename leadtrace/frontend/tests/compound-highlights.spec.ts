@@ -61,3 +61,17 @@ it('requires a fresh review disposition after editing a confirmed assertion',asy
  await wrapper.get('[data-highlight-rationale]').setValue('Changed scientific rationale');
  expect((wrapper.get('select[data-highlight-status]').element as HTMLSelectElement).value).toBe('draft');wrapper.unmount();
 });
+
+
+it('creates an evidence-backed subsequent optimization start and displays its own bilingual label',async()=>{
+ const writes=mock();const wrapper=mount(host());await flushPromises();await fill(wrapper);
+ const option=wrapper.find('option[value="optimization_start"]');expect(option.exists()).toBe(true);
+ await wrapper.get('[data-highlight-role]').setValue('optimization_start');
+ await wrapper.get('[data-highlight-scope]').setValue('Lineage B: side-chain optimization from Compound 1');
+ await wrapper.get('form').trigger('submit');await flushPromises();
+ expect(writes[0].body).toMatchObject({role:'optimization_start',review_status:'draft',evidence_id:ids.evidence[0]});
+ expect(wrapper.findAll('.highlight-card')).toHaveLength(1);
+ expect(wrapper.text()).toContain('后续优化起点');
+ setLocale('en');await flushPromises();expect(wrapper.text()).toContain('Subsequent optimization starting point');
+ wrapper.unmount();
+});

@@ -1,6 +1,6 @@
 # Reviewer illustrated handbook
 
-Version: 2026-10-08
+Version: 2026-10-16
 
 > Generated from `leadtrace/frontend/src/review/help/reviewer-guide.json`. Edit that source and run `python leadtrace/ops/reviewer/render_guide.py`.
 
@@ -37,9 +37,19 @@ Separate molecular identity, measurements, relationships and supporting sources 
 
 A Compound may have several Activities and participate in several Lineages. The same molecule can be a synthesis product and an SAR comparison member; reuse the Compound in both groups.
 
-## 03 · Identify the paper and inventory every compound
+## 03 · Start with article information, then inventory compounds
 
 Verify title, DOI and PDF. Include every numbered or labelled Compound with a determinable structure, including starting materials, intermediates and controls without activity data. Examples illustrate format and are not paper facts.
+
+Start with the Article information tab. It contains bibliography and Abstract, six research-information modules, and article-level compound annotations. Establish the study scope before reviewing Compounds and Lineages; detailed field guidance is in sections 12–13.
+
+| Area | How to read and edit |
+|---|---|
+| Bibliography and Abstract | Verify title, journal, year, DOI, PMID / PMCID and the original abstract. Use Edit bibliography; provenance and abstract check state are in bibliographic traceability details. Expand long abstracts. |
+| Six research-information modules | Molecule types, mechanisms, targets and genes, optimization goals, disease context, and PDB. Desktop modules use two columns and independent scrolling. Use Edit bibliography and expand the relevant module to edit. |
+| Evidence and sources | Expand evidence/identifier details to inspect quotations, locations and hints. Use the source-page or source-region controls; if no crop button is available, check the source link and page. |
+| Article-level compound annotations | Study starts, subsequent optimization starts and paper-prioritized compounds. Create the Compound and source Evidence first, then Add article annotation and choose compound, role, scope, support and review status. |
+| Saving and section confirmation | Check the saved display. AI prefill, opening the page or saving an edit does not establish section review. Check new content and uncertainties, then explicitly confirm through the section review controls. Blank does not automatically mean unreported. |
 
 1. Match the title, DOI, journal and year, and confirm that Source PDF belongs to this paper. Stop work on a mismatched source and report it.
 2. Use the PDF viewer’s physical page number, starting at 1. A printed journal page such as 3456 is not PDF page 3456. Record the physical page together with Table 2 or Scheme 1.
@@ -133,7 +143,7 @@ Evidence provides a checkable source. Use quoted text for verbatim wording, Capt
 
 ## 08 · Lineage: distinguish SAR from synthesis
 
-SAR describes design and structural comparison; synthesis describes chemical routes. Never connect compounds solely by label order. Keep one logical route together; separate independent routes. Root starts a route, intermediate is internal, terminal ends it. Terminal does not automatically mean best activity or nominated lead; record author starting points and prioritized compounds in article annotations. Do not force isolated controls into a lineage: document their purpose and exclusion in the Compound description.
+SAR records design and structural comparison; synthesis records chemical routes. Keep a group with the same starting point and optimization theme together. Prefer splitting at a selected new baseline when it starts another group of optimization compounds. Keep short chains together; independent branches may be separated. Reuse Compounds and preserve all supported relationships and evidence; never connect by label order or merely for connectivity.
 
 | Category | Question answered | Possible source support | Avoid |
 |---|---|---|---|
@@ -141,10 +151,31 @@ SAR describes design and structural comparison; synthesis describes chemical rou
 | synthesis | Which precursors give which products? | Scheme arrows, methods and explicit multistep paths | Treating improved activity as synthesis |
 | Isolated control | Why is this molecule present without an optimization relationship? | Initial comparisons or an external reference standard | Inventing an edge merely to connect every node |
 
-1. Describe one common question for the group, such as “compare para substituents on a shared scaffold.” Use another group for its shared synthetic route.
+1. State the starting compound, optimization theme and scope in the Lineage name and description, for example “Side-chain optimization from 3.” Keep synthesis in a separate synthesis group. The paper title alone is not a grouping rationale.
 2. Keep members of a logical route or comparison series together. For a fragmented diagram, distinguish layout spacing from missing members/edges, incorrect endpoints or unrelated routes.
 3. Record missing support as uncertainty rather than inventing connecting edges. Split truly independent series/routes on scientific grounds. SAR evidence may support only some pairwise relationships.
 4. Allow branching from a shared intermediate to several products; do not force products into a linear chain. Reuse the same Compound across relevant groups.
+
+> The key split criterion is a new optimization baseline followed by a new group of exploration, not every new table, objective or branch. One root may support several branches, and a graph may have several source-supported roots.
+
+| Situation | Recommendation | Rationale |
+|---|---|---|
+| One start, one site/theme, a batch of substituent changes | Keep together | Retain the common baseline and parallel comparisons. |
+| One start, distinct sites/scaffolds, each forming an independent optimization group | May split by branch | Each group needs its own theme and scope; a single substituent change is insufficient. |
+| One or several compounds selected from a batch each start another optimization batch | Prefer splitting at the new baseline | Keep incoming relationships in the preceding graph; reuse the compound as root in the next. |
+| A continuous two- or three-step chain without a separate new exploration batch | Usually keep together | An intermediate can also serve as a subsequent optimization starting point. |
+| Branches depend on cross-comparisons, convergence or many cross-group relationships | Prefer keeping together | Do not obscure key connections; each relationship still needs support. |
+| Only a different Table/Scheme, more nodes, or an objective shift from potency to PK | Insufficient on its own | Check the baseline, theme and relationships; address crowding through layout first. |
+
+```text
+Fictional split: the authors compare 1→2, 1→3 and 1→4, then select 3 for a batch of side-chain optimization.
+Graph A: 1 (root) → 2, 3, 4 (local terminals)
+Graph B: 3 (root) → 5, 6, 7 (local terminals)
+3 is the subsequent optimization starting point; both graphs use the same Compound.
+If the authors prioritize 6, add its paper-prioritized article annotation; do not infer it from terminal position.
+```
+
+Audit members, edges and evidence before and after splitting: keep 1→3 in A and 3→5/6/7 in B. Do not omit edges or duplicate a scientific relationship just to populate both graphs. Name the shared compound and adjoining Lineages in their descriptions. Add existing Compounds as nodes rather than copying identities, structures or Activities. Merge groups if splitting prevents clear retention of real cross-group relationships. Preserve unsuccessful and non-prioritized branches; compounds without supported relationships may remain in the Compound catalog.
 
 ```text
 Fictional SAR example
@@ -159,18 +190,21 @@ A branching example Lineage. Check its category and grouping rationale, then mem
 
 ## 09 · Local roles versus article annotations
 
-A Lineage role describes position within that group. Study starting point / paper-prioritized annotations describe author choices for the study or a named series. Review them separately.
+Root / intermediate / terminal describe local graph position. A root may be an original start or a subsequent optimization starting point inherited from an earlier group; terminal means only the end of this graph. Subsequent-start significance describes design use, while paper-prioritized compounds use the existing article annotation. Check position, use and author choice separately; they can coexist.
 
 | Name | How to decide | Does not mean |
 |---|---|---|
-| root | A starting node in the directed group; check direction and context | Automatically a study starting point |
+| root | A local starting point or comparison baseline, either an original start or a subsequent start selected earlier; multiple roots are allowed | Automatically a study starting point |
 | intermediate | An internal node, typically with incoming and outgoing relationships | Automatically a synthetic intermediate in an SAR group |
-| terminal | An endpoint with no further recorded outgoing relationship | Best potency, final medicine or author-prioritized compound |
+| terminal | A local endpoint with no outgoing edge in this graph; optimization may continue in the next graph | Best potency, final medicine or author-prioritized compound |
 | unspecified | Role not yet determined; further review needed | A permanent shortcut around review |
 | Study starting point | An author-supported starting molecule for this study/series | Every reagent or first material in a synthesis |
 | Paper-prioritized compound | A molecule the authors explicitly choose to advance, with rationale | Every terminal or the reviewer’s lowest-IC50 choice |
+| Subsequent optimization starting point | Source-supported baseline for a further optimization group; compatible with root / intermediate / terminal position | Not every node with an outgoing edge, and not automatically paper-prioritized |
 
 The same Compound can have different roles in different Lineages. A study can have several starts and priorities, and one molecule may carry both annotations. The key is the authors’ scope and rationale, not row order.
+
+> The website supports a separate Subsequent optimization starting point article annotation. Under Article information → Add article annotation, select this role, link the existing Compound, specify the subsequent series/Lineage scope and author rationale, and choose source Evidence. The annotation appears with the compound in Compound views and Lineage graphs; it does not automatically split graphs or change root / intermediate / terminal. Describe links between successive groups in their Lineage descriptions. One compound may carry study-start, subsequent-start and paper-prioritized annotations, each with explicit support.
 
 ## 10 · Editing a Lineage in graph and forms
 
@@ -182,6 +216,8 @@ Switch between three tabs. Add Node selects an existing Compound from this paper
 4. Alternatively add a Member in the Compound tab and use full forms in the Edge tab. Both interfaces edit the same records.
 5. Drag nodes; enable edge bending to drag diamond control handles. Choose Save layout. Point and structure modes keep separate layouts.
 6. Reload layout discards unsaved positions in the current mode; grid rearrangement changes presentation. Moving nodes or bending edges does not change endpoints or scientific review status.
+
+For an overview, start with compact nodes and arrows: place starts on the left, subsequent optimization to the right and parallel analogues vertically. Inspect structures in Compound details. Layout does not establish relationships: comparisons of 1 against 2, 3 and 4 form a branch, not 1→2→3→4. If 3 is the direct baseline, connect its derivatives from 3 rather than from the original 1. Retain supported convergence and multiple parents instead of forcing a tree.
 
 ![Add Node selects an existing Compound from this paper. Its role belongs to the current Lineage; verify the label before confirming.](../../leadtrace/frontend/public/reviewer-guide/images/node.en.png)
 
@@ -200,26 +236,42 @@ Each edge needs interpretable endpoints, direction and meaning. Separate structu
 | Inference labeling | Fictional: comparison inferred from structures; author optimization order not stated. 7a is the reference, with no synthesis claim. |
 | Disposition | After checking sources explicitly choose draft / reviewer_confirmed / unresolved and retain conflicts. |
 
+Keep graph labels short and specific to the edge, such as “side-chain replacement” or “ring contraction.” In relationship details, distinguish the structural change, optimization goal and observed result, and verify this edge’s endpoints and evidence. Do not apply one edge’s explanation to the whole group. Shared table membership, structural similarity or potency ranking do not establish optimization chronology.
+
 ![Use the Edge tab to check endpoints, meaning and disposition one relationship at a time. Sources justify the edge; a tidy graph does not.](../../leadtrace/frontend/public/reviewer-guide/images/edge.en.png)
 
 Use the Edge tab to check endpoints, meaning and disposition one relationship at a time. Sources justify the edge; a tidy graph does not.
 
-## 12 · Supporting study-start / priority annotations
+## 12 · Support study starts, subsequent starts and prioritized compounds
 
-On the article information page, link a Compound and existing Evidence, record its study-start or paper-prioritized role, study/series scope and author rationale. Multiple compounds and both roles are allowed. Save source support in the Evidence library first; cards retain the PDF page and quotation. A study start is not every synthesis reagent; a prioritized compound is not every terminal or the lowest IC50. Draft, confirmed and unresolved states remain visible. Viewing never confirms; unrecorded does not mean absent. Recheck after changing identity, rationale or source, and explicitly clear resolved verification hints.
+On the article information page, link a Compound and existing Evidence, record its study-start, subsequent-start or paper-prioritized role, study/series scope and author rationale. Multiple compounds and coexisting annotations are allowed. Save source support in the Evidence library first; cards retain the PDF page and quotation. A study start is not every synthesis reagent; a prioritized compound is not every terminal or the lowest IC50. Draft, confirmed and unresolved states remain visible. Viewing never confirms; unrecorded does not mean absent. Recheck after changing identity, rationale or source, and explicitly clear resolved verification hints.
 
 1. Read the Introduction, Results/Discussion and conclusion for explicit starting-point or advancement statements; verify labels and aliases against figures/tables.
 2. Save the quotation and physical PDF page in Evidence, then choose Add article annotation on Article information.
 3. Select the Compound, role, scope (whole study or Series A), author rationale and source Evidence. Potency, selectivity, PK, brain exposure or in vivo effects belong in the rationale only when supported.
 4. Confirm only after verification. Use unresolved with an explanation for identity/support conflicts. Recheck after changing identity, rationale or evidence rather than carrying forward the old judgment.
 
+Use Subsequent optimization starting point when the source explicitly selects a compound as the baseline for another optimization group. Name the subsequent series or Lineage in Scope, explain the choice and exploration in Rationale, and link Evidence supporting that transition. An outgoing edge alone is insufficient. Draft annotations require explicit human confirmation or an unresolved disposition with a specific issue. Do not duplicate the same compound, role and scope; a distinct scope may have its own annotation.
+
 > The most potent in vitro compound may have been abandoned for poor exposure. An external drug comparator appearing in Figure 1 is not automatically a study starting point.
 
-## 13 · Abstract and PDB: preserve source and usage
+## 13 · Article information: abstract, molecule types, targets and evidence
 
-Store the original abstract with provenance, not an AI summary. PDB IDs support legacy four-character and extended pdb_ formats. Three-character ligand codes such as ATP are not PDB IDs. Distinguish this-work structures, cited structures and unknown usage; record page and context. Pair with a Compound only when explicit in the source. Empty means unrecorded, not proven absent.
+Check bibliographic identity, source abstract, molecule types, mechanisms, targets and genes, optimization goals, disease context and PDB references. AI supplements still require review. Modules scroll independently and evidence/crops start collapsed; expand them to check all content. Empty means unrecorded, not unreported by the paper.
 
-1. Use Edit basic information to enter the original Abstract and provenance. Do not replace the abstract with a translation or summary.
+| Module | Checks |
+|---|---|
+| PMID / PMCID | PMID is numeric; PMCID includes the PMC prefix. Open links and match title, DOI and year; do not use another paper’s or a cited reference’s identifier. |
+| Molecule types | Choose existing terms. A nonempty classification needs at least one primary type; supplementary features may be combined. A macrocyclic inhibitor uses Small-molecule inhibitor + Macrocyclic; an allosteric inhibitor uses Small-molecule inhibitor + Allosteric modulation. Avoid duplicate terms; explain newly selected Other / Unclear entries. |
+| Mechanisms | Record source-supported mechanisms and distinguish evidence from hypotheses. A molecule-type label alone does not establish a mechanism. |
+| Targets and associated genes | Check target name, study role, organism, gene symbol and UniProt / NCBI Gene identifiers. Distinguish primary targets, selectivity controls, off-target assays, mechanistic targets and biomarkers. Do not classify an entire assay panel as primary targets or infer genes/species from abbreviations. |
+| Optimization goals / disease context | Distinguish intended property improvements from achieved results, and intended applications from demonstrated therapeutic effects. Keep support for each entry. |
+
+> The side-by-side modules scroll independently; review beyond the first visible screen. Expand evidence or identifier details to read quotations; the editor also has a source-quotation section. View source region appears only when crop coordinates match the current main PDF. Without that button, use the source-page or source link; reading a quotation is not viewing the source image. Identify supplementary material and page, retain external links, and keep quotations faithful while putting explanations in the rationale.
+
+PDB IDs support the traditional four-character and extended pdb_ formats; a three-character ligand code such as ATP is not a PDB ID. Distinguish structures from this work, cited structures and unknown usage; retain pages and context, and link a Compound only when the source explicitly pairs it with the structure.
+
+1. Use Edit bibliography for the source Abstract; its source and check status are under bibliographic traceability details. A translation or summary cannot replace the original abstract. Extracted does not mean reviewer-confirmed; explain scope and reasons for Not found or Needs review.
 2. Search text, structure methods and Accession Codes for Protein Data Bank / PDB. Distinguish structure accessions from three-character ligand codes, gene accessions and equipment codes.
 3. Use this-work for newly determined/deposited experimental structures; cited-structure for existing coordinates used in docking, comparison or molecular replacement. Explain uncertain usage.
 4. Record the physical PDF page and context. Associate a Compound only with explicit source support: docking compound 7 does not establish that the deposited crystal ligand is 7.
@@ -253,6 +305,13 @@ Submission freezes the current content for Admin review. Your final whole-paper 
 5. Recheck coverage, structure sources, Activity units, Lineage logic and uncertainties. When ready for handoff, manually check the final confirmation and submit to Admin.
 6. A successful submission is frozen. Admin can approve or request changes; publication follows approval. Use the return-for-changes workflow for corrections rather than creating a duplicate paper.
 
+| After submission | What to do |
+|---|---|
+| Returned for changes | Return for changes reopens the same workspace without clearing saved content, human notes or unchanged confirmations. You do not restart from an empty paper. Read the return reason, recheck changes, dependencies and invalidated viewing receipts, then complete the whole-paper confirmation before submitting again. |
+| AI supplements | AI article supplements do not count as human Reviewer edits, but remain current content requiring review. Additions after submission require relevant checks and resubmission; approval of an older submission cannot approve new content. |
+| Resubmission | Admin navigates actual Reviewer submissions with timestamps, notes and version comparisons; saving a draft alone creates no new submission. Explain completed corrections and unresolved issues in the Reviewer note when resubmitting. |
+| Revising a published paper | For a revision of a published paper, the existing publication remains current until the new submission is approved. Approval makes the new version current and retains the old publication record. Draft edits or return for changes do not directly replace published content. |
+
 ![This teaching example intentionally retains a blocker. Open it and resolve the issue before final whole-paper confirmation.](../../leadtrace/frontend/public/reviewer-guide/images/submit.en.png)
 
 This teaching example intentionally retains a blocker. Open it and resolve the issue before final whole-paper confirmation.
@@ -272,6 +331,7 @@ Scientific edits use the Workspace version; on conflict reload and reconcile ins
 | Submission disabled | Locate each blocker: unread, draft, missing support, role issues or genuine source absence. |
 | Read-only controls | Check role and workflow state; Admin viewing or submitted/approved content may be read-only. Ask for the normal change workflow. |
 | Unfamiliar ring, stereochemistry or assay | Record compound label, PDF page, exact location and question for your supervisor; do not guess. |
+| Source PDF fails to open or is temporarily unavailable | Retry; if it persists, report paper ID, title and the error to the supervisor. Keep source-dependent items pending when the source cannot be checked; do not delete or duplicate the paper to fix access. |
 
 ## 17 · A short practice exercise
 
@@ -298,6 +358,10 @@ Metric=IC50, Operator=<, Value=15, Unit=nM; check the row, column and footnotes 
 **Can you submit after clicking every group to viewed?**
 
 No. Viewed does not establish scientific review. Resolve structure/edge/annotation dispositions, source issues and submission blockers, then give final whole-paper confirmation.
+
+**Can Compound 3 be terminal in one graph and start the next optimization batch?**
+
+Yes. Terminal means a local endpoint. If 3 becomes the baseline for a new batch, reuse the same Compound as root in the next graph and document the connection and support. A short chain can stay together with 3 as intermediate. A subsequent start is not automatically paper-prioritized; check author choice separately.
 
 ## 18 · Completion criteria and asking for help
 

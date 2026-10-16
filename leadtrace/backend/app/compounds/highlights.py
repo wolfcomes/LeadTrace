@@ -18,7 +18,7 @@ from app.security.policies import Action, Principal
 from app.workspaces.history import MutationChange
 from app.workspaces.service import WorkspaceService, WorkspaceNotFoundError, WorkspaceForbiddenError, WorkspaceReadOnlyError, WorkspaceVersionConflictError
 
-Role = Literal['study_start', 'paper_selected']
+Role = Literal['study_start', 'paper_selected', 'optimization_start']
 ReviewStatus = Literal['draft', 'reviewer_confirmed', 'unresolved']
 FIELDS = ('id', 'paper_id', 'workspace_id', 'compound_id', 'evidence_id', 'role', 'scope', 'rationale', 'review_hint', 'review_status', 'created_by_kind')
 EDIT_FIELDS = ('compound_id', 'evidence_id', 'role', 'scope', 'rationale', 'review_hint', 'review_status')

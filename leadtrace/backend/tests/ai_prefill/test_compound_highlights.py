@@ -12,12 +12,13 @@ def test_legacy_payload_omits_highlights():
     assert 'compound_highlights' not in AiPrefillPayload.model_validate(payload()).model_dump(mode='json')
 
 
-def test_highlights_require_source_and_cannot_claim_review():
+@pytest.mark.parametrize("role", ["study_start", "paper_selected", "optimization_start"])
+def test_highlights_require_source_and_cannot_claim_review(role):
     data = payload()
-    highlight = {'ref': 'h1', 'compound_ref': 'c1', 'evidence_ref': 'e1', 'role': 'study_start', 'scope': 'whole paper', 'rationale': 'Starting lead'}
+    highlight = {'ref': 'h1', 'compound_ref': 'c1', 'evidence_ref': 'e1', 'role': role, 'scope': 'whole paper', 'rationale': 'Starting lead'}
     data['compound_highlights'] = [highlight]
     parsed = AiPrefillPayload.model_validate(data)
-    assert parsed.compound_highlights[0].role == 'study_start'
+    assert parsed.compound_highlights[0].role == role
     for key, value in [('evidence_ref', 'missing'), ('compound_ref', 'missing'), ('scope', '  '), ('review_status', 'reviewer_confirmed')]:
         data['compound_highlights'] = [{**highlight, key: value}]
         with pytest.raises(ValidationError):
