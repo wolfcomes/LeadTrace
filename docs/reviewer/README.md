@@ -62,3 +62,28 @@ Each language has overview, Compound, Activity, Lineage, Add Node, Edge and
 submission screenshots. Image captions explain the task and fictional status;
 images link to their full-resolution files. Update captures when the relevant UI
 changes. Screenshot generation is a documentation tool, not scientific approval.
+
+## Fictional Lineage construction cases
+
+The handbook also includes five graph-construction cases (seven graphs per
+language): parallel analogues, successive batches connected by a hub, independent
+branches sharing a baseline, a short chain, and supported convergence. All labels,
+relationships and review states are fictional teaching assumptions.
+
+With the local frontend running on port 5186, capture these separately:
+
+```bash
+node leadtrace/ops/reviewer/capture_lineage_examples.mjs
+python leadtrace/ops/reviewer/render_guide.py
+python leadtrace/ops/reviewer/render_guide.py --check
+```
+
+The script permits only the specified loopback frontend origin, intercepts every
+API request, rejects unhandled requests, and checks displayed node/edge counts,
+endpoints and hub labels before capture. It uses the real point-graph component
+and deterministic saved positions at 2× pixel density. For portable canvas text
+on hosts without system Chinese fonts, capture explicitly uses the app’s bundled
+Noto Sans SC font; sticky headers are temporarily made static to avoid obscuring
+the captured panel. Scientific data, topology and geometry are unchanged. It saves
+`lineage-examples-manifest.json` separately from the introductory screenshots.
+No original paper content, credentials or database writes are involved.

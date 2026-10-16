@@ -1,0 +1,106 @@
+{
+  "kind": "real reviewer UI with fictional intercepted data",
+  "live_database_access": false,
+  "source_pdf_access": false,
+  "device_scale_factor": 2,
+  "shots": [
+    {
+      "file": "lineage-example-parallel.zh.png",
+      "case": "parallel",
+      "language": "zh",
+      "node_count": 4,
+      "edge_count": 3
+    },
+    {
+      "file": "lineage-example-hub-before.zh.png",
+      "case": "hub-before",
+      "language": "zh",
+      "node_count": 4,
+      "edge_count": 3
+    },
+    {
+      "file": "lineage-example-hub-after.zh.png",
+      "case": "hub-after",
+      "language": "zh",
+      "node_count": 4,
+      "edge_count": 3
+    },
+    {
+      "file": "lineage-example-branch-a.zh.png",
+      "case": "branch-a",
+      "language": "zh",
+      "node_count": 3,
+      "edge_count": 2
+    },
+    {
+      "file": "lineage-example-branch-b.zh.png",
+      "case": "branch-b",
+      "language": "zh",
+      "node_count": 3,
+      "edge_count": 2
+    },
+    {
+      "file": "lineage-example-short-chain.zh.png",
+      "case": "short-chain",
+      "language": "zh",
+      "node_count": 3,
+      "edge_count": 2
+    },
+    {
+      "file": "lineage-example-convergence.zh.png",
+      "case": "convergence",
+      "language": "zh",
+      "node_count": 4,
+      "edge_count": 4
+    },
+    {
+      "file": "lineage-example-parallel.en.png",
+      "case": "parallel",
+      "language": "en",
+      "node_count": 4,
+      "edge_count": 3
+    },
+    {
+      "file": "lineage-example-hub-before.en.png",
+      "case": "hub-before",
+      "language": "en",
+      "node_count": 4,
+      "edge_count": 3
+    },
+    {
+      "file": "lineage-example-hub-after.en.png",
+      "case": "hub-after",
+      "language": "en",
+      "node_count": 4,
+      "edge_count": 3
+    },
+    {
+      "file": "lineage-example-branch-a.en.png",
+      "case": "branch-a",
+      "language": "en",
+      "node_count": 3,
+      "edge_count": 2
+    },
+    {
+      "file": "lineage-example-branch-b.en.png",
+      "case": "branch-b",
+      "language": "en",
+      "node_count": 3,
+      "edge_count": 2
+    },
+    {
+      "file": "lineage-example-short-chain.en.png",
+      "case": "short-chain",
+      "language": "en",
+      "node_count": 3,
+      "edge_count": 2
+    },
+    {
+      "file": "lineage-example-convergence.en.png",
+      "case": "convergence",
+      "language": "en",
+      "node_count": 4,
+      "edge_count": 4
+    }
+  ]
+}

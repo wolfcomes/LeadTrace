@@ -1,6 +1,6 @@
 # Reviewer illustrated handbook
 
-Version: 2026-10-16.1
+Version: 2026-10-16.2
 
 > Generated from `leadtrace/frontend/src/review/help/reviewer-guide.json`. Edit that source and run `python leadtrace/ops/reviewer/render_guide.py`.
 
@@ -200,6 +200,46 @@ A stated common reference; arrows represent supported comparisons, not synthesis
 ![A branching example Lineage. Check its category and grouping rationale, then members and the support for each edge. Node position is presentation only.](../../leadtrace/frontend/public/reviewer-guide/images/lineage.en.png)
 
 A branching example Lineage. Check its category and grouping rationale, then members and the support for each edge. Node position is presentation only.
+
+> The five cases below are entirely fictional and captured from the real Reviewer point-and-arrow interface. Numbers are teaching labels; assume explicit author support for the stated design/comparison relationships. Never infer real-paper relationships from these numbers or graph shapes. Confirmed annotations are also fictional teaching states. Open screenshots for full-size viewing.
+
+Case 1: one baseline and one theme belong together. Suppose the authors compare side-chain analogues 2, 3 and 4 against 1 in parallel. Retain 4 even if it did not improve. Draw 1→2, 1→3 and 1→4, not a sequence 1→2→3→4.
+
+![Case 1 · One optimization batch from a common baseline: parallel branches from one root, including unsuccessful compounds.](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-parallel.en.png)
+
+Case 1 · One optimization batch from a common baseline: parallel branches from one root, including unsuccessful compounds.
+
+Case 2: a selected hub starts a new optimization batch, so prefer successive graphs. Suppose the first batch is 1→2/3/4; the authors select 3 and design 5, 6 and 7 from it. In A, 3 is terminal; in B, the same 3 is root and carries the Hub compound annotation. If 6 is prioritized, mark that separately. Reuse Compound 3; keep 1→3 in A and 3→5/6/7 in B.
+
+![Case 2A · Earlier graph: 3 is a local terminal and the hub leading into the next exploration group.](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-hub-before.en.png)
+
+Case 2A · Earlier graph: 3 is a local terminal and the hub leading into the next exploration group.
+
+![Case 2B · Later graph: reuse 3 as root; assess the paper-prioritized annotation for 6 independently.](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-hub-after.en.png)
+
+Case 2B · Later graph: reuse 3 as root; assess the paper-prioritized annotation for 6 independently.
+
+Case 3: independent optimization themes from the same root may be separated. Suppose 10→11/12 explores side chains, while 10→21/22 explores ring replacement. Each has an explicit design rationale and no cross-comparison requiring joint reading. Reuse 10 in separate graphs. Different labels or tables do not justify the split; independent optimization questions do. Multiple branches alone do not make 10 a hub compound.
+
+![Case 3A · Side-chain optimization: baseline 10 with members 11 and 12.](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-branch-a.en.png)
+
+Case 3A · Side-chain optimization: baseline 10 with members 11 and 12.
+
+![Case 3B · Ring-system optimization: the same baseline 10 with independent members 21 and 22.](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-branch-b.en.png)
+
+Case 3B · Ring-system optimization: the same baseline 10 with independent members 21 and 22.
+
+Case 4: keep a short continuous progression around one question together. Suppose 30 leads to 31 and then 32, both steps addressing the same side-chain problem with no independent new exploration batch. Keep 30→31→32. The local role of 31 is intermediate; an outgoing edge alone does not justify a hub annotation. If the source explicitly supports hub significance, assess that separately from whether to split.
+
+![Case 4 · Two design steps remain one graph; not every intermediate must start a new graph.](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-short-chain.en.png)
+
+Case 4 · Two design steps remain one graph; not every intermediate must start a new graph.
+
+Case 5: retain important cross-comparisons or convergence in one graph. Suppose 40 leads separately to 41 and 42, and the authors explicitly compare 43 against both in SAR, with support for each relationship. Keep 41→43 and 42→43 visible. The incoming edges do not claim that 41 and 42 jointly synthesize 43; an actual reaction belongs in synthesis. Do not delete a relationship to force a tree, or invent two edges merely because 43 resembles both.
+
+![Case 5 · Two independently supported relationships reach 43: retain convergence rather than forcing a tree.](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-convergence.en.png)
+
+Case 5 · Two independently supported relationships reach 43: retain convergence rather than forcing a tree.
 
 ## 09 · Local roles versus article annotations
 

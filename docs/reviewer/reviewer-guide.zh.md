@@ -1,6 +1,6 @@
 # Reviewer 图文上手手册
 
-Version: 2026-10-16.1
+Version: 2026-10-16.2
 
 > Generated from `leadtrace/frontend/src/review/help/reviewer-guide.json`. Edit that source and run `python leadtrace/ops/reviewer/render_guide.py`.
 
@@ -200,6 +200,46 @@ Evidence 是可复核的出处。quoted text 放逐字原文；Caption 用来标
 ![同一示例 Lineage 的分叉关系。先看类别与分组理由，再看成员和每条边的来源；节点的位置只是展示。](../../leadtrace/frontend/public/reviewer-guide/images/lineage.zh.png)
 
 同一示例 Lineage 的分叉关系。先看类别与分组理由，再看成员和每条边的来源；节点的位置只是展示。
+
+> 以下五组案例全部虚构，截图来自真实 Reviewer 点线图界面。编号只是教学标签，假设作者已明确说明下述设计／比较关系；不能在真实论文中仅按这些编号或图形套用关系。截图中的“已确认”也只是教学状态。点击截图可放大查看。
+
+案例 1：同一基准、同一主题，合并成一张图。假设作者以 1 为参考，平行比较侧链不同的 2、3、4；其中 4 未改善，也要保留。这是一组共同基准下的探索，画 1→2、1→3、1→4，不按编号串成 1→2→3→4。
+
+![案例 1 · 同一基准的一批优化：一个 root 对应并列分支，保留未成功分子。](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-parallel.zh.png)
+
+案例 1 · 同一基准的一批优化：一个 root 对应并列分支，保留未成功分子。
+
+案例 2：选出枢纽分子，再开展新一批优化，优先拆成前后两图。假设首轮为 1→2/3/4，作者选出 3，随后以它为基准设计 5、6、7。前图 A 中 3 是 terminal；后图 B 中同一个 3 是 root，并显示“枢纽分子”。若作者优选 6，则单独标为“论文优选”。两图复用同一个 Compound 3，不复制分子记录；1→3 留在 A，3→5/6/7 留在 B。
+
+![案例 2A · 前图：3 为本图末端，同时是衔接下一批探索的枢纽分子。](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-hub-before.zh.png)
+
+案例 2A · 前图：3 为本图末端，同时是衔接下一批探索的枢纽分子。
+
+![案例 2B · 后图：复用同一个 3 作为 root；6 的论文优选标注独立判断。](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-hub-after.zh.png)
+
+案例 2B · 后图：复用同一个 3 作为 root；6 的论文优选标注独立判断。
+
+案例 3：同一个 root 下的两个独立优化主题，可以按分支拆图。假设 10→11/12 是侧链探索，10→21/22 是另一组环系替换；各自有明确设计叙述，而且没有必须一起阅读的交叉比较，可分别建图并复用 10。这不是因为分子编号不同或来自不同 Table，而是因为各分支形成了独立的优化问题。10 也不会仅因有多个分支就自动成为枢纽分子。
+
+![案例 3A · 侧链优化：共同基准为 10，成员范围为 11、12。](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-branch-a.zh.png)
+
+案例 3A · 侧链优化：共同基准为 10，成员范围为 11、12。
+
+![案例 3B · 环系优化：仍使用同一个 10，独立成员为 21、22。](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-branch-b.zh.png)
+
+案例 3B · 环系优化：仍使用同一个 10，独立成员为 21、22。
+
+案例 4：同一问题下的连续短链，通常不拆图。假设作者先从 30 设计 31，再从 31 设计 32，两步都围绕同一侧链问题，并没有形成另一批独立探索。保留 30→31→32；31 的图内角色是 intermediate，不能仅因它有后续出边就标为枢纽分子。如果原文明确赋予它枢纽作用，标注与是否分图仍分别判断。
+
+![案例 4 · 两步连续设计仍是一张图；不要求每个中间节点都成为新图 root。](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-short-chain.zh.png)
+
+案例 4 · 两步连续设计仍是一张图；不要求每个中间节点都成为新图 root。
+
+案例 5：分支存在重要交叉比较或汇合，优先保留在一张图。假设 40 分别引出 41、42，作者随后明确把 43 分别与 41、42 进行 SAR 比较，每条关系都有依据。保留 41→43 和 42→43，让两条路径都能看见。这里的两条入边不是说 41 与 42 一起合成了 43；若那是实际合成反应，应在 synthesis 中另行表达。不能为了画成树而删掉一条关系，也不能仅因 43 看起来像两者就补上两条边。
+
+![案例 5 · 两条有独立依据的关系汇入 43：保留汇合，不强制画成树。](../../leadtrace/frontend/public/reviewer-guide/images/lineage-example-convergence.zh.png)
+
+案例 5 · 两条有独立依据的关系汇入 43：保留汇合，不强制画成树。
 
 ## 09 · Root、Intermediate、Terminal 与文章标注
 
