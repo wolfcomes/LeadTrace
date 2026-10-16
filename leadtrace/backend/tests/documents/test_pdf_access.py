@@ -253,3 +253,32 @@ def test_removed_paper_pdf_is_unavailable_even_to_admin(document_fixture):
     assert f.client.get(url).status_code == 404
     assert f.client.get(url, headers={'Range':'bytes=0-10'}).status_code == 404
     assert f.source_path.read_bytes() == f.payload
+
+
+@pytest.mark.parametrize('error_number', [28, 13, 24, 5, 2])
+def test_source_pdf_io_failure_preserves_integrity_and_allows_retry(document_fixture, monkeypatch, error_number):
+    from app.catalog.models import PaperSource, PaperSourceIntegrityState
+    original = LocalAssetStore.open_snapshot
+    _login(document_fixture.client, 'document.reviewer')
+    def unavailable(*args, **kwargs):
+        raise OSError(error_number, 'temporary snapshot unavailable')
+    monkeypatch.setattr(LocalAssetStore, 'open_snapshot', unavailable)
+    response = document_fixture.client.get(f'/api/v2/papers/{document_fixture.paper_id}/source-pdf')
+    assert response.status_code == 503
+    assert response.json()['code'] == 'DOCUMENT_TEMPORARILY_UNAVAILABLE'
+    with document_fixture.session_factory() as session:
+        assert session.get(Asset, document_fixture.asset_id).integrity_state == AssetIntegrityState.VERIFIED
+        assert session.get(PaperSource, document_fixture.source_id).integrity_state == PaperSourceIntegrityState.VERIFIED
+    monkeypatch.setattr(LocalAssetStore, 'open_snapshot', original)
+    assert document_fixture.client.get(f'/api/v2/papers/{document_fixture.paper_id}/source-pdf').status_code == 200
+
+
+def test_missing_source_pdf_is_still_marked_missing(document_fixture):
+    from app.catalog.models import PaperSource, PaperSourceIntegrityState
+    _login(document_fixture.client, 'document.reviewer')
+    document_fixture.source_path.unlink()
+    response = document_fixture.client.get(f'/api/v2/papers/{document_fixture.paper_id}/source-pdf')
+    assert response.status_code == 404
+    with document_fixture.session_factory() as session:
+        assert session.get(Asset, document_fixture.asset_id).integrity_state == AssetIntegrityState.MISSING
+        assert session.get(PaperSource, document_fixture.source_id).integrity_state == PaperSourceIntegrityState.MISSING

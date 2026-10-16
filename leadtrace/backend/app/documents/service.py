@@ -20,6 +20,10 @@ class DocumentNotFound(LookupError):
     pass
 
 
+class DocumentTemporarilyUnavailable(RuntimeError):
+    pass
+
+
 class RangeNotSatisfiable(ValueError):
     def __init__(self, message: str, size: int) -> None:
         super().__init__(message)
@@ -112,10 +116,24 @@ class DocumentService:
                 validate_extension=False,
                 validate_content=False,
             )
-        except (AssetPathError, AssetMimeMismatchError, FileNotFoundError, OSError):
-            asset.integrity_state = AssetIntegrityState.MISSING
-            source.integrity_state = PaperSourceIntegrityState.MISSING
+        except FileNotFoundError:
+            # A missing temporary directory is not a missing source PDF.
+            try:
+                store.path_for(asset.storage_key).stat()
+            except FileNotFoundError:
+                asset.integrity_state = AssetIntegrityState.MISSING
+                source.integrity_state = PaperSourceIntegrityState.MISSING
+                raise DocumentNotFound from None
+            except OSError:
+                raise DocumentTemporarilyUnavailable from None
+            raise DocumentTemporarilyUnavailable from None
+        except (AssetPathError, AssetMimeMismatchError):
+            asset.integrity_state = AssetIntegrityState.CORRUPT
+            source.integrity_state = PaperSourceIntegrityState.CORRUPT
             raise DocumentNotFound from None
+        except OSError:
+            # ENOSPC, permission and resource failures do not prove corruption.
+            raise DocumentTemporarilyUnavailable from None
         if not self._matches_registered_source(source, asset, inspected):
             snapshot.close()
             asset.integrity_state = AssetIntegrityState.CORRUPT

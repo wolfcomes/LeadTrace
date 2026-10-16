@@ -40,3 +40,20 @@ and record exact backup IDs and schema/release versions. After service is
 stable, verify role permissions, published reads, audit-chain integrity, and
 the old Dashboard fallback. Close the incident only with a timeline, root
 cause, impact, evidence links, and preventive actions.
+
+## Source PDF falsely marked missing
+
+Protected PDF reads use temporary snapshots; files larger than 1 MiB spill to
+the process temporary directory. Configure a private, writable `TMPDIR` on a
+volume with sufficient space in the web launcher, and check both the source
+volume and temporary volume when investigating read failures. Temporary I/O
+errors return 503 without changing source integrity. A missing source returns
+404 and is marked missing; a source identity mismatch remains blocked.
+
+For an existing false missing flag, verify the current configured source path,
+registered SHA-256, byte size and PDF type against both PaperSource and Asset.
+Preserve the original status record, then use a controlled transaction to restore
+only the verified integrity states and append an operator audit event. Keep
+scientific content, workspace versions, removal flags and publication snapshots
+unchanged. Confirm the protected source-pdf range endpoint returns 206 and the
+audit chain remains valid. Do not reopen a removed article or bypass hash checks.

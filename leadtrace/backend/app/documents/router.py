@@ -16,6 +16,7 @@ from app.auth.router import resolve_remote_address
 from app.database import get_db_session
 from app.documents.service import (
     DocumentNotFound,
+    DocumentTemporarilyUnavailable,
     DocumentService,
     RangeNotSatisfiable,
     iter_snapshot_range,
@@ -149,6 +150,8 @@ def create_documents_router() -> APIRouter:
                 headers=headers,
                 media_type="application/pdf",
             )
+        except DocumentTemporarilyUnavailable:
+            raise APIError(503, "DOCUMENT_TEMPORARILY_UNAVAILABLE", "Source PDF is temporarily unavailable; please retry") from None
         except RangeNotSatisfiable as error:
             return Response(
                 status_code=416,
