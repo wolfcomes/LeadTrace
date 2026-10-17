@@ -440,7 +440,7 @@ def test_retired_v1_product_urls_return_not_found(
             )
         )
     ]
-    assert len(science_record_routes) == 24
+    assert len(science_record_routes) == 25
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION
@@ -456,6 +456,7 @@ def test_retired_v1_product_urls_return_not_found(
         ("DELETE", "/api/v2/compound-highlights/{highlight_id}"): Action.EDIT_DRAFT,
         ("GET", "/api/v2/lineages/{lineage_id}/layouts/{mode}"): Action.READ_DRAFT,
         ("PUT", "/api/v2/lineages/{lineage_id}/layouts/{mode}"): Action.EDIT_DRAFT,
+        ("POST", "/api/v2/lineages/{lineage_id}/confirm"): Action.EDIT_DRAFT,
         ("PATCH", "/api/v2/lineages/{lineage_id}"): Action.EDIT_DRAFT,
         ("DELETE", "/api/v2/lineages/{lineage_id}"): Action.EDIT_DRAFT,
         ("GET", "/api/v2/lineages/{lineage_id}/members"): Action.READ_DRAFT,

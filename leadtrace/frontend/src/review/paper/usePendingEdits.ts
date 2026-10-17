@@ -9,6 +9,7 @@ function createPendingEdits() {
 }
 const key:InjectionKey<ReturnType<typeof createPendingEdits>> = Symbol('pendingWorkspaceEdits');
 export function providePendingEdits() { const value=createPendingEdits();provide(key,value);return value; }
+export function usePendingEdits() { return inject(key, undefined); }
 /** Register editable local state or an in-flight save; normal viewing stays unblocked. */
 export function usePendingEdit(pending:()=>unknown) {
   const state=inject(key,undefined);if(!state)return;

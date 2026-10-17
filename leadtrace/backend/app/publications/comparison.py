@@ -132,7 +132,7 @@ def _restore_bundle(snapshot: dict, event: ChangeEvent) -> bool:
     return True
 
 
-_SNAPSHOT_ACTIONS = {'compound.paste', 'lineage.paste', 'workspace.undo', 'workspace.redo'}
+_SNAPSHOT_ACTIONS = {'compound.paste', 'lineage.paste', 'lineage.confirm', 'workspace.undo', 'workspace.redo'}
 _SNAPSHOT_COLLECTIONS = {kind: info[0] for kind, info in _FIELDS.items()}
 _SNAPSHOT_METADATA = {'workspace_version', 'ai_provenance', 'review_progress', 'problem_report'}
 

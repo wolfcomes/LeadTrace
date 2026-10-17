@@ -357,7 +357,7 @@ Viewing is recorded only for Compound and Lineage groups. Explicitly select a Co
 
 Viewing is tracked only at Compound and Lineage level. A Compound group includes structures, source images, Activities and linked evidence; a Lineage group includes members, member content, Edges and evidence. Relevant edits invalidate viewing, while layout changes do not change the science. Do not click through simply to fill the count.
 
-When the graph is sufficient to inspect the current Lineage, mark it viewed directly without opening an Edge. This records viewing only, not scientific approval. Changed or restored records need to be viewed again.
+After checking the current Lineage graph, click “Confirm all Draft Edges” without opening each Edge. Only Draft Edges in this Lineage become confirmed; unresolved statuses and review hints remain. The current Lineage is marked viewed, while Compound structures and member roles stay unchanged. The batch supports one-step undo and redo; changed or restored records need to be viewed again.
 
 ## 15 · Before submission: resolve each blocker
 

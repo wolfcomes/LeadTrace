@@ -301,8 +301,9 @@ Copied structures and Edges start as Draft. Compound identifiers must be unique;
 duplicate display names and Lineage labels show warnings.
 
 The Lineage editor searches Compounds by identifier or display name across
-Lineages. Reviewers may explicitly mark the current graph viewed without opening
-each Edge; this records viewing only. A separate problem-report submission accepts
+Lineages. Reviewers may confirm all Draft Edges in the current graph without opening
+each Edge. This atomic, version-checked edit preserves unresolved statuses and review
+hints, marks only the current Lineage viewed, and supports one-step undo/redo. A separate problem-report submission accepts
 an explanation while freezing incomplete checks. Admin can return it for correction
 but cannot approve or publish it; ordinary submission still requires all checks.
 

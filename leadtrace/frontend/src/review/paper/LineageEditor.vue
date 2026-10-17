@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { usePendingEdit } from "./usePendingEdits";
+import { usePendingEdit, usePendingEdits } from "./usePendingEdits";
 import { lineageToolsText } from "./lineageToolsText";
 import RecordClipboard from "./RecordClipboard.vue";
 import FieldExample from "./FieldExample.vue";
@@ -12,6 +12,7 @@ import { ApiError } from "../../api/client";
 import { useAuthStore } from "../../auth/store";
 import {
   addLineageMember,
+  confirmLineage,
   createLineage,
   createLineageEdge,
   deleteLineage,
@@ -38,6 +39,7 @@ const props = defineProps<{ workspace: PaperWorkspace; selectedEntityId?: string
 const emit = defineEmits<{ select: [entityId: string | undefined, group?: LineageType]; mutated: [workspaceVersion: number]; conflict: [] }>();
 const auth = useAuthStore();
 const progress = useReviewProgress();
+const pendingEdits = usePendingEdits();
 const compounds = ref<Compound[]>([]);
 const lineages = ref<Lineage[]>([]);
 const selectedLineageId = ref<string>();
@@ -173,13 +175,26 @@ function selectSearchResult(lineage: Lineage, compound: Compound): void {
   activeView.value = 'graph';
   emit('select', lineage.id, lineage.lineage_type);
 }
-const canMarkViewed = computed(() => !props.readOnly && props.active !== false && !loading.value && !refreshing.value && !busy.value
-  && !progress?.busy.value && contentConsistent.value && localVersion.value === props.workspace.version
-  && progress?.progress.value?.workspace_version === props.workspace.version
-  && !!selectedLineage.value && progress.find('lineage', selectedLineage.value.id)?.viewed === false);
-async function markViewed(): Promise<void> {
-  if (!canMarkViewed.value || !selectedLineage.value) return;
-  await progress?.view('lineage', selectedLineage.value.id, true, loadedVersion);
+const draftEdgeCount = computed(() => selectedLineage.value?.edges.filter(edge => edge.review_status === 'draft').length ?? 0);
+const canConfirmLineage = computed(() => !props.readOnly && props.active !== false && !loading.value && !refreshing.value && !busy.value
+  && !pendingEdits?.blocked.value && !progress?.busy.value && contentConsistent.value
+  && localVersion.value === props.workspace.version && draftEdgeCount.value > 0);
+async function confirmCurrentLineage(): Promise<void> {
+  if (!canConfirmLineage.value || !selectedLineage.value) return;
+  const lineageId = selectedLineage.value.id;
+  busy.value = true;
+  error.value = '';
+  try {
+    const result = await confirmLineage(lineageId, loadedVersion, auth.csrfToken);
+    lineages.value = lineages.value.map(item => item.id === lineageId ? result.lineage : item);
+    localVersion.value = result.workspace_version; loadedVersion = result.workspace_version;
+    emit('mutated', result.workspace_version);
+    await progress?.refresh();
+  } catch (reason) {
+    mutationError(reason, lineageToolsText('Lineage 未能确认，请重试。'));
+  } finally {
+    busy.value = false;
+  }
 }
 
 watch(() => props.workspace.version, (version) => {
@@ -547,7 +562,7 @@ usePendingEdit(() => memberDraftTouched.value || showCreate.value || editingLine
           <button v-for="tab in viewTabs" :key="tab.key" type="button" role="tab" :data-lineage-view-tab="tab.key" :aria-selected="activeView === tab.key" @click="activeView = tab.key">{{ t(tab.label) }}</button>
         </nav>
         <div v-show="activeView === 'graph'" data-lineage-view="graph">
-          <button type="button" class="button-secondary" data-mark-lineage-viewed :disabled="!canMarkViewed" @click="markViewed">{{ lineageToolsText('已核对关系图，标记此 Lineage 已查看') }}</button>
+          <button type="button" class="button-secondary" data-confirm-lineage :disabled="!canConfirmLineage" @click="confirmCurrentLineage">{{ lineageToolsText('一键确认 Draft Edge') }} ({{ draftEdgeCount }})</button>
           <LineageGraph :focused-compound-id="focusedCompoundId" :focus-request="focusRequest" :lineage="selectedLineage" :compounds="compounds" :structures="structureRecords" :visible="activeView === 'graph'" :read-only="readOnly" @select-edge="openEdge" @select-node="openMember" @add-node="graphNodePicker = true; newMemberCompoundId = ''; graphCompoundSearch = ''" @connect="prepareEdge" />
           <dialog v-if="graphNodePicker" ref="pickerDialog" class="graph-compound-dialog" :aria-label="t('将已有 Compound 加入本 Lineage')" @cancel="graphNodePicker = false"><form class="graph-compound-picker" data-graph-compound-picker @submit.prevent="addMember" @keydown.esc="graphNodePicker = false">
             <h4>{{ t('将已有 Compound 加入本 Lineage') }}</h4>

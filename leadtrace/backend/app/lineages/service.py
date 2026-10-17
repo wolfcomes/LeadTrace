@@ -756,6 +756,60 @@ class LineageService:
         )
         return EdgeMutation(result.workspace, created["value"])
 
+    def confirm_lineage(
+        self, session: Session, *, lineage_id: UUID, expected_version: int, actor: Principal,
+    ) -> LineageMutation:
+        from datetime import datetime, timezone
+        from app.workspaces.models import WorkspaceViewReceipt
+        from app.workspaces.review_progress import review_items
+        from app.workspaces.snapshot import build_paper_snapshot
+
+        workspace_id = self._workspace_id_for(session, Lineage, lineage_id)
+        changed: dict[str, Lineage] = {}
+
+        def mutation(context: LockedWorkspace) -> MutationChange:
+            lineage = session.scalar(select(Lineage).where(
+                Lineage.id == lineage_id, Lineage.workspace_id == context.workspace.id,
+            ).with_for_update())
+            if lineage is None:
+                raise WorkspaceNotFoundError('Resource not found')
+            changed['value'] = lineage
+            drafts = list(session.scalars(select(LineageEdge).where(
+                LineageEdge.lineage_id == lineage_id,
+                LineageEdge.workspace_id == context.workspace.id,
+                LineageEdge.review_status == LineageEdgeReviewStatus.DRAFT,
+            ).order_by(LineageEdge.sort_order, LineageEdge.id).with_for_update()))
+            if not drafts:
+                return MutationChange('lineage', lineage_id, 'lineage.confirm', None, None)
+            before = build_paper_snapshot(session, workspace_id)
+            for edge in drafts:
+                self._validate_edge(session, lineage_id=lineage_id, workspace_id=workspace_id,
+                    parent_compound_id=edge.parent_compound_id, child_compound_id=edge.child_compound_id,
+                    exclude_edge_id=edge.id)
+                edge.review_status = LineageEdgeReviewStatus.REVIEWER_CONFIRMED
+            session.flush()
+            after = build_paper_snapshot(session, workspace_id)
+            after['workspace_version'] = context.workspace.version + 1
+            # Explicit graph confirmation acknowledges this exact Lineage content.
+            item = next(x for x in review_items(after) if x['kind'] == 'lineage' and x['entity_id'] == str(lineage_id))
+            receipt = session.scalar(select(WorkspaceViewReceipt).where(
+                WorkspaceViewReceipt.workspace_id == workspace_id,
+                WorkspaceViewReceipt.reviewer_id == actor.user_id,
+                WorkspaceViewReceipt.kind == 'lineage', WorkspaceViewReceipt.entity_id == lineage_id,
+            ))
+            if receipt is None:
+                receipt = WorkspaceViewReceipt(workspace_id=workspace_id, reviewer_id=actor.user_id,
+                    kind='lineage', entity_id=lineage_id, signature=item['signature'])
+                session.add(receipt)
+            receipt.signature = item['signature']
+            receipt.viewed_at = datetime.now(timezone.utc)
+            return MutationChange('lineage', lineage_id, 'lineage.confirm',
+                {'snapshot': before}, {'snapshot': after})
+
+        result = self.workspace_service.mutate(session, workspace_id=workspace_id,
+            expected_version=expected_version, actor=actor, mutation=mutation)
+        return LineageMutation(result.workspace, self._record(session, changed['value']))
+
     def update_edge(
         self,
         session: Session,

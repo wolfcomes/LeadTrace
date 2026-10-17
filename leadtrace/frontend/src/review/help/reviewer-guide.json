@@ -1332,8 +1332,8 @@
         },
         {
           "type": "paragraph",
-          "zh": "如果可从关系图确认当前 Lineage 已查看，可直接点击“已核对关系图，标记此 Lineage 已查看”，无需进入 Edge。它只记录查看，不自动确认科学内容；内容改变或撤销恢复后，受影响条目需重新查看。",
-          "en": "When the graph is sufficient to inspect the current Lineage, mark it viewed directly without opening an Edge. This records viewing only, not scientific approval. Changed or restored records need to be viewed again."
+          "zh": "核对当前 Lineage 关系图后，可点击“一键确认 Draft Edge”，无需逐条进入 Edge。仅将当前 Lineage 的 Draft Edge 改为已确认，保留“无法判定”和核对提示，并记录当前 Lineage 已查看；不改变 Compound 结构或节点角色。整次操作可一次撤销或重做；内容改变或撤销恢复后，受影响条目需重新查看。",
+          "en": "After checking the current Lineage graph, click “Confirm all Draft Edges” without opening each Edge. Only Draft Edges in this Lineage become confirmed; unresolved statuses and review hints remain. The current Lineage is marked viewed, while Compound structures and member roles stay unchanged. The batch supports one-step undo and redo; changed or restored records need to be viewed again."
         }
       ]
     },

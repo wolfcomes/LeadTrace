@@ -378,6 +378,10 @@ export function updateLineageEdge(
   return apiRequest(`/api/v2/lineage-edges/${encodeURIComponent(edgeId)}`, lineageEdgeMutationSchema, { method: "PATCH", csrfToken, body: payload });
 }
 
+export function confirmLineage(lineageId: string, expectedWorkspaceVersion: number, csrfToken: string | null): Promise<LineageMutation> {
+  return apiRequest(`/api/v2/lineages/${encodeURIComponent(lineageId)}/confirm`, lineageMutationSchema, { method: 'POST', csrfToken, body: { expected_workspace_version: expectedWorkspaceVersion } });
+}
+
 export function deleteLineageEdge(edgeId: string, expectedWorkspaceVersion: number, csrfToken: string | null): Promise<DeletedRecord> {
   return apiRequest(`/api/v2/lineage-edges/${encodeURIComponent(edgeId)}`, deletedRecordSchema, { method: "DELETE", csrfToken, body: { expected_workspace_version: expectedWorkspaceVersion } });
 }

@@ -16,7 +16,7 @@ function label(action:string|null|undefined){
  if(!action)return '';
  const [kind,operation]=action.split('.');
  const kinds:Record<string,string>={compound:'Compound',lineage:'Lineage',lineage_member:'Member',lineage_edge:'Edge',structure:'Structure',activity:'Activity',evidence:'Evidence',bibliography:text('文章信息','Article information'),section:text('区段状态','Section status')};
- const operations:Record<string,string>={create:text('新增','Create'),update:text('修改','Update'),delete:text('删除','Delete'),paste:text('粘贴','Paste'),reorder:text('排序','Reorder')};
+ const operations:Record<string,string>={confirm:text('确认','Confirm'),create:text('新增','Create'),update:text('修改','Update'),delete:text('删除','Delete'),paste:text('粘贴','Paste'),reorder:text('排序','Reorder')};
  return `${operations[operation??'']??operation} ${kinds[kind??'']??kind}`;
 }
 async function load(){

@@ -530,6 +530,26 @@ def create_lineages_router(settings: Settings) -> APIRouter:
         except _DOMAIN_ERRORS as error:
             raise _domain_error(error) from error
 
+    @router.post("/api/v2/lineages/{lineage_id}/confirm", response_model=LineageMutationResponse)
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def confirm_lineage(
+        lineage_id: UUID, payload: WorkspaceVersionRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> LineageMutationResponse:
+        require_request_csrf(principal, csrf_token, secret)
+        try:
+            with session.begin():
+                result = service.confirm_lineage(session, lineage_id=lineage_id,
+                    expected_version=payload.expected_workspace_version, actor=principal)
+                return LineageMutationResponse(lineage=_lineage_response(result.record),
+                    workspace_version=result.workspace.version)
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
+        except _DOMAIN_ERRORS as error:
+            raise _domain_error(error) from error
+
     @router.patch(
         "/api/v2/lineage-edges/{edge_id}",
         response_model=LineageEdgeMutationResponse,
