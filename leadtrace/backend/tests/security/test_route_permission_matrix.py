@@ -306,7 +306,7 @@ def test_retired_v1_product_urls_return_not_found(
             or route.path.startswith("/api/v2/workspaces/")
         )
     ]
-    assert len(workspace_routes) == 19
+    assert len(workspace_routes) == 23
     assert all(
         getattr(route.endpoint, "__leadtrace_route_access__", None)
         is RouteAccess.PERMISSION
@@ -319,6 +319,10 @@ def test_retired_v1_product_urls_return_not_found(
         for route in workspace_routes
     }
     assert actions == {
+        ("GET", "/api/v2/workspaces/{workspace_id}/edit-history"): Action.READ_DRAFT,
+        ("POST", "/api/v2/workspaces/{workspace_id}/edit-history/{direction}"): Action.EDIT_DRAFT,
+        ("POST", "/api/v2/workspaces/{workspace_id}/clipboard/{kind}"): Action.EDIT_DRAFT,
+        ("POST", "/api/v2/workspaces/{workspace_id}/submit-problem"): Action.EDIT_DRAFT,
         ("GET", "/api/v2/workspaces/{workspace_id}/ai-provenance"): Action.READ_DRAFT,
         ("GET", "/api/v2/workspaces/{workspace_id}/compound-highlights"): Action.READ_DRAFT,
         ("POST", "/api/v2/workspaces/{workspace_id}/compound-highlights"): Action.EDIT_DRAFT,

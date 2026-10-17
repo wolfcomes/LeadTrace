@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { problemText } from "../review/paper/problemSubmission";
 import { t, locale } from "../i18n";
 import { computed, onMounted, ref } from "vue";
 import { reviewVersionStatus } from './reviewVersionLabels';
@@ -55,7 +56,7 @@ onMounted(load);
           <tr v-for="item in visibleSubmissions" :key="item.submission_id" data-submission-row>
             <td><strong>{{ item.title }}</strong><br><code>{{ item.paper_key }}</code></td>
             <td>{{ item.review_status === 'unavailable' ? t('版本记录待核对') : t("第 {number} 次提交", { number: item.reviewer_round_number ?? item.submission_number }) }}<br><small>{{ item.submitted_by_name }}</small></td>
-            <td>{{ reviewVersionStatus(item.review_status) }}<small v-if="item.review_warning" class="review-warning">{{ item.review_warning }}</small></td>
+            <td><span v-if="item.submission_kind === 'problem_report'" class="status-chip is-pending">{{ problemText("问题反馈", "Problem report") }}</span>{{ reviewVersionStatus(item.review_status) }}<small v-if="item.review_warning" class="review-warning">{{ item.review_warning }}</small></td>
             <td>{{ formatDate(item.submitted_at) }}</td>
             <td><RouterLink class="button-secondary" data-open-submission :to="{ name: 'admin-submission-detail', params: { submissionId: item.review_entry_id ?? item.submission_id } }">{{ t("核对 →") }}</RouterLink></td>
           </tr>

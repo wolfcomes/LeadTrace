@@ -137,6 +137,8 @@ def supplement_metadata(
     original = session.get(PaperSubmission, submission_id)
     if original is None:
         raise ValueError('Submission not found')
+    if 'problem_report' in original.snapshot:
+        raise ValueError('Problem reports must be returned to Reviewer before metadata supplementation')
     context = lock_workspace(session, original.workspace_id)
     if context is None:
         raise ValueError('Active workspace not found')

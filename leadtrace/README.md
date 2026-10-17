@@ -286,6 +286,26 @@ The complete pilot procedure and evidence checklist are in
 
 ## Reviewer workbench
 
+Saved Reviewer edits support version-checked undo and redo. Unsaved forms and
+in-flight saves disable history actions; restoring an edit reloads the workspace
+and invalidates viewing receipts for changed groups. New edits discard redo, and
+external workspace changes invalidate the current history cursor. History uses
+complete before/after workspace records, so storage grows with both workspace
+size and edit count. Rollout requires additive migration
+`0037_reviewer_edit_history`; it does not rewrite existing audit events.
+
+Compound and Lineage copy/paste creates independent records with blank identity
+fields in the preview. Compound copies include Activities and source images;
+Lineage copies include members and Edges while reusing Compound/Evidence references.
+Copied structures and Edges start as Draft. Compound identifiers must be unique;
+duplicate display names and Lineage labels show warnings.
+
+The Lineage editor searches Compounds by identifier or display name across
+Lineages. Reviewers may explicitly mark the current graph viewed without opening
+each Edge; this records viewing only. A separate problem-report submission accepts
+an explanation while freezing incomplete checks. Admin can return it for correction
+but cannot approve or publish it; ordinary submission still requires all checks.
+
 Reviewers can switch a Lineage between Graph, Compound and Edge views. Graph Add
 Node selects a Compound already registered in the same paper. Graph Add Edge
 selects endpoints before opening the existing relation form. Node positions and
@@ -346,3 +366,7 @@ require viewing again, with affected scientific confirmations pending. Unchanged
 records, human notes and audit history survive; no-op leaves workspace version
 and viewing unchanged. Submitted/published snapshots are not edited. No new
 schema migration is needed for the `revise` action.
+
+The Compound structure editor supports local IUPAC-name conversion. See
+[local IUPAC conversion](ops/runbooks/iupac_conversion.md) for the pinned OPSIN
+installation, runtime requirements, limits, and verification.

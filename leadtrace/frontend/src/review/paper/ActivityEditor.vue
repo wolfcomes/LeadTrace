@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePendingEdit } from "./usePendingEdits";
 import FieldExample from "./FieldExample.vue";
 import { t } from "../../i18n";
 import ReviewHint from "./ReviewHint.vue";
@@ -242,6 +243,7 @@ async function saveActivityEdit(): Promise<void> {
 }
 
 onMounted(load);
+usePendingEdit(() => showCreate.value || editingActivityId.value || busy.value);
 </script>
 
 <template>

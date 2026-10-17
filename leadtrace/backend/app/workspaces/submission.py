@@ -27,6 +27,19 @@ class SubmissionValidationError(ValueError):
         self.blockers = blockers
 
 
+class SubmissionIdempotencyConflictError(RuntimeError):
+    pass
+
+
+# Only scientific review incompleteness may be waived. New validator failures
+# remain blocking until explicitly assessed for this exceptional workflow.
+PROBLEM_REPORT_WAIVABLE_CODES = frozenset({
+    'SECTION_PENDING', 'RECORD_NOT_VIEWED', 'COMPOUND_HIGHLIGHT_NOT_REVIEWED',
+    'STRUCTURE_NOT_CONFIRMED', 'LINEAGE_ROOT_REQUIRED', 'LINEAGE_TERMINAL_REQUIRED',
+    'EDGE_NOT_DISPOSITIONED',
+})
+
+
 class SubmissionNotFoundError(LookupError):
     pass
 
@@ -58,7 +71,12 @@ class SubmissionService:
         expected_workspace_version: int,
         idempotency_key: str,
         reviewer_note: str | None,
+        problem_reason: str | None = None,
     ) -> PaperSubmission:
+        if problem_reason is not None:
+            problem_reason = problem_reason.strip()
+            if not problem_reason or len(problem_reason) > 10_000:
+                raise ValueError('A problem explanation of 1 to 10000 characters is required')
         key = idempotency_key.strip()
         if not key:
             raise ValueError("idempotency_key is required")
@@ -77,6 +95,10 @@ class SubmissionService:
             )
         )
         if existing is not None:
+            existing_report = existing.snapshot.get('problem_report')
+            if (bool(existing_report) != (problem_reason is not None)
+                    or (existing_report and existing_report.get('reason') != problem_reason)):
+                raise SubmissionIdempotencyConflictError('Idempotency key was used for a different submission')
             return existing
         if context.workspace.state is not WorkspaceState.EDITING:
             raise SubmissionReadOnlyError(
@@ -88,8 +110,11 @@ class SubmissionService:
             )
 
         validation = validate_submission(session, workspace_id)
-        if validation.blockers:
-            raise SubmissionValidationError(validation.blockers)
+        blocking = validation.blockers if problem_reason is None else [
+            item for item in validation.blockers if item.code not in PROBLEM_REPORT_WAIVABLE_CODES
+        ]
+        if blocking:
+            raise SubmissionValidationError(blocking)
 
         latest_number = session.scalar(
             select(func.max(PaperSubmission.submission_number)).where(
@@ -108,11 +133,21 @@ class SubmissionService:
         snapshot = build_paper_snapshot(session, workspace_id)
         from app.workspaces.review_progress import get_progress
         progress = get_progress(session, workspace_id, reviewer_id)
-        if progress['tracking_started']:
+        if progress['tracking_started'] or problem_reason is not None:
             snapshot['review_progress'] = progress
             for section in snapshot['sections']:
-                if section['state'] == 'pending' and any(x['section_key'] == section['section_key'] and x['complete'] for x in progress['sections']):
+                if problem_reason is None and section['state'] == 'pending' and any(x['section_key'] == section['section_key'] and x['complete'] for x in progress['sections']):
                     section['state'] = 'completed'
+        if problem_reason is not None:
+            snapshot['problem_report'] = {
+                'reason': problem_reason,
+                'blockers': [{
+                    'code': item.code, 'message': item.message,
+                    'entity_type': item.entity_type,
+                    'entity_id': str(item.entity_id) if item.entity_id else None,
+                    'section_key': item.section_key.value if item.section_key else None,
+                } for item in validation.blockers],
+            }
         content_hash = canonical_snapshot_hash(snapshot)
         submission = PaperSubmission(
             paper_id=context.workspace.paper_id,

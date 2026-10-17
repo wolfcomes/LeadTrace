@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePendingEdit } from "./usePendingEdits";
 import { ref } from 'vue';
 import { t } from '../../i18n';
 import { ApiError, apiRequest } from '../../api/client';
@@ -31,6 +32,7 @@ async function save() {
     else error.value='文章信息未保存，请检查标识、来源、摘要状态及必填字段。';
   } finally {busy.value=false;}
 }
+usePendingEdit(() => editing.value || busy.value);
 </script>
 <template><section>
   <header class="section-heading"><h2>{{ t('文章信息') }}</h2><button class="button-secondary" type="button" :disabled="readOnly||busy" data-edit-bibliography @click="start">{{ t('编辑基础信息') }}</button></header>

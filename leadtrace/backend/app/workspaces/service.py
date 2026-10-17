@@ -114,6 +114,9 @@ class WorkspaceService:
                 context.workspace.version,
             )
 
+        from app.workspaces.edit_history import capture, record
+        previous_version = context.workspace.version
+        before_edit = capture(session, context)
         change = mutation(context)
         if change.before_value == change.after_value:
             return MutationResult(workspace=context.workspace, event=None)
@@ -132,6 +135,7 @@ class WorkspaceService:
         context.workspace.version += 1
         session.add(event)
         session.flush()
+        record(session, context, actor_id, change.action, before_edit, capture(session, context), previous_version)
         return MutationResult(workspace=context.workspace, event=event)
 
     def list_review_tasks(

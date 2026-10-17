@@ -32,6 +32,7 @@ from app.workspaces.schemas import (
     SubmissionBlockerResponse,
     SubmissionMutationResponse,
     SubmissionRequest,
+    ProblemSubmissionRequest,
     SubmissionResponse,
     SubmissionValidationResponse,
     WorkspaceResponse,
@@ -39,6 +40,7 @@ from app.workspaces.schemas import (
 )
 from app.workspaces.submission import (
     SubmissionNotFoundError,
+    SubmissionIdempotencyConflictError,
     SubmissionReadOnlyError,
     SubmissionService,
     SubmissionValidationError,
@@ -150,6 +152,8 @@ def _translate_workspace_error(error: Exception) -> APIError | HTTPException:
 
 
 def _translate_submission_error(error: Exception) -> APIError | HTTPException:
+    if isinstance(error, SubmissionIdempotencyConflictError):
+        return APIError(409, 'IDEMPOTENCY_CONFLICT', str(error))
     if isinstance(error, SubmissionNotFoundError):
         return APIError(404, "RESOURCE_NOT_FOUND", "Resource not found")
     if isinstance(error, SubmissionVersionConflictError):
@@ -422,6 +426,54 @@ def create_workspaces_router(settings: Settings) -> APIRouter:
                     workspace_version=submission.workspace_version,
                 )
         except (
+            SubmissionIdempotencyConflictError,
+            SubmissionNotFoundError,
+            SubmissionReadOnlyError,
+            SubmissionValidationError,
+            SubmissionVersionConflictError,
+            ValueError,
+        ) as error:
+            raise _translate_submission_error(error) from error
+
+    @router.post(
+        "/api/v2/workspaces/{workspace_id}/submit-problem",
+        response_model=SubmissionMutationResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.EDIT_DRAFT)
+    def submit_problem_workspace(
+        workspace_id: UUID,
+        payload: ProblemSubmissionRequest,
+        csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+        idempotency_key_header: str | None = Header(
+            default=None, alias="Idempotency-Key"
+        ),
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> SubmissionMutationResponse:
+        require_request_csrf(principal, csrf_token, session_secret)
+        if principal.role is not UserRole.REVIEWER:
+            raise HTTPException(status_code=403, detail="Permission denied")
+        header_key = idempotency_key_header.strip() if idempotency_key_header else None
+        idempotency_key = header_key or payload.idempotency_key
+        if idempotency_key is None:
+            raise APIError(422, "INVALID_REQUEST", "idempotency_key is required")
+        try:
+            with session.begin():
+                submission = submission_service.submit(
+                    session,
+                    workspace_id=workspace_id,
+                    reviewer_id=principal.user_id,
+                    expected_workspace_version=payload.expected_workspace_version,
+                    idempotency_key=idempotency_key,
+                    reviewer_note=payload.reviewer_note,
+                    problem_reason=payload.reason,
+                )
+                return SubmissionMutationResponse(
+                    submission=_submission_response(submission),
+                    workspace_version=submission.workspace_version,
+                )
+        except (
+            SubmissionIdempotencyConflictError,
             SubmissionNotFoundError,
             SubmissionReadOnlyError,
             SubmissionValidationError,

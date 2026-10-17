@@ -174,6 +174,7 @@ def create_admin_publications_router(settings: Settings) -> APIRouter:
                     bibliography = _bibliography(item.submission.snapshot)
                     items.append(
                         AdminSubmissionListItem(
+                            submission_kind='problem_report' if 'problem_report' in item.submission.snapshot else 'standard',
                             submission_id=item.submission.id,
                             paper_id=item.submission.paper_id,
                             workspace_id=item.submission.workspace_id,

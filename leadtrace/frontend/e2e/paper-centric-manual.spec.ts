@@ -340,6 +340,7 @@ test("blank manual Paper flows from assignment through immutable publication", a
     const url = new URL(request.url());
     const path = url.pathname;
     const method = request.method();
+    if (path.endsWith('/edit-history')) return json(route, {workspace_version:workspaceVersion,undo_action:null,redo_action:null});
     if (path.endsWith('/review-progress')) return json(route, {}, 404);
     if (path.includes('/layouts/')) return json(route, {revision:0,mode:path.split('/').at(-1),positions:{},edge_controls:{}});
 
@@ -803,11 +804,11 @@ test("blank manual Paper flows from assignment through immutable publication", a
   await expect(page.locator(`[data-lineage-id='${publicationIds.lineage}']`)).toHaveClass(/selected/);
   await page.locator('[data-lineage-view-tab="compounds"]').click();
   const memberEditor = page.locator(".member-editor");
-  await memberEditor.getByLabel("Compound").selectOption(publicationIds.compoundA);
+  await memberEditor.locator("[data-member-compound-select]").selectOption(publicationIds.compoundA);
   await memberEditor.getByLabel("角色").selectOption("root");
   await memberEditor.getByRole("button", { name: "添加 Member" }).click();
   await expect(page.locator("[data-member-role='root']")).toContainText("Lead 1");
-  await memberEditor.getByLabel("Compound").selectOption(publicationIds.compoundB);
+  await memberEditor.locator("[data-member-compound-select]").selectOption(publicationIds.compoundB);
   await memberEditor.getByLabel("角色").selectOption("terminal");
   await memberEditor.getByRole("button", { name: "添加 Member" }).click();
   await expect(page.locator("[data-member-role='terminal']")).toContainText("Compound 18");

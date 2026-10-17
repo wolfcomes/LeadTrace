@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePendingEdit } from "./usePendingEdits";
 import FieldExample from "./FieldExample.vue";
 import { t } from "../../i18n";
 import { computed, onMounted, ref, watch } from "vue";
@@ -333,6 +334,7 @@ async function remove(item: Evidence): Promise<void> {
 }
 
 onMounted(load);
+usePendingEdit(() => showCreate.value || editingEvidenceId.value || linkingEvidenceId.value || busy.value);
 </script>
 
 <template>

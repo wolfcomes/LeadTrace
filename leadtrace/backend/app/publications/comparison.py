@@ -132,8 +132,81 @@ def _restore_bundle(snapshot: dict, event: ChangeEvent) -> bool:
     return True
 
 
+_SNAPSHOT_ACTIONS = {'compound.paste', 'lineage.paste', 'workspace.undo', 'workspace.redo'}
+_SNAPSHOT_COLLECTIONS = {kind: info[0] for kind, info in _FIELDS.items()}
+_SNAPSHOT_METADATA = {'workspace_version', 'ai_provenance', 'review_progress', 'problem_report'}
+
+
+def _scientific_snapshot(snapshot: dict) -> dict:
+    collections = set(_SNAPSHOT_COLLECTIONS.values())
+    required = {'schema_version', 'paper', 'source', 'sections'} | (collections - {'compound_highlights'})
+    if not isinstance(snapshot, dict) or not required.issubset(snapshot) or set(snapshot) - (required | collections | _SNAPSHOT_METADATA):
+        raise _IncompleteHistory('Incomplete or unsupported historical snapshot')
+    if snapshot['schema_version'] != 1 or not isinstance(snapshot['paper'], dict) or not snapshot['paper'].get('id') or not isinstance(snapshot['source'], dict):
+        raise _IncompleteHistory('Invalid historical snapshot identity')
+    from app.papers.metadata import ARTICLE_METADATA_DEFAULTS
+    paper = {key: deepcopy(value) for key, value in snapshot['paper'].items()
+             if key not in ARTICLE_METADATA_DEFAULTS or value != ARTICLE_METADATA_DEFAULTS[key]}
+    result = {'paper': paper, 'source': deepcopy(snapshot['source'])}
+    sections = snapshot['sections']
+    if not isinstance(sections, list) or any(not isinstance(row, dict) or set(row) != {'section_key', 'state', 'note'} for row in sections):
+        raise _IncompleteHistory('Incomplete historical sections')
+    if len({row['section_key'] for row in sections}) != len(sections):
+        raise _IncompleteHistory('Duplicate historical sections')
+    result['sections'] = sorted(deepcopy(sections), key=lambda row: row['section_key'])
+    for kind, collection in _SNAPSHOT_COLLECTIONS.items():
+        rows = snapshot.get(collection, [])
+        if not isinstance(rows, list):
+            raise _IncompleteHistory('Invalid historical collection')
+        normalized = [_normalized(kind, row) for row in rows]
+        if len({row['id'] for row in normalized}) != len(normalized):
+            raise _IncompleteHistory('Duplicate historical row identity')
+        for row in normalized:
+            for key in _NUMERIC & row.keys():
+                if row[key] is not None:
+                    try:
+                        row[key] = str(Decimal(str(row[key])).normalize())
+                    except InvalidOperation:
+                        raise _IncompleteHistory('Invalid historical numeric value') from None
+        result[collection] = sorted(normalized, key=lambda row: row['id'])
+    return result
+
+
+def _reverse_snapshot(snapshot: dict, event: ChangeEvent) -> bool:
+    if event.action not in _SNAPSHOT_ACTIONS:
+        return False
+    before, after = event.before_value, event.after_value
+    allowed = {'snapshot', 'lineage_presentations', 'source_id', 'copied_id', 'label'}
+    if any(not isinstance(value, dict) or 'snapshot' not in value or set(value) - allowed for value in (before, after)):
+        raise _IncompleteHistory('Incomplete historical snapshot event')
+    previous = _scientific_snapshot(before['snapshot'])
+    expected = _scientific_snapshot(after['snapshot'])
+    current = _scientific_snapshot(snapshot)
+    if previous['source'] != expected['source'] or previous['paper']['id'] != expected['paper']['id']:
+        raise _IncompleteHistory('Historical snapshot identity changed')
+    # Submission derives completed sections from viewed receipts. Accept only
+    # that exact projection; notes and all other scientific states must agree.
+    progress = snapshot.get('review_progress', {})
+    complete = {row.get('section_key') for row in progress.get('sections', []) if row.get('complete') is True} if isinstance(progress, dict) else set()
+    expected_sections = {row['section_key']: row for row in expected['sections']}
+    for row in current['sections']:
+        prior = expected_sections.get(row['section_key'])
+        if prior and row['section_key'] in complete and row['state'] == 'completed' and prior['state'] == 'pending':
+            row['state'] = 'pending'
+    if current != expected:
+        raise _IncompleteHistory('Historical snapshot disagrees with frozen content')
+    for key in {'paper', 'sections', *_SNAPSHOT_COLLECTIONS.values()}:
+        if key in before['snapshot']:
+            snapshot[key] = deepcopy(before['snapshot'][key])
+        else:
+            snapshot.pop(key, None)
+    return True
+
+
 def _reverse(snapshot: dict, event: ChangeEvent) -> None:
     if event.action in _WORKFLOW:
+        return
+    if _reverse_snapshot(snapshot, event):
         return
     if _restore_bundle(snapshot, event):
         return

@@ -108,6 +108,7 @@ describe("paper-centric Reviewer workspace", () => {
     const requests: URL[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://leadtrace.test");
+      if (url.pathname.endsWith("/edit-history")) return response({workspace_version:1,undo_action:null,redo_action:null});
       if (url.pathname.endsWith("/review-progress")) return response({},404);
       // Supporting lists are tested in their own components; count aggregate navigation here.
       if (['/compound-highlights','/evidence','/compounds'].some(x=>url.pathname.endsWith(x))) return response({workspace_id:ids.workspace,workspace_version:1,items:[],total:0});
@@ -150,6 +151,7 @@ describe("paper-centric Reviewer workspace", () => {
     const requests: URL[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://leadtrace.test");
+      if (url.pathname.endsWith("/edit-history")) return response({workspace_version:1,undo_action:null,redo_action:null});
       if (url.pathname.endsWith("/review-progress")) return response({},404);
       // Supporting lists are tested in their own components; count aggregate navigation here.
       if (['/compound-highlights','/evidence','/compounds'].some(x=>url.pathname.endsWith(x))) return response({workspace_id:ids.workspace,workspace_version:1,items:[],total:0});
@@ -198,6 +200,7 @@ describe("paper-centric Reviewer workspace", () => {
     const requests: URL[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://leadtrace.test");
+      if (url.pathname.endsWith("/edit-history")) return response({workspace_version:1,undo_action:null,redo_action:null});
       if (url.pathname.endsWith("/review-progress")) return response({},404);
       // Supporting lists are tested in their own components; count aggregate navigation here.
       if (['/compound-highlights','/evidence','/compounds'].some(x=>url.pathname.endsWith(x))) return response({workspace_id:ids.workspace,workspace_version:1,items:[],total:0});

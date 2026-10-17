@@ -124,6 +124,12 @@ def create_app(
     from app.ai_prefill.provenance import create_provenance_router
     application.include_router(create_provenance_router(runtime_settings))
     application.include_router(create_workspaces_router(runtime_settings))
+    from app.workspaces.edit_router import create_edit_router
+    from app.workspaces.clipboard import create_clipboard_router
+    from app.chemistry.iupac_router import create_iupac_router
+    application.include_router(create_edit_router(runtime_settings))
+    application.include_router(create_clipboard_router(runtime_settings))
+    application.include_router(create_iupac_router(runtime_settings))
     application.include_router(create_compounds_router(runtime_settings))
     application.include_router(create_highlights_router(runtime_settings))
     application.include_router(create_structures_router(runtime_settings))

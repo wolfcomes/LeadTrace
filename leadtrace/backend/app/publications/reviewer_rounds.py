@@ -351,6 +351,7 @@ def list_reviewer_rounds(session: Session, *, actor) -> list[AdminSubmissionList
         PaperSubmission.content_hash, PaperSubmission.submitted_by_id, PaperSubmission.submitted_at,
         PaperSubmission.snapshot['paper']['paper_key'].astext.label('paper_key'),
         PaperSubmission.snapshot['paper']['title'].astext.label('title'),
+        PaperSubmission.snapshot.has_key('problem_report').label('problem_report'),
         User.display_name, ChangeEvent.id.label('event_id'), ChangeEvent.actor_kind,
         ChangeEvent.actor_id, ChangeEvent.before_value, ChangeEvent.after_value,
         ChangeEvent.occurred_at, AdminDecision.action.label('decision_action'),
@@ -398,6 +399,7 @@ def list_reviewer_rounds(session: Session, *, actor) -> list[AdminSubmissionList
         else:
             status = 'pending' if latest.workspace_state is WorkspaceState.SUBMITTED and latest.task_status is ReviewTaskState.SUBMITTED else 'superseded'
         items.append(AdminSubmissionListItem(submission_id=selected.id, paper_id=selected.paper_id,
+            submission_kind='problem_report' if selected.problem_report else 'standard',
             workspace_id=selected.workspace_id, submission_number=selected.submission_number,
             content_hash=selected.content_hash, submitted_by_id=selected.submitted_by_id,
             submitted_at=selected.submitted_at, paper_key=selected.paper_key, title=selected.title,

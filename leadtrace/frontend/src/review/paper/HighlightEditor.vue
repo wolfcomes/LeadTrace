@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePendingEdit } from "./usePendingEdits";
 import { computed, ref, watch } from 'vue';
 import { t } from '../../i18n';
 import { ApiError } from '../../api/client';
@@ -53,6 +54,7 @@ async function remove(){
  try{const result=await deleteHighlight(pendingDelete.value.id,editVersion,auth.csrfToken);pendingDelete.value=undefined;await state?.refresh();emit('mutated',result.workspace_version);}
  catch(reason){failed(reason);}finally{busy.value=false;}
 }
+usePendingEdit(() => editing.value || busy.value || pendingDelete.value);
 </script>
 <template><section class="highlight-editor" data-highlight-editor>
  <p v-if="state?.loading.value||loading" role="status">{{ t('正在读取文章标注…') }}</p>

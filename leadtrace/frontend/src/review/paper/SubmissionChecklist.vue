@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { usePendingEdit } from "./usePendingEdits";
+import { problemText, submitProblem } from "./problemSubmission";
 import { useReviewProgress } from "./useReviewProgress";
 import { t } from "../../i18n";
 import { computed, onMounted, ref, watch } from "vue";
@@ -24,6 +26,31 @@ const confirmed = ref(false);
 const reviewerNote = ref("");
 const error = ref("");
 const submitted = ref(false);
+const problemReason = ref("");
+const submittedProblem = ref(false);
+let problemAttempt: {identity: string; key: string} | null = null;
+const canSubmitProblem = computed(() => Boolean(problemReason.value.trim()) && !props.readOnly && !saving.value && !submitted.value);
+
+async function reportProblem(): Promise<void> {
+  if (!canSubmitProblem.value) return;
+  saving.value = true;
+  error.value = "";
+  try {
+    const identity = JSON.stringify([props.workspace.id, props.workspace.version, problemReason.value.trim()]);
+    if (problemAttempt?.identity !== identity) problemAttempt = {identity, key: 'problem-' + crypto.randomUUID()};
+    const result = await submitProblem(props.workspace.id, props.workspace.version, problemReason.value.trim(), auth.csrfToken, problemAttempt.key);
+    submittedProblem.value = true;
+    submitted.value = true;
+    emit("mutated", result.workspace_version);
+  } catch (reason) {
+    if (reason instanceof ApiError && reason.code === "WORKSPACE_VERSION_CONFLICT") {
+      emit("conflict");
+      error.value = "Workspace 已更新，正在重新载入后重新检查。";
+    } else {
+      error.value = "提交未完成，请重试。";
+    }
+  } finally { saving.value = false; }
+}
 
 const canSubmit = computed(() => valid.value
   && confirmed.value
@@ -96,6 +123,7 @@ async function submit(): Promise<void> {
 
 watch(() => progress?.progress.value, () => { if (!loading.value) { confirmed.value = false; void loadValidation(); } });
 onMounted(loadValidation);
+usePendingEdit(() => saving.value || reviewerNote.value.trim() || problemReason.value.trim() || confirmed.value);
 </script>
 
 <template>
@@ -109,7 +137,7 @@ onMounted(loadValidation);
     <p v-if="error" class="inline-feedback is-error" role="alert">{{ t(error) }}</p>
     <p v-if="loading" class="workspace-empty-copy">{{ t("正在执行服务端完整性检查…") }}</p>
     <template v-else-if="submitted">
-      <div class="submission-success" role="status"><strong>{{ t("已提交给 Admin 审批") }}</strong><p>{{ t("本次内容已冻结为不可变 Submission；Admin 批准前不会进入正式文章页面。") }}</p></div>
+      <div class="submission-success" role="status"><strong>{{ submittedProblem ? problemText("文章问题已提交", "Article problem submitted") : t("已提交给 Admin 审批") }}</strong><p>{{ t("本次内容已冻结为不可变 Submission；Admin 批准前不会进入正式文章页面。") }}</p></div>
     </template>
     <template v-else>
       <section class="validation-summary" :data-valid="valid ? 'true' : 'false'">
@@ -127,6 +155,12 @@ onMounted(loadValidation);
         <p v-if="readOnly" class="inline-feedback is-warning">{{ t("当前 Workspace 为只读状态，不能再次提交。") }}</p>
         <button class="button-primary" data-submit-paper type="button" :disabled="!canSubmit" @click="submit">{{ saving ? t("正在冻结 Submission…") : t("提交给 Admin 审批") }}</button>
       </form>
+      <section class="submission-confirmation" data-problem-submission>
+        <h3>{{ problemText('反馈文章问题并提交', 'Report an article problem and submit') }}</h3>
+        <p>{{ problemText('文章存在重大问题时，可提交当前内容和未完成清单。无需全部确认；问题反馈不能直接批准发布，Admin 可退回处理。', 'For major article problems, freeze the current content and incomplete checklist without confirming every item. Problem reports cannot be published; an Admin can return them for follow-up.') }}</p>
+        <label class="form-field">{{ problemText('问题说明（必填）', 'Problem explanation (required)') }}<textarea v-model="problemReason" data-problem-reason rows="4" maxlength="10000" :disabled="readOnly || saving" /></label>
+        <button class="button-secondary" data-submit-problem type="button" :disabled="!canSubmitProblem" @click="reportProblem">{{ saving ? t('正在冻结 Submission…') : problemText('反馈文章问题并提交', 'Report an article problem and submit') }}</button>
+      </section>
     </template>
   </section>
 </template>

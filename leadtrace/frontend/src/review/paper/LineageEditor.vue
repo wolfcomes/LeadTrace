@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { usePendingEdit } from "./usePendingEdits";
+import { lineageToolsText } from "./lineageToolsText";
+import RecordClipboard from "./RecordClipboard.vue";
 import FieldExample from "./FieldExample.vue";
 import ViewState from "./ViewState.vue";
 import { useReviewProgress } from "./useReviewProgress";
@@ -56,6 +59,12 @@ watch(graphNodePicker, async open => {
 });
 const selectedMemberId = ref<string>();
 const graphCompoundSearch = ref('');
+const compoundSearch = ref('');
+const memberSearch = ref('');
+const memberAddSearch = ref('');
+const focusedCompoundId = ref<string>();
+const focusRequest = ref(0);
+const contentConsistent = ref(false);
 const edgeDraft = ref<{ parent: string; child: string; nonce: number }>();
 const viewTabs = [{key: 'graph', label: '关系图'}, {key: 'compounds', label: 'Compound'}, {key: 'edges', label: 'Edge'}] as const;
 function prepareEdge(parent: string, child: string): void {
@@ -83,6 +92,7 @@ const lineageDescription = ref("");
 const editingLineageId = ref<string>();
 const editLineageLabel = ref("");
 const editLineageDescription = ref("");
+const memberDraftTouched = ref(false);
 const newMemberCompoundId = ref("");
 const newMemberRole = ref<LineageMember["role"]>("unspecified");
 const error = ref("");
@@ -140,6 +150,37 @@ const availableCompounds = computed(() => {
   const members = new Set(selectedLineage.value?.members.map((member) => member.compound_id) ?? []);
   return compounds.value.filter((compound) => !members.has(compound.id));
 });
+
+function matchesCompound(compound: Compound | undefined, query: string): boolean {
+  return !!compound && `${compound.compound_label} ${compound.display_name ?? ''}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+}
+const searchResults = computed(() => compoundSearch.value.trim() ? lineages.value.flatMap(lineage =>
+  lineage.members.filter(member => matchesCompound(compoundById.value.get(member.compound_id), compoundSearch.value))
+    .map(member => ({ lineage, compound: compoundById.value.get(member.compound_id)! }))) : []);
+const filteredMembers = computed(() => selectedLineage.value?.members.filter(member => matchesCompound(compoundById.value.get(member.compound_id), memberSearch.value)) ?? []);
+const filteredAvailableCompounds = computed(() => availableCompounds.value.filter(compound => matchesCompound(compound, memberAddSearch.value)));
+const graphAvailableCompounds = computed(() => availableCompounds.value.filter(compound => matchesCompound(compound, graphCompoundSearch.value)));
+watch([filteredAvailableCompounds, graphAvailableCompounds, graphNodePicker], () => {
+  const choices = graphNodePicker.value ? graphAvailableCompounds.value : filteredAvailableCompounds.value;
+  if (!choices.some(item => item.id === newMemberCompoundId.value)) newMemberCompoundId.value = choices[0]?.id ?? '';
+});
+function selectSearchResult(lineage: Lineage, compound: Compound): void {
+  selectedLineageId.value = lineage.id;
+  selectedGroup.value = lineage.lineage_type;
+  selectedEdgeId.value = undefined;
+  focusedCompoundId.value = compound.id;
+  focusRequest.value++;
+  activeView.value = 'graph';
+  emit('select', lineage.id, lineage.lineage_type);
+}
+const canMarkViewed = computed(() => !props.readOnly && props.active !== false && !loading.value && !refreshing.value && !busy.value
+  && !progress?.busy.value && contentConsistent.value && localVersion.value === props.workspace.version
+  && progress?.progress.value?.workspace_version === props.workspace.version
+  && !!selectedLineage.value && progress.find('lineage', selectedLineage.value.id)?.viewed === false);
+async function markViewed(): Promise<void> {
+  if (!canMarkViewed.value || !selectedLineage.value) return;
+  await progress?.view('lineage', selectedLineage.value.id, true, loadedVersion);
+}
 
 watch(() => props.workspace.version, (version) => {
   if (version > localVersion.value) localVersion.value = version;
@@ -211,6 +252,7 @@ function mutationError(reason: unknown, fallback: string): void {
 async function load(): Promise<void> {
   if (!initialized) loading.value = true;
   refreshing.value = true;
+  contentConsistent.value = false;
   error.value = "";
   try {
     const [compoundResult, lineageResult] = await Promise.all([
@@ -218,6 +260,7 @@ async function load(): Promise<void> {
       listLineages(props.workspace.id),
     ]);
     loadedVersion = Math.min(compoundResult.workspace_version,lineageResult.workspace_version); initialized = true;
+    contentConsistent.value = compoundResult.workspace_version === lineageResult.workspace_version;
     compounds.value = compoundResult.items;
     lineages.value = lineageResult.items;
     void loadEvidence();
@@ -307,6 +350,10 @@ async function saveLineageEdit(): Promise<void> {
   }
 }
 
+function cancelMemberDraft(): void {
+  memberDraftTouched.value = false; newMemberRole.value = "unspecified"; newMemberCompoundId.value = filteredAvailableCompounds.value[0]?.id ?? "";
+}
+
 async function addMember(): Promise<void> {
   const lineage = selectedLineage.value;
   if (!lineage || !newMemberCompoundId.value || props.readOnly || busy.value) return;
@@ -320,7 +367,7 @@ async function addMember(): Promise<void> {
     }, auth.csrfToken);
     lineage.members = [...lineage.members, result.member];
     localVersion.value = result.workspace_version; loadedVersion = result.workspace_version;
-    newMemberRole.value = "unspecified";
+    newMemberRole.value = "unspecified"; memberDraftTouched.value = false;
     graphNodePicker.value = false;
     emit("mutated", result.workspace_version);
   } catch (reason) {
@@ -438,13 +485,28 @@ async function removeEdge(edge: LineageEdge): Promise<void> {
   }
 }
 
+async function pasted(entityId: string, version: number): Promise<void> {
+  emit('select', entityId);
+  emit('mutated', version);
+  await load();
+  selectAddressedRecord(entityId);
+}
 onMounted(load);
+usePendingEdit(() => memberDraftTouched.value || showCreate.value || editingLineageId.value || busy.value || graphNodePicker.value);
 </script>
 
 <template>
   <section class="lineage-workspace">
     <header class="section-heading"><div><p class="eyebrow">LINEAGES</p><h2>{{ t("SAR 与合成路线") }}</h2></div><button class="button-primary" data-add-lineage type="button" :disabled="readOnly || busy" @click="showCreate = !showCreate">{{ t("添加 Lineage") }}</button></header>
     <FieldExample section="lineages" />
+    <RecordClipboard kind="lineage" :workspace-id="workspace.id" :workspace-version="localVersion" :source="selectedLineage ? { id: selectedLineage.id, label: selectedLineage.lineage_label } : undefined" :records="lineages.map(item => ({ label: item.lineage_label }))" :disabled="readOnly || busy || refreshing || loading" @pasted="pasted" @conflict="emit('conflict')" />
+    <div class="lineage-compound-search">
+      <label class="form-field">{{ lineageToolsText('搜索所有 Lineage 中的 Compound') }}<input v-model="compoundSearch" data-lineage-compound-search class="form-control" type="search" :placeholder="t('搜索编号或名称')"></label>
+      <ul v-if="compoundSearch.trim()" class="lineage-search-results" :aria-label="lineageToolsText('Compound 搜索结果')">
+        <li v-for="result in searchResults" :key="result.lineage.id + ':' + result.compound.id"><button type="button" class="button-quiet" data-lineage-search-result @click="selectSearchResult(result.lineage, result.compound)">{{ result.compound.compound_label }} · {{ result.compound.display_name || t('未命名') }} — {{ result.lineage.lineage_label }} · {{ t(lineageTypeLabels[result.lineage.lineage_type]) }}</button></li>
+        <li v-if="!searchResults.length" role="status">{{ lineageToolsText('没有匹配的 Lineage 成员。') }}</li>
+      </ul>
+    </div>
     <nav class="lineage-group-switch" :aria-label='t("Lineage 类别")'>
       <button v-for="type in groupTypes" :key="type" type="button" class="button-secondary" :data-lineage-group="type" :aria-pressed="selectedGroup === type" @click="selectGroup(type)">{{ t(lineageTypeLabels[type]) }} <span>{{ lineages.filter(item => item.lineage_type === type).length }}</span></button>
     </nav>
@@ -485,12 +547,13 @@ onMounted(load);
           <button v-for="tab in viewTabs" :key="tab.key" type="button" role="tab" :data-lineage-view-tab="tab.key" :aria-selected="activeView === tab.key" @click="activeView = tab.key">{{ t(tab.label) }}</button>
         </nav>
         <div v-show="activeView === 'graph'" data-lineage-view="graph">
-          <LineageGraph :lineage="selectedLineage" :compounds="compounds" :structures="structureRecords" :visible="activeView === 'graph'" :read-only="readOnly" @select-edge="openEdge" @select-node="openMember" @add-node="graphNodePicker = true; newMemberCompoundId = ''; graphCompoundSearch = ''" @connect="prepareEdge" />
+          <button type="button" class="button-secondary" data-mark-lineage-viewed :disabled="!canMarkViewed" @click="markViewed">{{ lineageToolsText('已核对关系图，标记此 Lineage 已查看') }}</button>
+          <LineageGraph :focused-compound-id="focusedCompoundId" :focus-request="focusRequest" :lineage="selectedLineage" :compounds="compounds" :structures="structureRecords" :visible="activeView === 'graph'" :read-only="readOnly" @select-edge="openEdge" @select-node="openMember" @add-node="graphNodePicker = true; newMemberCompoundId = ''; graphCompoundSearch = ''" @connect="prepareEdge" />
           <dialog v-if="graphNodePicker" ref="pickerDialog" class="graph-compound-dialog" :aria-label="t('将已有 Compound 加入本 Lineage')" @cancel="graphNodePicker = false"><form class="graph-compound-picker" data-graph-compound-picker @submit.prevent="addMember" @keydown.esc="graphNodePicker = false">
             <h4>{{ t('将已有 Compound 加入本 Lineage') }}</h4>
             <p>{{ t('请选择本篇文章的 Compound；此操作不会创建新的化合物记录。') }}</p>
             <label class="form-field">{{ t('搜索编号或名称') }}<input v-model="graphCompoundSearch" :placeholder="t('例如：24 或 reference')"></label>
-            <label class="form-field">Compound<select v-model="newMemberCompoundId" data-graph-compound-select required :disabled="busy"><option value="">{{ t('选择编号') }}</option><option v-for="compound in availableCompounds.filter(c => (c.compound_label + ' ' + (c.display_name || '')).toLowerCase().includes(graphCompoundSearch.toLowerCase()))" :key="compound.id" :value="compound.id">{{ compound.compound_label }} · {{ compound.display_name || t('未命名') }}</option></select></label>
+            <label class="form-field">Compound<select v-model="newMemberCompoundId" data-graph-compound-select required :disabled="busy"><option value="">{{ t('选择编号') }}</option><option v-for="compound in graphAvailableCompounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }} · {{ compound.display_name || t('未命名') }}</option></select></label>
             <label class="form-field">{{ t('角色') }}<select v-model="newMemberRole" :disabled="busy"><option value="unspecified">Unspecified</option><option value="root">Root</option><option value="intermediate">Intermediate</option><option value="terminal">Terminal</option></select></label>
             <p v-if="!availableCompounds.length">{{ t('没有可添加的 Compound。请先到“化合物与结构”创建记录，或检查是否已加入。') }}</p>
             <div class="dialog-actions"><button type="submit" class="button-primary" data-confirm-graph-node :disabled="readOnly || busy || !newMemberCompoundId">{{ t('添加 Node') }}</button>
@@ -503,18 +566,20 @@ onMounted(load);
         </div>
         <section v-show="activeView === 'compounds'" class="member-editor" data-lineage-view="compounds">
           <header class="compact-heading"><div><p class="eyebrow">MEMBERS</p><h4>{{ t("Compound 角色") }}</h4></div></header>
+          <label class="form-field">{{ lineageToolsText('筛选当前成员') }}<input v-model="memberSearch" data-member-search class="form-control" type="search" :placeholder="t('搜索编号或名称')"></label>
           <div class="member-list">
-            <article v-for="member in selectedLineage.members" :key="member.id" class="member-row" :id="'lineage-member-' + member.compound_id">
+            <article v-for="member in filteredMembers" :key="member.id" class="member-row" :id="'lineage-member-' + member.compound_id">
               <button type="button" class="button-quiet" @click="selectedMemberId = member.compound_id">{{ compoundById.get(member.compound_id)?.compound_label || member.compound_id }}</button>
               <select :value="member.role" :disabled="readOnly || busy" @change="changeMemberRole(member, ($event.target as HTMLSelectElement).value as LineageMember['role'])"><option value="root">Root</option><option value="intermediate">Intermediate</option><option value="terminal">Terminal</option><option value="unspecified">Unspecified</option></select>
               <button class="button-quiet" type="button" :disabled="readOnly || busy" @click="removeMember(member)">{{ t("删除 Member") }}</button>
             </article>
           </div>
           <EdgeCompoundCard v-if="selectedMemberId && selectedLineage.members.some(m => m.compound_id === selectedMemberId)" :compound="compoundById.get(selectedMemberId)" :compound-id="selectedMemberId" :state="structureRecords[selectedMemberId]" :workspace-id="workspace.id" :paper-id="workspace.bibliography.paper_id" caption="Compound" @retry="retryStructure" />
-          <form class="inline-create-form" @submit.prevent="addMember">
-            <label class="form-field">Compound<select v-model="newMemberCompoundId" :disabled="readOnly || busy"><option v-for="compound in availableCompounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>
+          <form class="inline-create-form" @submit.prevent="addMember" @change="memberDraftTouched = true">
+            <label class="form-field">{{ lineageToolsText('搜索可添加的 Compound') }}<input v-model="memberAddSearch" data-member-add-search class="form-control" type="search"></label>
+            <label class="form-field">Compound<select v-model="newMemberCompoundId" data-member-compound-select :disabled="readOnly || busy"><option v-for="compound in filteredAvailableCompounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>
             <label class="form-field">{{ t("角色") }}<select v-model="newMemberRole" :disabled="readOnly || busy"><option value="root">Root</option><option value="intermediate">Intermediate</option><option value="terminal">Terminal</option><option value="unspecified">Unspecified</option></select></label>
-            <button class="button-secondary" type="submit" :disabled="readOnly || busy || !newMemberCompoundId">{{ t("添加 Member") }}</button>
+            <button class="button-secondary" type="submit" :disabled="readOnly || busy || !newMemberCompoundId">{{ t("添加 Member") }}</button><button class="button-quiet" type="button" :disabled="busy" @click="cancelMemberDraft">{{ t("取消") }}</button>
           </form>
         </section>
         <div v-show="activeView === 'edges'" data-lineage-view="edges">

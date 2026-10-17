@@ -35,6 +35,11 @@
           "zh": "认清四个主要页签。上方的区段状态、已查看进度和科学审核状态用途不同，后文分别解释。",
           "en": "Find the four main tabs. Section status, viewing progress and scientific review status serve different purposes, explained below.",
           "asset": "overview"
+        },
+        {
+          "type": "paragraph",
+          "zh": "撤销 / 重做作用于已保存的编辑，并记录新的操作历史。先保存或取消当前未保存编辑。其他会话或 AI 更新、提交及任务状态变化后，旧撤销链会停止，避免覆盖新内容。",
+          "en": "Undo / redo restores saved edits and appends history. Save or cancel pending local edits first. Other sessions, AI updates, submissions and workflow changes stop the older undo chain to protect newer content."
         }
       ]
     },
@@ -322,6 +327,11 @@
           "zh": "左侧是本篇 Compound 清单，右侧是所选分子的结构与来源、Activity。一次核对一个编号，避免看着上一条的图填写下一条。",
           "en": "The left panel lists this paper’s Compounds; the right panel contains the selected structure, sources and Activities. Check one label at a time to avoid mixing neighboring records.",
           "asset": "compound"
+        },
+        {
+          "type": "paragraph",
+          "zh": "复制当前 Compound 后，点击“粘贴为新条目”。编号和显示名称默认留空；填写新编号后保存。同编号不可保存，同显示名称只提示。副本包含结构、来源图片和 Activity；结构恢复为 Draft，不复制 Lineage 成员、文章标注或已查看状态。",
+          "en": "Copy the current Compound, then paste as a new record. Identifier and display name start blank. A duplicate identifier blocks saving; a duplicate display name only warns. The copy includes structure, source images and Activities; its structure is Draft, with no copied Lineage membership, article highlights or viewed state."
         }
       ]
     },
@@ -412,6 +422,11 @@
           "type": "note",
           "zh": "实际按钮注意：“标记无法解析”和“文章未报告结构”会将当前 SMILES / Molfile 清空并保存为无结构状态。已有完整候选但只是某处存疑时，保留 Draft，在 Compound 核对提示中说明；不要把这两个按钮当作普通警告开关。确需无结构处置时先保留来源与问题记录，并与负责人核对。",
           "en": "Actual button behavior: Mark unresolved and Structure not reported clear the current SMILES / Molfile and save a no-structure disposition. If a complete candidate has a specific uncertainty, retain the Draft and explain it in the Compound verification hint. These buttons are not simple warning toggles. Preserve sources and an issue record and consult your supervisor before choosing a no-structure disposition."
+        },
+        {
+          "type": "paragraph",
+          "zh": "可输入 IUPAC 名称并使用本地 OPSIN 转换为结构；结果载入编辑器后仍需人工核对、保存 Draft 和确认。不能解析的名称会提示失败，不会替换已保存结构。",
+          "en": "Enter an IUPAC name to convert locally with OPSIN. Check the result in the editor, save a Draft and confirm separately. Failed parsing does not replace the saved structure."
         }
       ]
     },
@@ -855,6 +870,11 @@
           "zh": "案例 5 · 两条有独立依据的关系汇入 43：保留汇合，不强制画成树。",
           "en": "Case 5 · Two independently supported relationships reach 43: retain convergence rather than forcing a tree.",
           "asset": "lineage-example-convergence"
+        },
+        {
+          "type": "paragraph",
+          "zh": "搜索 Compound 编号或名称，可找到其所属 Lineage 并定位节点。复制 Lineage 后填写新的名称：副本复用 Compound 和 Evidence，建立独立的成员与 Edge，Edge 恢复为 Draft。同名 Lineage 会提示。",
+          "en": "Search a Compound identifier or name to find its Lineage and focus the node. Paste a copied Lineage with a new name: it reuses Compounds and Evidence but creates independent members and Edges with Draft review status. Duplicate Lineage names show a warning."
         }
       ]
     },
@@ -1309,6 +1329,11 @@
           "type": "paragraph",
           "zh": "现在只记录 Compound 和 Lineage 两级已查看。Compound 组包括结构、来源图、Activity 和关联证据；Lineage 组包括成员、成员内容、Edge 和证据。相关内容修改会使相应组需重新查看，布局调整不等于科学修改。不要为把计数刷满而快速逐条点开。",
           "en": "Viewing is tracked only at Compound and Lineage level. A Compound group includes structures, source images, Activities and linked evidence; a Lineage group includes members, member content, Edges and evidence. Relevant edits invalidate viewing, while layout changes do not change the science. Do not click through simply to fill the count."
+        },
+        {
+          "type": "paragraph",
+          "zh": "如果可从关系图确认当前 Lineage 已查看，可直接点击“已核对关系图，标记此 Lineage 已查看”，无需进入 Edge。它只记录查看，不自动确认科学内容；内容改变或撤销恢复后，受影响条目需重新查看。",
+          "en": "When the graph is sufficient to inspect the current Lineage, mark it viewed directly without opening an Edge. This records viewing only, not scientific approval. Changed or restored records need to be viewed again."
         }
       ]
     },
@@ -1390,6 +1415,11 @@
           "zh": "教学示例故意保留一个待处理项：点击问题定位并核对，完成前不要勾选整篇确认。",
           "en": "This teaching example intentionally retains a blocker. Open it and resolve the issue before final whole-paper confirmation.",
           "asset": "submit"
+        },
+        {
+          "type": "paragraph",
+          "zh": "文章存在重大问题时，使用“反馈文章问题并提交”，填写必填的问题说明。可在未全部查看或确认时提交；系统冻结当前内容、查看进度和未完成清单。Admin 可退回处理，这类提交不能直接批准发布；解决问题后须按正常流程审核并重新提交。",
+          "en": "For major article problems, use “Report an article problem and submit” with a required explanation. It can freeze incomplete or unconfirmed work, including viewing progress and blockers. An Admin can return it for follow-up; it cannot be published directly. Resolve the issue, complete normal review and resubmit."
         }
       ]
     },

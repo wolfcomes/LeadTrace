@@ -437,6 +437,8 @@ class PublicationService:
         ):
             raise DecisionStateConflictError("Submission is not awaiting Admin review")
         if action is AdminDecisionAction.APPROVE:
+            if 'problem_report' in submission.snapshot:
+                raise DecisionStateConflictError('Problem reports cannot be published; return to Reviewer for resolution and normal resubmission')
             from app.publications.reviewer_rounds import is_reviewer_submission
             boundary = session.scalar(select(ChangeEvent).where(
                 ChangeEvent.entity_type == 'paper_submission',

@@ -18,6 +18,8 @@ import SectionStatusControl from "./SectionStatusControl.vue";
 import SubmissionChecklist from "./SubmissionChecklist.vue";
 import { usePaperWorkspace } from "./usePaperWorkspace";
 import WorkspaceHeader from "./WorkspaceHeader.vue";
+import WorkspaceHistory from "./WorkspaceHistory.vue";
+import { providePendingEdits } from "./usePendingEdits";
 
 const tabs = [
   { key: "bibliography", label: "文章信息" },
@@ -40,7 +42,11 @@ const canEdit = computed(() => (
   auth.user?.role === "reviewer"
   && workspaceState.workspace.value?.state === "editing"
 ));
-const readOnly = computed(() => !canEdit.value);
+const historyBusy = ref(false);
+const historyReloading = ref(false);
+const historyEpoch = ref(0);
+const pendingEdits = providePendingEdits();
+const readOnly = computed(() => !canEdit.value || historyBusy.value || historyReloading.value);
 const progress = provideReviewProgress(() => workspaceState.workspace.value ?? undefined, () => canEdit.value);
 provideHighlights(() => workspaceState.workspace.value ?? undefined);
 const visitedTabs = ref(new Set<string>());
@@ -91,6 +97,15 @@ watch([() => route.query.tab, () => route.query.entity, () => workspaceState.wor
   } catch { /* Keep the evidence library reachable if navigation lookup fails. */ }
 });
 
+async function restoreWorkspace(): Promise<void> {
+  historyReloading.value = true;
+  const target = workspaceState.workspace.value;
+  try {
+    const latest = await workspaceState.reload(target);
+    if (latest && latest.id === target?.id) historyEpoch.value++;
+  } finally { historyReloading.value = false; }
+}
+
 function refreshWorkspace(): void {
   void workspaceState.reload();
 }
@@ -123,6 +138,7 @@ watch(
     <template v-else-if="workspaceState.workspace.value">
       <WorkspaceHeader :workspace="workspaceState.workspace.value" />
       <ReviewerHelp />
+      <WorkspaceHistory :workspace-id="workspaceState.workspace.value.id" :version="workspaceState.workspace.value.version" :read-only="!canEdit" :blocked="pendingEdits.blocked.value || !!workspaceState.savingSection.value || historyReloading || progress.busy.value" @busy="historyBusy = $event" @restored="restoreWorkspace" @conflict="restoreWorkspace" />
       <p v-if="progress.error.value" class="inline-feedback is-warning" role="status">{{ t(progress.error.value) }} <button type="button" class="button-quiet" @click="progress.refresh">{{ t('重试') }}</button></p>
       <p v-if="auth.user?.role === 'admin'" class="inline-feedback is-warning" data-admin-readonly>{{ t("Admin 查看模式：此 Workspace 只读。") }}</p>
       <p v-if="workspaceState.concurrencyMessage.value" class="inline-feedback is-warning" data-concurrency-alert role="alert">{{ t(workspaceState.concurrencyMessage.value) }}</p>
@@ -143,7 +159,7 @@ watch(
         <button v-for="tab in tabs" :key="tab.key" type="button" data-workspace-tab :aria-current="activeTab === tab.key ? 'page' : undefined" @click="selectTab(tab.key)">{{ t(tab.label) }}</button>
       </nav>
 
-      <section class="workspace-editor-surface panel">
+      <section :key="`${workspaceState.workspace.value.id}:editors:${historyEpoch}`" class="workspace-editor-surface panel" :inert="historyBusy || historyReloading">
         <div v-if="visitedTabs.has('bibliography')" v-show="activeTab === 'bibliography'">
         <BibliographyEditor :workspace="workspaceState.workspace.value" :read-only="readOnly" @mutated="refreshWorkspace" @conflict="workspaceState.handleConflict()" />
         <HighlightEditor :workspace="workspaceState.workspace.value" :read-only="readOnly" @mutated="refreshWorkspace" @conflict="workspaceState.handleConflict()" />

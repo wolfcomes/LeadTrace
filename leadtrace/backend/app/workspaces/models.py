@@ -421,3 +421,21 @@ class ArticleArchive(UUIDPrimaryKeyMixin, Base):
     relative_path: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
     manifest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     catalog_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
+class WorkspaceEdit(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = 'workspace_edits'
+    workspace_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey('paper_workspaces.id', ondelete='CASCADE'), nullable=False, index=True)
+    reviewer_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    before_state: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    after_state: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
+class WorkspaceEditCursor(Base):
+    __tablename__ = 'workspace_edit_cursors'
+    workspace_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey('paper_workspaces.id', ondelete='CASCADE'), primary_key=True)
+    reviewer_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    expected_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    undo_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    redo_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)

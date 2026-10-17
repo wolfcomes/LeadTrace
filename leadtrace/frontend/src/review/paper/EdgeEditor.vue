@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePendingEdit } from "./usePendingEdits";
 import { t } from "../../i18n";
 import ReviewHint from "./ReviewHint.vue";
 import { computed, ref, watch } from "vue";
@@ -13,6 +14,7 @@ const emit = defineEmits<{
   delete: [edge: LineageEdge];
 }>();
 
+const createTouched = ref(false);
 const parentId = ref("");
 const childId = ref("");
 const relationType = ref("lead_optimization");
@@ -52,8 +54,16 @@ watch(memberCompounds, (items) => {
 
 watch(() => props.draftEndpoints, value => {
   if (!value) return;
-  parentId.value = value.parent; childId.value = value.child;
+  parentId.value = value.parent; childId.value = value.child; createTouched.value = true;
 }, { flush: 'post' });
+
+function cancelCreate(): void {
+  parentId.value = memberCompounds.value[0]?.id ?? "";
+  childId.value = memberCompounds.value.find(item => item.id !== parentId.value)?.id ?? "";
+  modificationSummary.value = ""; reviewHint.value = ""; reviewStatus.value = "draft";
+  relationType.value = props.lineage.lineage_type === "synthesis" ? "synthetic_transformation" : "lead_optimization";
+  createTouched.value = false;
+}
 
 function create(): void {
   if (!canCreate.value) return;
@@ -67,7 +77,7 @@ function create(): void {
   });
   modificationSummary.value = "";
   reviewHint.value = "";
-  reviewStatus.value = "draft";
+  reviewStatus.value = "draft"; createTouched.value = false;
 }
 
 function startEdit(edge: LineageEdge): void {
@@ -96,6 +106,7 @@ function saveEdit(edge: LineageEdge): void {
   });
   cancelEdit();
 }
+usePendingEdit(() => createTouched.value || editingId.value || props.busy || modificationSummary.value || reviewHint.value || reviewStatus.value !== "draft" || relationType.value !== (props.lineage.lineage_type === "synthesis" ? "synthetic_transformation" : "lead_optimization"));
 </script>
 
 <template>
@@ -125,14 +136,14 @@ function saveEdit(edge: LineageEdge): void {
       </article>
     </div>
     <p v-else class="workspace-empty-copy">{{ t("当前 Lineage 尚无 Edge。") }}</p>
-    <form v-if="!focusedEdgeId" class="inline-create-form edge-create-form" @submit.prevent="create">
+    <form v-if="!focusedEdgeId" class="inline-create-form edge-create-form" @submit.prevent="create" @input="createTouched = true" @change="createTouched = true">
       <label class="form-field">Parent<select v-model="parentId" :disabled="readOnly || busy"><option v-for="compound in memberCompounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>
       <label class="form-field">Child<select v-model="childId" :disabled="readOnly || busy"><option v-for="compound in memberCompounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>
       <label class="form-field">Relation<input v-model="relationType" maxlength="128" :disabled="readOnly || busy"></label>
       <label class="form-field">{{ t("修改摘要") }}<input v-model="modificationSummary" :placeholder="t('例如：Me → OMe；说明原文依据或结构推断理由')" maxlength="10000" :disabled="readOnly || busy"></label>
       <label class="form-field">{{ t("核对提示（可选，解决后清空）") }}<input v-model="reviewHint" data-create-edge-review-hint maxlength="1000" :disabled="readOnly || busy"></label>
       <label class="form-field">{{ t("审核状态") }}<select v-model="reviewStatus" :disabled="readOnly || busy"><option value="draft">Draft</option><option value="reviewer_confirmed">Reviewer confirmed</option><option value="unresolved">Unresolved</option></select></label>
-      <button class="button-secondary" type="submit" :disabled="!canCreate">{{ t("添加 Edge") }}</button>
+      <button class="button-secondary" type="submit" :disabled="!canCreate">{{ t("添加 Edge") }}</button><button class="button-quiet" data-cancel-edge-create type="button" :disabled="busy" @click="cancelCreate">{{ t("取消") }}</button>
     </form>
   </section>
 </template>

@@ -37,6 +37,26 @@ describe("paper-centric Admin approval", () => {
   beforeEach(installAdmin);
   afterEach(() => vi.unstubAllGlobals());
 
+  it("labels article problem reports in the approval queue", async () => {
+    const data = structuredClone(adminSubmissionList);
+    Object.assign(data.items[0]!, {submission_kind: 'problem_report'});
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(data)));
+    const {wrapper} = await mountAt('/admin/submissions');
+    expect(wrapper.get('[data-submission-row]').text()).toContain('问题反馈');
+  });
+
+  it("shows frozen article problems and prevents approval while allowing return", async () => {
+    const data = structuredClone(adminSubmissionDetail);
+    Object.assign(data.submission.snapshot, {problem_report: {reason: "Conflicting structures", blockers: [{code: "SECTION_PENDING", message: "Review required", entity_type: "paper_section_review", entity_id: null, section_key: "structures"}]}});
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(data)));
+    const {wrapper} = await mountAt('/admin/submissions/' + publicationIds.submission);
+    expect(wrapper.get('[data-problem-report]').text()).toContain('Conflicting structures');
+    expect(wrapper.get('[data-problem-report]').text()).toContain('Review required');
+    await wrapper.get('[data-decision-reason]').setValue('Please resolve the conflict');
+    expect(wrapper.get('[data-approve-submission]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-request-changes]').attributes('disabled')).toBeUndefined();
+  });
+
   it("navigates actual Reviewer versions with dates and keeps old decisions read-only", async () => {
     const olderId = '00000000-0000-4000-8000-000000000777';
     const version = (id: string, round: number) => ({

@@ -219,6 +219,10 @@ def test_current_api_exposes_no_remote_url_or_archive_ingestion_surface(
     tmp_path: Path,
 ) -> None:
     schema = _test_app(_settings(tmp_path)).openapi()
+    # ArticleEvidence stores a citation URL as metadata; it never fetches it.
+    # Permit that one existing field while rejecting any new URL ingestion input.
+    citation = schema['components']['schemas']['ArticleEvidence']['properties'].pop('source_url')
+    assert citation['anyOf'][0] == {'type': 'string', 'maxLength': 2000}
     serialized = json.dumps(schema).casefold()
 
     assert "source_url" not in serialized

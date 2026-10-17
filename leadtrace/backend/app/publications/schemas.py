@@ -81,6 +81,7 @@ class DecisionMutationResponse(PublicationProjection):
 
 
 class AdminSubmissionListItem(PublicationProjection):
+    submission_kind: Literal["standard", "problem_report"] = "standard"
     submission_id: UUID
     paper_id: UUID
     workspace_id: UUID

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePendingEdit } from "./usePendingEdits";
 import { useHighlights } from "./useHighlights";
 import { highlightRole } from "../../v2/highlights";
 import HighlightBadges from "./HighlightBadges.vue";
@@ -11,7 +12,7 @@ import { structureDepictionUrl } from '../../v2/api';
 import type { Compound, Lineage } from '../../v2/types';
 import type { LineageStructureState } from './useLineageStructures';
 
-const props = defineProps<{ lineage: Lineage; compounds: Compound[]; structures?: Record<string, LineageStructureState>; visible?: boolean; readOnly?: boolean }>();
+const props = defineProps<{ lineage: Lineage; focusedCompoundId?: string; focusRequest?: number; compounds: Compound[]; structures?: Record<string, LineageStructureState>; visible?: boolean; readOnly?: boolean }>();
 const emit = defineEmits<{ 'select-edge': [edgeId: string]; 'select-node': [compoundId: string]; 'add-node': []; connect: [parent: string, child: string] }>();
 const auth = useAuthStore();
 const connecting = ref(false), parentNode = ref(''), bendEdges = ref(false);
@@ -82,7 +83,7 @@ const isStructureView = computed(() => mode.value === 'structures');
 const savedViews = new Map<string, { zoom: number; pan: { x: number; y: number } }>();
 let renderedMode = 'points';
 let renderedLineageIdentity = '';
-const locateId = ref('');
+const locateId = ref(props.focusedCompoundId ?? '');
 const zoomPercent = ref(100);
 const imageCount = ref(0);
 let graph: Core | undefined;
@@ -120,9 +121,16 @@ function zoomBy(factor: number): void {
 function locate(): void {
   if (!graph || !locateId.value) return;
   const node = graph.getElementById(locateId.value);
+  if (!node.length) return;
   graph.elements().removeClass('focused'); node.addClass('focused'); node.connectedEdges().addClass('focused');
   graph.zoom(Math.max(.85, graph.zoom())); graph.center(node);
 }
+function focusRequestedCompound(): void {
+  if (!props.focusedCompoundId || !props.lineage.members.some(member => member.compound_id === props.focusedCompoundId)) return;
+  locateId.value = props.focusedCompoundId;
+  locate();
+}
+watch(() => [props.focusedCompoundId, props.focusRequest], async () => { await nextTick(); focusRequestedCompound(); });
 async function toggleExpanded(): Promise<void> {
   expanded.value = !expanded.value; await nextTick(); graph?.resize();
 }
@@ -254,6 +262,7 @@ async function renderGraph(): Promise<void> {
   const savedView = savedViews.get(mode.value);
   if (savedView) { current.zoom(savedView.zoom); current.pan(savedView.pan); } else readableView();
   updateImages();
+  focusRequestedCompound();
 }
 // Refresh only localized node text; preserve positions, viewport and selection.
 watch(locale, updateImages);
@@ -277,6 +286,7 @@ onBeforeUnmount(() => {
   disposed = true; renderEpoch++; observer?.disconnect(); graph?.destroy();
   pendingImages.forEach(img => { img.onload = null; img.onerror = null; }); pendingImages.clear();
 });
+usePendingEdit(() => layoutDirty.value || dirtyLayouts.size > 0 || savingLayout.value || connecting.value);
 </script>
 <template>
   <section @keydown.esc="cancelConnect" class="lineage-graph-panel molecular-lineage-graph" :class="{ expanded }" :aria-label='t("Lineage 交互关系图")'>

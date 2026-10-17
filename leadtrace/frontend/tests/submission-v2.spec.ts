@@ -8,6 +8,48 @@ describe("Reviewer submission checklist", () => {
   beforeEach(installReviewer);
   afterEach(() => vi.unstubAllGlobals());
 
+  it("submits an article problem with a required reason without confirming incomplete content", async () => {
+    const calls: Array<{url: string; init?: RequestInit}> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input); calls.push({url, init});
+      if (url.includes("submission-validation")) return response({valid: false, blockers: [{code: "SECTION_PENDING", message: "Review required", entity_type: "paper_section_review", entity_id: null, section_key: "structures"}]});
+      if (url.endsWith("submit-problem")) return response({workspace_version: 2});
+      return response(workspace());
+    }));
+    const {wrapper} = await mountWorkspace("submit");
+    expect(wrapper.get("[data-submit-problem]").attributes("disabled")).toBeDefined();
+    await wrapper.get("[data-problem-reason]").setValue("  Article has conflicting compound structures  ");
+    expect(wrapper.get("[data-submit-problem]").attributes("disabled")).toBeUndefined();
+    expect(wrapper.get("[data-submit-paper]").attributes("disabled")).toBeDefined();
+    await wrapper.get("[data-submit-problem]").trigger("click");
+    await flushPromises();
+    const call = calls.find(x => x.url.endsWith("submit-problem"));
+    expect(JSON.parse(String(call?.init?.body))).toEqual({expected_workspace_version: 1, reason: "Article has conflicting compound structures"});
+    expect(new Headers(call?.init?.headers).get("X-CSRF-Token")).toBe("reviewer-csrf");
+    expect(wrapper.text()).toContain("文章问题已提交");
+  });
+
+  it("reuses the issue submission idempotency key after a lost response", async () => {
+    const keys: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("submission-validation")) return response({valid: false, blockers: []});
+      if (url.endsWith("submit-problem")) {
+        keys.push(new Headers(init?.headers).get("Idempotency-Key") ?? "");
+        if (keys.length === 1) throw new TypeError("Connection closed after write");
+        return response({workspace_version: 2});
+      }
+      return response(workspace());
+    }));
+    const {wrapper} = await mountWorkspace("submit");
+    await wrapper.get("[data-problem-reason]").setValue("Major article problem");
+    await wrapper.get("[data-submit-problem]").trigger("click"); await flushPromises();
+    await wrapper.get("[data-submit-problem]").trigger("click"); await flushPromises();
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toBe(keys[1]);
+    expect(wrapper.text()).toContain("文章问题已提交");
+  });
+
   it("renders record-addressable blockers and opens the matching tab and entity", async () => {
     const structureId = "30000000-0000-4000-8000-000000000091";
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

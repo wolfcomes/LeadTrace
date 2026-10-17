@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePendingEdit } from "./usePendingEdits";
 import { t } from "../../i18n";
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 
@@ -7,6 +8,7 @@ import { useAuthStore } from "../../auth/store";
 import { getCompoundStructure, putCompoundStructure } from "../../v2/api";
 import type { Compound, PaperWorkspace, Structure } from "../../v2/types";
 import KetcherEditor from "./KetcherEditor.vue";
+import { resolveIupac, iupacText } from "./iupac";
 import StructureSourceImages from "./StructureSourceImages.vue";
 
 const props = defineProps<{
@@ -35,6 +37,45 @@ onMounted(() => document.addEventListener('visibilitychange',visibilityChanged))
 onBeforeUnmount(() => document.removeEventListener('visibilitychange',visibilityChanged));
 const saving = ref(false);
 const error = ref("");
+const iupacName = ref("");
+const converting = ref(false);
+const conversionMessage = ref("");
+let conversionGeneration = 0;
+let unmounted = false;
+onBeforeUnmount(() => { unmounted = true; conversionGeneration++; });
+watch(() => props.compound.id, () => {
+  conversionGeneration++; converting.value = false; iupacName.value = ""; conversionMessage.value = "";
+});
+async function convertIupac(): Promise<void> {
+  if (props.readOnly || saving.value || converting.value || !iupacName.value.trim()) return;
+  const generation = ++conversionGeneration;
+  const compoundId = props.compound.id;
+  const workspaceVersion = props.workspaceVersion;
+  const originalSmiles = smiles.value;
+  const originalMolfile = molfile.value;
+  converting.value = true; error.value = ""; conversionMessage.value = "";
+  try {
+    const result = await resolveIupac(iupacName.value.trim(), auth.csrfToken);
+    if (unmounted || generation !== conversionGeneration || props.readOnly || compoundId !== props.compound.id) return;
+    if (props.workspaceVersion !== workspaceVersion || smiles.value !== originalSmiles || molfile.value !== originalMolfile) {
+      error.value = iupacText("转换期间内容已变化，请重新转换。"); return;
+    }
+    smiles.value = result.smiles; molfile.value = result.molfile;
+    showKetcher.value = true; ketcherOutputReady.value = true;
+    conversionMessage.value = "转换结果已载入，请核对结构及立体化学后保存 Draft。";
+  } catch (reason) {
+    if (unmounted || generation !== conversionGeneration || props.readOnly || compoundId !== props.compound.id) return;
+    const messages: Record<string,string> = {
+      IUPAC_UNPARSEABLE: "名称无法解析，请检查拼写及完整立体化学标记。",
+      IUPAC_UNAVAILABLE: "本地名称解析器暂不可用，请联系管理员检查安装。",
+      IUPAC_TIMEOUT: "名称转换超时，请简化或检查名称后重试。",
+      IUPAC_BUSY: "名称解析器繁忙，请稍后重试。",
+    };
+    error.value = iupacText(reason instanceof ApiError ? messages[reason.code] ?? "转换未完成，请检查名称后重试。" : "转换未完成，请检查名称后重试。");
+  } finally {
+    if (generation === conversionGeneration) converting.value = false;
+  }
+}
 
 watch(() => props.workspaceVersion, (version) => {
   if (version > localVersion.value) localVersion.value = version;
@@ -56,7 +97,8 @@ const canConfirm = computed(() => Boolean(
   && (structure.value.canonical_smiles || structure.value.inchi)
   && !dirty.value
   && !props.readOnly
-  && !saving.value,
+  && !saving.value
+  && !converting.value,
 ));
 const inputMethodLabel = computed(() => ({
   ai_prefill: "AI 预填",
@@ -178,6 +220,7 @@ function handleKetcherOutput(value: string): void {
 }
 
 onMounted(load);
+usePendingEdit(() => dirty.value || showKetcher.value || saving.value || converting.value);
 </script>
 
 <template>
@@ -189,23 +232,29 @@ onMounted(load);
     <p v-if="error" class="inline-feedback is-error" role="alert">{{ t(error) }}</p>
     <p v-if="loading" class="workspace-empty-copy">{{ t("正在读取 Structure…") }}</p>
     <template v-else>
+      <div class="iupac-conversion">
+        <label class="form-field">{{ iupacText("IUPAC 名称") }}<input v-model="iupacName" data-iupac-name class="form-control" maxlength="1000" :disabled="readOnly || saving || converting" placeholder="(2R)-2-hydroxypropanoic acid" /></label>
+        <button data-convert-iupac class="button-secondary" type="button" :disabled="readOnly || saving || converting || !iupacName.trim()" @click="convertIupac">{{ iupacText(converting ? "正在转换…" : "转换并载入编辑器") }}</button>
+        <p class="workspace-empty-copy">{{ iupacText("转换会替换当前未保存结构；请核对后保存 Draft。") }}</p>
+        <p v-if="conversionMessage" role="status">{{ iupacText(conversionMessage) }}</p>
+      </div>
       <div class="structure-form-grid">
-        <label class="form-field">SMILES<textarea v-model="smiles" data-smiles-input class="form-control" rows="4" :disabled="readOnly || saving" :placeholder='t("示例：CCO（乙醇）；请填写实际化合物结构")'></textarea></label>
+        <label class="form-field">SMILES<textarea v-model="smiles" data-smiles-input class="form-control" rows="4" :disabled="readOnly || saving || converting" :placeholder='t("示例：CCO（乙醇）；请填写实际化合物结构")'></textarea></label>
         <div class="structure-identifiers">
           <dl><div><dt>Canonical SMILES</dt><dd><code>{{ structure?.canonical_smiles || t("待 RDKit 解析") }}</code></dd></div><div><dt>InChIKey</dt><dd><code>{{ structure?.inchikey || "—" }}</code></dd></div></dl>
           <p data-structure-guidance>{{ canConfirm ? t("RDKit 已解析，可确认当前 Structure。") : t("先保存 Draft；RDKit 成功解析且无未保存修改后才能确认。") }}</p>
         </div>
       </div>
       <div class="editor-actions structure-actions">
-        <button class="button-primary" data-save-structure type="button" :disabled="readOnly || saving || !smiles.trim()" @click="save('manual_smiles')">{{ t("保存 SMILES Draft") }}</button>
+        <button class="button-primary" data-save-structure type="button" :disabled="readOnly || saving || converting || !smiles.trim()" @click="save('manual_smiles')">{{ t("保存 SMILES Draft") }}</button>
         <button class="button-secondary" data-confirm-structure type="button" :disabled="!canConfirm" @click="save(structure?.input_method === 'structure_editor' ? 'structure_editor' : 'manual_smiles', 'reviewer_confirmed')">{{ t("确认 Structure") }}</button>
-        <button class="button-secondary" data-open-ketcher type="button" :disabled="readOnly || saving" @click="toggleKetcher">{{ showKetcher ? t("关闭 Ketcher") : t("用 Ketcher 编辑") }}</button>
-        <button class="button-quiet" data-mark-structure="unresolved" type="button" :disabled="readOnly || saving" @click="markNoStructure('unresolved')">{{ t("标记无法解析") }}</button>
-        <button class="button-quiet" data-mark-structure="not_reported" type="button" :disabled="readOnly || saving" @click="markNoStructure('not_reported')">{{ t("文章未报告结构") }}</button>
+        <button class="button-secondary" data-open-ketcher type="button" :disabled="readOnly || saving || converting" @click="toggleKetcher">{{ showKetcher ? t("关闭 Ketcher") : t("用 Ketcher 编辑") }}</button>
+        <button class="button-quiet" data-mark-structure="unresolved" type="button" :disabled="readOnly || saving || converting" @click="markNoStructure('unresolved')">{{ t("标记无法解析") }}</button>
+        <button class="button-quiet" data-mark-structure="not_reported" type="button" :disabled="readOnly || saving || converting" @click="markNoStructure('not_reported')">{{ t("文章未报告结构") }}</button>
       </div>
       <section v-if="showKetcher" class="ketcher-panel">
-        <KetcherEditor :model-value="molfile" :disabled="readOnly" @update:model-value="handleKetcherOutput" @error="error = $event" />
-        <button class="button-primary" data-save-ketcher type="button" :disabled="readOnly || saving || !ketcherOutputReady" @click="save('structure_editor')">{{ t("保存 Ketcher Draft") }}</button>
+        <KetcherEditor :model-value="molfile" :disabled="readOnly || converting" @update:model-value="handleKetcherOutput" @error="error = $event" />
+        <button class="button-primary" data-save-ketcher type="button" :disabled="readOnly || saving || converting || !ketcherOutputReady" @click="save('structure_editor')">{{ t("保存 Ketcher Draft") }}</button>
       </section>
       <StructureSourceImages
         :compound-id="compound.id"

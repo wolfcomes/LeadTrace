@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { usePendingEdit } from "./usePendingEdits";
+import RecordClipboard from "./RecordClipboard.vue";
 import HighlightBadges from "./HighlightBadges.vue";
 import FieldExample from "./FieldExample.vue";
 import ViewState from "./ViewState.vue";
@@ -225,7 +227,14 @@ function nestedConflict(): void {
   emit("conflict");
 }
 
+async function pasted(entityId: string, version: number): Promise<void> {
+  selectedId.value = entityId;
+  emit('select', entityId);
+  emit('mutated', version);
+  await load();
+}
 onMounted(load);
+usePendingEdit(() => showCreate.value || editingId.value || busy.value);
 </script>
 
 <template>
@@ -235,6 +244,7 @@ onMounted(load);
       <button class="button-primary" data-add-compound type="button" :disabled="readOnly || busy" @click="showCreate = !showCreate">{{ t("添加 Compound") }}</button>
     </header>
     <FieldExample section="compounds" />
+    <RecordClipboard kind="compound" :workspace-id="workspace.id" :workspace-version="localVersion" :source="selected ? { id: selected.id, label: selected.compound_label } : undefined" :records="compounds.map(item => ({ label: item.compound_label, name: item.display_name }))" :disabled="readOnly || busy || refreshing || loading" @pasted="pasted" @conflict="emit('conflict')" />
     <form v-if="showCreate" class="inline-create-form" @submit.prevent="create">
       <label class="form-field">Compound label<input v-model="label" :placeholder="t('例如：24 或 7a（保留原文编号）')" class="form-control" required maxlength="255"></label>
       <label class="form-field">{{ t("显示名称") }}<input v-model="displayName" class="form-control" maxlength="512"></label>

@@ -189,6 +189,18 @@ class SubmissionRequest(WorkspaceProjection):
         return normalized or None
 
 
+class ProblemSubmissionRequest(SubmissionRequest):
+    reason: str = Field(min_length=1, max_length=10_000)
+
+    @field_validator('reason')
+    @classmethod
+    def normalize_problem_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError('A problem explanation is required')
+        return value
+
+
 class SubmissionBlockerResponse(WorkspaceProjection):
     code: str
     message: str

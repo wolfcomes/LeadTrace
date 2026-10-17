@@ -470,7 +470,13 @@ export const activitySchema = z.object({
   sort_order: z.number().int(),
 }).strict();
 
+export const problemReportSchema = z.object({
+  reason: z.string().min(1).max(10000),
+  blockers: z.array(z.object({code: z.string(), message: z.string(), entity_type: z.string(), entity_id: uuidSchema.nullable(), section_key: sectionKeySchema.nullable()}).strict()),
+}).strict();
+
 export const frozenPaperSnapshotSchema = z.object({
+  problem_report: problemReportSchema.optional(),
   ai_provenance: z.array(aiProvenanceSchema).optional(),
   compound_highlights: z.array(highlightSchema).optional(),
   schema_version: z.literal(1),
@@ -529,6 +535,7 @@ export const paperSubmissionSchema = z.object({
 });
 
 export const adminSubmissionListItemSchema = z.object({
+  submission_kind: z.enum(["standard", "problem_report"]).optional(),
   reviewer_round_number: z.number().int().positive().nullable().optional(),
   review_status: z.enum(['pending', 'approve', 'request_changes', 'awaiting_reviewer', 'supplemented', 'superseded', 'unavailable']).nullable().optional(),
   submitted_by_name: z.string().nullable().optional(),

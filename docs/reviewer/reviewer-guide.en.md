@@ -20,6 +20,8 @@ Your task is to turn paper content into traceable, checked records. AI prefill i
 
 Find the four main tabs. Section status, viewing progress and scientific review status serve different purposes, explained below.
 
+Undo / redo restores saved edits and appends history. Save or cancel pending local edits first. Other sessions, AI updates, submissions and workflow changes stop the older undo chain to protect newer content.
+
 ## 02 · Eight objects to recognize
 
 Separate molecular identity, measurements, relationships and supporting sources before entering data.
@@ -78,6 +80,8 @@ Keep source labels such as 24 or 7a; display name is optional. Each Compound has
 
 The left panel lists this paper’s Compounds; the right panel contains the selected structure, sources and Activities. Check one label at a time to avoid mixing neighboring records.
 
+Copy the current Compound, then paste as a new record. Identifier and display name start blank. A duplicate identifier blocks saving; a duplicate display name only warns. The copy includes structure, source images and Activities; its structure is Draft, with no copied Lineage membership, article highlights or viewed state.
+
 ## 05 · Structure review: check the molecular graph
 
 You can learn to compare drawings before learning to write SMILES. Do not mark a structure confirmed when you cannot assess it. Focus on which atoms and bonds are connected.
@@ -101,6 +105,8 @@ Both input methods save the same Structure. After drawing in Ketcher, choose Sav
 > Ring size, heteroatom position and attachment points are frequent beginner errors. Keep a specific unresolved note if any cannot be checked. A generic scaffold crop also requires the matching substituent row.
 
 > Actual button behavior: Mark unresolved and Structure not reported clear the current SMILES / Molfile and save a no-structure disposition. If a complete candidate has a specific uncertainty, retain the Draft and explain it in the Compound verification hint. These buttons are not simple warning toggles. Preserve sources and an issue record and consult your supervisor before choosing a no-structure disposition.
+
+Enter an IUPAC name to convert locally with OPSIN. Check the result in the editor, save a Draft and confirm separately. Failed parsing does not replace the saved structure.
 
 ## 06 · Activity: entering a measurement
 
@@ -241,6 +247,8 @@ Case 5: retain important cross-comparisons or convergence in one graph. Suppose 
 
 Case 5 · Two independently supported relationships reach 43: retain convergence rather than forcing a tree.
 
+Search a Compound identifier or name to find its Lineage and focus the node. Paste a copied Lineage with a new name: it reuses Compounds and Evidence but creates independent members and Edges with Draft review status. Duplicate Lineage names show a warning.
+
 ## 09 · Local roles versus article annotations
 
 Root / intermediate / terminal describe local graph position. A root may be an original start or a hub compound inherited from an earlier group; terminal means only the end of this graph. Hub-compound significance describes design use, while paper-prioritized compounds use the existing article annotation. Check position, use and author choice separately; they can coexist.
@@ -349,6 +357,8 @@ Viewing is recorded only for Compound and Lineage groups. Explicitly select a Co
 
 Viewing is tracked only at Compound and Lineage level. A Compound group includes structures, source images, Activities and linked evidence; a Lineage group includes members, member content, Edges and evidence. Relevant edits invalidate viewing, while layout changes do not change the science. Do not click through simply to fill the count.
 
+When the graph is sufficient to inspect the current Lineage, mark it viewed directly without opening an Edge. This records viewing only, not scientific approval. Changed or restored records need to be viewed again.
+
 ## 15 · Before submission: resolve each blocker
 
 Submission freezes the current content for Admin review. Your final whole-paper confirmation is still required; passing automated checks does not replace source review.
@@ -370,6 +380,8 @@ Submission freezes the current content for Admin review. Your final whole-paper 
 ![This teaching example intentionally retains a blocker. Open it and resolve the issue before final whole-paper confirmation.](../../leadtrace/frontend/public/reviewer-guide/images/submit.en.png)
 
 This teaching example intentionally retains a blocker. Open it and resolve the issue before final whole-paper confirmation.
+
+For major article problems, use “Report an article problem and submit” with a required explanation. It can freeze incomplete or unconfirmed work, including viewing progress and blockers. An Admin can return it for follow-up; it cannot be published directly. Resolve the issue, complete normal review and resubmit.
 
 ## 16 · Troubleshooting: identify the issue first
 

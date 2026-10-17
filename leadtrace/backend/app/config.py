@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     nginx_internal_transfer: bool = False
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
     trusted_proxy_addresses: list[str] = []
+    opsin_jar: Path = Path("/opt/leadtrace/opsin/opsin-cli-2.8.0-jar-with-dependencies.jar")
     asset_root: Path = Path("/var/lib/leadtrace/assets")
     source_roots: dict[str, Path] = Field(default_factory=dict)
     article_archive_root: Path = Path('/var/lib/leadtrace/article-archives')

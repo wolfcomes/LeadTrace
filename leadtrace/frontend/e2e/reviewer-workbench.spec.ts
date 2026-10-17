@@ -16,6 +16,7 @@ test('large graph supports dragging, curves, persistence and selecting existing 
   const reply=(body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   if(method!=='GET')writes.push({path,body:request.postDataJSON()});
   if(path==='/api/v1/auth/session')return reply({user:{username:'reviewer',display_name:'Synthetic reviewer',role:'reviewer',must_change_password:false},csrf_token:'test-csrf'});
+  if(path.endsWith('/edit-history'))return reply({workspace_version:version,undo_action:null,redo_action:null});
   if(path.endsWith('/review-progress'))return reply({workspace_id:wid,workspace_version:version,tracking_started:false,items:[],sections:workspace().sections.map(x=>({...x,total:0,viewed:0,complete:false}))});
   if(path.includes('/layouts/')){const mode=path.split('/').at(-1)!;if(method==='PUT'){const body=request.postDataJSON();if(body.expected_revision!==layouts[mode].revision)return reply({},409);layouts[mode]={...layouts[mode],positions:body.positions,edge_controls:body.edge_controls,revision:layouts[mode].revision+1};}return reply(layouts[mode]);}
   if(path.endsWith('/members')&&method==='POST'){const body=request.postDataJSON(),member={...members[0]!,id:id(999),compound_id:body.compound_id,role:body.role,sort_order:members.length};members.push(member);version++;return reply({member,workspace_version:version},201);}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { problemText } from "../review/paper/problemSubmission";
 import AiProvenance from "../review/paper/AiProvenance.vue";
 import HighlightCards from "../review/paper/HighlightCards.vue";
 import ArticleMetadata from "../review/paper/ArticleMetadata.vue";
@@ -41,6 +42,7 @@ const previousVersion = computed(() => versions.value[selectedIndex.value - 1]);
 const nextVersion = computed(() => selectedIndex.value >= 0 ? versions.value[selectedIndex.value + 1] : undefined);
 const canDecide = computed(() => rounds.value ? rounds.value.can_decide : true);
 const snapshot = computed(() => detail.value?.submission.snapshot ?? null);
+const problemReport = computed(() => snapshot.value?.problem_report);
 function highlightDepiction(compoundId: string): string | undefined {
   const asset = snapshot.value?.structures.find(s => s.compound_id === compoundId)?.depiction_asset_id;
   return asset ? adminAssetUrl(asset) : undefined;
@@ -107,6 +109,7 @@ async function load(): Promise<void> {
   }
 }
 async function decide(action: "approve" | "request_changes"): Promise<void> {
+  if (action === "approve" && problemReport.value) return;
   if (!canDecide.value || !detail.value || !reason.value.trim() || acting.value || decision.value) return;
   const sequence = loadSequence;
   acting.value = action;
@@ -159,6 +162,12 @@ onBeforeUnmount(() => { loadSequence++; });
         <p v-if="rounds.supplements.some(s => s.phase === 'before_submission')">{{ t('人工修改以补填后的底稿为参照；上次提交的原始内容可切换版本查看。') }}</p>
         <div v-if="selectedVersion?.followup_decision" class="review-followup" data-followup-decision><strong>{{ t('后续退回／补填核对要求') }}</strong> · {{ formatDate(selectedVersion.followup_decision.decided_at) }}<p>{{ selectedVersion.followup_decision.reason }}</p></div>
         <p v-for="warning in rounds.warnings" :key="warning" class="message is-error">{{ warning }}</p>
+      </section>
+      <section v-if="problemReport" class="panel inline-feedback is-warning" data-problem-report>
+        <h2>{{ problemText('文章问题反馈', 'Article problem report') }}</h2>
+        <p>{{ problemReport.reason }}</p>
+        <p>{{ problemText('此提交未完成全部审核，不能批准发布。请核对问题后退回 Reviewer 处理。', 'This submission has not completed review and cannot be published. Review the issue and return it to the Reviewer.') }}</p>
+        <details v-if="problemReport.blockers.length"><summary>{{ problemText('提交时未完成清单', 'Incomplete items at submission') }} ({{ problemReport.blockers.length }})</summary><ul><li v-for="(blocker, index) in problemReport.blockers" :key="index">{{ blocker.message }} · {{ blocker.section_key ?? blocker.entity_type }}</li></ul></details>
       </section>
       <p v-if="detail.submission.reviewer_note" class="reviewer-attestation panel"><strong>{{ t("提交说明") }}</strong><span>{{ detail.submission.reviewer_note }}</span></p>
       <section v-if="detail.comparison?.reviewer_submission" class="original-reviewer-submission panel" data-original-reviewer-submission>
@@ -244,7 +253,7 @@ onBeforeUnmount(() => { loadSequence++; });
         </div>
         <template v-else>
           <label class="form-field"><span>{{ t("决定理由（必填）") }}</span><textarea v-model="reason" data-decision-reason rows="4" :placeholder="t('记录批准依据，或明确需要 Reviewer 修改的内容。')"></textarea></label>
-          <div class="decision-actions"><button class="button-secondary" data-request-changes type="button" :disabled="decisionDisabled" @click="decide('request_changes')">{{ t("退回修改") }}</button><button class="button-primary" data-approve-submission type="button" :disabled="decisionDisabled" @click="decide('approve')">{{ t("批准并发布") }}</button></div>
+          <div class="decision-actions"><button class="button-secondary" data-request-changes type="button" :disabled="decisionDisabled" @click="decide('request_changes')">{{ t("退回修改") }}</button><button class="button-primary" data-approve-submission type="button" :disabled="decisionDisabled || !!problemReport" @click="decide('approve')">{{ t("批准并发布") }}</button></div>
         </template>
       </section>
     </FrozenSubmissionScope>
