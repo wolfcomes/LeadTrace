@@ -501,7 +501,7 @@ usePendingEdit(() => memberDraftTouched.value || showCreate.value || editingLine
     <FieldExample section="lineages" />
     <RecordClipboard kind="lineage" :workspace-id="workspace.id" :workspace-version="localVersion" :source="selectedLineage ? { id: selectedLineage.id, label: selectedLineage.lineage_label } : undefined" :records="lineages.map(item => ({ label: item.lineage_label }))" :disabled="readOnly || busy || refreshing || loading" @pasted="pasted" @conflict="emit('conflict')" />
     <div class="lineage-compound-search">
-      <label class="form-field">{{ lineageToolsText('搜索所有 Lineage 中的 Compound') }}<input v-model="compoundSearch" data-lineage-compound-search class="form-control" type="search" :placeholder="t('搜索编号或名称')"></label>
+      <label class="form-field"><input v-model="compoundSearch" data-lineage-compound-search class="form-control" type="search" :aria-label="lineageToolsText('搜索所有 Lineage 中的 Compound')" :placeholder="t('搜索编号或名称')"></label>
       <ul v-if="compoundSearch.trim()" class="lineage-search-results" :aria-label="lineageToolsText('Compound 搜索结果')">
         <li v-for="result in searchResults" :key="result.lineage.id + ':' + result.compound.id"><button type="button" class="button-quiet" data-lineage-search-result @click="selectSearchResult(result.lineage, result.compound)">{{ result.compound.compound_label }} · {{ result.compound.display_name || t('未命名') }} — {{ result.lineage.lineage_label }} · {{ t(lineageTypeLabels[result.lineage.lineage_type]) }}</button></li>
         <li v-if="!searchResults.length" role="status">{{ lineageToolsText('没有匹配的 Lineage 成员。') }}</li>

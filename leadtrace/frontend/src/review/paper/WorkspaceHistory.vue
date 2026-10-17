@@ -40,7 +40,6 @@ onBeforeUnmount(()=>{generation++;});
   <div class="editor-actions">
    <button type="button" class="button-secondary" data-undo :disabled="readOnly||blocked||busy||loading||!state?.undo_action||state.workspace_version!==version" @click="move('undo')">↶ {{ text('撤销','Undo') }}<span v-if="state?.undo_action"> · {{ label(state.undo_action) }}</span></button>
    <button type="button" class="button-secondary" data-redo :disabled="readOnly||blocked||busy||loading||!state?.redo_action||state.workspace_version!==version" @click="move('redo')">↷ {{ text('重做','Redo') }}<span v-if="state?.redo_action"> · {{ label(state.redo_action) }}</span></button>
-   <small>{{ text('撤销或重做已保存的编辑。','Undo or redo saved edits.') }}</small>
   </div>
   <p v-if="blocked" class="inline-feedback is-warning">{{ text('请先保存或取消当前编辑，再撤销或重做。','Save or cancel the current edit before using undo or redo.') }}</p>
   <p v-if="error" role="status">{{ error }} <button type="button" class="button-quiet" :disabled="busy||loading" @click="load">{{ text('刷新','Refresh') }}</button></p>

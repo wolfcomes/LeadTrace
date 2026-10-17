@@ -381,6 +381,13 @@ class StructureService:
                 .with_for_update()
             )
             before = structure_snapshot(structure) if structure else None
+            # Confirmation changes review disposition, not the content already
+            # viewed. Capture only this reviewer's currently valid receipts;
+            # stale, absent and explicitly unviewed receipts stay unviewed.
+            viewed_before = None
+            if before and status is StructureStatus.REVIEWER_CONFIRMED:
+                from app.workspaces.review_progress import get_progress
+                viewed_before = get_progress(session, workspace_id, actor.user_id)
             comparable = {
                 "smiles": clean_smiles,
                 "canonical_smiles": parsed.canonical_smiles,
@@ -441,6 +448,25 @@ class StructureService:
                 structure.input_method = input_method
                 action = "structure.update"
             after = structure_snapshot(structure)
+            if viewed_before is not None and all(
+                before[key] == after[key]
+                for key in before if key not in {'status', 'input_method'}
+            ):
+                from app.workspaces.review_progress import review_items
+                from app.workspaces.snapshot import build_paper_snapshot
+                from app.workspaces.models import WorkspaceViewReceipt
+                session.flush()
+                current = {(item['kind'], item['entity_id']): item['signature']
+                    for item in review_items(build_paper_snapshot(session, workspace_id))}
+                valid = {(item['kind'], item['entity_id']): item['signature']
+                    for item in viewed_before['items'] if item['viewed']}
+                for receipt in session.scalars(select(WorkspaceViewReceipt).where(
+                    WorkspaceViewReceipt.workspace_id == workspace_id,
+                    WorkspaceViewReceipt.reviewer_id == actor.user_id,
+                )):
+                    key = (receipt.kind, str(receipt.entity_id))
+                    if receipt.viewed_at and valid.get(key) == receipt.signature and key in current:
+                        receipt.signature = current[key]
             result_row["structure"] = structure
             return MutationChange(
                 entity_type="structure",

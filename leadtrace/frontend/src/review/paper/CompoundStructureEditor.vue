@@ -235,7 +235,6 @@ usePendingEdit(() => dirty.value || showKetcher.value || saving.value || convert
       <div class="iupac-conversion">
         <label class="form-field">{{ iupacText("IUPAC 名称") }}<input v-model="iupacName" data-iupac-name class="form-control" maxlength="1000" :disabled="readOnly || saving || converting" placeholder="(2R)-2-hydroxypropanoic acid" /></label>
         <button data-convert-iupac class="button-secondary" type="button" :disabled="readOnly || saving || converting || !iupacName.trim()" @click="convertIupac">{{ iupacText(converting ? "正在转换…" : "转换并载入编辑器") }}</button>
-        <p class="workspace-empty-copy">{{ iupacText("转换会替换当前未保存结构；请核对后保存 Draft。") }}</p>
         <p v-if="conversionMessage" role="status">{{ iupacText(conversionMessage) }}</p>
       </div>
       <div class="structure-form-grid">
