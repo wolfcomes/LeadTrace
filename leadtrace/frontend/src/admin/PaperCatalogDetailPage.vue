@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import { t, locale } from "../i18n";
 import { ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 import { ApiError } from "../api/client";
 import { getAdminPaper } from "../v2/api";
 import type { AssignmentResponse, PaperCatalogRow } from "../v2/types";
 import AiTaskConsole from "./AiTaskConsole.vue";
+import PaperRemovalDialog from "./PaperRemovalDialog.vue";
 import ReviewerAssignmentDialog from "./ReviewerAssignmentDialog.vue";
 
 
 type ViewState = "loading" | "ready" | "error" | "not-found";
 
 const route = useRoute();
+const router = useRouter();
+const showRemoval = ref(false);
+function onRemoved() { showRemoval.value = false; void router.replace({name: "admin-papers", query: {...route.query, page: "1"}}); }
 const state = ref<ViewState>("loading");
 const paper = ref<PaperCatalogRow>();
 const requestId = ref<string>();
@@ -158,9 +162,11 @@ watch(() => route.params.paperId, load, { immediate: true });
           </button>
         </aside>
       </section>
+      <section class="panel" style="padding:20px"><button class="button-secondary" data-remove-paper @click="showRemoval = true">{{ t("从主站移除") }}</button></section>
       <section class="panel"><AiTaskConsole :key="paper.id" :paper-id="paper.id" @changed="load" /></section>
     </template>
 
+    <PaperRemovalDialog v-if="paper && showRemoval" :key="paper.id" :paper="paper" @close="showRemoval = false" @removed="onRemoved" />
     <ReviewerAssignmentDialog
       v-if="paper && showAssignment"
       :paper="paper"

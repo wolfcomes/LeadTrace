@@ -1,3 +1,4 @@
+import { enPaperRemoval } from "./en-paper-removal";
 import { enPaperFilters } from "./en-paper-filters";
 import { enArticleMetadata } from './en-article-metadata';
 import { enApproval } from "./en-approval";
@@ -11,7 +12,7 @@ import { enReview } from './en-review';
 export type Locale = 'zh-CN' | 'en';
 export const LOCALE_STORAGE_KEY = 'leadtrace.locale';
 export const locale = ref<Locale>('zh-CN');
-const english: Readonly<Record<string, string>> = { ...enPaperFilters, ...enArticleMetadata, ...enApproval, ...enCommon, ...enReview, ...enWorkbench, ...enProvenance, ...enAiConsole };
+const english: Readonly<Record<string, string>> = { ...enPaperRemoval, ...enPaperFilters, ...enArticleMetadata, ...enApproval, ...enCommon, ...enReview, ...enWorkbench, ...enProvenance, ...enAiConsole };
 
 export function setLocale(next: Locale): void {
   if (next !== 'zh-CN' && next !== 'en') return;
