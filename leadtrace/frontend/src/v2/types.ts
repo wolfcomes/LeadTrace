@@ -218,6 +218,7 @@ export const aiExtractionRunSchema = z.object({
 }).strict();
 
 export const aiPrefillStatusSchema = z.object({
+  effective_status: z.enum(["not_started", "queued", "running", "succeeded", "failed", "superseded"]).optional(),
   run: aiExtractionRunSchema.nullable(),
   can_start: z.boolean(),
   blocked_reason: z.string().min(1).nullable(),

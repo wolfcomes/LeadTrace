@@ -6,12 +6,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select
+from sqlalchemy import String, cast, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.assets.models import Asset
-from app.papers.visibility import visible_asset, visible_paper_ids
+from app.papers.filters import PaperFilters, paper_filters
+from app.papers.visibility import paper_asset_references, visible_asset, visible_paper_ids
 from app.papers.models import Paper
 from app.audit.models import AuditEvent
 from app.audit.service import AuditService
@@ -216,11 +217,16 @@ def create_operations_router(
         offset: int = Query(default=0, ge=0),
         category: str | None = None,
         integrity: str | None = None,
+        article_filters: PaperFilters = Depends(paper_filters),
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(require_admin),
     ) -> list[dict[str, object]]:
         del principal
-        statement = select(Asset).where(visible_asset(Asset.id)).order_by(Asset.created_at.desc(), Asset.id)
+        references = paper_asset_references()
+        statement = select(Asset).where(visible_asset(Asset.id, references=references)).order_by(Asset.created_at.desc(), Asset.id)
+        if article_filters.active:
+            statement = statement.where(cast(Asset.id, String).in_(select(references.c.asset_id)
+                .where(references.c.paper_id.in_(article_filters.paper_ids()))))
         if category:
             statement = statement.where(Asset.category == category)
         if integrity:

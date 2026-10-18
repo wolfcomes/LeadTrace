@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import APIError
 from app.config import Settings
+from app.papers.filters import PaperFilters, paper_filters
 from app.database import get_db_session
 from app.publications.models import AdminDecision, PublishedPaperVersion
 from app.publications.reviewer_rounds import get_reviewer_round_review, list_reviewer_rounds
@@ -160,15 +161,16 @@ def create_admin_publications_router(settings: Settings) -> APIRouter:
     @declare_route_access(RouteAccess.PERMISSION, Action.APPROVE_CHANGESET)
     def list_pending_submissions(
         reviewer_rounds: bool = False,
+        article_filters: PaperFilters = Depends(paper_filters),
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(get_authenticated_principal),
     ) -> AdminSubmissionListResponse:
         try:
             with session.begin():
                 if reviewer_rounds:
-                    items = list_reviewer_rounds(session, actor=principal)
+                    items = list_reviewer_rounds(session, actor=principal, article_filters=article_filters)
                     return AdminSubmissionListResponse(items=items, total=len(items))
-                pending = service.list_pending_submissions(session, actor=principal)
+                pending = service.list_pending_submissions(session, actor=principal, article_filters=article_filters)
                 items = []
                 for item in pending:
                     bibliography = _bibliography(item.submission.snapshot)

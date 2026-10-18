@@ -6,6 +6,8 @@ import { useRoute, useRouter } from "vue-router";
 import { ApiError } from "../api/client";
 import { listAdminPapers } from "../v2/api";
 import type { AssignmentResponse, PaperCatalogPage, PaperCatalogRow } from "../v2/types";
+import PaperFilters from "./PaperFilters.vue";
+import { usePaperFilters } from "./paperFilters";
 import AiPrefillStatus from "./AiPrefillStatus.vue";
 import ReviewerAssignmentDialog from "./ReviewerAssignmentDialog.vue";
 
@@ -15,6 +17,7 @@ type ViewState = "loading" | "ready" | "error";
 const PAGE_SIZE = 20;
 const route = useRoute();
 const router = useRouter();
+const articleFilters = usePaperFilters();
 const state = ref<ViewState>("loading");
 const payload = ref<PaperCatalogPage>();
 const search = ref("");
@@ -47,6 +50,7 @@ async function load(): Promise<void> {
   requestId.value = undefined;
   try {
     const result = await listAdminPapers({
+      ...articleFilters.params.value,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
       search: search.value || undefined,
@@ -66,13 +70,13 @@ async function applySearch(): Promise<void> {
   const value = search.value.trim();
   await router.replace({
     name: "admin-papers",
-    query: value ? { page: "1", search: value } : { page: "1" },
+    query: { ...route.query, page: "1", search: value || undefined },
   });
 }
 
 async function clearSearch(): Promise<void> {
   search.value = "";
-  await router.replace({ name: "admin-papers", query: { page: "1" } });
+  await router.replace({ name: "admin-papers", query: { ...route.query, page: "1", search: undefined } });
 }
 
 async function goToPage(page: number): Promise<void> {
@@ -143,6 +147,7 @@ function onAssigned(result: AssignmentResponse, reviewerName: string): void {
       : paper),
   };
   assignmentPaper.value = undefined;
+  void load();
 }
 
 watch(() => route.fullPath, load, { immediate: true });
@@ -169,6 +174,8 @@ watch(() => route.fullPath, load, { immediate: true });
         <button class="button-secondary" type="button" @click="clearSearch">{{ t("清除") }}</button>
       </div>
     </form>
+
+    <PaperFilters :model-value="articleFilters.filters.value" @apply="articleFilters.apply" />
 
     <section v-if="state === 'loading'" class="page-state" aria-live="polite">
       <span class="state-spinner" aria-hidden="true"></span><p>{{ t("正在读取文章目录…") }}</p>

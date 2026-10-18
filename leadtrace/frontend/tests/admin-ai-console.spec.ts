@@ -571,3 +571,34 @@ it('announces a completed automatic revision to its article container once', asy
   expect(w.emitted('changed')).toHaveLength(1);
   expect(w.find('[data-accept-repair]').exists()).toBe(false);
 });
+
+it('filters and paginates the global AI task center while keeping filter state', async () => {
+  vi.mocked(api.fetchAiTasks).mockResolvedValue({ items: [], total: 41, settings: { max_concurrent: 4 }, worker: { online: true, last_seen_at: null }, presets: [preset] } as never);
+  const w = render();
+  await flushPromises();
+  await w.get('[name=journal]').setValue('JMC');
+  await w.get('[name=prefill_status]').setValue('succeeded');
+  await w.get('[data-paper-filters]').trigger('submit');
+  await flushPromises();
+  expect(api.fetchAiTasks).toHaveBeenLastCalledWith(undefined, { journal: 'JMC', prefill_status: 'succeeded', limit: 20, offset: 0 });
+  await w.get('[data-next-page]').trigger('click');
+  await flushPromises();
+  expect(api.fetchAiTasks).toHaveBeenLastCalledWith(undefined, { journal: 'JMC', prefill_status: 'succeeded', limit: 20, offset: 20 });
+  await w.get('[data-reset-filters]').trigger('click');
+  await flushPromises();
+  expect(api.fetchAiTasks).toHaveBeenLastCalledWith(undefined, { limit: 20, offset: 0 });
+});
+it('does not let an older AI task response replace a newly filtered result', async () => {
+  let resolveOld!: (value: api.AiTaskPage) => void;
+  const empty = { items: [], total: 0, settings: { max_concurrent: 4 }, worker: { online: true, last_seen_at: null }, presets: [preset] };
+  vi.mocked(api.fetchAiTasks).mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+  vi.mocked(api.fetchAiTasks).mockResolvedValue(empty as never);
+  const w = render();
+  await w.get('[name=journal]').setValue('JMC');
+  await w.get('[data-paper-filters]').trigger('submit');
+  await flushPromises();
+  resolveOld({ ...empty, items: [{ ...job, paper_title: 'Obsolete response' }] } as never);
+  await flushPromises();
+  expect(w.text()).not.toContain('Obsolete response');
+  expect(w.get('[name=journal]').element).toHaveProperty('value', 'JMC');
+});

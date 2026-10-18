@@ -1,3 +1,4 @@
+import { withPaperQuery, type PaperFilterParams } from "./paperFilters";
 import { apiRequest } from "../api/client";
 import { useAuthStore } from "../auth/store";
 import { z } from "zod";
@@ -17,7 +18,7 @@ export function resetUserToDefault(id: string): Promise<AdminUser> { return apiR
 export function updateUserEnabled(id: string, is_enabled: boolean): Promise<AdminUser> { return apiRequest(`/api/v1/users/${encodeURIComponent(id)}/enabled`, userSchema, csrfOptions("PATCH", { is_enabled })); }
 export function revokeUserSessions(id: string): Promise<undefined> { return apiRequest(`/api/v1/users/${encodeURIComponent(id)}/sessions/revoke`, z.undefined(), csrfOptions("POST")); }
 
-export function fetchAdminFiles(): Promise<Record<string, unknown>[]> { return apiRequest("/api/v1/admin/files", anyList); }
+export function fetchAdminFiles(options: PaperFilterParams & { limit?: number; offset?: number } = {}): Promise<Record<string, unknown>[]> { return apiRequest(withPaperQuery("/api/v1/admin/files", options), anyList); }
 export function fetchFileReferences(id: string): Promise<Record<string, unknown>> { return apiRequest(`/api/v1/admin/files/${encodeURIComponent(id)}/references`, anyObject); }
 export function fetchAdminAudit(params: Record<string, string> = {}): Promise<Record<string, unknown>[]> {
   const query = new URLSearchParams(params).toString();

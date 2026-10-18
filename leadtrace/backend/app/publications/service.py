@@ -13,6 +13,7 @@ from app.assets.models import (
     AssetIntegrityState,
 )
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
+from app.papers.filters import PaperFilters
 from app.papers.models import Paper, PaperCatalogState
 from app.publications.comparison import reconstruct_reviewer_baseline
 from app.publications.models import (
@@ -153,6 +154,7 @@ class PublicationService:
         session: Session,
         *,
         actor: DecisionActor,
+        article_filters: PaperFilters | None = None,
     ) -> list[PendingSubmission]:
         self._require_admin(actor)
         rows = session.execute(
@@ -162,7 +164,7 @@ class PublicationService:
                 AdminDecision,
                 AdminDecision.submission_id == PaperSubmission.id,
             )
-            .where(AdminDecision.id.is_(None), Paper.removed_at.is_(None))
+            .where(AdminDecision.id.is_(None), *(article_filters or PaperFilters()).predicates())
             .order_by(PaperSubmission.submitted_at, PaperSubmission.id)
         )
         return [PendingSubmission(submission, paper) for submission, paper in rows]

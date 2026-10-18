@@ -163,6 +163,7 @@ describe("paper-centric Admin catalog", () => {
 
   it("assigns a healthy unassigned Paper to an enabled Reviewer with CSRF", async () => {
     const unassignedPage = { ...pagePayload, items: [catalogPaper({ review: null })], total: 1, offset: 0 };
+    let assigned = false;
     const calls: Array<{ url: URL; init?: RequestInit }> = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://leadtrace.test");
@@ -174,6 +175,7 @@ describe("paper-centric Admin catalog", () => {
         ]);
       }
       if (url.pathname.endsWith("/assign")) {
+        assigned = true;
         return response({
           review_task_id: taskId,
           workspace_id: workspaceId,
@@ -186,7 +188,7 @@ describe("paper-centric Admin catalog", () => {
           sections,
         }, 201);
       }
-      return response(unassignedPage);
+      return response(assigned ? { ...unassignedPage, items: [catalogPaper({ review: { ...catalogPaper().review, task_status: "assigned", submission_state: "not_submitted", sections_resolved: 0 } })] } : unassignedPage);
     }));
     const router = createAppRouter(createMemoryHistory());
     await router.push("/admin/papers");

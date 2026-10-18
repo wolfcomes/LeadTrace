@@ -34,10 +34,10 @@ const errorRequestId = ref<string>();
 let pollAttempts = 0;
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
-const runStatus = computed(() => current.value.run?.status);
+const runStatus = computed(() => current.value.effective_status ?? current.value.run?.status);
 const active = computed(() => runStatus.value === "queued" || runStatus.value === "running");
 const statusLabel = computed(() => {
-  if (!runStatus.value) return current.value.can_start ? "可启动" : "未运行";
+  if (!runStatus.value || runStatus.value === "not_started") return current.value.can_start ? "可启动" : "未运行";
   return {
     queued: "已排队",
     running: "提取中",

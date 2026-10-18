@@ -56,6 +56,10 @@ class CatalogReviewResponse(CatalogProjection):
     ]
 
 
+class CatalogAiPrefillStatusResponse(AiPrefillStatusResponse):
+    effective_status: str = "not_started"
+
+
 class PaperCatalogResponse(CatalogProjection):
     id: UUID
     paper_key: str
@@ -68,7 +72,7 @@ class PaperCatalogResponse(CatalogProjection):
     catalog_state: PaperCatalogState
     source: PaperSourceResponse
     review: CatalogReviewResponse | None
-    ai_prefill: AiPrefillStatusResponse
+    ai_prefill: CatalogAiPrefillStatusResponse
 
     @classmethod
     def from_models(
@@ -76,7 +80,7 @@ class PaperCatalogResponse(CatalogProjection):
         paper: Paper,
         source: PaperSource,
         review: CatalogReviewResponse | None = None,
-        ai_prefill: AiPrefillStatusResponse | None = None,
+        ai_prefill: CatalogAiPrefillStatusResponse | None = None,
     ) -> "PaperCatalogResponse":
         return cls(
             id=paper.id,
@@ -90,7 +94,7 @@ class PaperCatalogResponse(CatalogProjection):
             catalog_state=paper.catalog_state,
             source=PaperSourceResponse.from_source(source),
             review=review,
-            ai_prefill=ai_prefill or AiPrefillStatusResponse(
+            ai_prefill=ai_prefill or CatalogAiPrefillStatusResponse(
                 run=None,
                 can_start=False,
                 blocked_reason="Assign a Reviewer before AI prefill",

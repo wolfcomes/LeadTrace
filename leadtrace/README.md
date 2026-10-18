@@ -371,3 +371,26 @@ schema migration is needed for the `revise` action.
 The Compound structure editor supports local IUPAC-name conversion. See
 [local IUPAC conversion](ops/runbooks/iupac_conversion.md) for the pinned OPSIN
 installation, runtime requirements, limits, and verification.
+
+## Admin article filters
+
+The article catalog, submission approval directory, file registry and AI task center
+share article filters for journal, publication year range, Volume, Issue, reviewer
+assignment and AI prefill status. Conditions combine with AND and are applied by
+the server before pagination. Volume and Issue accept exact text, including special
+issue labels. The year range refers to the article's publication year, not submission
+or task execution time. URL query parameters retain the selection on refresh; Apply
+and Reset return pagination to the first page. Catalog keyword search and approval
+pending/all views compose with these filters.
+
+Assignment and prefill status refer to the current nonarchived article workspace.
+Prefill combines the modern AI task records and legacy extraction records; later
+review or revision tasks do not turn a successfully prefilled article into an
+unprefilled one. Failed and cancelled runs are represented as failed and superseded
+respectively. Approved/submitted snapshots remain immutable: directory filters use
+the current catalog metadata without changing the frozen review content.
+
+File filters select files linked to any matching visible article, including derived
+files and historical scientific assets. Unattached files appear with no article
+filters but cannot match article-specific filters. Deleted articles remain excluded.
+These are read-only query/UI changes and require no database migration.

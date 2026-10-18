@@ -8,12 +8,8 @@ def visible_paper_ids():
     return select(Paper.id).where(Paper.removed_at.is_(None))
 
 
-def visible_asset(asset_id):
-    """Hide assets owned by removed papers, including recursively derived files.
-
-    Shared assets remain visible if another live paper explicitly references them.
-    Unattached uploads remain available to their ordinary permission checks.
-    """
+def paper_asset_references():
+    """All direct, historical and recursively derived paper/asset identities."""
     from app.assets.models import Asset
     from app.catalog.models import PaperSource
     from app.evidence.models import Evidence
@@ -45,6 +41,12 @@ def visible_asset(asset_id):
     ).cte('paper_asset_refs')
     refs = select(refs.c.asset_id, refs.c.paper_id).where(refs.c.asset_id.is_not(None)).cte('paper_asset_tree', recursive=True)
     refs = refs.union(select(cast(Asset.id, String), refs.c.paper_id).join(refs, cast(Asset.source_asset_id, String) == refs.c.asset_id))
+    return refs
+
+
+def visible_asset(asset_id, *, references=None):
+    """Hide removed-paper assets, retaining shared live assets and unattached uploads."""
+    refs = references if references is not None else paper_asset_references()
     removed = select(refs.c.asset_id).join(Paper, Paper.id == refs.c.paper_id).where(Paper.removed_at.is_not(None))
     live = select(refs.c.asset_id).join(Paper, Paper.id == refs.c.paper_id).where(Paper.removed_at.is_(None))
     return asset_id.is_(None) | cast(asset_id, String).not_in(removed) | cast(asset_id, String).in_(live)

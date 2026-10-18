@@ -7,8 +7,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import APIError, request_id_for
-from app.ai_prefill.models import AiExtractionRun, AiExtractionRunStatus
-from app.ai_prefill.schemas import AiExtractionRunResponse, AiPrefillStatusResponse
+from app.ai_prefill.models import AiExtractionRun
+from app.ai_prefill.schemas import AiExtractionRunResponse
+from app.catalog.schemas import CatalogAiPrefillStatusResponse as AiPrefillStatusResponse
 from app.auth.router import resolve_remote_address
 from app.catalog.models import PaperSource
 from app.catalog.schemas import (
@@ -18,6 +19,7 @@ from app.catalog.schemas import (
 )
 from app.config import Settings
 from app.database import get_db_session
+from app.papers.filters import PaperFilters, current_prefill_status, paper_filters
 from app.papers.models import Paper
 from app.papers.removal import RemovePaperRequest, remove_paper
 from app.security.permissions import (
@@ -66,7 +68,7 @@ def _review_summaries(
         select(ReviewTask, PaperWorkspace, User)
         .join(PaperWorkspace, PaperWorkspace.review_task_id == ReviewTask.id)
         .outerjoin(User, User.id == ReviewTask.assigned_reviewer_id)
-        .where(ReviewTask.paper_id.in_(paper_ids), ReviewTask.status != ReviewTaskState.ARCHIVED)
+        .where(ReviewTask.paper_id.in_(paper_ids), ReviewTask.status != ReviewTaskState.ARCHIVED, PaperWorkspace.state != WorkspaceState.ARCHIVED)
         .order_by(
             ReviewTask.paper_id,
             ReviewTask.updated_at.desc(),
@@ -124,7 +126,8 @@ def _ai_prefill_summaries(
         return {}
     workspace_rows = session.scalars(
         select(PaperWorkspace)
-        .where(PaperWorkspace.paper_id.in_(paper_ids), PaperWorkspace.state != WorkspaceState.ARCHIVED)
+        .join(ReviewTask, ReviewTask.id == PaperWorkspace.review_task_id)
+        .where(PaperWorkspace.paper_id.in_(paper_ids), PaperWorkspace.state != WorkspaceState.ARCHIVED, ReviewTask.status != ReviewTaskState.ARCHIVED)
         .order_by(
             PaperWorkspace.paper_id,
             PaperWorkspace.created_at.desc(),
@@ -152,21 +155,20 @@ def _ai_prefill_summaries(
     for run in run_rows:
         latest_run.setdefault(run.workspace_id, run)
 
+    statuses = dict(session.execute(select(Paper.id, current_prefill_status()).where(Paper.id.in_(paper_ids))).all())
     summaries: dict[UUID, AiPrefillStatusResponse] = {}
     for paper_id in paper_ids:
         workspace = latest_workspace.get(paper_id)
         if workspace is None:
             summaries[paper_id] = AiPrefillStatusResponse(
                 run=None,
+                effective_status=statuses[paper_id],
                 can_start=False,
                 blocked_reason="Assign a Reviewer before AI prefill",
             )
             continue
         run = latest_run.get(workspace.id)
-        if run is not None and run.status in {
-            AiExtractionRunStatus.QUEUED,
-            AiExtractionRunStatus.RUNNING,
-        }:
+        if statuses[paper_id] in {"queued", "running"}:
             blocked_reason = "AI prefill is already queued or running"
         elif workspace.state.value != "editing":
             blocked_reason = "Workspace is not editable"
@@ -176,6 +178,7 @@ def _ai_prefill_summaries(
             blocked_reason = None
         summaries[paper_id] = AiPrefillStatusResponse(
             run=AiExtractionRunResponse.from_model(run) if run else None,
+            effective_status=statuses[paper_id],
             can_start=blocked_reason is None,
             blocked_reason=blocked_reason,
         )
@@ -193,12 +196,13 @@ def create_catalog_router(settings: Settings) -> APIRouter:
         limit: int = Query(default=100, ge=1, le=500),
         offset: int = Query(default=0, ge=0),
         search: str | None = Query(default=None, min_length=1, max_length=200),
+        article_filters: PaperFilters = Depends(paper_filters),
         session: Session = Depends(get_db_session),
         principal: Principal = Depends(require_catalog_management),
     ) -> PaperCatalogPage:
         del principal
         with session.begin():
-            filters = [Paper.removed_at.is_(None)]
+            filters = article_filters.predicates()
             if search is not None and search.strip():
                 pattern = _literal_search_pattern(search.strip())
                 filters.append(or_(
@@ -240,6 +244,21 @@ def create_catalog_router(settings: Settings) -> APIRouter:
             limit=limit,
             offset=offset,
         )
+
+    @router.get("/filter-options")
+    @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_PAPER_CATALOG)
+    def get_filter_options(
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(require_catalog_management),
+    ) -> dict[str, list]:
+        del principal
+        with session.begin():
+            return {
+                key: list(session.scalars(select(column).where(Paper.removed_at.is_(None))
+                    .distinct().order_by(column.desc() if key == "years" else column)))
+                for key, column in (("journals", Paper.journal), ("years", Paper.publication_year),
+                    ("volumes", Paper.volume), ("issues", Paper.issue))
+            }
 
     @router.get("/{paper_id}", response_model=PaperCatalogResponse)
     @declare_route_access(RouteAccess.PERMISSION, Action.MANAGE_PAPER_CATALOG)

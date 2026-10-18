@@ -193,6 +193,7 @@ def test_admin_lists_all_papers_with_paginated_safe_source_metadata(
     assert "credential" not in response.text.casefold()
     assert first["review"] is None
     assert first["ai_prefill"] == {
+        "effective_status": "not_started",
         "run": None,
         "can_start": False,
         "blocked_reason": "Assign a Reviewer before AI prefill",
@@ -275,6 +276,7 @@ def test_admin_catalog_includes_review_progress_and_submission_state(
         "submission_state": "changes_requested",
     }
     assert first["ai_prefill"] == {
+        "effective_status": "not_started",
         "run": None,
         "can_start": False,
         "blocked_reason": "Workspace has already been modified",

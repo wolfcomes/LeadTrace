@@ -1,3 +1,4 @@
+import { withPaperQuery, type PaperFilterParams } from "./paperFilters";
 import { z } from "zod";
 import { apiRequest } from "../api/client";
 import { useAuthStore } from "../auth/store";
@@ -104,9 +105,9 @@ export interface StartAiTask {
 function mutation(method: string, body?: unknown) {
   return { method, body, csrfToken: useAuthStore().csrfToken };
 }
-export function fetchAiTasks(paperId?: string): Promise<AiTaskPage> {
+export function fetchAiTasks(paperId?: string, options: PaperFilterParams & { limit?: number; offset?: number } = {}): Promise<AiTaskPage> {
   return apiRequest(
-    `/api/v2/admin/ai-tasks${paperId ? `?paper_id=${encodeURIComponent(paperId)}` : ""}`,
+    withPaperQuery("/api/v2/admin/ai-tasks", { ...options, paper_id: paperId }),
     aiTaskPageSchema,
   );
 }

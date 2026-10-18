@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { problemText } from "../review/paper/problemSubmission";
 import { t, locale } from "../i18n";
-import { computed, onMounted, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { reviewVersionStatus } from './reviewVersionLabels';
 import { ApiError } from "../api/client";
 import { listAdminSubmissions } from "../v2/api";
 import type { AdminSubmissionList } from "../v2/types";
 
+import PaperFilters from "../admin/PaperFilters.vue";
+import { usePaperFilters } from "../admin/paperFilters";
+
+const articleFilters = usePaperFilters();
+let loadSequence = 0;
 const submissions = ref<AdminSubmissionList["items"]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const errorRequestId = ref<string>();
-const showAll = ref(false);
+const showAll = computed({ get: () => articleFilters.query.value.scope === "all", set: value => { void articleFilters.replace({ ...articleFilters.query.value, scope: value ? "all" : undefined }); } });
 const pending = computed(() => submissions.value.filter(item => !item.review_status || item.review_status === 'pending'));
 const visibleSubmissions = computed(() => showAll.value ? submissions.value : pending.value);
 
@@ -20,18 +25,24 @@ function formatDate(value: string): string {
 }
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence;
   loading.value = true;
+  errorRequestId.value = undefined;
   error.value = null;
   try {
-    submissions.value = (await listAdminSubmissions()).items;
+    const result = await listAdminSubmissions(articleFilters.params.value);
+    if (sequence !== loadSequence) return;
+    submissions.value = result.items;
   } catch (caught) {
+    if (sequence !== loadSequence) return;
+    submissions.value = [];
     errorRequestId.value = caught instanceof ApiError ? caught.requestId : undefined;
     error.value = caught instanceof ApiError ? "待审批提交未能读取。" : "待审批提交未能读取。";
   } finally {
-    loading.value = false;
+    if (sequence === loadSequence) loading.value = false;
   }
 }
-onMounted(load);
+watch(articleFilters.params, load, { immediate: true });
 </script>
 
 <template>
@@ -40,6 +51,7 @@ onMounted(load);
       <div><p class="eyebrow">FROZEN SUBMISSIONS</p><h1>{{ t("提交审批") }}</h1><p>{{ t("核对 Reviewer 冻结快照、结构来源、Lineage、Evidence 与完整修改历史。") }}</p></div>
       <span class="status-chip is-pending">{{ pending.length }} {{ t("项待审批") }}</span>
     </header>
+    <PaperFilters :model-value="articleFilters.filters.value" @apply="articleFilters.apply" />
     <p v-if="error" class="message inline-feedback is-error" role="alert">{{ t(error) }} <small v-if="errorRequestId">{{ t("请求编号：{requestId}", { requestId: errorRequestId }) }}</small></p>
     <section class="admin-panel panel table-wrap" :aria-label="t('待审批提交')">
       <div class="section-heading">

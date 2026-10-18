@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from "vue";
+import PaperFilters from "./PaperFilters.vue";
+import { usePaperFilters } from "./paperFilters";
 import AiReportOverview from "./AiReportOverview.vue";
 import { ApiError } from "../api/client";
 import { formatDate, t } from "../i18n";
@@ -24,6 +26,8 @@ import {
 } from "./aiTasks";
 
 const props = defineProps<{ paperId?: string }>();
+const articleFilters = usePaperFilters();
+const PAGE_SIZE = 20;
 const emit = defineEmits<{ changed: [] }>();
 const payload = ref<AiTaskPage>();
 const management = ref<PaperManagement>();
@@ -105,6 +109,7 @@ function dialogKeydown(event: KeyboardEvent): void {
 }
 let timer: ReturnType<typeof setTimeout> | undefined;
 let generation = 0;
+let loadSequence = 0;
 let disposed = false;
 const requestKeys = new Map<string, string>();
 const presets = computed(() => payload.value?.presets ?? []);
@@ -299,14 +304,15 @@ function selectDefaults() {
 }
 async function load(initial = false): Promise<void> {
   const token = generation;
+  const sequence = ++loadSequence;
   try {
     const [page, article] = await Promise.all([
-      fetchAiTasks(props.paperId),
+      props.paperId ? fetchAiTasks(props.paperId) : fetchAiTasks(undefined, { ...articleFilters.params.value, limit: PAGE_SIZE, offset: (articleFilters.page.value - 1) * PAGE_SIZE }),
       props.paperId
         ? fetchPaperManagement(props.paperId)
         : Promise.resolve(undefined),
     ]);
-    if (disposed || token !== generation) return;
+    if (disposed || token !== generation || sequence !== loadSequence) return;
     const delivered = page.items.some(job => job.action === "revise" && job.delivery_state === "applied" &&
       payload.value?.items.some(old => old.id === job.id && old.delivery_state !== "applied"));
     payload.value = page;
@@ -317,10 +323,10 @@ async function load(initial = false): Promise<void> {
     selectDefaults();
     pollError.value = "";
   } catch (reason) {
-    if (!disposed && token === generation)
+    if (!disposed && token === generation && sequence === loadSequence)
       pollError.value = describeError(reason);
   } finally {
-    if (!disposed && token === generation) {
+    if (!disposed && token === generation && sequence === loadSequence) {
       loading.value = false;
       if (initial || !timer) {
         timer = setTimeout(() => {
@@ -332,7 +338,7 @@ async function load(initial = false): Promise<void> {
   }
 }
 watch(
-  () => props.paperId,
+  () => [props.paperId, props.paperId ? "" : JSON.stringify(articleFilters.params.value), props.paperId ? 1 : articleFilters.page.value],
   () => {
     generation++;
     if (timer) clearTimeout(timer);
@@ -602,6 +608,7 @@ function summary(job: AiJob): [string, string][] {
         {{ t("刷新状态") }}
       </button>
     </header>
+    <PaperFilters v-if="!paperId" :model-value="articleFilters.filters.value" @apply="articleFilters.apply" />
     <p v-if="loading" aria-live="polite">{{ t("正在读取任务…") }}</p>
     <p v-if="pollError" class="inline-feedback is-error" role="alert">
       {{ pollError }}
@@ -939,6 +946,11 @@ function summary(job: AiJob): [string, string][] {
           </div>
         </article>
       </section>
+      <nav v-if="!paperId" class="pagination" :aria-label="t('AI 任务分页')">
+        <button class="button-secondary" data-previous-page type="button" :disabled="articleFilters.page.value <= 1 || loading" @click="articleFilters.goToPage(articleFilters.page.value - 1)">{{ t('上一页') }}</button>
+        <span>{{ t('第 {page} / {total} 页', { page: articleFilters.page.value, total: Math.max(1, Math.ceil(payload.total / PAGE_SIZE)) }) }} · {{ t('共 {count} 项任务', { count: payload.total }) }}</span>
+        <button class="button-secondary" data-next-page type="button" :disabled="articleFilters.page.value * PAGE_SIZE >= payload.total || loading" @click="articleFilters.goToPage(articleFilters.page.value + 1)">{{ t('下一页') }}</button>
+      </nav>
       <section v-if="paperId && management" class="panel ai-console-lifecycle">
         <h3>{{ t("分配与归档") }}</h3>
         <p>

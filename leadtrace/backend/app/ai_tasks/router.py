@@ -1,9 +1,10 @@
 from uuid import UUID
 from fastapi import APIRouter,Depends,Header,Query,Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.ai_tasks import service
 from app.papers.visibility import visible_paper_ids
+from app.papers.filters import PaperFilters, paper_filters
 from app.ai_tasks.models import AiTask
 from app.workspaces.models import PaperWorkspace, WorkspaceState
 from app.ai_tasks.contracts import StartTask,RetryTask,LimitUpdate,RepairRequest,AcceptRepair
@@ -36,12 +37,13 @@ def create_ai_tasks_router(settings:Settings):
         return body.model_dump()
     @router.get('/api/v2/admin/ai-tasks')
     @declare_route_access(RouteAccess.PERMISSION,Action.MANAGE_PAPER_CATALOG)
-    def list_jobs(paper_id:UUID|None=None,limit:int=Query(default=100,ge=1,le=500),session:Session=Depends(get_db_session),principal:Principal=Depends(permission)):
+    def list_jobs(paper_id:UUID|None=None,limit:int=Query(default=100,ge=1,le=500),offset:int=Query(default=0,ge=0),article_filters:PaperFilters=Depends(paper_filters),session:Session=Depends(get_db_session),principal:Principal=Depends(permission)):
         with session.begin():
-            query=select(AiTask).join(PaperWorkspace,PaperWorkspace.id==AiTask.workspace_id).where(PaperWorkspace.state!=WorkspaceState.ARCHIVED,AiTask.paper_id.in_(visible_paper_ids()))
+            query=select(AiTask).join(PaperWorkspace,PaperWorkspace.id==AiTask.workspace_id).where(PaperWorkspace.state!=WorkspaceState.ARCHIVED,AiTask.paper_id.in_(article_filters.paper_ids()))
             if paper_id:query=query.where(AiTask.paper_id==paper_id)
-            jobs=list(session.scalars(query.order_by(AiTask.created_at.desc(),AiTask.id).limit(limit)))
-            return {'items':[service.job_response(session,j) for j in jobs],'total':len(jobs),**service.options(session,settings)}
+            total=int(session.scalar(select(func.count()).select_from(query.subquery())) or 0)
+            jobs=list(session.scalars(query.order_by(AiTask.created_at.desc(),AiTask.id).limit(limit).offset(offset)))
+            return {'items':[service.job_response(session,j) for j in jobs],'total':total,'limit':limit,'offset':offset,**service.options(session,settings)}
     @router.get('/api/v2/admin/ai-tasks/{job_id}/report')
     @declare_route_access(RouteAccess.PERMISSION,Action.MANAGE_PAPER_CATALOG)
     def get_report(job_id:UUID,session:Session=Depends(get_db_session),principal:Principal=Depends(permission)):

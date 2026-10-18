@@ -1,3 +1,4 @@
+import type { PaperFilterParams } from "../admin/paperFilters";
 import { apiRequest } from "../api/client";
 import {
   adminSubmissionDetailSchema,
@@ -80,10 +81,10 @@ function withQuery(path: string, values: Record<string, string | number | undefi
 }
 
 export function listAdminPapers(
-  options: { limit?: number; offset?: number; search?: string } = {},
+  options: PaperFilterParams & { limit?: number; offset?: number; search?: string } = {},
 ): Promise<PaperCatalogPage> {
   return apiRequest(
-    withQuery("/api/v2/admin/papers", options),
+    withQuery("/api/v2/admin/papers", { ...options }),
     paperCatalogPageSchema,
   );
 }
@@ -513,8 +514,8 @@ export function submitWorkspace(
   );
 }
 
-export function listAdminSubmissions(): Promise<AdminSubmissionList> {
-  return apiRequest("/api/v2/admin/submissions?reviewer_rounds=true", adminSubmissionListSchema);
+export function listAdminSubmissions(options: PaperFilterParams = {}): Promise<AdminSubmissionList> {
+  return apiRequest(withQuery("/api/v2/admin/submissions", { reviewer_rounds: "true", ...options }), adminSubmissionListSchema);
 }
 
 export function getAdminSubmission(submissionId: string): Promise<AdminSubmissionDetail> {

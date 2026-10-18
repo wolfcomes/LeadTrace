@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.audit.models import AuditEvent
 from app.audit.service import canonical_content_hash
 from app.papers.metadata import ARTICLE_METADATA_DEFAULTS, ArticleMetadata, validate_article_evidence_sources
+from app.papers.filters import PaperFilters
 from app.papers.models import Paper
 from app.publications.models import AdminDecision
 from app.publications.schemas import (
@@ -341,7 +342,7 @@ def get_reviewer_round_review(session: Session, *, submission_id: UUID, actor
         supplements=supplements, warnings=history.warnings)
 
 
-def list_reviewer_rounds(session: Session, *, actor) -> list[AdminSubmissionListItem]:
+def list_reviewer_rounds(session: Session, *, actor, article_filters: PaperFilters | None = None) -> list[AdminSubmissionListItem]:
     PublicationService._require_admin(actor)
     # Fetch only identities, submit boundaries and status. Never load scientific
     # snapshots or the article's full edit history just to render the directory.
@@ -364,7 +365,7 @@ def list_reviewer_rounds(session: Session, *, actor) -> list[AdminSubmissionList
         .outerjoin(ChangeEvent, and_(ChangeEvent.entity_id == PaperSubmission.id,
             ChangeEvent.entity_type == 'paper_submission', ChangeEvent.action == 'workspace.submit',
             ChangeEvent.workspace_id == PaperSubmission.workspace_id, ChangeEvent.paper_id == PaperSubmission.paper_id))
-        .where(Paper.removed_at.is_(None))
+        .where(*(article_filters or PaperFilters()).predicates())
         .order_by(PaperSubmission.workspace_id, PaperSubmission.submission_number)).all()
     workspaces: dict[UUID, list] = {}
     for row in rows:
