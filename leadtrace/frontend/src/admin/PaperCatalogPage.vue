@@ -9,14 +9,11 @@ import type { AssignmentResponse, PaperCatalogPage, PaperCatalogRow } from "../v
 import PaperFilters from "./PaperFilters.vue";
 import { usePaperFilters } from "./paperFilters";
 import AiPrefillStatus from "./AiPrefillStatus.vue";
-import PaperRemovalDialog from "./PaperRemovalDialog.vue";
 import ReviewerAssignmentDialog from "./ReviewerAssignmentDialog.vue";
 
 
 type ViewState = "loading" | "ready" | "error";
 
-const removalPaper = ref<PaperCatalogRow>();
-async function onRemoved() { removalPaper.value = undefined; await load(); if (payload.value && !payload.value.items.length && currentPage.value > 1) await goToPage(Math.max(1, Math.ceil(payload.value.total / PAGE_SIZE))); }
 const PAGE_SIZE = 20;
 const route = useRoute();
 const router = useRouter();
@@ -235,7 +232,6 @@ watch(() => route.fullPath, load, { immediate: true });
                 <AiPrefillStatus :paper-id="paper.id" :status="paper.ai_prefill" compact />
               </td>
               <td class="actions table-actions" :data-label="t('操作')">
-                <button class="button-secondary compact-action" data-remove-paper type="button" @click="removalPaper = paper">{{ t("从主站移除") }}</button>
                 <RouterLink data-manage-paper class="button-secondary compact-action" :to="{ name: 'admin-paper-detail', params: { paperId: paper.id }, query: route.query }">{{ t("管理文章") }}</RouterLink>
                 <button
                   class="button-secondary compact-action"
@@ -258,7 +254,6 @@ watch(() => route.fullPath, load, { immediate: true });
       </nav>
     </template>
 
-    <PaperRemovalDialog v-if="removalPaper" :paper="removalPaper" @close="removalPaper = undefined" @removed="onRemoved" />
     <ReviewerAssignmentDialog
       v-if="assignmentPaper"
       :paper="assignmentPaper"
