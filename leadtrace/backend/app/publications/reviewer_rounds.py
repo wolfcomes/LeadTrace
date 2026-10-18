@@ -18,6 +18,7 @@ from app.publications.schemas import (
     SupplementComparison,
 )
 from app.publications.service import PublicationService, SubmissionReview
+from app.publications.reviewer_projection import reviewer_only_baseline, verified_repairs
 from app.users.models import User
 from app.workspaces.models import (
     ChangeActorKind, ChangeEvent, PaperSubmission, PaperWorkspace, ReviewTask,
@@ -329,6 +330,22 @@ def get_reviewer_round_review(session: Session, *, submission_id: UUID, actor
             comparison_kind=review.comparison_kind if baseline is not None else 'unavailable',
             comparison_events=tuple(e for e in review.comparison_events if e.actor_kind is ChangeActorKind.REVIEWER),
             comparison_warnings=tuple([*review.comparison_warnings, *history.warnings]))
+    # Filter the scientific comparison itself, not just its displayed events.
+    start = (history.indices[history.boundaries[history.reviewer[index - 1].id].id] + 1
+             if index else next((i for i, e in enumerate(history.events[:selected_end])
+                 if e.actor_kind is ChangeActorKind.REVIEWER and e.action != 'workspace.submit'), selected_end))
+    round_events = history.events[start:selected_end]
+    if any('.repair_' in e.action for e in round_events):
+        baseline, warnings = reviewer_only_baseline(selected.snapshot, round_events,
+            verified_repair_ids=verified_repairs(session, round_events, selected.snapshot['source']),
+            expected_start=history.reviewer[index - 1].snapshot if index else None)
+        if any(e.action == 'bibliography.ai_supplement'
+               and history.metadata_delta(e, selected.snapshot['source']) is None for e in round_events):
+            baseline = None
+            warnings.append('Unverified metadata additions; Reviewer-only comparison is unavailable.')
+        review = replace(review, baseline_snapshot=baseline,
+            comparison_kind=('previous_submission' if index else 'reviewer_start') if baseline is not None else 'unavailable',
+            comparison_warnings=tuple([*warnings, *history.warnings]))
     after = history.supplement_projection(selected, 'after_submission')
     after_end = history.indices[history.boundaries[history.reviewer[index + 1].id].id] if index + 1 < len(history.reviewer) else len(history.events)
     after_baseline = deepcopy(after.snapshot if after else selected.snapshot)

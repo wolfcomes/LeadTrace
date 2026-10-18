@@ -102,6 +102,14 @@ Admin clients opt in with `reviewer_rounds=true` on list and detail requests.
 the default responses preserve their legacy shape. These are display projections,
 not changes to immutable submissions or historical actors.
 
+Scientific AI repair deliveries are also excluded from the Reviewer change
+comparison. The display baseline replays verified AI field deltas while retaining
+Reviewer edits, including edits to the same record. Task/workspace/source binding
+and the prior frozen round are checked before using this projection. Incomplete
+history or overlapping ordered metadata lists produce an explicit warning instead
+of silently hiding human work. Original submissions, their hashes and approval
+targets remain unchanged.
+
 ## Interface language
 
 The page-top language selector switches between the existing Chinese interface

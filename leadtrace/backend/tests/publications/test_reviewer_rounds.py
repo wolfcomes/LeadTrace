@@ -186,3 +186,55 @@ def test_directory_opens_latest_record_for_full_supplement_validation(publicatio
     assert not data['review_rounds']['can_decide']
     assert data['comparison']['kind'] == 'unavailable'
     assert data['review_rounds']['warnings']
+
+
+@pytest.mark.parametrize('later_round', [False, True])
+@pytest.mark.parametrize('verified', [False, True])
+def test_ai_revision_baseline_keeps_reviewer_changes(publication_fixture, later_round, verified):
+    from uuid import uuid4
+    from app.ai_tasks.models import AiTask
+    from app.ai_tasks.repair_apply import _row_snapshot
+    from app.papers.models import Paper
+    from app.workspaces.snapshot import canonical_snapshot_hash
+    f = publication_fixture
+    if later_round:
+        first = reviewer_submission(f)
+        return_submission(f, first)
+    with f.session_factory.begin() as s:
+        paper = s.get(Paper, f.paper_id)
+        workspace = s.get(PaperWorkspace, f.workspace_id)
+        job = AiTask(paper_id=f.paper_id, workspace_id=f.workspace_id, requested_by_id=f.admin_id,
+            idempotency_key='approval-repair', request_digest='a'*64, action='revise', preset_id='test',
+            adapter='codex', model='test', reasoning_effort='high', workspace_version=workspace.version,
+            task_version=1, source_sha256='a'*64, timeout_seconds=1800, state='completed',
+            delivery_state='applied', result_summary={'applied_workspace_version':workspace.version+1})
+        s.add(job); s.flush()
+        before = _row_snapshot(paper)
+        paper.abstract = 'AI addition'; paper.abstract_status = 'extracted'; paper.abstract_source = 'Page 1'
+        after = _row_snapshot(paper)
+        metadata = {'repair_job_id':str(job.id if verified else uuid4()), 'delivery_mode':'automatic_revision', 'requested_by_id':str(f.admin_id)}
+        s.add(ChangeEvent(paper_id=f.paper_id, workspace_id=f.workspace_id, entity_type='paper',
+            entity_id=f.paper_id, action='paper.repair_update', actor_kind=ChangeActorKind.AI,
+            before_value={**before,'_repair':metadata}, after_value={**after,'_repair':metadata}))
+        workspace.version += 1
+        version = workspace.version
+    csrf = f.login('publication.reviewer')
+    response = f.client.patch(f'/api/v2/workspaces/{f.workspace_id}/bibliography',
+        headers={'X-CSRF-Token':csrf}, json={'expected_workspace_version':version, 'title':'Human title after repair'})
+    assert response.status_code == 200
+    submission = f.submit(key='after-ai-repair')
+    frozen = deepcopy(submission.snapshot)
+    data = round_detail(f, submission)
+    # A repair before the first human event is already part of the initial
+    # baseline. Later rounds must additionally verify its task binding.
+    if verified or not later_round:
+        baseline = data['comparison']['baseline_snapshot']
+        assert baseline['paper']['abstract'] == 'AI addition'
+        assert baseline['paper']['title'] != frozen['paper']['title']
+        assert not data['comparison']['warnings']
+    else:
+        assert data['comparison']['kind'] == 'unavailable'
+        assert data['comparison']['warnings']
+    assert data['submission']['snapshot'] == frozen
+    assert canonical_snapshot_hash(frozen) == submission.content_hash
+    assert all(e['actor_kind'] == 'reviewer' for e in data['comparison']['events'])
