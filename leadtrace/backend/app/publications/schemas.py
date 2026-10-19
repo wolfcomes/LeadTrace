@@ -7,6 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer
 
+from app.activity_tables.schemas import TableColumn
 from app.activities.models import ActivityOperator
 from app.evidence.models import EvidenceKind, EvidenceRole
 from app.lineages.models import LineageEdgeReviewStatus, LineageMemberRole, LineageType
@@ -331,6 +332,21 @@ class PublishedCompoundHighlight(PublishedSnapshotProjection):
     review_status: Literal['draft', 'reviewer_confirmed', 'unresolved']
 
 
+class PublishedActivityTable(PublishedSnapshotProjection):
+    """Scientific table organization without draft ownership metadata."""
+    id: UUID
+    name: str
+    kind: Literal['source', 'custom']
+    source_label: str | None
+    source_title: str | None
+    page_number: int | None
+    review_hint: str | None
+    columns: list[TableColumn]
+    mode: Literal['any', 'all']
+    sort: Literal['label', 'similarity', 'default']
+    review_status: Literal['draft', 'reviewer_confirmed', 'unresolved']
+
+
 class PublishedPaperSnapshotResponse(PublishedSnapshotProjection):
     ai_provenance: list[dict[str, object]] = Field(default_factory=list)
     schema_version: Literal[1]
@@ -342,10 +358,13 @@ class PublishedPaperSnapshotResponse(PublishedSnapshotProjection):
         data = handler(self)
         if not self.ai_provenance:
             data.pop("ai_provenance", None)
+        if not self.activity_tables:
+            data.pop("activity_tables", None)
         if not self.compound_highlights:
             data.pop("compound_highlights", None)
         return data
 
+    activity_tables: list[PublishedActivityTable] = Field(default_factory=list)
     compound_highlights: list[PublishedCompoundHighlight] = Field(default_factory=list)
     compounds: list[PublishedCompound]
     structures: list[PublishedStructure]

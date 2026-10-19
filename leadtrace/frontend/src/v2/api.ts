@@ -1,3 +1,4 @@
+import { activityTableListSchema, activityTableMutationSchema, activityTableDeleteSchema, type ActivityTableWrite } from './types';
 import type { PaperFilterParams } from "../admin/paperFilters";
 import { apiRequest } from "../api/client";
 import {
@@ -563,4 +564,15 @@ export function getPublishedPaper(paperId: string): Promise<PublishedPaperDetail
 
 export function publishedAssetUrl(paperId: string, assetId: string): string {
   return `/api/v2/papers/${encodeURIComponent(paperId)}/assets/${encodeURIComponent(assetId)}`;
+}
+
+export function getActivityTables(workspaceId:string){return apiRequest(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/activity-tables`,activityTableListSchema);}
+export function saveActivityTable(workspaceId:string,id:string,payload:ActivityTableWrite,version:number,csrfToken:string|null){
+ return apiRequest(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/activity-tables/${encodeURIComponent(id)}`,activityTableMutationSchema,{method:'PUT',csrfToken,body:{...payload,expected_workspace_version:version}});
+}
+export function deleteActivityTable(workspaceId:string,id:string,version:number,csrfToken:string|null){
+ return apiRequest(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/activity-tables/${encodeURIComponent(id)}`,activityTableDeleteSchema,{method:'DELETE',csrfToken,body:{expected_workspace_version:version}});
+}
+export function confirmActivityTable(workspaceId:string,id:string,version:number,csrfToken:string|null,reviewStatus:'reviewer_confirmed'|'unresolved'='reviewer_confirmed'){
+ return apiRequest(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/activity-tables/${encodeURIComponent(id)}/confirm`,activityTableMutationSchema,{method:'POST',csrfToken,body:{expected_workspace_version:version,review_status:reviewStatus}});
 }

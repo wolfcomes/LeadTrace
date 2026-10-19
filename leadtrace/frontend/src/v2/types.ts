@@ -484,7 +484,24 @@ export const problemReportSchema = z.object({
   blockers: z.array(z.object({code: z.string(), message: z.string(), entity_type: z.string(), entity_id: uuidSchema.nullable(), section_key: sectionKeySchema.nullable()}).strict()),
 }).strict();
 
+export const activityTableColumnSchema = z.object({
+  id:z.string(), label:z.string(), assay:z.string(), metric:z.string(), unit:z.string().nullable(), activity_ids:z.array(uuidSchema),
+});
+export const activityTableSchema = z.object({
+  id:uuidSchema,paper_id:uuidSchema,workspace_id:uuidSchema,name:z.string(),kind:z.enum(['source','custom']),
+  source_label:z.string().nullable(),source_title:z.string().nullable(),page_number:z.number().int().nullable(),
+  review_hint:z.string().nullable(),review_status:z.enum(['draft','reviewer_confirmed','unresolved']),created_by_kind:z.string(),
+  columns:z.array(activityTableColumnSchema),mode:z.enum(['any','all']),sort:z.enum(['label','similarity','default']),
+});
+export const activityTableListSchema=z.object({workspace_id:uuidSchema,workspace_version:z.number().int(),tables:z.array(activityTableSchema),other_activity_ids:z.array(uuidSchema)});
+export const activityTableMutationSchema=z.object({workspace_version:z.number().int(),table:activityTableSchema});
+export const activityTableDeleteSchema=z.object({workspace_version:z.number().int(),deleted_table_id:uuidSchema});
+export type ActivityTable=z.infer<typeof activityTableSchema>;
+export type ActivityTableList=z.infer<typeof activityTableListSchema>;
+export type ActivityTableWrite=Pick<ActivityTable,'name'|'kind'|'source_label'|'source_title'|'page_number'|'review_hint'|'columns'|'mode'|'sort'>;
+
 export const frozenPaperSnapshotSchema = z.object({
+  activity_tables:z.array(activityTableSchema).optional(),
   problem_report: problemReportSchema.optional(),
   ai_provenance: z.array(aiProvenanceSchema).optional(),
   compound_highlights: z.array(highlightSchema).optional(),
@@ -536,6 +553,7 @@ export const paperSubmissionSchema = z.object({
     ...value.snapshot.evidence,
     ...value.snapshot.edge_evidence_links,
     ...value.snapshot.activities,
+    ...(value.snapshot.activity_tables??[]),
   ];
   if (aggregateRows.some((row) => row.paper_id !== value.paper_id
     || row.workspace_id !== value.workspace_id)) {
@@ -683,6 +701,7 @@ const publishedEdgeEvidenceLinkSchema = edgeEvidenceLinkSchema.omit({
 const publishedActivitySchema = activitySchema.omit({ paper_id: true, workspace_id: true }).strict();
 
 export const publishedPaperSnapshotSchema = z.object({
+  activity_tables:z.array(activityTableSchema.omit({paper_id:true,workspace_id:true,created_by_kind:true})).optional(),
   ai_provenance: z.array(aiProvenanceSchema).optional(),
   compound_highlights: z.array(publishedHighlightSchema).optional(),
   schema_version: z.literal(1),

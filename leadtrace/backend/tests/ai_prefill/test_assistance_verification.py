@@ -196,7 +196,7 @@ def test_pdf_advisory_does_not_exempt_candidate_derived_issues(tamper: str) -> N
     }))
     report = validate_candidate(value, page_texts={})
     assert {issue.code for issue in report.issues} == {
-        "ACTIVITY_WITHOUT_EVIDENCE", "EVIDENCE_TEXT_UNAVAILABLE",
+        "ACTIVITY_WITHOUT_EVIDENCE", "EVIDENCE_TEXT_UNAVAILABLE", "ABSTRACT_NOT_CHECKED",
     }
     assert verify_candidate_for_application(value, report).report.issues == report.issues
     altered = [issue for issue in report.issues if issue.code != "ACTIVITY_WITHOUT_EVIDENCE"]

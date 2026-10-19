@@ -44,11 +44,12 @@ const canEdit = computed(() => (
   auth.user?.role === "reviewer"
   && workspaceState.workspace.value?.state === "editing"
 ));
+const tableBusy = ref(false);
 const historyBusy = ref(false);
 const historyReloading = ref(false);
 const historyEpoch = ref(0);
 const pendingEdits = providePendingEdits();
-const readOnly = computed(() => !canEdit.value || historyBusy.value || historyReloading.value);
+const readOnly = computed(() => !canEdit.value || historyBusy.value || historyReloading.value || tableBusy.value);
 const progress = provideReviewProgress(() => workspaceState.workspace.value ?? undefined, () => canEdit.value);
 provideHighlights(() => workspaceState.workspace.value ?? undefined);
 const visitedTabs = ref(new Set<string>());
@@ -63,7 +64,7 @@ function selectCompound(compoundId: string): void {
 }
 
 async function openComparisonRecord(compoundId: string, activityId?: string): Promise<void> {
-  if (pendingEdits.blocked.value || historyBusy.value || historyReloading.value || workspaceState.savingSection.value) return;
+  if (pendingEdits.blocked.value || historyBusy.value || historyReloading.value || tableBusy.value || workspaceState.savingSection.value) return;
   const target = workspaceState.workspace.value;
   if (!target) return;
   // Do not advance an existing draft's version just by reading the comparison.
@@ -86,7 +87,7 @@ function selectEntity(entityId: string | undefined, group?: LineageType): void {
   void router.push({ path: route.path, query: { ...route.query, entity: entityId, lineage_group: lineageGroup } });
 }
 
-async function focusRecord(tab: "bibliography" | "compounds" | "lineages" | "evidence", entityId?: string): Promise<void> {
+async function focusRecord(tab: "bibliography" | "compounds" | "lineages" | "evidence" | "activity-comparison", entityId?: string): Promise<void> {
   if (tab === "evidence") {
     try { tab = await resolveEvidenceTab(entityId); }
     catch { tab = "lineages"; }
@@ -158,7 +159,7 @@ watch(
     <template v-else-if="workspaceState.workspace.value">
       <WorkspaceHeader :workspace="workspaceState.workspace.value" />
       <ReviewerHelp />
-      <WorkspaceHistory :workspace-id="workspaceState.workspace.value.id" :version="workspaceState.workspace.value.version" :read-only="!canEdit" :blocked="pendingEdits.blocked.value || !!workspaceState.savingSection.value || historyReloading || progress.busy.value" @busy="historyBusy = $event" @restored="restoreWorkspace" @conflict="restoreWorkspace" />
+      <WorkspaceHistory :workspace-id="workspaceState.workspace.value.id" :version="workspaceState.workspace.value.version" :read-only="!canEdit" :blocked="pendingEdits.blocked.value || !!workspaceState.savingSection.value || historyReloading || progress.busy.value || tableBusy" @busy="historyBusy = $event" @restored="restoreWorkspace" @conflict="restoreWorkspace" />
       <p v-if="progress.error.value" class="inline-feedback is-warning" role="status">{{ t(progress.error.value) }} <button type="button" class="button-quiet" @click="progress.refresh">{{ t('重试') }}</button></p>
       <p v-if="auth.user?.role === 'admin'" class="inline-feedback is-warning" data-admin-readonly>{{ t("Admin 查看模式：此 Workspace 只读。") }}</p>
       <p v-if="workspaceState.concurrencyMessage.value" class="inline-feedback is-warning" data-concurrency-alert role="alert">{{ t(workspaceState.concurrencyMessage.value) }}</p>
@@ -180,7 +181,7 @@ watch(
       </nav>
 
       <section v-if="visitedTabs.has('activity-comparison')" v-show="activeTab === 'activity-comparison'" class="workspace-editor-surface panel">
-        <ActivityComparison :key="workspaceState.workspace.value.id" :workspace="workspaceState.workspace.value" :active="activeTab === 'activity-comparison'" :blocked="pendingEdits.blocked.value || historyBusy || historyReloading || !!workspaceState.savingSection.value" @open="openComparisonRecord" />
+        <ActivityComparison :key="workspaceState.workspace.value.id" :workspace="workspaceState.workspace.value" :active="activeTab === 'activity-comparison'" :blocked="pendingEdits.blocked.value || historyBusy || historyReloading || !!workspaceState.savingSection.value" :selected-table-id="activeTab === 'activity-comparison' && typeof route.query.entity === 'string' ? route.query.entity : undefined" :read-only="!canEdit" @busy="tableBusy = $event" @mutated="restoreWorkspace" @open="openComparisonRecord" />
       </section>
       <p v-if="activeTab === 'compounds' && route.query.from_comparison === '1'">
         <button type="button" class="button-secondary" data-return-comparison :disabled="pendingEdits.blocked.value || historyBusy || historyReloading" @click="selectTab('activity-comparison')">{{ t('← 返回活性对比') }}</button>

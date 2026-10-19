@@ -1,0 +1,152 @@
+from uuid import uuid4
+
+import pytest
+from pydantic import ValidationError
+
+from app.activities.models import Activity
+from app.compounds.models import Compound
+from app.workspaces.snapshot import build_paper_snapshot
+from app.activity_tables.schemas import TableWrite
+
+
+def payload(ids, version=1):
+    return dict(expected_workspace_version=version, name='Table 1', kind='source', source_label='Table 1',
+                columns=[dict(id='potency', label='Human IC50', assay='Human', metric='IC50', unit='nM', activity_ids=[str(x) for x in ids])])
+
+
+def seed(f):
+    with f.session_factory.begin() as s:
+        c = Compound(paper_id=f.paper_id, workspace_id=f.workspace_id, compound_label='1', sort_order=0, created_by_kind='reviewer')
+        s.add(c); s.flush()
+        rows = [Activity(paper_id=f.paper_id, workspace_id=f.workspace_id, compound_id=c.id,
+                         assay_name='Human', metric='IC50', unit='nM', operator='=', value=v, sort_order=i)
+                for i, v in enumerate([1, 2])]
+        s.add_all(rows); s.flush()
+        return [r.id for r in rows]
+
+
+def test_table_shape_rejects_ambiguous_source_and_duplicate_ids():
+    data = payload([uuid4()])
+    TableWrite.model_validate(data)
+    with pytest.raises(ValidationError):
+        TableWrite.model_validate(data | {'source_label': None})
+    with pytest.raises(ValidationError):
+        TableWrite.model_validate(data | {'columns': data['columns'] * 2})
+    data['columns'][0]['activity_ids'] *= 2
+    with pytest.raises(ValidationError):
+        TableWrite.model_validate(data)
+
+
+def test_tables_persist_other_confirm_invalidate_and_undo(workspace_fixture):
+    f = workspace_fixture; ids = seed(f)
+    csrf = f.login('workspace.reviewer'); headers = {'X-CSRF-Token': csrf}
+    base = f'/api/v2/workspaces/{f.workspace_id}/activity-tables'; url = f'{base}/{uuid4()}'
+    with f.session_factory() as s:
+        assert 'activity_tables' not in build_paper_snapshot(s, f.workspace_id)
+    result = f.client.put(url, json=payload(ids[:1]), headers=headers)
+    assert result.status_code == 200, result.text
+    assert result.json()['table']['review_status'] == 'draft'
+    listing = f.client.get(base).json()
+    assert listing['other_activity_ids'] == [str(ids[1])]
+    assert listing['workspace_version'] == 2
+    from app.workspaces.validation import validate_submission
+    with f.session_factory() as s:
+        assert any(b.code == 'ACTIVITY_TABLE_NOT_REVIEWED' for b in validate_submission(s, f.workspace_id).blockers)
+    result = f.client.post(url + '/confirm', json={'expected_workspace_version': 2}, headers=headers)
+    assert result.status_code == 200, result.text
+    assert result.json()['table']['review_status'] == 'reviewer_confirmed'
+    result = f.client.patch(f'/api/v2/activities/{ids[0]}', json={'expected_workspace_version': 3, 'value': '7.00'}, headers=headers)
+    assert result.status_code == 200, result.text
+    assert f.client.get(base).json()['tables'][0]['review_status'] == 'draft'
+    result = f.client.request('DELETE', f'/api/v2/activities/{ids[0]}', json={'expected_workspace_version': 4}, headers=headers)
+    assert result.status_code == 200, result.text
+    assert f.client.get(base).json()['tables'][0]['columns'][0]['activity_ids'] == []
+    result = f.client.post(f'/api/v2/workspaces/{f.workspace_id}/edit-history/undo', json={'expected_workspace_version': 5}, headers=headers)
+    assert result.status_code == 200, result.text
+    assert f.client.get(base).json()['tables'][0]['columns'][0]['activity_ids'] == [str(ids[0])]
+    with f.session_factory() as s:
+        assert build_paper_snapshot(s, f.workspace_id)['activity_tables'][0]['columns'][0]['activity_ids'] == [str(ids[0])]
+
+
+def test_tables_versions_permissions_invalid_identity_and_delete(workspace_fixture):
+    f = workspace_fixture; ids = seed(f)
+    csrf = f.login('workspace.reviewer'); headers = {'X-CSRF-Token': csrf}
+    base = f'/api/v2/workspaces/{f.workspace_id}/activity-tables'; url = f'{base}/{uuid4()}'
+    bad = payload(ids); bad['columns'][0]['metric'] = 'EC50'
+    assert f.client.put(url, json=bad, headers=headers).status_code == 422
+    assert f.client.put(url, json=payload([uuid4()]), headers=headers).status_code == 422
+    assert f.client.put(url, json=payload(ids), headers=headers).status_code == 200
+    assert f.client.put(url, json=payload(ids), headers=headers).status_code == 409
+    csrf = f.login('workspace.admin')
+    assert f.client.get(base).status_code == 200
+    assert f.client.put(url, json=payload(ids, 2), headers={'X-CSRF-Token': csrf}).status_code == 403
+    f.login('workspace.other')
+    assert f.client.get(base).status_code == 404
+    csrf = f.login('workspace.reviewer')
+    result = f.client.request('DELETE', url, json={'expected_workspace_version': 2}, headers={'X-CSRF-Token': csrf})
+    assert result.status_code == 200, result.text
+    assert set(f.client.get(base).json()['other_activity_ids']) == set(map(str, ids))
+
+
+def test_table_links_are_removed_on_measurement_identity_change_and_audited(workspace_fixture):
+    from sqlalchemy import select
+    from app.workspaces.models import ChangeEvent
+    from app.publications.comparison import reconstruct_reviewer_baseline
+    f = workspace_fixture; ids = seed(f)
+    headers = {'X-CSRF-Token': f.login('workspace.reviewer')}
+    base = f'/api/v2/workspaces/{f.workspace_id}/activity-tables'; url = f'{base}/{uuid4()}'
+    assert f.client.put(url, json=payload(ids), headers=headers).status_code == 200
+    result = f.client.patch(f'/api/v2/activities/{ids[0]}', json={'expected_workspace_version': 2, 'metric': 'EC50'}, headers=headers)
+    assert result.status_code == 200, result.text
+    listing = f.client.get(base).json()
+    assert listing['tables'][0]['columns'][0]['activity_ids'] == [str(ids[1])]
+    assert listing['other_activity_ids'] == [str(ids[0])]
+    with f.session_factory() as s:
+        events = list(s.scalars(select(ChangeEvent).where(ChangeEvent.workspace_id == f.workspace_id)))
+        baseline, warnings = reconstruct_reviewer_baseline(build_paper_snapshot(s, f.workspace_id), events)
+        assert not warnings, warnings
+        assert not baseline.get('activity_tables')
+        assert all(row['metric'] == 'IC50' for row in baseline['activities'])
+
+
+def test_table_content_affects_view_signatures_but_confirm_does_not(workspace_fixture):
+    from app.workspaces.review_progress import review_items
+    from app.publications.schemas import PublishedPaperSnapshotResponse
+    f = workspace_fixture; ids = seed(f)
+    headers = {'X-CSRF-Token': f.login('workspace.reviewer')}
+    base = f'/api/v2/workspaces/{f.workspace_id}/activity-tables'; url = f'{base}/{uuid4()}'
+    def signature():
+        with f.session_factory() as s:
+            return review_items(build_paper_snapshot(s, f.workspace_id))[0]['signature']
+    before = signature()
+    assert f.client.put(url, json=payload(ids), headers=headers).status_code == 200
+    after = signature()
+    assert before != after
+    assert f.client.post(url + '/confirm', json={'expected_workspace_version': 2}, headers=headers).status_code == 200
+    assert signature() == after
+    with f.session_factory() as s:
+        frozen = build_paper_snapshot(s, f.workspace_id)
+    published = PublishedPaperSnapshotResponse.model_validate(frozen).model_dump(mode='json')
+    assert published['activity_tables'][0]['name'] == 'Table 1'
+    data = payload(ids, 3) | {'name': 'Human activity'}
+    assert f.client.put(url, json=data, headers=headers).status_code == 200
+    assert signature() != after
+    assert frozen['activity_tables'][0]['name'] == 'Table 1'
+
+
+def test_table_readonly_noop_page_and_unresolved(workspace_fixture):
+    from app.workspaces.models import PaperWorkspace, WorkspaceState
+    f = workspace_fixture; ids = seed(f)
+    headers = {'X-CSRF-Token': f.login('workspace.reviewer')}
+    base = f'/api/v2/workspaces/{f.workspace_id}/activity-tables'; url = f'{base}/{uuid4()}'
+    assert f.client.put(url, json=payload(ids) | {'page_number': 999}, headers=headers).status_code == 422
+    assert f.client.put(url, json=payload(ids), headers=headers).status_code == 200
+    response = f.client.post(url + '/confirm', json={'expected_workspace_version': 2, 'review_status': 'unresolved'}, headers=headers)
+    assert response.status_code == 200
+    response = f.client.put(url, json=payload(ids, 3), headers=headers)
+    assert response.json()['workspace_version'] == 3
+    assert response.json()['table']['review_status'] == 'unresolved'
+    with f.session_factory.begin() as s:
+        s.get(PaperWorkspace, f.workspace_id).state = WorkspaceState.SUBMITTED
+    assert f.client.get(base).status_code == 200
+    assert f.client.put(url, json=payload(ids, 3) | {'name': 'Changed'}, headers=headers).status_code == 409

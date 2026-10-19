@@ -40,11 +40,20 @@ def review_items(snapshot):
     highlights = defaultdict(list)
     for row in snapshot.get('compound_highlights', []):
         highlights[row['compound_id']].append([row, evidence.get(row['evidence_id'])])
+    table_context = defaultdict(list)
+    activity_compounds = {r['id']: r['compound_id'] for r in snapshot['activities']}
+    for table in snapshot.get('activity_tables', []):
+        compound_ids = {activity_compounds[aid] for col in table['columns'] for aid in col['activity_ids'] if aid in activity_compounds}
+        # Status-only confirmation must not undo viewing. Content and membership
+        # do invalidate affected Compound groups and dependent Lineages.
+        content = {key: value for key, value in table.items() if key not in ('review_status', 'created_by_kind')}
+        for compound_id in compound_ids:
+            table_context[compound_id].append(content)
     compound_signatures = {}
     for row in snapshot['compounds']:
         cid = row['id']
         compound_signatures[cid] = add('compound', cid, 'compounds', row['compound_label'],
-            [row, structures.get(cid), images[cid], activities[cid]] + ([highlights[cid]] if highlights[cid] else []))
+            [row, structures.get(cid), images[cid], activities[cid]] + ([highlights[cid]] if highlights[cid] else []) + ([table_context[cid]] if table_context[cid] else []))
     for row in snapshot['lineages']:
         lid = row['id']
         add('lineage', lid, 'lineages', row['lineage_label'], [

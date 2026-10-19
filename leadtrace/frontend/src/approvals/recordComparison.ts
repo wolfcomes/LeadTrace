@@ -174,7 +174,7 @@ export function buildRecordComparison(
         );
         return {
           id,
-          label: String(row.compound_label ?? row.lineage_label ?? id),
+          label: String(row.compound_label ?? row.lineage_label ?? row.name ?? id),
           before,
           after,
           changes,
@@ -212,8 +212,9 @@ export function buildRecordComparison(
         };
       },
     );
+  const tables = records<Row>('activity_tables',(snapshot,id)=>rows(snapshot,'activity_tables').find(row=>row.id===id)??null,(record,change)=>record?.id===change.id&&change.domain==='activity_tables');
   const covered = new Set(
-    [...compounds, ...lineages].flatMap((r) => r.changes),
+    [...compounds, ...lineages, ...tables].flatMap((r) => r.changes),
   );
   // Membership attributes remain in complete history; only graph membership
   // changes belong in this approval projection and its summary counts.
@@ -234,7 +235,7 @@ export function buildRecordComparison(
         ? "modified"
         : "unchanged",
   };
-  return { ...result, changes: reviewChanges, compounds, lineages, article };
+  return { ...result, changes: reviewChanges, compounds, lineages, tables, article };
 }
 export interface GraphNode {
   id: string;
@@ -331,7 +332,7 @@ export function issueTarget(
   snapshot: FrozenSnapshot,
   issue: { id: string; domain: string },
 ): {
-  tab: "article" | "compounds" | "lineages";
+  tab: "article" | "compounds" | "lineages" | "tables";
   recordId: string;
   selection: string;
 } {
@@ -343,6 +344,7 @@ export function issueTarget(
     recordId: "article",
     selection: "",
   };
+  if (issue.domain === 'activity_tables') return {tab:'tables',recordId:issue.id,selection:issue.id};
   if (!row) return article;
   if (issue.domain === "lineages")
     return { tab: "lineages", recordId: issue.id, selection: "" };

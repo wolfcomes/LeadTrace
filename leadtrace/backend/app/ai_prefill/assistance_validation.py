@@ -83,8 +83,8 @@ def validate_candidate(
     # the assistance boundary without changing legacy payload serialization.
     references = [
         (f"payload.{name}[{index}].ref", item.ref)
-        for name in ("compounds", "structure_locators", "lineages", "evidence")
-        for index, item in enumerate(getattr(candidate.payload, name))
+        for name in ("compounds", "structure_locators", "lineages", "evidence", "activities", "activity_tables")
+        for index, item in enumerate(getattr(candidate.payload, name)) if item.ref is not None
     ]
     references.extend(
         (f"payload.lineages[{li}].edges[{ei}].ref", edge.ref)
@@ -105,9 +105,9 @@ def validate_candidate(
     if expected_doi is not None and candidate_doi is not None and candidate_doi.casefold() != expected_doi.casefold():
         issues.append(_issue("SOURCE_DOI_MISMATCH", "error", "payload.bibliography.doi", "Candidate DOI conflicts with the selected source"))
     page_count = expected_page_count or candidate.source.page_count
-    for collection_name in ("structure_locators", "evidence"):
+    for collection_name in ("structure_locators", "evidence", "activity_tables"):
         for index, item in enumerate(getattr(candidate.payload, collection_name)):
-            if item.page_number > page_count:
+            if item.page_number is not None and item.page_number > page_count:
                 issues.append(_issue("PAGE_OUT_OF_RANGE", "error", f"payload.{collection_name}[{index}].page_number", "Page is outside the source PDF", entity_ref=item.ref))
             bbox = getattr(item, "bbox", None)
             if bbox is not None and not (0 <= bbox.x0 < bbox.x1 <= 1 and 0 <= bbox.y0 < bbox.y1 <= 1):

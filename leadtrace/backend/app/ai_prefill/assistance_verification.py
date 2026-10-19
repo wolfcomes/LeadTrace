@@ -14,6 +14,7 @@ from app.ai_prefill.assistance_contracts import (
 )
 from app.ai_prefill.assistance_validation import validate_candidate
 from app.ai_prefill.models import AiExtractionRun, AiExtractionRunStatus
+from app.activity_tables.models import ActivityTable
 from app.activities.models import Activity
 from app.compounds.models import Compound, CompoundHighlight
 from app.evidence.models import EdgeEvidenceLink, Evidence
@@ -48,6 +49,8 @@ _ENTITY_MODELS: tuple[tuple[str, type[object]], ...] = (
     ("/evidence/", Evidence),
     ("/edge_evidence_links/", EdgeEvidenceLink),
     ("/activities/", Activity),
+    ("/activity_refs/", Activity),
+    ("/activity_tables/", ActivityTable),
 )
 
 

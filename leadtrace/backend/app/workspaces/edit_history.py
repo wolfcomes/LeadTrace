@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy import Numeric
 
+from app.activity_tables.models import ActivityTable
 from app.activities.models import Activity
 from app.compounds.models import Compound, CompoundHighlight
 from app.evidence.models import Evidence, EdgeEvidenceLink
@@ -22,7 +23,7 @@ from app.workspaces.models import (PaperSectionReview, WorkspaceEdit, WorkspaceE
 # Parent-first dependency order, reversed for deletes. Assets and job records are
 # deliberately not restored: the immutable referenced assets remain authoritative.
 MODELS = (Compound, Evidence, Lineage, Structure, StructureSourceImage, LineageMember,
-          LineageEdge, EdgeEvidenceLink, Activity, CompoundHighlight, PaperSectionReview)
+          LineageEdge, EdgeEvidenceLink, Activity, ActivityTable, CompoundHighlight, PaperSectionReview)
 PAPER_FIELDS = ('title', 'journal', 'publication_year', 'volume', 'issue', 'doi', *ARTICLE_METADATA_FIELDS)
 
 def value(v):
@@ -80,6 +81,9 @@ def _convert(model, data):
 def restore(session, context, current, target):
     from app.workspaces.review_progress import review_items
     from app.workspaces.snapshot import build_paper_snapshot
+    # Pre-migration edit snapshots have no table collection; all established
+    # collections remain required so incomplete history cannot erase records.
+    target = dict(target, activity_tables=target.get('activity_tables', []))
     old_signatures={(r['kind'],r['entity_id']):r['signature']
                     for r in review_items(build_paper_snapshot(session,context.workspace.id))}
     # Apply only changed rows. Keeping unaffected records avoids resetting crop
@@ -150,7 +154,8 @@ def move(session,context,actor_id,direction):
     expected=entry.after_state if direction=='undo' else entry.before_state
     target=entry.before_state if direction=='undo' else entry.after_state
     def scientific(state):
-        return {key: item for key, item in state.items() if key != 'lineage_presentations'}
+        return {key: item for key, item in state.items() if key != 'lineage_presentations'
+                and not (key == 'activity_tables' and not item)}
     if scientific(current)!=scientific(expected):
         raise APIError(409,'EDIT_HISTORY_CHANGED','Content changed since this edit')
     target = deepcopy(target)

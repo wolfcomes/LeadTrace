@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.activity_tables.models import ActivityTable
 from app.activities.models import Activity
 from app.compounds.models import Compound, CompoundHighlight
 from app.evidence.models import EdgeEvidenceLink, Evidence
@@ -63,6 +64,7 @@ def _boundary_blockers(session: Session, workspace_id: UUID) -> list[SubmissionB
         (Evidence, "evidence"),
         (EdgeEvidenceLink, "edge_evidence_link"),
         (Activity, "activity"),
+        (ActivityTable, "activity_table"),
     )
     for model, entity_type in models:
         rows = session.scalars(select(model).where(model.workspace_id == workspace_id))
@@ -121,6 +123,20 @@ def validate_submission(session: Session, workspace_id: UUID) -> SubmissionValid
                     'RECORD_NOT_VIEWED', 'Open the current record before submitting',
                     {'edge': 'lineage_edge', 'structure': 'compound'}.get(item['kind'], item['kind']),
                     UUID(item['entity_id']), PaperSection(item['section_key'])))
+
+    from app.activity_tables.service import validate_table_references
+    from app.api.errors import APIError
+    for table in session.scalars(select(ActivityTable).where(ActivityTable.workspace_id == workspace_id)):
+        if table.review_status == 'draft':
+            blockers.append(SubmissionBlocker('ACTIVITY_TABLE_NOT_REVIEWED',
+                'Table organization must be confirmed or explicitly unresolved', 'activity_table',
+                table.id, PaperSection.ACTIVITIES))
+        try:
+            validate_table_references(session, workspace_id, table.columns)
+        except APIError:
+            blockers.append(SubmissionBlocker('ACTIVITY_TABLE_INVALID',
+                'Table contains missing or mismatched Activity references', 'activity_table',
+                table.id, PaperSection.ACTIVITIES))
 
     for highlight in session.scalars(select(CompoundHighlight).where(CompoundHighlight.workspace_id == workspace_id)):
         if highlight.review_status == 'draft':

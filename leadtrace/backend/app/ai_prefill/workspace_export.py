@@ -222,11 +222,25 @@ def _payload_from_snapshot(
         payload["edge_evidence_links"].append({
             "edge_ref": reference(edge_refs, row["edge_id"], "edge_evidence_links"),
             "evidence_ref": reference(evidence_refs, row["evidence_id"], "edge_evidence_links"), "role": row["role"]})
-    for row in ordered("activities"):
-        payload["activities"].append({
+    activity_rows = ordered("activities")
+    originals = [a for a in parent.payload.activities if a.ref]
+    activity_refs = refs(activity_rows, originals, '/activity_refs', 'activity')
+    for row in activity_rows:
+        payload["activities"].append({"ref": activity_refs[row["id"]],
             "compound_ref": reference(compound_refs, row["compound_id"], "activities"),
             "evidence_ref": reference(evidence_refs, row["evidence_id"], "activities") if row["evidence_id"] else None,
             **fields(row, ("assay_name", "metric", "operator", "value", "unit", "context")), "review_hint": row.get("review_hint")})
+    tables = snapshot.get('activity_tables', [])
+    table_refs = refs(tables, parent.payload.activity_tables, '/activity_tables', 'table')
+    if tables:
+        payload['activity_tables'] = []
+    for row in tables:
+        payload['activity_tables'].append({'ref': table_refs[row['id']],
+            **fields(row, ('name','kind','source_label','source_title','page_number','mode','sort')),
+            'review_hint': row.get('review_hint'),
+            'columns': [{**{k:v for k,v in c.items() if k!='activity_ids'},
+                         'activity_refs':[reference(activity_refs,a,'activity_tables') for a in c['activity_ids']]} for c in row['columns']]})
+        review_metadata.append({'path':f"activity_tables/{table_refs[row['id']]}",'review_status':row['review_status']})
     highlights = snapshot.get('compound_highlights', [])
     highlight_refs = refs(highlights, parent.payload.compound_highlights, '/compound_highlights', 'highlight')
     if highlights:

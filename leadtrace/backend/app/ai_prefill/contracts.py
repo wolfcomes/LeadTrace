@@ -149,6 +149,7 @@ class AiEdgeEvidenceLink(StrictModel):
 
 
 class AiActivity(ReviewHintModel):
+    ref: str | None = Field(default=None, min_length=1, max_length=255)
     compound_ref: str = Field(min_length=1, max_length=255)
     evidence_ref: str | None = Field(default=None, min_length=1, max_length=255)
     assay_name: str = Field(min_length=1, max_length=512)
@@ -157,6 +158,66 @@ class AiActivity(ReviewHintModel):
     value: Decimal
     unit: str | None = Field(default=None, max_length=128)
     context: str | None = Field(default=None, max_length=10_000)
+
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_serialization(self, handler):
+        data = handler(self)
+        if self.ref is None:
+            data.pop("ref", None)
+        if self.review_hint is None:
+            data.pop("review_hint", None)
+        return data
+
+
+class AiActivityTableColumn(StrictModel):
+    id: str = Field(min_length=1, max_length=128)
+    label: str = Field(min_length=1, max_length=512)
+    assay: str = Field(min_length=1, max_length=512)
+    metric: str = Field(min_length=1, max_length=128)
+    unit: str | None = Field(default=None, max_length=128)
+    activity_refs: list[str] = Field(default_factory=list, max_length=10000)
+
+
+    @field_validator("id", "label", "assay", "metric")
+    @classmethod
+    def required_text(cls, value):
+        if not value.strip():
+            raise ValueError("Nonblank text is required")
+        return value.strip()
+
+
+class AiActivityTable(ReviewHintModel):
+    ref: str = Field(min_length=1, max_length=255)
+    name: str = Field(min_length=1, max_length=512)
+    kind: Literal["source", "custom"] = "source"
+    source_label: str | None = Field(default=None, max_length=512)
+    source_title: str | None = Field(default=None, max_length=10000)
+    page_number: int | None = Field(default=None, gt=0)
+    columns: list[AiActivityTableColumn] = Field(max_length=200)
+    mode: Literal["any", "all"] = "any"
+    sort: Literal["label", "similarity", "default"] = "label"
+
+    @field_validator("name")
+    @classmethod
+    def required_name(cls, value):
+        if not value.strip():
+            raise ValueError("Nonblank table name is required")
+        return value.strip()
+
+    @field_validator("source_label", "source_title")
+    @classmethod
+    def optional_text(cls, value):
+        return value.strip() or None if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_table(self):
+        if self.kind == "source" and not (self.source_label or "").strip():
+            raise ValueError("Source Activity table requires source_label")
+        _require_unique([c.id for c in self.columns], "Activity table column id")
+        for column in self.columns:
+            _require_unique(column.activity_refs, "Activity ref in table column")
+        return self
 
 
 def _require_unique(values: list[str], label: str) -> None:
@@ -176,12 +237,15 @@ class AiPrefillPayload(StrictModel):
     edge_evidence_links: list[AiEdgeEvidenceLink] = Field(default_factory=list)
     activities: list[AiActivity] = Field(default_factory=list)
     compound_highlights: list[AiCompoundHighlight] = Field(default_factory=list)
+    activity_tables: list[AiActivityTable] = Field(default_factory=list)
 
     @model_serializer(mode="wrap")
     def preserve_legacy_serialization(self, handler):
         data = handler(self)
         if not self.compound_highlights:
             data.pop("compound_highlights", None)
+        if not self.activity_tables:
+            data.pop("activity_tables", None)
         return data
 
     @model_validator(mode="after")
@@ -252,6 +316,17 @@ class AiPrefillPayload(StrictModel):
         for highlight in self.compound_highlights:
             if highlight.compound_ref not in compounds or highlight.evidence_ref not in evidence:
                 raise ValueError("Compound highlight references unknown Compound or Evidence")
+        _require_unique([a.ref for a in self.activities if a.ref is not None], "Activity ref")
+        _require_unique([t.ref for t in self.activity_tables], "Activity table ref")
+        by_ref = {a.ref: a for a in self.activities if a.ref is not None}
+        for table in self.activity_tables:
+            for column in table.columns:
+                for ref in column.activity_refs:
+                    activity = by_ref.get(ref)
+                    if activity is None:
+                        raise ValueError(f"Activity table references unknown Activity: {ref}")
+                    if (activity.assay_name, activity.metric, activity.unit) != (column.assay, column.metric, column.unit):
+                        raise ValueError("Activity table column measurement differs from Activity")
         for activity in self.activities:
             if activity.compound_ref not in compounds:
                 raise ValueError(

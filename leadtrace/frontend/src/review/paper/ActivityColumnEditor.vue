@@ -44,16 +44,16 @@ watch(()=>filtered.value.length,()=>{page.value=Math.min(page.value,Math.max(0,M
   <div class="column-fields">
    <label class="form-field">{{t('查找测定')}}<input v-model="groupQuery" data-column-measurement-search type="search" :placeholder="t('输入测定名称、指标或单位')"></label>
    <label class="form-field measurement-field">{{t('关联测定')}}<select data-column-measurement :value="selectedGroup" @change="chooseGroup(($event.target as HTMLSelectElement).value)"><option value="" disabled>{{t('请选择测定分组')}}</option><option v-for="g in filteredGroups" :key="g.key" :value="g.key">{{g.assay}} · {{g.metric}} · {{g.unit||t('未记录单位')}} ({{g.compoundCount}} Compound{{g.sharedCompounds?` / ${t('共同')} ${g.sharedCompounds}`:''}})</option></select></label>
-   <label class="form-field">{{t('显示列名')}}<input v-model="label" data-column-label maxlength="160"></label>
+   <label class="form-field">{{t('显示列名')}}<input v-model="label" data-column-label maxlength="512"></label>
   </div>
   <template v-if="identity">
    <p class="column-identity">{{identity.assay}} · {{identity.metric}} · {{identity.unit||t('未记录单位')}}</p>
    <div class="column-fields">
-    <label class="form-field">{{t('记录范围')}}<select v-model="scope" data-column-scope><option value="all">{{t('全部记录（包含后续新增）')}}</option><option value="selected">{{t('仅选中记录')}}</option></select></label>
+    <label class="form-field">{{t('记录范围')}}<select v-model="scope" data-column-scope><option value="all">{{t('当前全部匹配记录（保存时固定）')}}</option><option value="selected">{{t('仅选中记录')}}</option></select></label>
     <label class="form-field measurement-field">{{t('筛选记录预览')}}<input v-model="recordQuery" data-column-record-search type="search" :placeholder="t('输入条件原文或 Compound 编号')"></label>
    </div>
    <p class="scope-note">{{t(scope==='all'?'筛选只改变预览；本列仍包含全部记录。':'筛选后勾选记录，或点击“选中筛选结果”。')}}</p>
-   <div class="column-actions" v-if="scope==='selected'"><button type="button" class="button-secondary" data-column-select-filtered @click="selectFiltered(true)">{{t('选中筛选结果')}} ({{filtered.length}})</button><button type="button" class="button-quiet" @click="selectFiltered(false)">{{t('取消选中筛选结果')}}</button></div>
+   <div class="column-actions" v-if="scope==='selected'"><button type="button" class="button-secondary" data-column-select-filtered @click="selectFiltered(true)">{{t('选中筛选结果')}} ({{filtered.length}})</button><button type="button" class="button-quiet" data-column-deselect-filtered @click="selectFiltered(false)">{{t('取消选中筛选结果')}}</button></div>
    <p data-column-selection-count>{{t('本列：{compounds} 个 Compound，{records} 条记录',{compounds:compoundCount,records:chosen.length})}}</p>
    <div class="record-preview" data-column-preview>
     <p v-if="!filtered.length">{{t('没有匹配的记录。')}}</p>

@@ -20,6 +20,7 @@ import { useFrozenPdfPool } from "./frozenPdf";
 import { provideReviewFocus } from "./reviewFocus";
 import ReviewDisclosure from "./ReviewDisclosure.vue";
 import { provideReviewDisclosures } from "./reviewDisclosures";
+import FrozenActivityTable from "./FrozenActivityTable.vue";
 import FrozenCompoundCard from "./FrozenCompoundCard.vue";
 import FrozenEvidence from "./FrozenEvidence.vue";
 import LineageRecordComparison from "./LineageRecordComparison.vue";
@@ -49,7 +50,7 @@ const baseline = computed(() => props.comparison?.baseline_snapshot ?? {}),
   sourceSha = computed(() =>
     String((props.snapshot.source as Row | undefined)?.sha256 ?? ""),
   );
-const tab = ref<"article" | "compounds" | "lineages">("compounds"),
+const tab = ref<"article" | "compounds" | "lineages" | "tables">("compounds"),
   changedOnly = ref(true),
   selected = ref(""),
   navOpen = ref(true),
@@ -62,13 +63,14 @@ const tabs = [
   { key: "article", label: "文章信息" },
   { key: "compounds", label: "化合物与结构" },
   { key: "lineages", label: "Lineage" },
+  { key: "tables", label: "活性对比" },
 ] as const;
 const records = computed(() =>
   tab.value === "article"
     ? [result.value.article]
     : tab.value === "compounds"
       ? result.value.compounds
-      : result.value.lineages,
+      : tab.value === "tables" ? result.value.tables : result.value.lineages,
 );
 const entries = computed(() =>
   records.value.filter(
@@ -78,6 +80,7 @@ const entries = computed(() =>
 const selectedCompound = computed(() =>
   result.value.compounds.find((x) => x.id === selected.value),
 );
+const selectedTable = computed(()=>result.value.tables.find(x=>x.id===selected.value));
 const selectedLineage = computed(() =>
   result.value.lineages.find((x) => x.id === selected.value),
 );
@@ -118,7 +121,7 @@ watch(
       ? "compounds"
       : result.value.lineages.some((x) => x.changed)
         ? "lineages"
-        : result.value.article.changed
+        : result.value.tables.some(x=>x.changed) ? "tables" : result.value.article.changed
           ? "article"
           : "compounds";
     selected.value = "";
@@ -138,7 +141,7 @@ function count(key: string) {
     ? Number(result.value.article.changed)
     : (key === "compounds"
         ? result.value.compounds
-        : result.value.lineages
+        : key === "tables" ? result.value.tables : result.value.lineages
       ).filter((x) => x.changed).length;
 }
 function description(changes: ScientificChange[]) {
@@ -385,6 +388,9 @@ function fieldChanged(domain: string, id: unknown, key: string) {
           :current-source-sha="sourceSha"
           :available="result.available"
         />
+        <div v-else-if="tab === 'tables' && selectedTable" class="paired-article-records" data-frozen-table-pair>
+          <article v-for="side in sides" :key="side" :data-record-side="side"><h3>{{t(side==='before'?'修改前':'本次提交')}}</h3><FrozenActivityTable v-if="selectedTable[side]" :table="selectedTable[side]!" :snapshot="side==='before'?baseline:snapshot" /><p v-else>—</p></article>
+        </div>
         <div v-else-if="tab === 'article'" ref="compoundPair" data-comparison-pair class="paired-article-records">
           <article v-for="side in sides" :key="side" :data-record-side="side">
             <h3 class="record-side-heading">

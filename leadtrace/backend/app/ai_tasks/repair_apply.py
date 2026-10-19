@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import select
 
+from app.activity_tables.models import ActivityTable
 from app.activities.models import Activity
 from app.ai_prefill.contracts import AiPrefillPayload
 from app.ai_prefill.occurrences import occurrence_groups, occurrence_context
@@ -39,30 +40,35 @@ class RepairApplyConflict(ValueError):
 MODELS = {'compounds':Compound, 'structures':Structure, 'lineages':Lineage,
           'members':LineageMember, 'edges':LineageEdge, 'evidence':Evidence,
           'locators':StructureSourceImage, 'activities':Activity,
-          'links':EdgeEvidenceLink, 'highlights':CompoundHighlight}
+          'links':EdgeEvidenceLink, 'highlights':CompoundHighlight, 'activity_tables':ActivityTable}
 SNAPSHOT_KEYS = {'members':'lineage_members', 'edges':'lineage_edges',
                  'locators':'structure_source_images', 'links':'edge_evidence_links',
-                 'highlights':'compound_highlights'}
+                 'highlights':'compound_highlights','activity_tables':'activity_tables'}
 ENTITY_TYPES = {'members':'lineage_member', 'edges':'lineage_edge', 'locators':'structure_source_image',
                 'links':'edge_evidence_link', 'highlights':'compound_highlight',
                 'compounds':'compound', 'structures':'structure', 'lineages':'lineage',
-                'activities':'activity', 'evidence':'evidence', 'bibliography':'paper'}
+                'activities':'activity', 'evidence':'evidence', 'bibliography':'paper', 'activity_tables':'activity_table'}
 
 
 def _activity_pairs(before, after):
     """Keep exact records first, then pair changed records within their compound.
 
-    Activities have no external ref. Export's original ordering binds the stable
-    old index to the database row; matching exact records first avoids shifting
-    untouched measurements when a new row is inserted.
+    Explicit refs bind identities before values are compared. Legacy records
+    without refs retain the original exact-first pairing; a new explicit ref
+    never steals an old record merely because its measurement matches.
     """
     unmatched=set(range(len(before))); pairs={}
     for j,item in enumerate(after):
+        if item.get('ref') is not None:
+            i=next((i for i in sorted(unmatched) if before[i].get('ref')==item['ref']),None)
+            if i is not None:pairs[j]=i;unmatched.remove(i)
+    for j,item in enumerate(after):
+        if j in pairs or item.get('ref') is not None:continue
         i=next((i for i in sorted(unmatched) if before[i]==item),None)
         if i is not None:pairs[j]=i; unmatched.remove(i)
     for j,item in enumerate(after):
-        if j in pairs:continue
-        candidates=[i for i in sorted(unmatched) if before[i]['compound_ref']==item['compound_ref']]
+        if j in pairs or item.get('ref') is not None:continue
+        candidates=[i for i in sorted(unmatched) if before[i].get('ref') is None and before[i]['compound_ref']==item['compound_ref']]
         exact=[i for i in candidates if all(before[i].get(k)==item.get(k) for k in ('assay_name','metric','context'))]
         if exact or candidates:
             i=(exact or candidates)[0]; pairs[j]=i; unmatched.remove(i)
@@ -99,6 +105,8 @@ def _flat(payload, activity_keys=None):
         out['links'][key]=item
     for item in data.get('compound_highlights',[]):
         item=dict(item); ref=item.pop('ref'); item.setdefault('review_hint',None);out['highlights'][ref]=item
+    for item in data.get('activity_tables',[]):
+        item=dict(item);ref=item.pop('ref');item.setdefault('review_hint',None);out['activity_tables'][ref]=item
     for domain,items in out.items():
         for item in items.values():
             if domain=='activities':item['value']=format(Decimal(item['value']).normalize(),'f')
@@ -159,7 +167,7 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
     rows={domain:{str(row.id):row for row in session.scalars(select(model).where(model.workspace_id==workspace.id))}
           for domain,model in MODELS.items()}
     bound={domain:{} for domain in MODELS}
-    for domain in ('compounds','lineages','edges','evidence','locators','highlights'):
+    for domain in ('compounds','lineages','edges','evidence','locators','highlights','activity_tables'):
         for identifier,row in rows[domain].items():
             ref=entity_refs.get(identifier)
             if ref is None or ref not in old[domain] or ref in bound[domain]:
@@ -176,6 +184,7 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
         bound['links'][canonical_json([edge_refs[str(row.edge_id)],evidence_refs[str(row.evidence_id)]])]=row
     activity_rows=sorted(baseline_snapshot['activities'],key=lambda row:(row.get('sort_order',0),row['id']))
     for index,snapshot in enumerate(activity_rows):bound['activities'][f'activity:{index}']=rows['activities'][snapshot['id']]
+    activity_refs={row.get('ref'):str(bound['activities'][key].id) for key,row in old['activities'].items() if row.get('ref')}
     for domain in bound:
         if set(bound[domain])!=set(old[domain]):raise RepairApplyConflict(f'Baseline {domain} no longer matches the frozen candidate')
     # Every editable baseline field must correspond to the frozen DB snapshot;
@@ -186,6 +195,9 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
         for ref,item in items.items():
             row=bound[domain][ref]
             for field,expected in item.items():
+                if domain=='activities' and field=='ref':continue
+                if domain=='activity_tables' and field=='columns':
+                    expected=[{**{k:v for k,v in c.items() if k!='activity_refs'},'activity_ids':[activity_refs[a] for a in c['activity_refs']]} for c in expected]
                 if field=='bbox':
                     for coordinate in ('x0','y0','x1','y1'):
                         actual=getattr(row,coordinate)
@@ -227,8 +239,9 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
         ArticleMetadata.model_validate(metadata_values(paper) | new['bibliography']['paper'])
     except ValueError as exc:
         raise RepairApplyConflict(str(exc)) from exc
+    current_metadata=ArticleMetadata.model_validate(metadata_values(paper)).model_dump(mode='json')
     for field,expected in old['bibliography']['paper'].items():
-        if getattr(paper,field)!=expected:
+        if current_metadata.get(field,getattr(paper,field))!=expected:
             raise RepairApplyConflict('Bibliography baseline differs from workspace')
     changed={(change['domain'],change['ref']) for change in diff['changes']}
     removed={domain:set(old[domain])-set(new[domain]) for domain in MODELS}
@@ -241,6 +254,10 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
         session.flush()
     def values(domain,ref,item):
         data=deepcopy(item)
+        if domain=='activities':data.pop('ref',None)
+        if domain=='activity_tables':
+            refs={item.get('ref'):bound['activities'][key].id for key,item in new['activities'].items() if item.get('ref')}
+            data['columns']=[{**{k:v for k,v in c.items() if k!='activity_refs'},'activity_ids':[str(refs[a]) for a in c['activity_refs']]} for c in data['columns']]
         for name,target in (('compound_ref','compounds'),('lineage_ref','lineages'),('parent_compound_ref','compounds'),('child_compound_ref','compounds'),('edge_ref','edges'),('evidence_ref','evidence')):
             if name in data:
                 target_ref=data.pop(name);data[name.replace('_ref','_id')]=bound[target][target_ref].id if target_ref is not None else None
@@ -253,7 +270,7 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
                         inchi=structure.inchi,inchikey=structure.inchikey,status=StructureStatus.DRAFT,
                         input_method=StructureInputMethod.AI_PREFILL,
                         depiction_asset_id=StructureDrawingService(settings.asset_root).draw(session,smiles=structure.canonical_smiles,created_by_id=actor_id).asset.id)
-        if domain in {'edges','highlights'}:data['review_status']='draft'
+        if domain in {'edges','highlights','activity_tables'}:data['review_status']='draft'
         return data
     def upsert(domain):
         for ref,item in new[domain].items():
@@ -276,8 +293,8 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
         session.flush()
     # Child removals happen before FK parent removals. Existing edge endpoints
     # are updated only after all new members exist; old members are removed later.
-    for domain in ('links','highlights','activities','edges','locators'):remove(domain)
-    for domain in ('compounds','lineages','evidence','structures','members','edges','locators','links','highlights','activities'):upsert(domain)
+    for domain in ('activity_tables','links','highlights','activities','edges','locators'):remove(domain)
+    for domain in ('compounds','lineages','evidence','structures','members','edges','locators','links','highlights','activities','activity_tables'):upsert(domain)
     for domain in ('members','structures','evidence','lineages','compounds'):remove(domain)
     if old['bibliography']!=new['bibliography']:
         prior=_row_snapshot(paper)
@@ -320,6 +337,11 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
             row=bound[domain][ref]
             if affected and row.review_status!='draft':
                 prior=_row_snapshot(row);row.review_status='draft';record(domain,row,prior,'invalidate')
+    changed_activity_refs={value.get('ref') for change in diff['changes'] if change['domain']=='activities' for value in (change['before'],change['after']) if value}
+    for ref,item in new['activity_tables'].items():
+        row=bound['activity_tables'][ref]
+        if row.review_status!='draft' and any(changed_activity_refs.intersection(c['activity_refs']) for c in item['columns']):
+            prior=_row_snapshot(row);row.review_status='draft';record('activity_tables',row,prior,'invalidate')
     image_service=StructureSourceImageService(settings.asset_root,source_roots=settings.source_roots)
     for domain,row,prior,action in records:
         if domain=='locators' and action!='delete' and row.crop_status==CropStatus.PENDING:
@@ -332,9 +354,9 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
             before_value={**prior,'_repair':metadata} if prior else None,
             after_value={**_row_snapshot(row),'_repair':metadata} if action!='delete' else None,
             actor_kind=ChangeActorKind.AI,actor_id=None))
-    section_domains={'bibliography':{'bibliography'},'compounds':{'compounds','highlights'},'structures':{'structures','locators'},
-                     'lineages':{'lineages','members','edges','compounds','structures','activities','evidence','links'},
-                     'edge_evidence':{'evidence','links','edges'},'activities':{'activities','compounds','structures','evidence'}}
+    section_domains={'bibliography':{'bibliography'},'compounds':{'compounds','highlights','activity_tables'},'structures':{'structures','locators'},
+                     'lineages':{'lineages','members','edges','compounds','structures','activities','activity_tables','evidence','links'},
+                     'edge_evidence':{'evidence','links','edges'},'activities':{'activities','activity_tables','compounds','structures','evidence'}}
     # Confirmation invalidations are changes too: a locator-only proposal can
     # revoke a structure, its edges and article selections. Those sections must
     # become pending even when absent from the model's direct payload diff.
@@ -347,13 +369,15 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
                 after_value={**_row_snapshot(section),'_repair':audit_metadata},actor_kind=ChangeActorKind.AI,actor_id=None))
     workspace.version+=1;session.flush()
     entity_map={}
-    prefixes={'compounds':'compounds','structures':'compounds','lineages':'lineages','evidence':'evidence','locators':'structure_locators','highlights':'compound_highlights'}
+    prefixes={'compounds':'compounds','structures':'compounds','lineages':'lineages','evidence':'evidence','locators':'structure_locators','highlights':'compound_highlights','activity_tables':'activity_tables'}
     for domain,prefix in prefixes.items():
         for ref,row in bound[domain].items():entity_map[f'/{prefix}/{ref}'+('/structure' if domain=='structures' else '')]=str(row.id)
     for ref,row in bound['edges'].items():entity_map[f"/lineages/{new['edges'][ref]['lineage_ref']}/edges/{ref}"]=str(row.id)
     for group in occurrence_groups(after.structure_locators):
         for item in group:entity_map[f'/structure_locators/{item.ref}']=str(bound['locators'][group[0].ref].id)
-    for index,ref in enumerate(new['activities']):entity_map[f'/activities/{index}']=str(bound['activities'][ref].id)
+    for index,ref in enumerate(new['activities']):
+        entity_map[f'/activities/{index}']=str(bound['activities'][ref].id)
+        if new['activities'][ref].get('ref'):entity_map[f"/activity_refs/{new['activities'][ref]['ref']}"]=str(bound['activities'][ref].id)
     for index,ref in enumerate(new['links']):entity_map[f'/edge_evidence_links/{index}']=str(bound['links'][ref].id)
     for lineage_index,lineage in enumerate(after.lineages):
         for member_index,member in enumerate(lineage.members):

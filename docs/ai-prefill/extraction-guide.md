@@ -598,3 +598,39 @@ SourceBackedLabel、ResearchTarget 和 PdbReference 可有 `evidence` 数组。�
 原文证据通常每项提供 1–2 段紧贴论断的短摘录；复杂项可拆分多段。只允许空白及换行规范化，不得拼接不相邻段落冒充连续原文。分别核对 PDF 物理页、栏位、边界和对应条目；跨栏抽取混乱时检查原图。主文证据与外部基因 accession 核验分开标明，保存准确 URL；外部标识符不等于论文自己报告该 ID。只在实际取得的来源中取证，缺 SI 时明确列出受影响项，不生成虚构补充材料证据。既有摘要原文保持不变，补齐缺失状态/来源也必须与所核对的内容相符。
 
 本类文章信息补填不构成全篇 Compound/Activity/Lineage 复核；完整化合物清点覆盖与缺口应标记 not_reaudited/unknown。每篇都要保存实际已查字段、未决项及真实生产者自检/新会话复核身份；复核会话内修改后的自检不能称为第二次独立复核。
+
+## Original-paper Activity tables and Other
+
+Preserve the source table organization as optional `payload.activity_tables`,
+without duplicating Activity values. Every Activity used by a table must have a
+unique stable `ref`. A table has `ref`, editable `name`, `kind: "source"`, exact
+`source_label` (for example `Table 2` or `Table S1`), `source_title`, and PDF
+`page_number`. Its ordered `columns` have stable `id`, display `label`, exact
+Activity `assay`/`metric`/`unit`, and explicit `activity_refs`. Keep flattened
+multi-level headings legible (for example `Human · IC50`); preserve species,
+concentration and time distinctions in the heading and each Activity context.
+Never assign records merely because two measurements have similar names or
+Compound coverage. Distinct source tables remain distinct even with identical
+column headings. A column contains only observations with its exact measurement
+identity. Repeated observations remain separate Activity refs; do not average,
+round, convert values or invent missing cells to make a rectangular table.
+
+The application derives **Other** from Activities not referenced by any saved
+table. Do not emit a synthetic source table named Other or duplicate records to
+populate it. Text/figure-only observations belong there. Unknown table assignment
+also remains there with an explicit Activity `review_hint` explaining the
+uncertainty; do not assert that an unlocated observation is absent from all source
+tables. Source Table grouping never limits the full Compound/Activity inventory.
+If a source table contains unsupported non-Activity content, retain the supported
+Activity columns and explain the unrepresented material in omissions/context.
+
+For scoped table revision, preserve existing Activity refs, all scientific values,
+Compound structures, human notes and unrelated fields. Return the complete
+candidate, changing only authorized table definitions and necessary dependencies.
+Existing custom/reviewer tables and labels are protected unless explicitly in
+scope. New records require new stable refs; never recycle a removed record's ref.
+Use `activity_refs` to bind each cell explicitly, not a label-matching heuristic.
+Do not claim reviewer confirmation: imported or changed tables are draft and
+changed claims/dependents require Reviewer reconfirmation. AI provenance remains
+in audit history and is excluded from Reviewer-only approval differences; later
+human corrections remain reviewable. Submitted snapshots are never rewritten.

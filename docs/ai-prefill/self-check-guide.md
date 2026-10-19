@@ -127,3 +127,18 @@ Admin 草稿交付与科学自检状态分开：退出 4 / needs_revision 不再
 批量文章补填：逐篇核对冻结基线与源身份；每个缺失的文章维度及已有条目的新增证据都应有覆盖记录。确认已有人工字段/摘要/条目顺序/既有引文保持不变，不重复添加；逐条核对物理页与栏位、引用连续性、截图边界、外部 accession 来源及固定分子类型词表。缺 SI/未找到/未检查分开报告，完整化合物清点未在范围内时报告 not_reaudited/unknown。
 
 明确授权的分类修订：只有 research_profile.modalities 可改变，其他组/摘要/靶点/PDB/人工笔记逐字段保持原样；不得将旧的直接靶点调节机械转成抑制剂。每个标签核对适用系列、主要/补充归属和原文引文；多系列标签不可误读成所有分子共同性质。
+
+## Activity table self-check
+
+Check every emitted source Table against its original table number/title and
+ordered column headings, units, concentration/species/time conditions and
+Compound row identities. Check all `activity_refs` exist exactly once as Activity
+identities and agree with the column's assay/metric/unit; allow a genuine record
+reference in multiple tables without copying its value. Verify repeated records
+retain individual context/operator/precision. Inventory all Activities across
+source Tables plus derived Other, explicitly flag unresolved table attribution,
+and retain observations sourced only from text or figures. Other is derived,
+not an AI-emitted table. This check does not replace the full Compound inventory.
+For table-only revisions, compare before/after scientific records and human
+fields and explain every changed dependency; stable refs and unchanged records
+must survive. No AI check or repair grants reviewer confirmation.

@@ -140,3 +140,68 @@ def test_human_section_note_after_ai_invalidation_survives_derived_completion():
     assert not warnings
     assert baseline['sections'][0]['note'] is None
     assert snapshot['sections'][0]['note'] == 'Reviewer note'
+
+
+def test_ai_table_addition_is_excluded_but_later_reviewer_column_edit_is_visible():
+    from types import SimpleNamespace
+    row = dict(id='t1', paper_id='p1', workspace_id='w1', name='Table 1', kind='source', source_label='Table 1',
+               source_title=None, page_number=2, review_hint=None, columns=[{'id':'col1','label':'IC50'}],
+               mode='any', sort='label', review_status='draft', created_by_kind='ai')
+    edited = {**row, 'columns':[{'id':'col1','label':'Human corrected IC50'}]}
+    metadata = {'repair_job_id':'job','delivery_mode':'automatic_revision','requested_by_id':'admin'}
+    ai = SimpleNamespace(id='ai1', entity_type='activity_table', entity_id='t1', action='activity_table.repair_create',
+        actor_kind=ChangeActorKind.AI, actor_id=None, before_value=None, after_value={**row,'_repair':metadata})
+    human = SimpleNamespace(id='h1',entity_type='activity_table',entity_id='t1',action='activity_table.update',
+        actor_kind=ChangeActorKind.REVIEWER, before_value=row,after_value=edited)
+    snapshot = {'schema_version':1,'activity_tables':[edited]}; frozen = deepcopy(snapshot)
+    baseline,warnings=reviewer_only_baseline(snapshot,[ai,human],verified_repair_ids={'ai1'})
+    assert not warnings
+    assert baseline['activity_tables']==[row]
+    assert snapshot==frozen
+
+
+def table_edit_sequence(human_change, ai_change):
+    from types import SimpleNamespace
+    row = dict(id='t1', paper_id='p1', workspace_id='w1', name='Table 1', kind='source', source_label='Table 1',
+               source_title=None, page_number=2, review_hint=None, columns=[{'id':'a','label':'IC50'}, {'id':'b','label':'EC50'}],
+               mode='any', sort='label', review_status='draft', created_by_kind='ai')
+    human = deepcopy(row); human_change(human)
+    final = deepcopy(human); ai_change(final)
+    metadata = {'repair_job_id':'job','delivery_mode':'automatic_revision','requested_by_id':'admin'}
+    events = [SimpleNamespace(id='h', entity_type='activity_table',entity_id='t1',action='activity_table.update',
+                  actor_kind=ChangeActorKind.REVIEWER,before_value=row,after_value=human),
+              SimpleNamespace(id='ai',entity_type='activity_table',entity_id='t1',action='activity_table.repair_update',
+                  actor_kind=ChangeActorKind.AI,actor_id=None,before_value={**human,'_repair':metadata},after_value={**final,'_repair':metadata})]
+    baseline, warnings = reviewer_only_baseline({'schema_version':1,'activity_tables':[final]}, events, verified_repair_ids={'ai'})
+    return baseline, warnings, final
+
+
+def test_human_table_column_label_survives_later_ai_column_addition():
+    baseline, warnings, final = table_edit_sequence(
+        lambda t: t['columns'][0].update(label='Human IC50'),
+        lambda t: t['columns'].append({'id':'c','label':'Selectivity'}))
+    assert not warnings
+    assert baseline['activity_tables'][0]['columns'] == [{'id':'a','label':'IC50'}, {'id':'b','label':'EC50'}, {'id':'c','label':'Selectivity'}]
+    assert final['columns'][0]['label'] == 'Human IC50'
+
+
+def test_ai_table_reorder_preserves_human_label_and_moves_baseline_columns():
+    baseline, warnings, final = table_edit_sequence(
+        lambda t: t['columns'][0].update(label='Human IC50'), lambda t: t['columns'].reverse())
+    assert not warnings
+    assert baseline['activity_tables'][0]['columns'] == [{'id':'b','label':'EC50'}, {'id':'a','label':'IC50'}]
+    assert final['columns'][1]['label'] == 'Human IC50'
+
+
+def test_ai_table_added_column_keeps_prior_human_reorder_visible():
+    baseline, warnings, final = table_edit_sequence(
+        lambda t: t['columns'].reverse(), lambda t: t['columns'].append({'id':'c','label':'Selectivity'}))
+    assert not warnings
+    assert [c['id'] for c in baseline['activity_tables'][0]['columns']] == ['a','c','b']
+    assert [c['id'] for c in final['columns']] == ['b','a','c']
+
+
+def test_overlapping_human_and_ai_column_reorders_report_warning():
+    baseline, warnings, _ = table_edit_sequence(
+        lambda t: t['columns'].reverse(), lambda t: t['columns'].reverse())
+    assert baseline is None and warnings

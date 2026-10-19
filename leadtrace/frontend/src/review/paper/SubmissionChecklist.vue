@@ -12,7 +12,7 @@ import type { PaperWorkspace, SubmissionBlocker } from "../../v2/types";
 
 const props = defineProps<{ workspace: PaperWorkspace; readOnly?: boolean }>();
 const emit = defineEmits<{
-  navigate: [tab: "bibliography" | "compounds" | "lineages" | "evidence", entityId?: string];
+  navigate: [tab: "bibliography" | "compounds" | "lineages" | "evidence" | "activity-comparison", entityId?: string];
   mutated: [workspaceVersion: number];
   conflict: [];
 }>();
@@ -66,7 +66,8 @@ watch(() => props.workspace.version, (version, previous) => {
   }
 });
 
-function targetTab(blocker: SubmissionBlocker): "bibliography" | "compounds" | "lineages" | "evidence" {
+function targetTab(blocker: SubmissionBlocker): "bibliography" | "compounds" | "lineages" | "evidence" | "activity-comparison" {
+  if (blocker.entity_type === "activity_table") return "activity-comparison";
   if (blocker.section_key === "bibliography") return "bibliography";
   if (blocker.section_key === "compounds" || blocker.section_key === "structures") return "compounds";
   if (blocker.section_key === "activities" || blocker.entity_type === "activity") return "compounds";

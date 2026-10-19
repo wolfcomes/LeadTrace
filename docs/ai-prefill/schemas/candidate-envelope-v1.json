@@ -97,6 +97,20 @@
           ],
           "default": null,
           "title": "Context"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
         }
       },
       "required": [
@@ -553,6 +567,13 @@
             "$ref": "#/$defs/AiCompoundHighlight"
           },
           "title": "Compound Highlights",
+          "type": "array"
+        },
+        "activity_tables": {
+          "items": {
+            "$ref": "#/$defs/AiActivityTable"
+          },
+          "title": "Activity Tables",
           "type": "array"
         }
       },
@@ -1524,6 +1545,176 @@
         "height"
       ],
       "title": "ArticleEvidenceBox",
+      "type": "object"
+    },
+    "AiActivityTable": {
+      "additionalProperties": false,
+      "properties": {
+        "review_hint": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Hint"
+        },
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "default": "source",
+          "enum": [
+            "source",
+            "custom"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source_label": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Label"
+        },
+        "source_title": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Title"
+        },
+        "page_number": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Number"
+        },
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/AiActivityTableColumn"
+          },
+          "maxItems": 200,
+          "title": "Columns",
+          "type": "array"
+        },
+        "mode": {
+          "default": "any",
+          "enum": [
+            "any",
+            "all"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "sort": {
+          "default": "label",
+          "enum": [
+            "label",
+            "similarity",
+            "default"
+          ],
+          "title": "Sort",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "name",
+        "columns"
+      ],
+      "title": "AiActivityTable",
+      "type": "object"
+    },
+    "AiActivityTableColumn": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "assay": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Assay",
+          "type": "string"
+        },
+        "metric": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Metric",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "activity_refs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Activity Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "assay",
+        "metric"
+      ],
+      "title": "AiActivityTableColumn",
       "type": "object"
     }
   },

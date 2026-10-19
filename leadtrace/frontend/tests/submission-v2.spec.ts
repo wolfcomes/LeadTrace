@@ -146,3 +146,16 @@ describe("Reviewer submission checklist", () => {
     expect(router.currentRoute.value.query).toMatchObject({ tab: "lineages", entity: ids.edges[0] });
   });
 });
+
+it('routes a table confirmation blocker to the exact activity comparison table',async()=>{
+ installReviewer();const tableId='30000000-0000-4000-8000-000000000080';
+ vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL)=>{
+  const path=String(input);
+  if(path.endsWith('/submission-validation'))return response({valid:false,blockers:[{code:'ACTIVITY_TABLE_NOT_REVIEWED',message:'Confirm Table',entity_type:'activity_table',entity_id:tableId,section_key:'activities'}]});
+  if(path.endsWith('/activity-tables'))return response({workspace_id:ids.workspace,workspace_version:1,tables:[{id:tableId,paper_id:ids.paper,workspace_id:ids.workspace,name:'Table 2',kind:'source',source_label:'Table 2',source_title:null,page_number:null,review_hint:null,review_status:'draft',created_by_kind:'ai',columns:[],mode:'any',sort:'label'}],other_activity_ids:[]});
+  if(path.endsWith('/activity-comparison'))return response({workspace_id:ids.workspace,workspace_version:1,compounds:[],activities:[]});
+  return response(workspace());
+ }));
+ const {wrapper,router}=await mountWorkspace('submit');await wrapper.get('[data-submission-blocker]').trigger('click');await flushPromises();
+ expect(router.currentRoute.value.query).toMatchObject({tab:'activity-comparison',entity:tableId});expect(wrapper.get('[data-table-name]').element).toHaveProperty('value','Table 2');wrapper.unmount();vi.unstubAllGlobals();
+});

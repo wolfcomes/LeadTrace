@@ -3,13 +3,13 @@ import type { Activity, Compound } from '../../v2/types';
 import { measurementGroups, orderByMeasurementSimilarity } from './activityComparison';
 
 export const columnSchema = z.object({
-  id: z.string().min(1).max(100), label: z.string().trim().min(1).max(160),
+  id: z.string().min(1).max(128), label: z.string().trim().min(1).max(512),
   assay: z.string().min(1).max(2000), metric: z.string().min(1).max(500), unit: z.string().max(500).nullable(),
   activityIds: z.array(z.string().min(1).max(100)).max(10000).nullable(),
 }).strict();
 export const tableSchema = z.object({
-  id: z.string().min(1).max(100), name: z.string().trim().min(1).max(120),
-  columns: z.array(columnSchema).max(60).refine(cols => new Set(cols.map(c => c.id)).size === cols.length),
+  id: z.string().min(1).max(100), name: z.string().trim().min(1).max(512),
+  columns: z.array(columnSchema).max(200).refine(cols => new Set(cols.map(c => c.id)).size === cols.length),
   mode: z.enum(['any','all']), sort: z.enum(['label','similarity','default']),
 }).strict();
 const savedSchema = z.object({version:z.literal(1), activeId:z.string().nullable(), tables:z.array(tableSchema).max(50)})

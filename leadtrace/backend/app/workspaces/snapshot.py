@@ -12,6 +12,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.activity_tables.models import ActivityTable
 from app.activities.models import Activity
 from app.catalog.models import PaperSource
 from app.compounds.models import Compound, CompoundHighlight
@@ -137,8 +138,11 @@ def build_paper_snapshot(session: Session, workspace_id: UUID) -> dict[str, Any]
         CompoundHighlight.workspace_id == workspace_id).order_by(CompoundHighlight.id)))
     highlight_fields = ("id", "paper_id", "workspace_id", "compound_id", "evidence_id", "role", "scope",
                         "rationale", "review_hint", "review_status", "created_by_kind")
+    from app.activity_tables.service import table_snapshot
+    tables = list(session.scalars(select(ActivityTable).where(ActivityTable.workspace_id == workspace_id).order_by(ActivityTable.id)))
     from app.ai_prefill.provenance import list_provenance
     return {
+        **({"activity_tables": [table_snapshot(row) for row in tables]} if tables else {}),
         **({"ai_provenance": provenance} if (provenance := list_provenance(session, workspace_id)) else {}),
         **({"compound_highlights": [_row(row, highlight_fields) for row in highlights]} if highlights else {}),
         "schema_version": 1,

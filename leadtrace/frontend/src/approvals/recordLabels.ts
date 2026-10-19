@@ -10,6 +10,7 @@ export const changeLabels: Record<RecordKind | "evidence", string> = {
   evidence: "证据更新",
 };
 export const domainLabels: Record<string, string> = {
+  activity_tables: "活性对比",
   paper: "文章信息",
   source: "原文来源",
   sections: "区段状态",

@@ -125,3 +125,14 @@ approval.
 ### 分子类型分类修订的独立复核
 
 按 extraction-guide.md 的主要类型＋补充特征固定词表复核每项标签和原文证据，至少一项主要类型。先识别本文实际优化系列，排除仅背景/参考药/安全性面板引入的类型；核对小分子与肽、大环、变构、共价、前药、分子胶/PROTAC 的证据和适用范围。不能从旧的直接靶点调节猜成抑制剂，不能从表型/蛋白表达下降猜直接作用或降解。每项报告支持/不支持/未决及源位置；明确授权修订仅能替换 modalities，其他 profile 组及文章字段精确保留。修订候选的同会话自检不能称为第二次独立复核。
+
+### Source Activity table organization
+
+Independently verify Table labels/titles, column order and compound-to-Activity
+cell associations against the frozen source. Reject grouping that infers source
+Table identity from overlapping compound sets alone. Check species, dose/time,
+units and multi-level headings; verify no repeated observation was merged or
+rounded. Review unassigned Activities (derived Other) and distinguish confirmed
+text/figure provenance from unresolved Table attribution. Verify a scoped table
+repair preserves unrelated human content and all Activity values/refs. Record
+remaining attribution uncertainty instead of inventing a table or a measurement.

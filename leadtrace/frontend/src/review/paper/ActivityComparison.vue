@@ -2,182 +2,101 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { t } from '../../i18n';
 import { useAuthStore } from '../../auth/store';
-import { getActivityComparison } from '../../v2/api';
-import type { ActivityComparison, PaperWorkspace } from '../../v2/types';
-import { buildComparisonTable, suggestTableColumns, parseSavedTables, tableSchema, tableStorageKey, type ComparisonColumn, type ComparisonTable, type SavedTables } from './activityTableBuilder';
+import { ApiError } from '../../api/client';
+import { getActivityComparison, getActivityTables, saveActivityTable, deleteActivityTable, confirmActivityTable } from '../../v2/api';
+import type { ActivityComparison, ActivityTable, ActivityTableWrite, PaperWorkspace } from '../../v2/types';
+import { buildComparisonTable, matchingActivities, recommendMeasurements, parseSavedTables, tableSchema, tableStorageKey, type ComparisonColumn, type ComparisonTable } from './activityTableBuilder';
 import ActivityColumnEditor from './ActivityColumnEditor.vue';
 import ReviewHint from './ReviewHint.vue';
-const props=defineProps<{workspace:PaperWorkspace;active:boolean;blocked?:boolean}>();
-const emit=defineEmits<{open:[compoundId:string,activityId?:string]}>();
+const props=defineProps<{workspace:PaperWorkspace;active:boolean;blocked?:boolean;readOnly?:boolean;selectedTableId?:string}>();
+const emit=defineEmits<{open:[compoundId:string,activityId?:string];mutated:[];busy:[value:boolean]}>();
 const auth=useAuthStore();
-const data=ref<ActivityComparison>();
-const loading=ref(false),error=ref(''),search=ref(''),storageError=ref(''),notice=ref('');
-const noticeValues=ref<Record<string,string|number>>({});
-const emptyTable=():ComparisonTable=>({id:crypto.randomUUID(),name:'',columns:[],mode:'any',sort:'label'});
-const draft=ref<ComparisonTable>(emptyTable()),saved=ref<ComparisonTable[]>([]),baseline=ref('');
-const persistedDraft=ref<ComparisonTable|null>(null);
-const activeSavedId=ref<string|null>(null),settingsBusy=ref(false);
-let settingsEpoch=0;
-const editing=ref<ComparisonColumn|null|undefined>(undefined),editorEpoch=ref(0),showConfiguration=ref(true);
-const pending=ref<{kind:'new'|'switch'|'delete';id?:string}>();
-const dragId=ref<string>();
-const viewport=ref<HTMLElement>();
-let sequence=0,position={top:0,left:0};
-const storageKey=computed(()=>tableStorageKey(auth.user?.username??'',props.workspace.id));
-const dirty=computed(()=>JSON.stringify(draft.value)!==baseline.value);
-const table=computed(()=>buildComparisonTable(data.value?.compounds??[],data.value?.activities??[],draft.value.columns,draft.value.mode,draft.value.sort));
+type Draft=ComparisonTable & Pick<ActivityTable,'kind'|'source_label'|'source_title'|'page_number'|'review_hint'>;
+const emptyTable=():Draft=>({id:crypto.randomUUID(),name:'',columns:[],mode:'any',sort:'label',kind:'custom',source_label:null,source_title:null,page_number:null,review_hint:null});
+const data=ref<ActivityComparison>(),saved=ref<ActivityTable[]>([]),legacy=ref<ComparisonTable[]>([]);
+const legacyError=ref('');
+const loading=ref(false),error=ref(''),search=ref(''),storageError=ref(''),notice=ref(''),settingsBusy=ref(false);
+const draft=ref<Draft>(emptyTable()),baseline=ref(''),activeSavedId=ref<string|null>('other'),loadedVersion=ref(0),draftVersion=ref(0);
+const legacyIds=new Map<string,string>();
+const otherIds=ref<string[]>([]),initialized=ref(false);
+const editing=ref<ComparisonColumn|null|undefined>(undefined),editorEpoch=ref(0),showConfiguration=ref(false);
+const pending=ref<{kind:'new'|'switch'|'delete'|'from-other';id?:string}>();
+const dragId=ref<string>(),viewport=ref<HTMLElement>();
+let sequence=0,mutationEpoch=0,position={top:0,left:0};
+const isOther=computed(()=>activeSavedId.value==='other');
+const editable=computed(()=>!props.readOnly&&auth.user?.role==='reviewer'&&props.workspace.state==='editing');
+const mayMutate=computed(()=>editable.value&&!props.blocked&&!loading.value&&!error.value&&!settingsBusy.value);
+const dirty=computed(()=>!isOther.value&&JSON.stringify(draft.value)!==baseline.value);
+const activeSaved=computed(()=>saved.value.find(item=>item.id===activeSavedId.value));
+const otherColumns=computed(()=>{
+ const ids=new Set(otherIds.value),records=(data.value?.activities??[]).filter(a=>ids.has(a.id));
+ return recommendMeasurements(records,[]).map(group=>({id:group.key,label:`${group.assay} · ${group.metric}`,assay:group.assay,metric:group.metric,unit:group.unit,activityIds:records.filter(a=>a.assay_name===group.assay&&a.metric===group.metric&&a.unit===group.unit).map(a=>a.id)}));
+});
+const columns=computed(()=>isOther.value?otherColumns.value:draft.value.columns);
+const table=computed(()=>buildComparisonTable(data.value?.compounds??[],data.value?.activities??[],columns.value,draft.value.mode,draft.value.sort));
 const compounds=computed(()=>{const query=search.value.trim().toLocaleLowerCase();return table.value.rows.filter(c=>`${c.compound_label} ${c.display_name??''}`.toLocaleLowerCase().includes(query));});
-const savedOptions=computed(()=>saved.value.map(item=>({...item,compoundCount:buildComparisonTable(data.value?.compounds??[],data.value?.activities??[],item.columns,item.mode,'default').rows.length})));
 const copy=<T,>(value:T):T=>JSON.parse(JSON.stringify(value));
-function setDraft(value:ComparisonTable,id:string|null){draft.value=copy(value);activeSavedId.value=id;persistedDraft.value=id?copy(value):null;baseline.value=JSON.stringify(draft.value);editing.value=undefined;pending.value=undefined;notice.value='';}
-function readSettings(){
- storageError.value='';saved.value=[];setDraft(emptyTable(),null);
- try {
-  const raw=window.localStorage.getItem(storageKey.value),parsed=parseSavedTables(raw);
-  if(raw&&!parsed){storageError.value='已有表格配置无法读取，为避免覆盖暂不保存；仍可临时制表。';return;}
-  if(parsed){saved.value=parsed.tables;const selected=parsed.tables.find(t=>t.id===parsed.activeId);if(selected)setDraft(selected,selected.id);}
- }catch{storageError.value='无法读取浏览器中的表格配置，当前仍可制表。';}
+function fromServer(item:ActivityTable):Draft{return {...emptyTable(),id:item.id,name:item.name,kind:item.kind,source_label:item.source_label,source_title:item.source_title,page_number:item.page_number,review_hint:item.review_hint,mode:item.mode,sort:item.sort,columns:item.columns.map(c=>({id:c.id,label:c.label,assay:c.assay,metric:c.metric,unit:c.unit,activityIds:c.activity_ids}))};}
+const savedOptions=computed(()=>saved.value.map(item=>({...item,compoundCount:buildComparisonTable(data.value?.compounds??[],data.value?.activities??[],fromServer(item).columns,item.mode,'default').rows.length})));
+function setDraft(value:Draft,id:string|null){draft.value=copy(value);activeSavedId.value=id;draftVersion.value=loadedVersion.value;baseline.value=JSON.stringify(draft.value);editing.value=undefined;pending.value=undefined;notice.value='';storageError.value='';}
+function select(id:string){const item=saved.value.find(t=>t.id===id),view=isOther.value?{mode:draft.value.mode,sort:draft.value.sort}:{};setDraft(item?fromServer(item):{...emptyTable(),name:'Other',...view},item?.id??'other');}
+function readLegacy(){legacy.value=[];legacyError.value='';try{const raw=localStorage.getItem(tableStorageKey(auth.user?.username??'',props.workspace.id)),parsed=parseSavedTables(raw);if(raw&&!parsed)legacyError.value='浏览器中的旧表格无法读取，原配置已保留。';else legacy.value=parsed?.tables??[];}catch{legacyError.value='浏览器中的旧表格无法读取，原配置已保留。';}}
+function payload(value:Draft):ActivityTableWrite{
+ const parsed=tableSchema.safeParse({id:value.id,name:value.name,columns:value.columns,mode:value.mode,sort:value.sort});
+ if(!parsed.success||value.kind==='source'&&!value.source_label?.trim())throw Error('请填写表格名称、原文表号，并检查列配置。');
+ return {name:parsed.data.name,kind:value.kind,source_label:value.source_label?.trim()||null,source_title:value.source_title?.trim()||null,page_number:value.page_number?Number(value.page_number):null,review_hint:value.review_hint,mode:value.mode,sort:value.sort,columns:value.columns.map(c=>({id:c.id,label:c.label,assay:c.assay,metric:c.metric,unit:c.unit,activity_ids:c.activityIds??matchingActivities(c,data.value?.activities??[]).map(a=>a.id)}))};
 }
-function latestSettings():SavedTables {
- const raw=window.localStorage.getItem(storageKey.value);
- const parsed=parseSavedTables(raw);
- if(raw&&!parsed)throw Error('已有表格配置无法读取，为避免覆盖暂不保存；仍可临时制表。');
- return parsed??{version:1,activeId:null,tables:[]};
+function recomputeOther(){const assigned=new Set(saved.value.flatMap(t=>t.columns.flatMap(c=>c.activity_ids)));otherIds.value=(data.value?.activities??[]).filter(a=>!assigned.has(a.id)).map(a=>a.id);}
+async function mutate(operation:(id:string,version:number,current:()=>boolean)=>Promise<void>){
+ if(!mayMutate.value)return;const epoch=mutationEpoch,id=props.workspace.id,initialVersion=loadedVersion.value;settingsBusy.value=true;emit('busy',true);storageError.value='';
+ try{await operation(id,draftVersion.value,()=>epoch===mutationEpoch&&id===props.workspace.id);if(epoch!==mutationEpoch||id!==props.workspace.id)return;recomputeOther();}
+ catch(e){if(epoch!==mutationEpoch)return;storageError.value=e instanceof ApiError&&e.status===409?'工作区版本已变化。当前设置已保留，请刷新并重新选择已保存表格后再修改。':e instanceof Error&&e.message==='请填写表格名称、原文表号，并检查列配置。'?e.message:'表格未能保存，请重试；当前设置与浏览器旧配置均已保留。';}
+ finally{if(epoch===mutationEpoch){if(loadedVersion.value!==initialVersion){recomputeOther();emit('mutated');}settingsBusy.value=false;emit('busy',false);}}
 }
-function writeSettings(tables:ComparisonTable[],activeId:string|null){
- const record:SavedTables={version:1,activeId,tables};
- window.localStorage.setItem(storageKey.value,JSON.stringify(record));
- saved.value=tables;storageError.value='';
-}
-function checkUnchanged(tables:ComparisonTable[],id:string){
- if(JSON.stringify(tables.find(t=>t.id===id))!==JSON.stringify(id===activeSavedId.value?(persistedDraft.value??undefined):saved.value.find(t=>t.id===id)))
-  throw Error('此表格已被其他标签页修改或删除。当前设置仍保留；请重新选择已保存表格后再修改。');
-}
-async function changeSettings(change:()=>void){
- if(settingsBusy.value)return;
- const key=storageKey.value,epoch=settingsEpoch;
- settingsBusy.value=true;
- const run=()=>{
-  if(key!==storageKey.value||epoch!==settingsEpoch)return;
-  try{change();}
-  catch(e){storageError.value=e instanceof Error&&[
-   '请填写表格名称，并检查列配置。','已有同名表格，请使用其他名称。','已达到保存表格数量上限，请先删除不需要的表格。',
-   '已有表格配置无法读取，为避免覆盖暂不保存；仍可临时制表。',
-   '此表格已被其他标签页修改或删除。当前设置仍保留；请重新选择已保存表格后再修改。',
-  ].includes(e.message)?e.message:'未能保存到此浏览器；当前表格仍保留，请重试。';}
- };
- try{
-  // Serialize read/merge/write across tabs when the browser provides Web Locks.
-  if(navigator.locks)await navigator.locks.request(key,run);else run();
- }catch{if(epoch===settingsEpoch)storageError.value='未能保存到此浏览器；当前表格仍保留，请重试。';}
- finally{if(epoch===settingsEpoch)settingsBusy.value=false;}
-}
-function saveTable(){
- const parsed=tableSchema.safeParse(draft.value);
- if(!parsed.success){storageError.value='请填写表格名称，并检查列配置。';return;}
- void changeSettings(()=>{
-  const latest=latestSettings();checkUnchanged(latest.tables,parsed.data.id);
-  if(latest.tables.some(t=>t.id!==parsed.data.id&&t.name===parsed.data.name))throw Error('已有同名表格，请使用其他名称。');
-  const tables=latest.tables.filter(t=>t.id!==parsed.data.id).concat(parsed.data);
-  if(tables.length>50)throw Error('已达到保存表格数量上限，请先删除不需要的表格。');
-  writeSettings(tables,parsed.data.id);
-  draft.value=parsed.data;activeSavedId.value=parsed.data.id;persistedDraft.value=copy(parsed.data);baseline.value=JSON.stringify(draft.value);pending.value=undefined;notice.value='表格配置已保存在此浏览器。';
- });
-}
-async function generateTables(automatic=false){
- if(!data.value?.activities.length||loading.value&&!automatic||error.value||editing.value!==undefined)return;
- if(automatic&&(saved.value.length||dirty.value))return;
- const epoch=sequence;
- await changeSettings(()=>{
-  if(epoch!==sequence||!data.value||editing.value!==undefined)return;
-  if(automatic&&dirty.value)return;
-  const latest=latestSettings();
-  if(automatic&&window.localStorage.getItem(storageKey.value)!==null){
-   // Another tab may have initialized while this one waited for the lock.
-   if(!saved.value.length){
-    saved.value=latest.tables;
-    const selected=latest.tables.find(item=>item.id===latest.activeId);
-    if(selected){setDraft(selected,selected.id);showConfiguration.value=false;}
-   }
-   return;
-  }
-  const identity=(column:ComparisonColumn)=>JSON.stringify([column.assay,column.metric,column.unit]);
-  const represented=new Set([...latest.tables.flatMap(item=>item.columns),...draft.value.columns].map(identity));
-  const records=data.value.activities.filter(a=>!represented.has(JSON.stringify([a.assay_name,a.metric,a.unit])));
-  const suggestions=suggestTableColumns(records);
-  if(!suggestions.length){notice.value='没有新的测定列可生成；已有表格保持不变。';return;}
-  const available=50-latest.tables.length;
-  if(available<=0)throw Error('已达到保存表格数量上限，请先删除不需要的表格。');
-  const names=new Set([...latest.tables.map(item=>item.name),draft.value.name]);
-  const additions:ComparisonTable[]=[];let number=1,remaining=0;
-  for(const columns of suggestions){
-   let name:string;do{name=t('推荐表 {number}',{number:number++});}while(names.has(name));names.add(name);
-   const parsed=tableSchema.safeParse({id:crypto.randomUUID(),name,columns,mode:'any',sort:'label'});
-   if(!parsed.success||additions.length>=available){remaining+=columns.length;continue;}
-   additions.push(parsed.data);
-  }
-  if(!additions.length)throw Error('请填写表格名称，并检查列配置。');
-  const select=!dirty.value;
-  const activeId=select?additions[0]!.id:latest.activeId;
-  writeSettings([...latest.tables,...additions],activeId);
-  if(select){setDraft(additions[0]!,additions[0]!.id);showConfiguration.value=false;search.value='';position={top:0,left:0};void restoreScroll();}
-  noticeValues.value={count:additions.length,remaining};
-  notice.value=remaining?'已生成并保存 {count} 张推荐表；另有 {remaining} 列未生成，请检查配置或清理已保存表格后重试。':'已生成并保存 {count} 张推荐表，可继续编辑。';
- });
+function accept(item:ActivityTable,version:number){saved.value=saved.value.filter(t=>t.id!==item.id).concat(item);loadedVersion.value=version;setDraft(fromServer(item),item.id);}
+function saveTable(){if(isOther.value||editing.value!==undefined)return;void mutate(async(id,version,current)=>{const result=await saveActivityTable(id,draft.value.id,payload(draft.value),version,auth.csrfToken);if(!current())return;accept(result.table,result.workspace_version);notice.value='表格已保存到文章工作区。';});}
+function confirmTable(status:'reviewer_confirmed'|'unresolved'='reviewer_confirmed'){if(!activeSaved.value||dirty.value||editing.value!==undefined)return;void mutate(async(id,version,current)=>{const result=await confirmActivityTable(id,activeSavedId.value!,version,auth.csrfToken,status);if(!current())return;accept(result.table,result.workspace_version);notice.value=status==='reviewer_confirmed'?'表格已确认。':'表格无法判定。';});}
+async function importLegacy(){
+ if(!mayMutate.value)return;
+ // The browser copy remains intact, including after partial failures. Reuse valid IDs so retries are idempotent.
+ await mutate(async(id,_version,current)=>{let version=loadedVersion.value;for(const old of legacy.value){
+  const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(old.id)?old.id:(legacyIds.get(old.id)??crypto.randomUUID());legacyIds.set(old.id,uuid);
+  if(saved.value.some(item=>item.id===uuid))continue;
+  const value={...emptyTable(),...copy(old),id:uuid};const result=await saveActivityTable(id,uuid,payload(value),version,auth.csrfToken);if(!current())return;
+  version=result.workspace_version;saved.value.push(result.table);loadedVersion.value=version;
+ }select(saved.value[0]?.id??'other');notice.value='浏览器旧表格已导入为自定义表格，原配置仍保留。';});
 }
 function perform(action:NonNullable<typeof pending.value>){
- const resetPosition=()=>{search.value='';position={top:0,left:0};void restoreScroll();};
- if(action.kind==='new'){setDraft(emptyTable(),null);showConfiguration.value=true;resetPosition();return;}
- void changeSettings(()=>{
-  const latest=latestSettings();
-  if(action.kind==='switch'){
-   const target=latest.tables.find(t=>t.id===action.id);
-   if(!target)throw Error('此表格已被其他标签页修改或删除。当前设置仍保留；请重新选择已保存表格后再修改。');
-   writeSettings(latest.tables,target.id);setDraft(target,target.id);
-  }else{
-   checkUnchanged(latest.tables,activeSavedId.value!);
-   const remaining=latest.tables.filter(t=>t.id!==activeSavedId.value);
-   writeSettings(remaining,remaining[0]?.id??null);
-   setDraft(remaining[0]??emptyTable(),remaining[0]?.id??null);
-  }
-  resetPosition();
- });
+ if(action.kind==='delete'){
+  void mutate(async(id,version,current)=>{const deleted=activeSavedId.value!;const result=await deleteActivityTable(id,deleted,version,auth.csrfToken);if(!current())return;saved.value=saved.value.filter(t=>t.id!==deleted);loadedVersion.value=result.workspace_version;select('other');});return;
+ }
+ if(action.kind==='new')setDraft(emptyTable(),null);
+ else if(action.kind==='from-other')setDraft({...emptyTable(),columns:copy(otherColumns.value)},null);
+ else select(action.id??'other');
+ showConfiguration.value=action.kind!=='switch';search.value='';position={top:0,left:0};void restoreScroll();
 }
-function request(action:NonNullable<typeof pending.value>){
- if(editing.value!==undefined)return;
- if(dirty.value||action.kind==='delete')pending.value=action;else perform(action);
-}
-function beginColumn(column:ComparisonColumn|null){editing.value=column?copy(column):null;editorEpoch.value++;showConfiguration.value=true;notice.value='';}
-function applyColumn(column:ComparisonColumn){
- const index=draft.value.columns.findIndex(c=>c.id===column.id);
- if(index<0)draft.value.columns.push(column);else draft.value.columns.splice(index,1,column);
- editing.value=undefined;
-}
-function moveColumn(id:string,target:number){
- const from=draft.value.columns.findIndex(c=>c.id===id);
- if(from<0||target<0||target>=draft.value.columns.length)return;
- const [column]=draft.value.columns.splice(from,1);if(column)draft.value.columns.splice(target,0,column);
-}
+function request(action:NonNullable<typeof pending.value>){if(editing.value!==undefined||settingsBusy.value)return;if(dirty.value||action.kind==='delete')pending.value=action;else perform(action);}
+function beginColumn(column:ComparisonColumn|null){if(!mayMutate.value||isOther.value)return;editing.value=column?copy(column):null;editorEpoch.value++;showConfiguration.value=true;notice.value='';}
+function applyColumn(column:ComparisonColumn){if(!editable.value)return;const exact={...column,activityIds:matchingActivities(column,data.value?.activities??[]).map(a=>a.id)};const index=draft.value.columns.findIndex(c=>c.id===column.id);if(index<0)draft.value.columns.push(exact);else draft.value.columns.splice(index,1,exact);editing.value=undefined;}
+function moveColumn(id:string,target:number){const from=draft.value.columns.findIndex(c=>c.id===id);if(from<0||target<0||target>=draft.value.columns.length)return;const [column]=draft.value.columns.splice(from,1);if(column)draft.value.columns.splice(target,0,column);}
 function dropColumn(index:number){if(dragId.value)moveColumn(dragId.value,index);dragId.value=undefined;}
 function missingRecords(column:ComparisonColumn){return column.activityIds===null?0:column.activityIds.filter(id=>!table.value.matches.get(column.id)?.some(a=>a.id===id)).length;}
 function rememberScroll(){if(props.active&&!loading.value&&viewport.value)position={top:viewport.value.scrollTop,left:viewport.value.scrollLeft};}
 async function restoreScroll(){await nextTick();if(props.active&&viewport.value){viewport.value.scrollTop=position.top;viewport.value.scrollLeft=position.left;}}
 async function load(){
  const epoch=++sequence,id=props.workspace.id;loading.value=true;error.value='';
- try{const result=await getActivityComparison(id);if(epoch!==sequence||id!==props.workspace.id)return;
-  if(result.workspace_id!==id||result.workspace_version<props.workspace.version)throw Error('Stale comparison');data.value=result;await generateTables(true);
+ try{const [result,tables]=await Promise.all([getActivityComparison(id),getActivityTables(id)]);if(epoch!==sequence||id!==props.workspace.id)return;
+  if(result.workspace_id!==id||tables.workspace_id!==id||result.workspace_version!==tables.workspace_version||result.workspace_version<props.workspace.version)throw Error('Stale comparison');
+  const keep=dirty.value||editing.value!==undefined;data.value=result;saved.value=tables.tables;otherIds.value=tables.other_activity_ids;loadedVersion.value=tables.workspace_version;
+  if(!keep)select(initialized.value?(activeSavedId.value??'other'):(props.selectedTableId??tables.tables[0]?.id??'other'));initialized.value=true;
  }catch{if(epoch===sequence)error.value='活性对比暂时无法读取，请重试。';}
  finally{if(epoch===sequence){loading.value=false;await restoreScroll();}}
 }
-function open(compoundId:string,activityId?:string){
- if(props.blocked||loading.value||error.value||!props.active)return;
- rememberScroll();if(activityId)emit('open',compoundId,activityId);else emit('open',compoundId);
-}
-watch([()=>props.workspace.id,()=>auth.user?.username],()=>{settingsEpoch++;settingsBusy.value=false;sequence++;data.value=undefined;search.value='';position={top:0,left:0};readSettings();},{immediate:true});
-watch(()=>[props.workspace.id,props.active,props.workspace.version,auth.user?.username] as const,([id,active],previous)=>{
- if(active&&(!previous?.[1]||id!==previous[0]||data.value?.workspace_version!==props.workspace.version))void load();
-},{immediate:true});
-onBeforeUnmount(()=>{settingsEpoch++;sequence++;});
+function open(compoundId:string,activityId?:string){if(props.blocked||loading.value||settingsBusy.value||error.value||!props.active)return;rememberScroll();if(activityId)emit('open',compoundId,activityId);else emit('open',compoundId);}
+watch([()=>props.workspace.id,()=>auth.user?.username],()=>{mutationEpoch++;sequence++;legacyIds.clear();settingsBusy.value=false;emit('busy',false);data.value=undefined;saved.value=[];initialized.value=false;search.value='';position={top:0,left:0};setDraft(emptyTable(),'other');readLegacy();},{immediate:true});
+watch(()=>[props.workspace.id,props.active,props.workspace.version,auth.user?.username] as const,([id,active],previous)=>{if(active&&(!previous?.[1]||id!==previous[0]||data.value?.workspace_version!==props.workspace.version))void load();},{immediate:true});
+watch(()=>props.selectedTableId,id=>{if(id&&saved.value.some(table=>table.id===id)&&initialized.value&&id!==activeSavedId.value)request({kind:'switch',id});});
+onBeforeUnmount(()=>{mutationEpoch++;sequence++;emit('busy',false);});
 </script>
 
 <template>
@@ -185,45 +104,61 @@ onBeforeUnmount(()=>{settingsEpoch++;sequence++;});
   <header class="comparison-heading"><div><h2>{{t('活性对比')}}</h2><p>{{t('选择测定列，自动展示有相关数据的 Compound。')}}</p></div><button type="button" class="button-secondary" :disabled="loading" data-comparison-refresh @click="load">{{t('刷新')}}</button></header>
   <div :inert="settingsBusy" :aria-busy="settingsBusy">
   <div class="comparison-toolbar saved-toolbar">
-   <label class="form-field">{{t('已保存的表格')}}<select data-saved-table :value="activeSavedId??''" :disabled="editing!==undefined" @change="request({kind:'switch',id:($event.target as HTMLSelectElement).value})"><option value="" disabled>{{t('未保存的表格')}}</option><option v-for="item in savedOptions" :key="item.id" :value="item.id">{{item.name}} · {{t('{columns} 列 / {compounds} 个 Compound',{columns:item.columns.length,compounds:item.compoundCount})}}</option></select></label>
-   <label class="form-field">{{t('表格名称')}}<input v-model="draft.name" data-table-name maxlength="120" :placeholder="t('例如：主要活性')"></label>
-   <div class="editor-actions"><button type="button" class="button-secondary" data-save-table :disabled="editing!==undefined" @click="saveTable">{{t('保存表格')}}</button><button type="button" class="button-quiet" data-new-table :disabled="editing!==undefined" @click="request({kind:'new'})">{{t('新建表格')}}</button><button v-if="activeSavedId" type="button" class="button-quiet" data-delete-table :disabled="editing!==undefined" @click="request({kind:'delete'})">{{t('删除表格')}}</button></div>
+   <label class="form-field">{{t('已保存的表格')}}<select data-saved-table :value="activeSavedId??''" :disabled="editing!==undefined" @change="request({kind:'switch',id:($event.target as HTMLSelectElement).value})"><option value="other">Other</option><option value="" disabled>{{t('未保存的表格')}}</option><option v-for="item in savedOptions" :key="item.id" :value="item.id">{{item.name}} · {{t('{columns} 列 / {compounds} 个 Compound',{columns:item.columns.length,compounds:item.compoundCount})}}</option></select></label>
+   <template v-if="!isOther">
+   <label class="form-field">{{t('表格名称')}}<input v-model="draft.name" data-table-name maxlength="512" :disabled="!editable"></label>
+   <div v-if="editable" class="editor-actions"><button type="button" class="button-secondary" data-save-table :disabled="!mayMutate||editing!==undefined" @click="saveTable">{{t('保存表格')}}</button><button v-if="activeSavedId" type="button" class="button-quiet" data-delete-table :disabled="!mayMutate||editing!==undefined" @click="request({kind:'delete'})">{{t('删除表格')}}</button></div>
+   </template>
+   <button v-if="editable" type="button" class="button-quiet" data-new-table :disabled="!mayMutate||editing!==undefined" @click="request({kind:'new'})">{{t('新建表格')}}</button>
   </div>
-  <p class="settings-note">{{t('配置仅保存在此浏览器，按账号和文章区分；数据始终读取最新保存记录。')}} <strong v-if="dirty">{{t('表格设置尚未保存。')}}</strong></p>
-  <p v-if="notice" role="status">{{t(notice,noticeValues)}}</p><p v-if="storageError" role="alert" data-table-storage-error>{{t(storageError)}}</p>
+  <p v-if="isOther" class="settings-note" data-other-note>{{t('Other 自动显示尚未分配到任何表格的记录，包括正文、图及待核对归属的数据。')}}</p>
+  <template v-else>
+   <div class="comparison-toolbar" data-table-source>
+    <label class="form-field">{{t('表格来源')}}<select v-model="draft.kind" data-table-kind :disabled="!editable"><option value="source">{{t('原文 Table')}}</option><option value="custom">{{t('自定义表格')}}</option></select></label>
+    <label class="form-field">{{t('原文表号')}}<input v-model="draft.source_label" data-source-label :disabled="!editable" maxlength="512" placeholder="Table 1 / Table S1"></label>
+    <label class="form-field">{{t('原文标题')}}<input v-model="draft.source_title" data-source-title :disabled="!editable" maxlength="10000"></label>
+    <label class="form-field">{{t('页码')}}<input v-model="draft.page_number" data-source-page :disabled="!editable" type="number" min="1"></label>
+    <span>{{draft.source_label}} {{draft.source_title}}</span>
+   </div>
+   <label v-if="editable" class="form-field">{{t('审核备注')}}<textarea v-model="draft.review_hint" data-table-review-hint maxlength="1000" /></label><ReviewHint v-else :hint="draft.review_hint" />
+   <p v-if="activeSaved" data-table-review-status>{{t(activeSaved.review_status==='reviewer_confirmed'?'表格已确认。':activeSaved.review_status==='unresolved'?'表格无法判定。':'表格待 Reviewer 确认；AI 修订后需重新确认。')}} <button v-if="editable&&activeSaved.review_status!=='reviewer_confirmed'" type="button" class="button-secondary" data-confirm-table :disabled="!mayMutate||dirty||editing!==undefined" @click="confirmTable()">{{t('确认表格')}}</button> <button v-if="editable&&activeSaved.review_status!=='unresolved'" type="button" class="button-quiet" data-unresolve-table :disabled="!mayMutate||dirty||editing!==undefined" @click="confirmTable('unresolved')">{{t('无法判定')}}</button></p>
+  </template>
+  <p class="settings-note">{{t('表格随文章工作区保存，跨设备共享；活性数值始终引用最新记录。')}} <strong v-if="dirty">{{t('表格设置尚未保存。')}}</strong></p>
+  <button v-if="editable&&legacy.length" type="button" class="button-secondary" data-import-local-tables :disabled="!mayMutate||dirty||editing!==undefined" @click="importLegacy">{{t('导入此浏览器的旧表格为自定义表格')}} ({{legacy.length}})</button>
+  <p v-if="legacyError" role="alert">{{t(legacyError)}}</p><p v-if="notice" role="status">{{t(notice)}}</p><p v-if="storageError" role="alert" data-table-storage-error>{{t(storageError)}}</p>
   <div v-if="pending" class="pending-settings" role="alert"><p>{{t(pending.kind==='delete'?'删除这张已保存的表格配置？科学记录不会删除。':'当前表格设置尚未保存，是否放弃设置并继续？')}}</p><button type="button" class="button-secondary" data-discard-table-changes @click="perform(pending!)">{{t(pending.kind==='delete'?'删除表格':'放弃设置并继续')}}</button><button type="button" class="button-quiet" @click="pending=undefined">{{t('取消')}}</button></div>
   <div class="comparison-toolbar">
    <label class="form-field">{{t('搜索编号或名称')}}<input v-model="search" data-comparison-search type="search" :placeholder="t('搜索编号或名称')"></label>
    <label class="form-field">{{t('显示范围')}}<select v-model="draft.mode" data-comparison-row-mode><option value="any">{{t('至少一列有记录')}}</option><option value="all">{{t('每列都有记录')}}</option></select></label>
    <label class="form-field">{{t('排序方式')}}<select v-model="draft.sort" data-comparison-sort><option value="label">{{t('名称排序')}}</option><option value="similarity">{{t('相似测定组合')}}</option><option value="default">{{t('默认排序')}}</option></select></label>
   </div>
-  <div class="column-controls"><button type="button" class="button-secondary" data-generate-tables :disabled="loading||!!error||!data?.activities.length||editing!==undefined" @click="generateTables()">{{t('生成推荐表格')}}</button><button type="button" class="button-primary" data-add-column :disabled="loading||!!error||!data?.activities.length||editing!==undefined||draft.columns.length>=60" @click="beginColumn(null)">{{t('添加列')}}</button><button v-if="draft.columns.length" type="button" class="button-quiet" data-toggle-column-config :aria-expanded="showConfiguration" @click="showConfiguration=!showConfiguration">{{t(showConfiguration?'收起列配置':'配置列')}} ({{draft.columns.length}})</button></div>
-  <p v-if="draft.columns.length" class="settings-note" data-suggestion-summary>{{t('当前表格：{columns} 列，{compounds} 个 Compound。',{columns:draft.columns.length,compounds:table.rows.length})}}</p>
-  <div v-show="showConfiguration" v-if="draft.columns.length" class="configured-columns" data-configured-columns :inert="editing!==undefined">
+  <div class="column-controls"><button v-if="editable&&isOther&&otherColumns.length" type="button" class="button-secondary" data-table-from-other :disabled="!mayMutate" @click="request({kind:'from-other'})">{{t('从 Other 创建表格')}}</button><button v-if="editable&&!isOther" type="button" class="button-primary" data-add-column :disabled="!mayMutate||!data?.activities.length||editing!==undefined||draft.columns.length>=200" @click="beginColumn(null)">{{t('添加列')}}</button><button v-if="columns.length&&!isOther&&editable" type="button" class="button-quiet" data-toggle-column-config :aria-expanded="showConfiguration" @click="showConfiguration=!showConfiguration">{{t(showConfiguration?'收起列配置':'配置列')}} ({{columns.length}})</button></div>
+  <p v-if="columns.length" class="settings-note" data-suggestion-summary>{{t('当前表格：{columns} 列，{compounds} 个 Compound。',{columns:columns.length,compounds:table.rows.length})}}</p>
+  <div v-show="showConfiguration" v-if="columns.length&&!isOther&&editable" class="configured-columns" data-configured-columns :inert="editing!==undefined">
    <div v-for="(column,index) in draft.columns" :key="column.id" class="configured-column" data-configured-column draggable="true" @dragstart="dragId=column.id; $event.dataTransfer?.setData('text/plain',column.id)" @dragend="dragId=undefined" @dragover.prevent @drop.prevent="dropColumn(index)">
     <div><strong>{{index+1}}. {{column.label}}</strong><small>{{column.assay}} · {{column.metric}} · {{column.unit||t('未记录单位')}}</small><small>{{t(column.activityIds===null?'全部记录（包含后续新增）':'仅选中记录')}} · {{table.matches.get(column.id)?.length??0}} {{t('条记录')}}</small></div>
     <div class="editor-actions"><button type="button" class="button-quiet" data-column-edit @click="beginColumn(column)">{{t('编辑列')}}</button><button type="button" class="button-quiet" data-column-move-left :disabled="index===0" :aria-label="t('左移列：{name}',{name:column.label})" @click="moveColumn(column.id,index-1)">←</button><button type="button" class="button-quiet" data-column-move-right :disabled="index===draft.columns.length-1" :aria-label="t('右移列：{name}',{name:column.label})" @click="moveColumn(column.id,index+1)">→</button><button type="button" class="button-quiet" data-column-remove @click="draft.columns.splice(index,1)">{{t('移除')}}</button></div>
    </div>
   </div>
-  <div :inert="loading"><ActivityColumnEditor v-if="editing!==undefined&&data" :key="editorEpoch" :activities="data.activities" :compounds="data.compounds" :columns="draft.columns" :column="editing" @apply="applyColumn" @cancel="editing=undefined" /></div>
+  <div :inert="loading"><ActivityColumnEditor v-if="editable&&editing!==undefined&&data" :key="editorEpoch" :activities="data.activities" :compounds="data.compounds" :columns="draft.columns" :column="editing" @apply="applyColumn" @cancel="editing=undefined" /></div>
   <p v-if="blocked" class="inline-feedback is-warning">{{t('请先保存或取消当前编辑，再打开其他条目。')}}</p>
   <p v-if="loading" role="status">{{t('正在读取活性对比…')}}</p>
   <p v-if="error" role="alert">{{t(error)}} <button type="button" class="button-quiet" data-comparison-retry @click="load">{{t('重试')}}</button></p>
   <template v-if="data&&!error">
    <p v-if="!data.activities.length&&!loading">{{t('当前文章尚无活性记录。')}}</p>
-   <p v-else-if="!draft.columns.length&&!loading" data-comparison-empty>{{t('点击“添加列”，选择要比较的测定和记录。')}}</p>
+   <p v-else-if="!columns.length&&!loading" data-comparison-empty>{{t(isOther?'Other 暂无未归属记录。':'点击“添加列”，选择要比较的测定和记录。')}}</p>
    <template v-else-if="!loading">
-    <p v-for="column in draft.columns.filter(c=>missingRecords(c)>0)" :key="column.id" class="inline-feedback is-warning" data-column-stale>{{t('列“{name}”有 {count} 条所选记录已删除或测定发生变化，请检查列设置。',{name:column.label,count:missingRecords(column)})}}</p>
+    <p v-for="column in columns.filter(c=>missingRecords(c)>0)" :key="column.id" class="inline-feedback is-warning" data-column-stale>{{t('列“{name}”有 {count} 条所选记录已删除或测定发生变化，请检查列设置。',{name:column.label,count:missingRecords(column)})}}</p>
     <p v-if="!compounds.length">{{t('没有符合当前列配置和显示范围的 Compound。')}}</p>
     <p class="comparison-coverage">{{t('显示 {shown}/{total} 个 Compound',{shown:compounds.length,total:data.compounds.length})}}</p>
    </template>
    <div v-show="!loading&&compounds.length>0" ref="viewport" class="comparison-scroll" data-comparison-scroll tabindex="0" role="region" :aria-label="t('Compound 活性对比表')" @scroll="rememberScroll">
     <table class="comparison-grid">
      <caption>{{t('— 表示无对应记录；条件与单位保留，同格多条记录全部列出。')}}</caption>
-     <thead><tr><th scope="col" class="compound-column">Compound</th><th v-for="column in draft.columns" :key="column.id" scope="col" data-comparison-column><span class="measurement-assay">{{column.label}}</span><small>{{column.metric}} · {{column.unit||t('未记录单位')}}</small><details class="measurement-context"><summary>{{t('关联测定')}}</summary><p>{{column.assay}}</p></details></th></tr></thead>
+     <thead><tr><th scope="col" class="compound-column">Compound</th><th v-for="column in columns" :key="column.id" scope="col" data-comparison-column><span class="measurement-assay">{{column.label}}</span><small>{{column.metric}} · {{column.unit||t('未记录单位')}}</small><details class="measurement-context"><summary>{{t('关联测定')}}</summary><p>{{column.assay}}</p></details></th></tr></thead>
      <tbody><tr v-for="compound in compounds" :key="compound.id" data-comparison-row :data-compound-id="compound.id">
       <th scope="row" class="compound-column"><button type="button" class="comparison-link" data-comparison-compound :disabled="blocked||loading" @click="open(compound.id)">{{compound.compound_label}}</button><details v-if="compound.display_name" class="compound-name"><summary :title="compound.display_name">{{t('名称')}}</summary><small>{{compound.display_name}}</small></details><ReviewHint :hint="compound.review_hint" /></th>
-      <td v-for="column in draft.columns" :key="column.id"><template v-if="table.cells.get(compound.id)?.get(column.id)?.length"><div v-for="activity in table.cells.get(compound.id)?.get(column.id)" :key="activity.id" class="measurement-value"><button type="button" class="comparison-link" data-comparison-activity :data-activity-id="activity.id" :disabled="blocked||loading" :aria-label="t('查看 {compound} 的活性记录：{value}',{compound:compound.compound_label,value:`${activity.operator} ${activity.value} ${activity.unit??''}`})" @click="open(compound.id,activity.id)">{{activity.operator}} {{activity.value}}</button><ReviewHint :hint="activity.review_hint" /><details class="measurement-context record-context" data-measurement-context><summary :title="activity.context||t('未记录实验条件')">{{activity.context||t('未记录实验条件')}}</summary><p>{{activity.context||t('未记录实验条件')}}</p></details></div></template><span v-else class="missing-measurement">—</span></td>
+      <td v-for="column in columns" :key="column.id"><template v-if="table.cells.get(compound.id)?.get(column.id)?.length"><div v-for="activity in table.cells.get(compound.id)?.get(column.id)" :key="activity.id" class="measurement-value"><button type="button" class="comparison-link" data-comparison-activity :data-activity-id="activity.id" :disabled="blocked||loading" :aria-label="t('查看 {compound} 的活性记录：{value}',{compound:compound.compound_label,value:`${activity.operator} ${activity.value} ${activity.unit??''}`})" @click="open(compound.id,activity.id)">{{activity.operator}} {{activity.value}}</button><ReviewHint :hint="activity.review_hint" /><details class="measurement-context record-context" data-measurement-context><summary :title="activity.context||t('未记录实验条件')">{{activity.context||t('未记录实验条件')}}</summary><p>{{activity.context||t('未记录实验条件')}}</p></details></div></template><span v-else class="missing-measurement">—</span></td>
      </tr></tbody>
     </table>
    </div>

@@ -23,6 +23,7 @@ _FIELDS = {
     'lineage_edge': ('lineage_edges', _COMMON + 'lineage_id parent_compound_id child_compound_id relation_type modification_summary review_status sort_order'),
     'evidence': ('evidence', _COMMON + 'kind source_sha256 page_number x0 y0 x1 y1 quoted_text caption crop_asset_id reviewer_note'),
     'edge_evidence_link': ('edge_evidence_links', _COMMON + 'edge_id evidence_id role'),
+    'activity_table': ('activity_tables', _COMMON + 'name kind source_label source_title page_number review_hint columns mode sort review_status created_by_kind'),
     'activity': ('activities', _COMMON + 'compound_id evidence_id assay_name metric operator value unit context sort_order'),
     'compound_highlight': ('compound_highlights', _COMMON + 'compound_id evidence_id role scope rationale review_hint review_status created_by_kind'),
 }
@@ -132,14 +133,14 @@ def _restore_bundle(snapshot: dict, event: ChangeEvent) -> bool:
     return True
 
 
-_SNAPSHOT_ACTIONS = {'compound.paste', 'lineage.paste', 'lineage.confirm', 'workspace.undo', 'workspace.redo'}
+_SNAPSHOT_ACTIONS = {'activity.update_tables', 'activity.delete_tables', 'compound.paste', 'lineage.paste', 'lineage.confirm', 'workspace.undo', 'workspace.redo'}
 _SNAPSHOT_COLLECTIONS = {kind: info[0] for kind, info in _FIELDS.items()}
 _SNAPSHOT_METADATA = {'workspace_version', 'ai_provenance', 'review_progress', 'problem_report'}
 
 
 def _scientific_snapshot(snapshot: dict) -> dict:
     collections = set(_SNAPSHOT_COLLECTIONS.values())
-    required = {'schema_version', 'paper', 'source', 'sections'} | (collections - {'compound_highlights'})
+    required = {'schema_version', 'paper', 'source', 'sections'} | (collections - {'compound_highlights','activity_tables'})
     if not isinstance(snapshot, dict) or not required.issubset(snapshot) or set(snapshot) - (required | collections | _SNAPSHOT_METADATA):
         raise _IncompleteHistory('Incomplete or unsupported historical snapshot')
     if snapshot['schema_version'] != 1 or not isinstance(snapshot['paper'], dict) or not snapshot['paper'].get('id') or not isinstance(snapshot['source'], dict):
@@ -233,7 +234,7 @@ def _reverse(snapshot: dict, event: ChangeEvent) -> None:
         return
     if event.entity_type not in _FIELDS or event.action not in {
         f'{event.entity_type}.create', f'{event.entity_type}.update',
-        f'{event.entity_type}.delete', 'structure_source_image.retry',
+        f'{event.entity_type}.delete', 'structure_source_image.retry', 'activity_table.confirm',
     }:
         # Reorder events record IDs, not prior numerical sort_order values.
         # New scientific event types must be supported explicitly before use.

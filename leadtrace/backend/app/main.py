@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 
+from app.activity_tables.router import create_activity_tables_router
 from app.activities.router import create_activities_router
 from app.ai_prefill.router import AiPrefillDispatch, create_ai_prefill_router
 from app.ai_prefill.assistance_router import create_assistance_router
@@ -137,6 +138,7 @@ def create_app(
     application.include_router(create_lineages_router(runtime_settings))
     application.include_router(create_evidence_router(runtime_settings))
     application.include_router(create_activities_router(runtime_settings))
+    application.include_router(create_activity_tables_router(runtime_settings))
     application.include_router(create_admin_publications_router(runtime_settings))
     application.include_router(create_publications_router())
     application.include_router(create_documents_router())

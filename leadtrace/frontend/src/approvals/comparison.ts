@@ -20,12 +20,12 @@ export interface ScientificChange {
   before: Row | null; after: Row | null; fields: FieldChange[]; actors: string[];
   issueResolution: boolean; evidenceBefore: Row[]; evidenceAfter: Row[];
 }
-const domains = ["paper", "source", "sections", "compounds", "structures", "structure_source_images", "lineages", "lineage_members", "lineage_edges", "evidence", "edge_evidence_links", "activities", "compound_highlights"];
+const domains = ["paper", "source", "sections", "compounds", "structures", "structure_source_images", "lineages", "lineage_members", "lineage_edges", "evidence", "edge_evidence_links", "activities", "compound_highlights", "activity_tables"];
 const eventDomains: Record<string, string> = {
   compound: "compounds", structure: "structures", structure_source_image: "structure_source_images",
   lineage: "lineages", lineage_member: "lineage_members", lineage_edge: "lineage_edges",
   evidence: "evidence", edge_evidence_link: "edge_evidence_links", activity: "activities",
-  compound_highlight: "compound_highlights", paper_section_review: "sections", section: "sections", paper: "paper",
+  activity_table: "activity_tables", compound_highlight: "compound_highlights", paper_section_review: "sections", section: "sections", paper: "paper",
 };
 // Derived rendering assets and operational metadata are not scientific edits.
 const ignored = new Set(["id", "paper_id", "workspace_id", "created_at", "updated_at", "created_by_kind", "created_by_id", "version", "depiction_asset_id", "crop_asset_id", "crop_status", "input_method", "catalog_state"]);
@@ -68,6 +68,7 @@ export function recordLabel(snapshot: Record<string, unknown>, domain: string, r
   if (domain === "source") return "原文来源";
   if (domain === "sections") return String(row.section_key);
   if (domain === "compounds") return String(row.compound_label ?? row.id);
+  if (domain === "activity_tables") return String(row.name ?? row.source_label ?? row.id);
   if (domain === "lineages") return String(row.lineage_label ?? row.id);
   if (domain === "lineage_edges") return `${compoundLabel(snapshot, row.parent_compound_id)} → ${compoundLabel(snapshot, row.child_compound_id)}`;
   if (domain === "edge_evidence_links") return edgeLabel(snapshot, row.edge_id);

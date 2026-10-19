@@ -242,6 +242,7 @@ class AiPrefillService:
             return False
         pages = [item.page_number for item in payload.structure_locators]
         pages.extend(item.page_number for item in payload.evidence)
+        pages.extend(item.page_number for item in payload.activity_tables if item.page_number is not None)
         return all(page <= source.page_count for page in pages)
 
     @staticmethod
@@ -770,7 +771,21 @@ class AiPrefillService:
                 )
             )
 
+        from app.activity_tables.models import ActivityTable
+        from app.activity_tables.service import table_snapshot, validate_table_references
+        activity_refs={item.ref:row for item,row in zip(payload.activities,activities) if item.ref}
+        tables={}
+        for item in payload.activity_tables:
+            data=item.model_dump(mode='json');ref=data.pop('ref')
+            data['columns']=[{**{k:v for k,v in c.items() if k!='activity_refs'},
+                              'activity_ids':[str(activity_refs[a].id) for a in c['activity_refs']]} for c in data['columns']]
+            validate_table_references(session,workspace.id,data['columns'],run.paper_id)
+            row=ActivityTable(paper_id=run.paper_id,workspace_id=workspace.id,created_by_kind=ChangeActorKind.AI,review_status='draft',**data)
+            session.add(row);session.flush();tables[ref]=row
+            session.add(self._event(run,entity_type='activity_table',entity_id=row.id,action='activity_table.create',after_value=table_snapshot(row)))
         entity_map: dict[str, str] = {}
+        for ref,row in tables.items():entity_map[f'/activity_tables/{ref}']=str(row.id)
+        for ref,row in activity_refs.items():entity_map[f'/activity_refs/{ref}']=str(row.id)
         for item in payload.compounds:
             entity_map[f"/compounds/{item.ref}"] = str(compounds[item.ref].id)
         for item, (_, structure) in zip(payload.compounds, structures):

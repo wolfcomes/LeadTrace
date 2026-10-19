@@ -60,12 +60,14 @@ def prepare_repair(session,settings,job,root,workspace):
 
 def require_explicit_collections(before, raw_payload):
     """Pydantic defaults cannot turn incomplete output into deletions."""
-    collections=('compounds','activities','lineages','evidence','structure_locators','edge_evidence_links','compound_highlights')
+    collections=('compounds','activities','lineages','evidence','structure_locators','edge_evidence_links','compound_highlights','activity_tables')
     for name in collections:
         if getattr(before,name) and name not in raw_payload:
             raise TaskError('REPAIR_INCOMPLETE',f'Repair omitted populated {name}; preserve it or propose explicit removals')
     if before.bibliography and 'bibliography' not in raw_payload:
         raise TaskError('REPAIR_INCOMPLETE','Repair omitted bibliography')
+    if any(a.ref is not None for a in before.activities) and any(not a.get('ref') for a in raw_payload.get('activities', [])):
+        raise TaskError('REPAIR_INCOMPLETE','Preserve stable Activity refs; new Activities require new refs')
     previous={g.ref:g for g in before.lineages}
     for group in raw_payload.get('lineages',[]):
         old=previous.get(group.get('ref'))

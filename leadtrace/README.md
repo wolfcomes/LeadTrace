@@ -294,35 +294,29 @@ The complete pilot procedure and evidence checklist are in
 
 ## Reviewer workbench
 
-Activity comparison is a read-only column builder. On first load without stored
-settings, it generates and saves initial tables from exact assay/metric/unit
-coverage profiles, using complete-link Jaccard similarity >= 0.8, exact profiles
-first, at most six columns per suggested table. Coverage uses distinct Compound
-IDs, not values or condition semantics. Small subsets and incompatible bridge
-profiles stay separate. Existing configurations (even an intentionally empty
-list) suppress initialization. Explicit generation appends only measurements not
-represented in saved tables or the current draft; it preserves edits and reports
-partial results at the fifty-table storage limit. Generated layouts remain fully
-editable; refresh updates values without regrouping. Table choices show counts. Each column binds an exact
-assay/metric/unit and either all matching records or an explicit set of Activity
-IDs; its editable display title never changes matching. Literal condition and
-Compound search previews candidates before the reviewer explicitly selects them.
-All-record columns include future matching additions; selected-record columns
-retain IDs through value/context edits and flag removed or changed measurements.
-Repeated observations, decimal precision, qualifiers, context and hints remain.
-Choose any-column or every-column coverage, reorder columns with drag/drop or
-buttons, and use natural identifier, original or measurement-similarity ordering.
-Named configurations are saved only in the current browser's localStorage, scoped
-by username and workspace. They contain configuration rather than measurement
-values, are schema-validated on load, and do not sync across devices. Unsaved
-configuration switches require explicit discard; storage failures retain drafts.
-Saving merges the latest browser configuration list and rejects changes to a table
-modified in another tab. Web Locks serialize writes where supported. Save before
-leaving the article or closing the browser; unsaved layouts are held in memory.
-Exact editor navigation and return filters/scroll retain existing version and
-pending-edit guards. No viewing receipts, confirmations or scientific writes are
-made by the builder. The existing authorized comparison GET remains unchanged;
-this frontend-only feature requires no database migration.
+Activity comparison reads workspace-owned original-paper and custom tables plus a
+permanent derived Other table. Original tables retain source labels, titles and
+page numbers; display names do not determine provenance. Other contains every
+Activity not assigned to a saved table, including memberships awaiting review.
+Browsing never writes. Reviewers can create, edit, reorder, save and confirm table
+configurations with workspace version checks; Admin and submitted views remain
+read-only. Each column binds exact assay/metric/unit and explicit Activity IDs.
+Renaming never changes membership. Literal record search previews candidates;
+reviewers select the subset explicitly. New records initially appear in Other,
+while linked value/context edits remain visible without copying scientific values.
+Repeated observations, precision, qualifiers and hints remain intact. Source
+Tables are not split by the old six-column recommendation limit (200-column
+storage limit). Other cannot be deleted; copying it starts a custom draft.
+Saved configurations are shared across devices with the workspace. AI-created
+and revised tables are draft and require Reviewer confirmation again; saving a
+manual table edit also invalidates its confirmation. A separate explicit import
+converts old browser-local tables into custom server tables with resolved IDs,
+retaining the browser copy on both success and failure. Existing server table IDs
+are never overwritten by legacy imports. Unsaved switches require explicit
+discard; conflicts retain the draft at its original expected version. Exact
+Activity navigation retains pending-edit and guarded workspace-refresh controls.
+Tables use the activity-tables API and additive database migration; Activity
+values remain owned by their existing records.
 
 Saved Reviewer edits support version-checked undo and redo. Unsaved forms and
 in-flight saves disable history actions; restoring an edit reloads the workspace

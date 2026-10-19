@@ -60,7 +60,59 @@ def repair_event(event):
         before_value=row(before), after_value=row(after))
 
 
-def _apply_delta(target, before, after):
+def _apply_table_columns(target, before, after):
+    """Replay column changes by stable ID, retaining unrelated human fields.
+
+    Activity membership lists keep the conservative ordered-list overlap rule.
+    Conflicting reorder operations remain explicit instead of inventing order.
+    """
+    def indexed(rows):
+        if not isinstance(rows, list) or any(not isinstance(row, dict) or not isinstance(row.get('id'), str) for row in rows):
+            raise _IncompleteHistory('Invalid Activity table column identity')
+        result = {row['id']: row for row in rows}
+        if len(result) != len(rows):
+            raise _IncompleteHistory('Duplicate Activity table column identity')
+        return result
+    current, old, new = indexed(target), indexed(before), indexed(after)
+    common = old.keys() & new.keys()
+    old_order = [row['id'] for row in before if row['id'] in common]
+    new_order = [row['id'] for row in after if row['id'] in common]
+    reordered = old_order != new_order
+    if reordered:
+        target_order = [row['id'] for row in target if row['id'] in common]
+        if target_order != [identity for identity in old_order if identity in current]:
+            raise _IncompleteHistory('AI and Reviewer edits overlap Activity table column order')
+    for identity in old.keys() - new.keys():
+        if identity in current:
+            target.remove(current.pop(identity))
+    for identity in common:
+        if identity in current:
+            _apply_delta(current[identity], old[identity], new[identity])
+    if reordered:
+        # Preserve slots belonging to columns absent from the AI baseline.
+        ordered = iter(current[identity] for identity in new_order if identity in current)
+        target[:] = [next(ordered) if row['id'] in common else row for row in target]
+    for position, row in enumerate(after):
+        identity = row['id']
+        if identity in old:
+            continue
+        if identity in current:
+            raise _IncompleteHistory('AI and Reviewer Activity table column additions conflict')
+        added = deepcopy(row)
+        # Place new columns next to the nearest surviving original anchor.
+        preceding = next((item['id'] for item in reversed(after[:position]) if item['id'] in current), None)
+        following = next((item['id'] for item in after[position + 1:] if item['id'] in current), None)
+        if preceding is not None:
+            index = next(i for i, item in enumerate(target) if item['id'] == preceding) + 1
+        elif following is not None:
+            index = next(i for i, item in enumerate(target) if item['id'] == following)
+        else:
+            index = len(target)
+        target.insert(index, added)
+        current[identity] = added
+
+
+def _apply_delta(target, before, after, *, table_columns=False):
     """Apply only changed dictionary paths, retaining other human baseline values."""
     for key in before.keys() | after.keys():
         if key not in after:
@@ -68,7 +120,9 @@ def _apply_delta(target, before, after):
         elif key not in before:
             target[key] = deepcopy(after[key])
         elif before[key] != after[key]:
-            if isinstance(before[key], dict) and isinstance(after[key], dict):
+            if table_columns and key == 'columns':
+                _apply_table_columns(target.setdefault(key, []), before[key], after[key])
+            elif isinstance(before[key], dict) and isinstance(after[key], dict):
                 if key not in target:
                     target[key] = {}
                 if not isinstance(target[key], dict):
@@ -97,7 +151,7 @@ def _replay_delta(target, before, after):
                     rows.remove(found)
                 rows.append(deepcopy(new[identity]))
             elif found is not None:
-                _apply_delta(found, old[identity], new[identity])
+                _apply_delta(found, old[identity], new[identity], table_columns=collection == 'activity_tables')
             # An AI update to a human-created row must not turn its creation
             # into an AI addition. Keep it absent from the human baseline.
 

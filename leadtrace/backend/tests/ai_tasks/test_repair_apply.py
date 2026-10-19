@@ -242,3 +242,72 @@ def test_locator_halfway_quantization_matches_database_and_occurrence_grouping()
     diff=design_diff(before,AiPrefillPayload.model_validate(data))
     assert diff['total_changes']==1
     assert diff['changes'][0]['after']['bbox']['x0']=='0.1000000001'
+
+
+@pytest.mark.parametrize('tamper', [False, True])
+def test_legacy_metadata_null_defaults_allow_lineage_revision_but_real_changes_conflict(ai_context,tmp_path,tamper):
+    from copy import deepcopy
+    from app.papers.models import Paper
+    with ai_context.session_factory.begin() as session:
+        before,snapshot,refs=baseline(ai_context,session)
+        paper=session.get(Paper,ai_context.paper_id)
+        paper.pdb_references=[{'pdb_id':'1ABC','usage':'cited_structure'}]
+        paper.research_profile={'modalities':[{'label':'小分子抑制剂','source':'Synthetic source'}]}
+        session.flush()
+        original=(deepcopy(paper.pdb_references),deepcopy(paper.research_profile))
+        snapshot=build_paper_snapshot(session,ai_context.workspace_id)
+        parent=SimpleNamespace(payload=before,source=SimpleNamespace(source_sha256='a'*64))
+        before,refs,_=_payload_from_snapshot(parent,snapshot,refs,snapshot['paper'])
+        if tamper:
+            raw=before.model_dump(mode='json')
+            raw['bibliography']['research_profile']['modalities'][0]['source']='Different scientific assertion'
+            before=AiPrefillPayload.model_validate(raw)
+        data=before.model_dump(mode='json')
+        data['lineages'][0]['description']='Revised synthetic lineage scope'
+        parameters=args(ai_context,session,tmp_path,before,snapshot,refs)
+        if tamper:
+            with pytest.raises(RepairApplyConflict,match='Bibliography baseline'):
+                apply_delta(session,after=AiPrefillPayload.model_validate(data),**parameters)
+        else:
+            result=apply_delta(session,after=AiPrefillPayload.model_validate(data),**parameters)
+            assert result['counts']['lineages']['updated']==1
+            assert (paper.pdb_references,paper.research_profile)==original
+
+
+def test_table_only_revision_preserves_science_and_requires_confirmation(ai_context,tmp_path):
+    from app.activity_tables.models import ActivityTable
+    from app.workspaces.models import PaperSectionReview, PaperSectionState
+    with ai_context.session_factory.begin() as session:
+        before,snapshot,refs=baseline(ai_context,session)
+        for row in session.scalars(select(Structure)):row.status=StructureStatus.REVIEWER_CONFIRMED
+        for section in session.scalars(select(PaperSectionReview)):section.state=PaperSectionState.COMPLETED
+        session.flush();snapshot=build_paper_snapshot(session,ai_context.workspace_id)
+        data=before.model_dump(mode='json');a=data['activities'][0]
+        data['activity_tables']=[dict(ref='table1',name='Table 1',kind='source',source_label='Table 1',page_number=1,
+            columns=[dict(id='potency',label='Potency',assay=a['assay_name'],metric=a['metric'],unit=a['unit'],activity_refs=[a['ref']])])]
+        result=apply_delta(session,automatic_revision=True,after=AiPrefillPayload.model_validate(data),**args(ai_context,session,tmp_path,before,snapshot,refs))
+        assert {x['domain'] for x in result['changes']}=={'activity_tables'}
+        after=build_paper_snapshot(session,ai_context.workspace_id)
+        for key in ('compounds','structures','activities','evidence','lineages','lineage_edges'):
+            assert after[key]==snapshot[key]
+        table=session.scalar(select(ActivityTable));assert table.review_status=='draft'
+        assert table.columns[0]['activity_ids']==[snapshot['activities'][0]['id']]
+        states={x.section_key:x.state for x in session.scalars(select(PaperSectionReview))}
+        assert states['activities']=='pending' and states['structures']=='completed'
+        events=list(session.scalars(select(ChangeEvent).where(ChangeEvent.action.like('activity_table.repair_%'))))
+        assert len(events)==1 and events[0].actor_kind==ChangeActorKind.AI
+
+
+def test_ai_table_roundtrip_then_activity_change_invalidates_table(ai_context,tmp_path):
+    from app.activity_tables.models import ActivityTable
+    from tests.ai_prefill.test_activity_tables import table_payload
+    with ai_context.session_factory.begin() as session:
+        before,snapshot,refs=baseline(ai_context,session,table_payload())
+        table=session.scalar(select(ActivityTable));table.review_status='reviewer_confirmed'
+        session.flush();snapshot=build_paper_snapshot(session,ai_context.workspace_id)
+        data=before.model_dump(mode='json');data['activities'][0]['value']='42'
+        result=apply_delta(session,after=AiPrefillPayload.model_validate(data),**args(ai_context,session,tmp_path,before,snapshot,refs))
+        assert result['counts']['activities']['updated']==1
+        assert result['counts']['activity_tables']['updated']==0
+        assert table.review_status=='draft'
+        assert session.scalar(select(ChangeEvent).where(ChangeEvent.action=='activity_table.repair_invalidate'))

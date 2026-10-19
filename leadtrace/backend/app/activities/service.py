@@ -234,6 +234,11 @@ class ActivityService:
             if row is None:
                 raise WorkspaceNotFoundError("Resource not found")
             before = activity_snapshot(row)
+            from app.activity_tables.models import ActivityTable
+            from app.activity_tables.service import reconcile_activity_tables
+            from app.workspaces.snapshot import build_paper_snapshot
+            has_tables = session.scalar(select(ActivityTable.id).where(ActivityTable.workspace_id == workspace_id).limit(1)) is not None
+            before_snapshot = build_paper_snapshot(session, workspace_id) if has_tables else None
             if "evidence_id" in updates:
                 row.evidence_id = self._evidence_id(
                     session,
@@ -259,6 +264,12 @@ class ActivityService:
             if "review_hint" in updates:
                 row.review_hint = _clean_optional(updates["review_hint"])  # type: ignore[arg-type]
             changed["value"] = row
+            if before != activity_snapshot(row) and has_tables:
+                deltas = reconcile_activity_tables(session, workspace_id, [row.id])
+                if deltas:
+                    return MutationChange('activity', row.id, 'activity.update_tables',
+                                          {'snapshot': before_snapshot},
+                                          {'snapshot': build_paper_snapshot(session, workspace_id)})
             return MutationChange(
                 "activity",
                 row.id,
@@ -357,7 +368,16 @@ class ActivityService:
             if row is None:
                 raise WorkspaceNotFoundError("Resource not found")
             before = activity_snapshot(row)
+            from app.activity_tables.models import ActivityTable
+            from app.activity_tables.service import reconcile_activity_tables
+            from app.workspaces.snapshot import build_paper_snapshot
+            has_tables = session.scalar(select(ActivityTable.id).where(ActivityTable.workspace_id == workspace_id).limit(1)) is not None
+            before_snapshot = build_paper_snapshot(session, workspace_id) if has_tables else None
             session.delete(row)
+            if has_tables and reconcile_activity_tables(session, workspace_id, [row.id]):
+                return MutationChange('activity', row.id, 'activity.delete_tables',
+                                      {'snapshot': before_snapshot},
+                                      {'snapshot': build_paper_snapshot(session, workspace_id)})
             return MutationChange("activity", row.id, "activity.delete", before, None)
 
         return self.workspace_service.mutate(

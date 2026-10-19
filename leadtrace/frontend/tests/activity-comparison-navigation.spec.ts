@@ -13,6 +13,7 @@ it('opens the exact Activity without scanning other compounds and retains compar
   vi.stubGlobal('fetch',vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
     if (init?.method && init.method !== 'GET') writes.push(path);
+    if (path.endsWith('/activity-tables')) return response({workspace_id:ids.workspace,workspace_version:version,tables:[],other_activity_ids:activities.map(a=>a.id)});
     if (path.endsWith('/activity-comparison')) return response({workspace_id:ids.workspace,workspace_version:version,compounds,activities:records});
     if (path.endsWith('/edit-history')) return response({workspace_version:version,undo_action:null,redo_action:null});
     if (path.endsWith('/review-progress')) return response({workspace_id:ids.workspace,workspace_version:version,tracking_started:false,items:[],sections:[]});
@@ -30,7 +31,6 @@ it('opens the exact Activity without scanning other compounds and retains compar
   await wrapper.get('[data-comparison-sort]').setValue('label');
   expect(writes).toEqual([]);
   const target=activities[1]!;
-  await addComparisonColumn(wrapper,target);
   await wrapper.get(`[data-comparison-activity][data-activity-id="${ids.activities[1]}"]`).trigger('click');await flushPromises();
   expect(router.currentRoute.value.query).toMatchObject({tab:'compounds',entity:ids.activities[1]});
   expect(wrapper.get(`[data-activity-row][data-activity-id="${ids.activities[1]}"]`).classes()).toContain('selected');
@@ -73,6 +73,7 @@ it('locks editing until the workspace refresh for opening a comparison record co
       if(++reads === 1)return response(workspace());
       return new Promise<Response>(resolve=>{finish=resolve;});
     }
+    if(path.endsWith('/activity-tables'))return response({workspace_id:ids.workspace,workspace_version:1,tables:[],other_activity_ids:activities.map(a=>a.id)});
     if(path.endsWith('/activity-comparison'))return response({workspace_id:ids.workspace,workspace_version:1,compounds,activities});
     if(path.endsWith('/compounds'))return response({workspace_id:ids.workspace,workspace_version:1,items:compounds,total:compounds.length});
     if(path.endsWith('/structure'))return response({workspace_version:1,structure:null});
@@ -84,7 +85,6 @@ it('locks editing until the workspace refresh for opening a comparison record co
     return response({},404);
   }));
   const {wrapper,router}=await mountWorkspace('activity-comparison');
-  await addComparisonColumn(wrapper,activities[0]!);
   await wrapper.findAll('[data-comparison-activity]')[0]!.trigger('click');await flushPromises();
   expect(reads).toBe(2);
   expect(router.currentRoute.value.query.tab).toBe('activity-comparison');
@@ -104,6 +104,7 @@ it('hides previously loaded Compound controls until fresh records arrive after c
   vi.stubGlobal('fetch',vi.fn(async (input: RequestInfo | URL) => {
     const path=String(input);
     if(path === '/api/v2/workspaces/'+ids.workspace)return response(workspace(version));
+    if(path.endsWith('/activity-tables'))return response({workspace_id:ids.workspace,workspace_version:version,tables:[],other_activity_ids:activities.map(a=>a.id)});
     if(path.endsWith('/activity-comparison'))return response({workspace_id:ids.workspace,workspace_version:version,compounds,activities});
     if(path.endsWith('/compounds')) {
       if(version===2)return new Promise<Response>(resolve=>pending.push(resolve));
@@ -120,7 +121,6 @@ it('hides previously loaded Compound controls until fresh records arrive after c
   const {wrapper}=await mountWorkspace('compounds');
   expect(wrapper.find('[data-edit-compound]').exists()).toBe(true);
   await wrapper.get('[data-workspace-tab-key="activity-comparison"]').trigger('click');await flushPromises();
-  await addComparisonColumn(wrapper,activities[0]!);
   version=2;
   await wrapper.findAll('[data-comparison-activity]')[0]!.trigger('click');await flushPromises();
   expect(pending.length).toBeGreaterThan(0);
