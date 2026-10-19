@@ -120,6 +120,7 @@ def _domain_error(error: Exception) -> APIError:
             details={
                 "edge_references": error.edge_references,
                 "activity_references": error.activity_references,
+                **({"table_references": error.table_references} if error.table_references else {}),
                 **({"highlight_references": error.highlight_references} if error.highlight_references else {}),
             },
         )

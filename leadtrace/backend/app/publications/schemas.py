@@ -342,6 +342,18 @@ class PublishedActivityTable(PublishedSnapshotProjection):
     page_number: int | None
     review_hint: str | None
     columns: list[TableColumn]
+    compound_ids: list[UUID] | None = None
+    evidence_ids: list[UUID] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def preserve_optional_fields(self, handler):
+        data = handler(self)
+        if self.compound_ids is None:
+            data.pop('compound_ids', None)
+        if not self.evidence_ids:
+            data.pop('evidence_ids', None)
+        return data
+
     mode: Literal['any', 'all']
     sort: Literal['label', 'similarity', 'default']
     review_status: Literal['draft', 'reviewer_confirmed', 'unresolved']

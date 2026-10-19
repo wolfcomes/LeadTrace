@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.activities.models import Activity
+from app.activity_tables.models import ActivityTable
 from app.compounds.models import Compound, CompoundHighlight
 from app.lineages.models import LineageMember
 from app.security.policies import Principal
@@ -30,11 +31,12 @@ class CompoundLabelConflictError(CompoundValidationError):
 
 
 class CompoundReferencedError(RuntimeError):
-    def __init__(self, *, lineage_references: int, activity_references: int, highlight_references: int = 0) -> None:
+    def __init__(self, *, lineage_references: int, activity_references: int, highlight_references: int = 0, table_references: int = 0) -> None:
         super().__init__("Compound is referenced by scientific records")
         self.lineage_references = lineage_references
         self.activity_references = activity_references
         self.highlight_references = highlight_references
+        self.table_references = table_references
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,11 +378,14 @@ class CompoundService:
                 or 0
             )
             highlight_references = session.scalar(select(func.count()).select_from(CompoundHighlight).where(CompoundHighlight.compound_id == compound.id)) or 0
-            if lineage_references or activity_references or highlight_references:
+            table_references = session.scalar(select(func.count()).select_from(ActivityTable).where(
+                ActivityTable.workspace_id == context.workspace.id, ActivityTable.compound_ids.contains([str(compound.id)]))) or 0
+            if lineage_references or activity_references or highlight_references or table_references:
                 raise CompoundReferencedError(
                     lineage_references=lineage_references,
                     activity_references=activity_references,
                     highlight_references=highlight_references,
+                    table_references=table_references,
                 )
             structure = session.scalar(
                 select(Structure).where(Structure.compound_id == compound.id)

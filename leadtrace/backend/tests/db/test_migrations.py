@@ -133,7 +133,7 @@ def test_legacy_admin_review_workflow_revision_contract(
     config = _alembic_config(empty_postgresql_database_url)
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "0038_activity_tables"
+    assert script.get_current_head() == "0039_table_rows_evidence"
     reviewer_revision = script.get_revision("0018_reviewer_scientific_workspace")
     assert reviewer_revision is not None
     assert reviewer_revision.down_revision == "0017_unique_active_review_task"

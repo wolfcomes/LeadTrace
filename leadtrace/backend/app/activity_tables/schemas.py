@@ -37,8 +37,17 @@ class TableDefinition(BaseModel):
     page_number: int | None = Field(default=None, ge=1)
     review_hint: str | None = Field(default=None, max_length=1000)
     columns: list[TableColumn] = Field(max_length=200)
+    compound_ids: list[UUID] | None = Field(default=None, max_length=10000)
+    evidence_ids: list[UUID] = Field(default_factory=list, max_length=1000)
     mode: Literal['any', 'all'] = 'any'
     sort: Literal['label', 'similarity', 'default'] = 'label'
+
+    @field_validator('compound_ids', 'evidence_ids')
+    @classmethod
+    def unique_references(cls, value):
+        if value is not None and len(set(value)) != len(value):
+            raise ValueError('Table references must be unique')
+        return value
 
     @field_validator('name')
     @classmethod

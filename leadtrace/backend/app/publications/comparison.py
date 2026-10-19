@@ -28,7 +28,8 @@ _FIELDS = {
     'compound_highlight': ('compound_highlights', _COMMON + 'compound_id evidence_id role scope rationale review_hint review_status created_by_kind'),
 }
 _OPTIONAL = {'compound': ('review_hint',), 'activity': ('review_hint',),
-             'lineage_edge': ('review_hint',), 'lineage': ('lineage_type',)}
+             'lineage_edge': ('review_hint',), 'lineage': ('lineage_type',),
+             'activity_table': ('compound_ids', 'evidence_ids')}
 _NUMERIC = {'x0', 'y0', 'x1', 'y1', 'value'}
 # These mutate workflow, not scientific content. Sections are deliberately NOT
 # skipped: not_reported and clearing a section note must remain reviewable.
@@ -58,7 +59,7 @@ def _normalized(kind: str, value: dict[str, Any]) -> dict[str, Any]:
         raise _IncompleteHistory(f'Unsupported historical {kind} fields')
     result = {key: row[key] for key in required}
     for key in _OPTIONAL.get(kind, ()):
-        if row.get(key) and not (key == 'lineage_type' and row[key] == 'unspecified'):
+        if (row.get(key) or (key == 'compound_ids' and row.get(key) is not None)) and not (key == 'lineage_type' and row[key] == 'unspecified'):
             result[key] = row[key]
     return result
 
@@ -133,7 +134,7 @@ def _restore_bundle(snapshot: dict, event: ChangeEvent) -> bool:
     return True
 
 
-_SNAPSHOT_ACTIONS = {'activity.update_tables', 'activity.delete_tables', 'compound.paste', 'lineage.paste', 'lineage.confirm', 'workspace.undo', 'workspace.redo'}
+_SNAPSHOT_ACTIONS = {'evidence.update_tables', 'activity.update_tables', 'activity.delete_tables', 'compound.paste', 'lineage.paste', 'lineage.confirm', 'workspace.undo', 'workspace.redo'}
 _SNAPSHOT_COLLECTIONS = {kind: info[0] for kind, info in _FIELDS.items()}
 _SNAPSHOT_METADATA = {'workspace_version', 'ai_provenance', 'review_progress', 'problem_report'}
 

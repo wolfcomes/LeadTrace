@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.compounds.models import CompoundHighlight
+from app.activity_tables.models import ActivityTable
 from app.activities.models import Activity
 from app.catalog.models import PaperSource, PaperSourceIntegrityState
 from app.evidence.models import EdgeEvidenceLink, Evidence, EvidenceKind, EvidenceRole
@@ -28,11 +29,12 @@ class EvidenceConflictError(RuntimeError):
 
 
 class EvidenceReferencedError(RuntimeError):
-    def __init__(self, *, edge_references: int, activity_references: int, highlight_references: int = 0) -> None:
+    def __init__(self, *, edge_references: int, activity_references: int, highlight_references: int = 0, table_references: int = 0) -> None:
         super().__init__("Evidence is referenced by scientific records")
         self.edge_references = edge_references
         self.activity_references = activity_references
         self.highlight_references = highlight_references
+        self.table_references = table_references
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +255,11 @@ class EvidenceService:
             if row is None:
                 raise WorkspaceNotFoundError("Resource not found")
             before = evidence_snapshot(row)
+            from app.workspaces.snapshot import build_paper_snapshot
+            linked_tables = list(session.scalars(select(ActivityTable).where(
+                ActivityTable.workspace_id == workspace_id,
+                ActivityTable.evidence_ids.contains([str(evidence_id)]))))
+            before_snapshot = build_paper_snapshot(session, workspace_id) if linked_tables else None
             source_sha256 = str(updates.get("source_sha256", row.source_sha256))
             page_number = int(updates.get("page_number", row.page_number))
             clean_quoted_text = _clean_optional(
@@ -291,6 +298,12 @@ class EvidenceService:
                     updates["reviewer_note"]
                 )
             changed["value"] = row
+            if linked_tables and before != evidence_snapshot(row):
+                for table in linked_tables:
+                    table.review_status = 'draft'
+                session.flush()
+                return MutationChange('evidence', row.id, 'evidence.update_tables',
+                    {'snapshot': before_snapshot}, {'snapshot': build_paper_snapshot(session, workspace_id)})
             return MutationChange(
                 "evidence",
                 row.id,
@@ -346,6 +359,11 @@ class EvidenceService:
                 or 0
             )
             highlight_references = session.scalar(select(func.count()).select_from(CompoundHighlight).where(CompoundHighlight.evidence_id == row.id)) or 0
+            table_references = session.scalar(select(func.count()).select_from(ActivityTable).where(
+                ActivityTable.workspace_id == workspace_id, ActivityTable.evidence_ids.contains([str(row.id)]))) or 0
+            if table_references:
+                raise EvidenceReferencedError(edge_references=edge_references, activity_references=activity_references,
+                    highlight_references=highlight_references, table_references=table_references)
             if highlight_references:
                 raise EvidenceReferencedError(edge_references=edge_references, activity_references=activity_references, highlight_references=highlight_references)
             if edge_references or activity_references:

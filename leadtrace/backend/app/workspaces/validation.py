@@ -124,7 +124,7 @@ def validate_submission(session: Session, workspace_id: UUID) -> SubmissionValid
                     {'edge': 'lineage_edge', 'structure': 'compound'}.get(item['kind'], item['kind']),
                     UUID(item['entity_id']), PaperSection(item['section_key'])))
 
-    from app.activity_tables.service import validate_table_references
+    from app.activity_tables.service import validate_table_references, validate_table_evidence
     from app.api.errors import APIError
     for table in session.scalars(select(ActivityTable).where(ActivityTable.workspace_id == workspace_id)):
         if table.review_status == 'draft':
@@ -132,10 +132,12 @@ def validate_submission(session: Session, workspace_id: UUID) -> SubmissionValid
                 'Table organization must be confirmed or explicitly unresolved', 'activity_table',
                 table.id, PaperSection.ACTIVITIES))
         try:
-            validate_table_references(session, workspace_id, table.columns)
-        except APIError:
-            blockers.append(SubmissionBlocker('ACTIVITY_TABLE_INVALID',
-                'Table contains missing or mismatched Activity references', 'activity_table',
+            validate_table_references(session, workspace_id, table.columns, table.paper_id, table.compound_ids, table.evidence_ids)
+            if table.kind == 'source' and table.review_status == 'reviewer_confirmed':
+                validate_table_evidence(session, workspace_id, table.evidence_ids, paper_id=table.paper_id, require_image=True)
+        except APIError as error:
+            blockers.append(SubmissionBlocker(error.code,
+                error.message, 'activity_table',
                 table.id, PaperSection.ACTIVITIES))
 
     for highlight in session.scalars(select(CompoundHighlight).where(CompoundHighlight.workspace_id == workspace_id)):

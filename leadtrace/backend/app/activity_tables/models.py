@@ -28,6 +28,8 @@ class ActivityTable(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     page_number: Mapped[int | None] = mapped_column(Integer)
     review_hint: Mapped[str | None] = mapped_column(Text)
     columns: Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
+    compound_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default='[]')
     mode: Mapped[str] = mapped_column(String(8), nullable=False, default='any')
     sort: Mapped[str] = mapped_column(String(16), nullable=False, default='label')
     review_status: Mapped[str] = mapped_column(String(32), nullable=False, default='draft')

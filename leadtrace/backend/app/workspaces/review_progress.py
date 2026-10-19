@@ -44,9 +44,12 @@ def review_items(snapshot):
     activity_compounds = {r['id']: r['compound_id'] for r in snapshot['activities']}
     for table in snapshot.get('activity_tables', []):
         compound_ids = {activity_compounds[aid] for col in table['columns'] for aid in col['activity_ids'] if aid in activity_compounds}
+        compound_ids.update(table.get('compound_ids') or [])
         # Status-only confirmation must not undo viewing. Content and membership
         # do invalidate affected Compound groups and dependent Lineages.
         content = {key: value for key, value in table.items() if key not in ('review_status', 'created_by_kind')}
+        if table.get('evidence_ids'):
+            content['table_evidence'] = [evidence.get(eid) for eid in table['evidence_ids']]
         for compound_id in compound_ids:
             table_context[compound_id].append(content)
     compound_signatures = {}

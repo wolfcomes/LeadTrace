@@ -70,6 +70,8 @@ def record(session, context, actor_id, action, before, after, previous_version):
 
 def _convert(model, data):
     result={}
+    if model is ActivityTable:
+        data = {'compound_ids': None, 'evidence_ids': [], **data}
     for column in model.__table__.columns:
         if column.name not in data: continue
         item=deepcopy(data[column.name])
@@ -154,6 +156,10 @@ def move(session,context,actor_id,direction):
     expected=entry.after_state if direction=='undo' else entry.before_state
     target=entry.before_state if direction=='undo' else entry.after_state
     def scientific(state):
+        state = deepcopy(state)
+        for row in state.get('activity_tables', []):
+            if row.get('compound_ids') is None: row.pop('compound_ids', None)
+            if not row.get('evidence_ids'): row.pop('evidence_ids', None)
         return {key: item for key, item in state.items() if key != 'lineage_presentations'
                 and not (key == 'activity_tables' and not item)}
     if scientific(current)!=scientific(expected):
