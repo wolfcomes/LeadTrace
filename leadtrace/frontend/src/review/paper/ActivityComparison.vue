@@ -37,7 +37,8 @@ const table=computed(()=>buildComparisonTable(data.value?.compounds??[],data.val
 const compounds=computed(()=>{const query=search.value.trim().toLocaleLowerCase();return table.value.rows.filter(c=>`${c.compound_label} ${c.display_name??''}`.toLocaleLowerCase().includes(query));});
 const copy=<T,>(value:T):T=>JSON.parse(JSON.stringify(value));
 function fromServer(item:ActivityTable):Draft{return {...emptyTable(),id:item.id,name:item.name,kind:item.kind,source_label:item.source_label,source_title:item.source_title,page_number:item.page_number,review_hint:item.review_hint,mode:item.mode,sort:item.sort,columns:item.columns.map(c=>({id:c.id,label:c.label,assay:c.assay,metric:c.metric,unit:c.unit,activityIds:c.activity_ids}))};}
-const savedOptions=computed(()=>saved.value.map(item=>({...item,compoundCount:buildComparisonTable(data.value?.compounds??[],data.value?.activities??[],fromServer(item).columns,item.mode,'default').rows.length})));
+const orderedSaved=computed(()=>[...saved.value].sort((a,b)=>a.kind!==b.kind?(a.kind==='source'?-1:1):a.kind==='source'?(a.source_label??a.name).localeCompare(b.source_label??b.name,'en',{numeric:true,sensitivity:'base'}):0));
+const savedOptions=computed(()=>orderedSaved.value.map(item=>({...item,compoundCount:buildComparisonTable(data.value?.compounds??[],data.value?.activities??[],fromServer(item).columns,item.mode,'default').rows.length})));
 function setDraft(value:Draft,id:string|null){draft.value=copy(value);activeSavedId.value=id;draftVersion.value=loadedVersion.value;baseline.value=JSON.stringify(draft.value);editing.value=undefined;pending.value=undefined;notice.value='';storageError.value='';}
 function select(id:string){const item=saved.value.find(t=>t.id===id),view=isOther.value?{mode:draft.value.mode,sort:draft.value.sort}:{};setDraft(item?fromServer(item):{...emptyTable(),name:'Other',...view},item?.id??'other');}
 function readLegacy(){legacy.value=[];legacyError.value='';try{const raw=localStorage.getItem(tableStorageKey(auth.user?.username??'',props.workspace.id)),parsed=parseSavedTables(raw);if(raw&&!parsed)legacyError.value='浏览器中的旧表格无法读取，原配置已保留。';else legacy.value=parsed?.tables??[];}catch{legacyError.value='浏览器中的旧表格无法读取，原配置已保留。';}}
@@ -88,7 +89,7 @@ async function load(){
  try{const [result,tables]=await Promise.all([getActivityComparison(id),getActivityTables(id)]);if(epoch!==sequence||id!==props.workspace.id)return;
   if(result.workspace_id!==id||tables.workspace_id!==id||result.workspace_version!==tables.workspace_version||result.workspace_version<props.workspace.version)throw Error('Stale comparison');
   const keep=dirty.value||editing.value!==undefined;data.value=result;saved.value=tables.tables;otherIds.value=tables.other_activity_ids;loadedVersion.value=tables.workspace_version;
-  if(!keep)select(initialized.value?(activeSavedId.value??'other'):(props.selectedTableId??tables.tables[0]?.id??'other'));initialized.value=true;
+  if(!keep)select(initialized.value?(activeSavedId.value??'other'):(props.selectedTableId??orderedSaved.value[0]?.id??'other'));initialized.value=true;
  }catch{if(epoch===sequence)error.value='活性对比暂时无法读取，请重试。';}
  finally{if(epoch===sequence){loading.value=false;await restoreScroll();}}
 }
