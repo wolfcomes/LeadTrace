@@ -11,7 +11,7 @@ test('table evidence renders verified synthetic crops and zooms across pages',as
  await page.evaluate(async sha=>{
   const vueUrl='/node_modules/.vite/deps/vue.js';const {createApp,h}=await import(/* @vite-ignore */ vueUrl);
   const componentUrl='/src/review/paper/TableEvidenceImages.vue';const {default:Images}=await import(/* @vite-ignore */ componentUrl);
-  const root=document.createElement('div');root.style.width='700px';document.body.replaceChildren(root);
+  const root=document.createElement('div');root.id='table-evidence-host';root.style.width='700px';document.body.replaceChildren(root);
   createApp({render:()=>h(Images,{paperId:'synthetic-table',sourceSha:sha,pageCount:2,evidence:[2,1].map(p=>({id:`page-${p}`,kind:'table',source_sha256:sha,page_number:p,caption:`Synthetic Table page ${p}`,x0:.1,y0:.1,x1:.5,y1:.5}))})}).mount(root);
  },sha);
  const images=page.locator('[data-table-evidence-image]');await expect(images).toHaveCount(2);expect(fetches).toBe(0);
@@ -19,6 +19,11 @@ test('table evidence renders verified synthetic crops and zooms across pages',as
  const canvas=images.first().locator('canvas');await expect(canvas).toBeVisible();
  await expect.poll(()=>canvas.evaluate((c:HTMLCanvasElement)=>c.width)).toBeGreaterThan(1);
  await expect.poll(()=>canvas.evaluate((c:HTMLCanvasElement)=>Array.from(c.getContext('2d')!.getImageData(c.width/2,c.height/2,1,1).data).slice(0,3))).toEqual([204,0,0]);
+ expect((await canvas.boundingBox())!.width).toBeCloseTo(240, 0);
+ await page.evaluate(()=>{document.getElementById('table-evidence-host')!.style.width='180px';});
+ await expect.poll(async()=> (await canvas.boundingBox())?.width ?? Infinity).toBeLessThan(180);
+ await page.evaluate(()=>{document.getElementById('table-evidence-host')!.style.width='700px';});
+ await expect.poll(async()=> (await canvas.boundingBox())?.width ?? 0).toBeCloseTo(240,0);
  await images.nth(1).locator('[data-table-evidence-zoom]').click();const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();
  const enlarged=dialog.locator('canvas');await expect(enlarged).toBeVisible();
  await expect.poll(()=>enlarged.evaluate((c:HTMLCanvasElement)=>Array.from(c.getContext('2d')!.getImageData(c.width/2,c.height/2,1,1).data).slice(0,3))).toEqual([0,204,0]);

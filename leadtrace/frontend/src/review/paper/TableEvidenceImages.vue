@@ -20,7 +20,7 @@ function zoom(id:unknown){selected.value=String(id);fullPage.value=false;}
  <div class="table-evidence-images">
   <article v-for="item in images" :key="String(item.id)" data-table-evidence-image>
    <p>p{{item.page_number}} · {{item.caption||t('原文 Table 截图')}}</p>
-   <details @toggle="($event.target as HTMLDetailsElement).open?opened.add(String(item.id)):opened.delete(String(item.id))"><summary>{{t('查看 Table 截图')}}</summary><FrozenPdfCrop v-if="opened.has(String(item.id))" :url="pdfUrl" :sha="sourceSha" :page="Number(item.page_number)" :bounds="item.bounds!" :label="String(item.caption||t('原文 Table 截图'))" /></details>
+   <details @toggle="($event.target as HTMLDetailsElement).open?opened.add(String(item.id)):opened.delete(String(item.id))"><summary>{{t('查看 Table 截图')}}</summary><FrozenPdfCrop natural-size v-if="opened.has(String(item.id))" :url="pdfUrl" :sha="sourceSha" :page="Number(item.page_number)" :bounds="item.bounds!" :label="String(item.caption||t('原文 Table 截图'))" /></details>
    <button type="button" class="button-quiet" data-table-evidence-zoom @click="zoom(item.id)">{{t('放大查看')}}</button>
    <a :href="`${pdfUrl}#page=${item.page_number}`" target="_blank" rel="noopener">{{t('打开原文页')}}</a>
   </article>

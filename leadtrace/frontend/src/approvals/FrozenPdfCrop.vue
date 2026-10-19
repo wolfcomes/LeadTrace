@@ -9,11 +9,13 @@ const props = defineProps<{
   page: number;
   bounds: CropBounds;
   eager?: boolean;
+  naturalSize?: boolean;
   label: string;
 }>();
 const pool = useFrozenPdfPool(),
   host = ref<HTMLElement>(),
   canvas = ref<HTMLCanvasElement>();
+const naturalWidth = ref<number>();
 const ready = ref(false),
   error = ref(""),
   visible = ref(false);
@@ -34,6 +36,7 @@ async function render() {
     sha: props.sha,
     page: props.page,
     bounds: { ...props.bounds },
+    naturalSize: props.naturalSize,
   };
   try {
     await pool.render(async () => {
@@ -42,11 +45,13 @@ async function render() {
       if (token !== generation) return;
       const page = await document.getPage(requested.page);
       if (token !== generation) return;
-      const size = page.getViewport({ scale: 1 }),
-        geometry = cropGeometry(
+      const size = page.getViewport({ scale: 1 });
+      const nativeWidth = size.width * (requested.bounds.x1 - requested.bounds.x0);
+      const displayWidth = host.value?.clientWidth || 400;
+      const geometry = cropGeometry(
           size,
           requested.bounds,
-          host.value?.clientWidth || 400,
+          requested.naturalSize ? Math.min(displayWidth, nativeWidth) : displayWidth,
           window.devicePixelRatio || 1,
         );
       const buffer = window.document.createElement("canvas");
@@ -62,6 +67,7 @@ async function render() {
       task = current;
       await current.promise;
       if (token !== generation || !canvas.value) return;
+      naturalWidth.value = requested.naturalSize ? nativeWidth : undefined;
       canvas.value.width = buffer.width;
       canvas.value.height = buffer.height;
       canvas.value.getContext("2d")?.drawImage(buffer, 0, 0);
@@ -82,7 +88,7 @@ function schedule() {
     void render();
   });
 }
-watch(() => [props.url, props.sha, props.page, props.bounds], schedule);
+watch(() => [props.url, props.sha, props.page, props.bounds, props.naturalSize], schedule);
 onMounted(() => {
   if (props.eager || typeof IntersectionObserver === "undefined") {
     visible.value = true;
@@ -123,6 +129,7 @@ onBeforeUnmount(() => {
   <div ref="host" class="frozen-pdf-crop" :aria-busy="!ready && !error">
     <canvas
       ref="canvas"
+      :style="naturalSize && naturalWidth ? { width: `${naturalWidth}px`, maxWidth: '100%' } : undefined"
       data-evidence-thumbnail
       :data-rendered="ready"
       :aria-label="label"
