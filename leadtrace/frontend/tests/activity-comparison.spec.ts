@@ -122,3 +122,10 @@ it('preserves linked screenshot order and keeps read-only navigation usable afte
  expect(w.findAll('[data-table-evidence-image] p').map(x=>x.text())).toEqual(['p3 · Second page','p2 · First page']);
  await w.get('[data-comparison-sort]').setValue('default');await w.get('[data-comparison-activity]').trigger('click');expect(w.emitted('open')?.[0]).toEqual([first.compound_id,first.id]);w.unmount();
 });
+it('locks column removal and reordering while Evidence management is open',async()=>{
+ install([{...original(),columns:[column,{...column,id:'another',label:'Second'}]}]);const w=mount(ActivityComparison,{props:props()});await flushPromises();
+ await w.get('[data-toggle-column-config]').trigger('click');await w.get('[data-manage-table-evidence]').trigger('click');await flushPromises();
+ await w.findAll('[data-column-remove]')[0]!.trigger('click');await w.findAll('[data-column-move-right]')[0]!.trigger('click');
+ expect(w.findAll('[data-configured-column]')).toHaveLength(2);expect(w.findAll('[data-configured-column]')[0]!.text()).toContain('100 nM');
+ expect(w.get('[data-manage-table-evidence]').attributes('disabled')).toBeUndefined();w.unmount();
+});
