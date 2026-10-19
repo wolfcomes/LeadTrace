@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const id = (n:number) => '92000000-0000-4000-8000-'+String(n).padStart(12,'0');
-async function fixture(page:Page, uniqueConditions=false) {
+async function fixture(page:Page, uniqueConditions=false, automatic=false) {
   const wid=id(2),paper=id(1);let version=1;
   const compounds=Array.from({length:40},(_,i)=>({id:id(100+i),paper_id:paper,workspace_id:wid,compound_label:'C'+(i+1),display_name:'Synthetic compound '+(i+1),description:null,sort_order:i,created_by_kind:'reviewer'}));
   const activities=compounds.slice(0,30).flatMap((c,i)=>Array.from({length:6},(_,j)=>({id:id(1000+i*10+j),paper_id:paper,workspace_id:wid,compound_id:c.id,evidence_id:null,assay_name:'Synthetic assay '+(j+1),metric:'IC50',operator:j===1?'>':'=',value:String(i+j+1),unit:'nM',context:j===0&&i>=24?'Mouse enzyme':'Human enzyme',review_hint:j===0?'Verify this measurement':null,sort_order:j})).filter(a=>a.assay_name!=='Synthetic assay 2'||i<20));
@@ -9,6 +9,10 @@ async function fixture(page:Page, uniqueConditions=false) {
     activities.push(...activities.filter(a=>a.assay_name==='Synthetic assay 1').map((a,i)=>({...a,id:id(9000+i),context:'Second condition for '+a.compound_id,operator:'<',value:'0.25'})));
   }
   const ws=()=>({id:wid,review_task_id:id(3),assigned_reviewer_id:id(4),state:'editing',version,task_status:'assigned',bibliography:{paper_id:paper,paper_key:'SYNTHETIC-COMPARISON',title:'Synthetic activity comparison',journal:'Fixtures',publication_year:2026,volume:'1',issue:'1',doi:null},source:{asset_id:id(5),source_root_key:'source_pdfs',source_key:'synthetic.pdf',sha256:'a'.repeat(64),page_count:1},sections:['bibliography','compounds','structures','lineages','edge_evidence','activities'].map(section_key=>({section_key,state:'pending',note:null}))});
+  if(!automatic)await page.addInitScript(({wid})=>{
+    const key=`leadtrace.activity-tables.v1:${JSON.stringify(['reviewer',wid])}`;
+    if(localStorage.getItem(key)===null)localStorage.setItem(key,JSON.stringify({version:1,tables:[],activeId:null}));
+  },{wid});
   const writes:{path:string;body:any}[]=[];
   await page.route('**/api/**',async route=>{
     const req=route.request(),path=new URL(req.url()).pathname;
@@ -111,4 +115,32 @@ test('keeps repeated observations and per-Compound conditions with explicit reco
  await selected.click();await expect(page.locator(`[data-activity-row][data-activity-id="${selectedId}"]`)).toHaveClass(/selected/);
  await page.locator('[data-return-comparison]').click();await expect(page.locator('[data-comparison-activity]')).toHaveCount(30);
  expect(f.writes).toHaveLength(0);
+});
+
+
+test('automatically saves compact initial tables and preserves reviewer adjustments',async({page})=>{
+ const f=await fixture(page,false,true),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(`/review/papers/${f.paper}?workspace=${f.wid}&tab=activity-comparison`);
+ await expect(page.locator('[data-comparison-column]')).toHaveCount(5);
+ await expect(page.locator('[data-comparison-row]')).toHaveCount(30);
+ await expect(page.locator('[data-saved-table] option')).toHaveCount(3);
+ await expect(page.locator('[data-table-name]')).toHaveValue('推荐表 1');
+ await expect(page.locator('[data-configured-columns]')).toBeHidden();
+ await page.locator('[data-toggle-column-config]').click();
+ await page.locator('[data-column-remove]').last().click();await page.locator('[data-table-name]').fill('My reviewed table');
+ await page.locator('[data-save-table]').click();await expect(page.getByRole('status')).toContainText('表格配置已保存在此浏览器');
+ await page.reload();await expect(page.locator('[data-table-name]')).toHaveValue('My reviewed table');
+ await expect(page.locator('[data-comparison-column]')).toHaveCount(4);
+ const selected=page.locator('[data-comparison-activity]').first(),aid=await selected.getAttribute('data-activity-id');
+ await selected.click();await expect(page.locator(`[data-activity-row][data-activity-id="${aid}"]`)).toHaveClass(/selected/);
+ await page.locator('[data-return-comparison]').click();await expect(page.locator('[data-comparison-column]')).toHaveCount(4);
+ await page.locator('[data-generate-tables]').click();await expect(page.locator('[data-saved-table] option')).toHaveCount(4);
+ await page.locator('[data-generate-tables]').click();await expect(page.locator('[data-saved-table] option')).toHaveCount(4);
+ const firstId=await page.locator('[data-saved-table] option').filter({hasText:'My reviewed table'}).getAttribute('value');
+ await page.locator('[data-saved-table]').selectOption(firstId!);await expect(page.locator('[data-table-name]')).toHaveValue('My reviewed table');
+ await page.locator('[data-toggle-column-config]').click();
+ await page.locator('[data-activity-comparison]').screenshot({path:'test-results/activity-table-suggestions-desktop.png'});
+ await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBe(true);
+ await page.locator('[data-activity-comparison]').screenshot({path:'test-results/activity-table-suggestions-mobile.png'});
+ expect(errors).toEqual([]);expect(f.writes).toHaveLength(0);
 });

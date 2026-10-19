@@ -4,7 +4,7 @@ import { t } from '../../i18n';
 import { useAuthStore } from '../../auth/store';
 import { getActivityComparison } from '../../v2/api';
 import type { ActivityComparison, PaperWorkspace } from '../../v2/types';
-import { buildComparisonTable, parseSavedTables, tableSchema, tableStorageKey, type ComparisonColumn, type ComparisonTable, type SavedTables } from './activityTableBuilder';
+import { buildComparisonTable, suggestTableColumns, parseSavedTables, tableSchema, tableStorageKey, type ComparisonColumn, type ComparisonTable, type SavedTables } from './activityTableBuilder';
 import ActivityColumnEditor from './ActivityColumnEditor.vue';
 import ReviewHint from './ReviewHint.vue';
 const props=defineProps<{workspace:PaperWorkspace;active:boolean;blocked?:boolean}>();
@@ -12,8 +12,10 @@ const emit=defineEmits<{open:[compoundId:string,activityId?:string]}>();
 const auth=useAuthStore();
 const data=ref<ActivityComparison>();
 const loading=ref(false),error=ref(''),search=ref(''),storageError=ref(''),notice=ref('');
+const noticeValues=ref<Record<string,string|number>>({});
 const emptyTable=():ComparisonTable=>({id:crypto.randomUUID(),name:'',columns:[],mode:'any',sort:'label'});
 const draft=ref<ComparisonTable>(emptyTable()),saved=ref<ComparisonTable[]>([]),baseline=ref('');
+const persistedDraft=ref<ComparisonTable|null>(null);
 const activeSavedId=ref<string|null>(null),settingsBusy=ref(false);
 let settingsEpoch=0;
 const editing=ref<ComparisonColumn|null|undefined>(undefined),editorEpoch=ref(0),showConfiguration=ref(true);
@@ -25,9 +27,9 @@ const storageKey=computed(()=>tableStorageKey(auth.user?.username??'',props.work
 const dirty=computed(()=>JSON.stringify(draft.value)!==baseline.value);
 const table=computed(()=>buildComparisonTable(data.value?.compounds??[],data.value?.activities??[],draft.value.columns,draft.value.mode,draft.value.sort));
 const compounds=computed(()=>{const query=search.value.trim().toLocaleLowerCase();return table.value.rows.filter(c=>`${c.compound_label} ${c.display_name??''}`.toLocaleLowerCase().includes(query));});
-const savedOptions=computed(()=>saved.value);
+const savedOptions=computed(()=>saved.value.map(item=>({...item,compoundCount:buildComparisonTable(data.value?.compounds??[],data.value?.activities??[],item.columns,item.mode,'default').rows.length})));
 const copy=<T,>(value:T):T=>JSON.parse(JSON.stringify(value));
-function setDraft(value:ComparisonTable,id:string|null){draft.value=copy(value);activeSavedId.value=id;baseline.value=JSON.stringify(draft.value);editing.value=undefined;pending.value=undefined;notice.value='';}
+function setDraft(value:ComparisonTable,id:string|null){draft.value=copy(value);activeSavedId.value=id;persistedDraft.value=id?copy(value):null;baseline.value=JSON.stringify(draft.value);editing.value=undefined;pending.value=undefined;notice.value='';}
 function readSettings(){
  storageError.value='';saved.value=[];setDraft(emptyTable(),null);
  try {
@@ -48,7 +50,7 @@ function writeSettings(tables:ComparisonTable[],activeId:string|null){
  saved.value=tables;storageError.value='';
 }
 function checkUnchanged(tables:ComparisonTable[],id:string){
- if(JSON.stringify(tables.find(t=>t.id===id))!==JSON.stringify(saved.value.find(t=>t.id===id)))
+ if(JSON.stringify(tables.find(t=>t.id===id))!==JSON.stringify(id===activeSavedId.value?(persistedDraft.value??undefined):saved.value.find(t=>t.id===id)))
   throw Error('此表格已被其他标签页修改或删除。当前设置仍保留；请重新选择已保存表格后再修改。');
 }
 async function changeSettings(change:()=>void){
@@ -59,7 +61,7 @@ async function changeSettings(change:()=>void){
   if(key!==storageKey.value||epoch!==settingsEpoch)return;
   try{change();}
   catch(e){storageError.value=e instanceof Error&&[
-   '已有同名表格，请使用其他名称。','已达到保存表格数量上限，请先删除不需要的表格。',
+   '请填写表格名称，并检查列配置。','已有同名表格，请使用其他名称。','已达到保存表格数量上限，请先删除不需要的表格。',
    '已有表格配置无法读取，为避免覆盖暂不保存；仍可临时制表。',
    '此表格已被其他标签页修改或删除。当前设置仍保留；请重新选择已保存表格后再修改。',
   ].includes(e.message)?e.message:'未能保存到此浏览器；当前表格仍保留，请重试。';}
@@ -79,12 +81,53 @@ function saveTable(){
   const tables=latest.tables.filter(t=>t.id!==parsed.data.id).concat(parsed.data);
   if(tables.length>50)throw Error('已达到保存表格数量上限，请先删除不需要的表格。');
   writeSettings(tables,parsed.data.id);
-  draft.value=parsed.data;activeSavedId.value=parsed.data.id;baseline.value=JSON.stringify(draft.value);pending.value=undefined;notice.value='表格配置已保存在此浏览器。';
+  draft.value=parsed.data;activeSavedId.value=parsed.data.id;persistedDraft.value=copy(parsed.data);baseline.value=JSON.stringify(draft.value);pending.value=undefined;notice.value='表格配置已保存在此浏览器。';
+ });
+}
+async function generateTables(automatic=false){
+ if(!data.value?.activities.length||loading.value&&!automatic||error.value||editing.value!==undefined)return;
+ if(automatic&&(saved.value.length||dirty.value))return;
+ const epoch=sequence;
+ await changeSettings(()=>{
+  if(epoch!==sequence||!data.value||editing.value!==undefined)return;
+  if(automatic&&dirty.value)return;
+  const latest=latestSettings();
+  if(automatic&&window.localStorage.getItem(storageKey.value)!==null){
+   // Another tab may have initialized while this one waited for the lock.
+   if(!saved.value.length){
+    saved.value=latest.tables;
+    const selected=latest.tables.find(item=>item.id===latest.activeId);
+    if(selected){setDraft(selected,selected.id);showConfiguration.value=false;}
+   }
+   return;
+  }
+  const identity=(column:ComparisonColumn)=>JSON.stringify([column.assay,column.metric,column.unit]);
+  const represented=new Set([...latest.tables.flatMap(item=>item.columns),...draft.value.columns].map(identity));
+  const records=data.value.activities.filter(a=>!represented.has(JSON.stringify([a.assay_name,a.metric,a.unit])));
+  const suggestions=suggestTableColumns(records);
+  if(!suggestions.length){notice.value='没有新的测定列可生成；已有表格保持不变。';return;}
+  const available=50-latest.tables.length;
+  if(available<=0)throw Error('已达到保存表格数量上限，请先删除不需要的表格。');
+  const names=new Set([...latest.tables.map(item=>item.name),draft.value.name]);
+  const additions:ComparisonTable[]=[];let number=1,remaining=0;
+  for(const columns of suggestions){
+   let name:string;do{name=t('推荐表 {number}',{number:number++});}while(names.has(name));names.add(name);
+   const parsed=tableSchema.safeParse({id:crypto.randomUUID(),name,columns,mode:'any',sort:'label'});
+   if(!parsed.success||additions.length>=available){remaining+=columns.length;continue;}
+   additions.push(parsed.data);
+  }
+  if(!additions.length)throw Error('请填写表格名称，并检查列配置。');
+  const select=!dirty.value;
+  const activeId=select?additions[0]!.id:latest.activeId;
+  writeSettings([...latest.tables,...additions],activeId);
+  if(select){setDraft(additions[0]!,additions[0]!.id);showConfiguration.value=false;search.value='';position={top:0,left:0};void restoreScroll();}
+  noticeValues.value={count:additions.length,remaining};
+  notice.value=remaining?'已生成并保存 {count} 张推荐表；另有 {remaining} 列未生成，请检查配置或清理已保存表格后重试。':'已生成并保存 {count} 张推荐表，可继续编辑。';
  });
 }
 function perform(action:NonNullable<typeof pending.value>){
  const resetPosition=()=>{search.value='';position={top:0,left:0};void restoreScroll();};
- if(action.kind==='new'){setDraft(emptyTable(),null);resetPosition();return;}
+ if(action.kind==='new'){setDraft(emptyTable(),null);showConfiguration.value=true;resetPosition();return;}
  void changeSettings(()=>{
   const latest=latestSettings();
   if(action.kind==='switch'){
@@ -122,7 +165,7 @@ async function restoreScroll(){await nextTick();if(props.active&&viewport.value)
 async function load(){
  const epoch=++sequence,id=props.workspace.id;loading.value=true;error.value='';
  try{const result=await getActivityComparison(id);if(epoch!==sequence||id!==props.workspace.id)return;
-  if(result.workspace_id!==id||result.workspace_version<props.workspace.version)throw Error('Stale comparison');data.value=result;
+  if(result.workspace_id!==id||result.workspace_version<props.workspace.version)throw Error('Stale comparison');data.value=result;await generateTables(true);
  }catch{if(epoch===sequence)error.value='活性对比暂时无法读取，请重试。';}
  finally{if(epoch===sequence){loading.value=false;await restoreScroll();}}
 }
@@ -142,20 +185,21 @@ onBeforeUnmount(()=>{settingsEpoch++;sequence++;});
   <header class="comparison-heading"><div><h2>{{t('活性对比')}}</h2><p>{{t('选择测定列，自动展示有相关数据的 Compound。')}}</p></div><button type="button" class="button-secondary" :disabled="loading" data-comparison-refresh @click="load">{{t('刷新')}}</button></header>
   <div :inert="settingsBusy" :aria-busy="settingsBusy">
   <div class="comparison-toolbar saved-toolbar">
-   <label class="form-field">{{t('已保存的表格')}}<select data-saved-table :value="activeSavedId??''" :disabled="editing!==undefined" @change="request({kind:'switch',id:($event.target as HTMLSelectElement).value})"><option value="" disabled>{{t('未保存的表格')}}</option><option v-for="item in savedOptions" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
+   <label class="form-field">{{t('已保存的表格')}}<select data-saved-table :value="activeSavedId??''" :disabled="editing!==undefined" @change="request({kind:'switch',id:($event.target as HTMLSelectElement).value})"><option value="" disabled>{{t('未保存的表格')}}</option><option v-for="item in savedOptions" :key="item.id" :value="item.id">{{item.name}} · {{t('{columns} 列 / {compounds} 个 Compound',{columns:item.columns.length,compounds:item.compoundCount})}}</option></select></label>
    <label class="form-field">{{t('表格名称')}}<input v-model="draft.name" data-table-name maxlength="120" :placeholder="t('例如：主要活性')"></label>
    <div class="editor-actions"><button type="button" class="button-secondary" data-save-table :disabled="editing!==undefined" @click="saveTable">{{t('保存表格')}}</button><button type="button" class="button-quiet" data-new-table :disabled="editing!==undefined" @click="request({kind:'new'})">{{t('新建表格')}}</button><button v-if="activeSavedId" type="button" class="button-quiet" data-delete-table :disabled="editing!==undefined" @click="request({kind:'delete'})">{{t('删除表格')}}</button></div>
   </div>
   <p class="settings-note">{{t('配置仅保存在此浏览器，按账号和文章区分；数据始终读取最新保存记录。')}} <strong v-if="dirty">{{t('表格设置尚未保存。')}}</strong></p>
-  <p v-if="notice" role="status">{{t(notice)}}</p><p v-if="storageError" role="alert" data-table-storage-error>{{t(storageError)}}</p>
+  <p v-if="notice" role="status">{{t(notice,noticeValues)}}</p><p v-if="storageError" role="alert" data-table-storage-error>{{t(storageError)}}</p>
   <div v-if="pending" class="pending-settings" role="alert"><p>{{t(pending.kind==='delete'?'删除这张已保存的表格配置？科学记录不会删除。':'当前表格设置尚未保存，是否放弃设置并继续？')}}</p><button type="button" class="button-secondary" data-discard-table-changes @click="perform(pending!)">{{t(pending.kind==='delete'?'删除表格':'放弃设置并继续')}}</button><button type="button" class="button-quiet" @click="pending=undefined">{{t('取消')}}</button></div>
   <div class="comparison-toolbar">
    <label class="form-field">{{t('搜索编号或名称')}}<input v-model="search" data-comparison-search type="search" :placeholder="t('搜索编号或名称')"></label>
    <label class="form-field">{{t('显示范围')}}<select v-model="draft.mode" data-comparison-row-mode><option value="any">{{t('至少一列有记录')}}</option><option value="all">{{t('每列都有记录')}}</option></select></label>
    <label class="form-field">{{t('排序方式')}}<select v-model="draft.sort" data-comparison-sort><option value="label">{{t('名称排序')}}</option><option value="similarity">{{t('相似测定组合')}}</option><option value="default">{{t('默认排序')}}</option></select></label>
   </div>
-  <div class="column-controls"><button type="button" class="button-primary" data-add-column :disabled="loading||!!error||!data?.activities.length||editing!==undefined||draft.columns.length>=60" @click="beginColumn(null)">{{t('添加列')}}</button><button v-if="draft.columns.length" type="button" class="button-quiet" data-toggle-column-config :aria-expanded="showConfiguration" @click="showConfiguration=!showConfiguration">{{t(showConfiguration?'收起列配置':'配置列')}} ({{draft.columns.length}})</button></div>
-  <div v-if="showConfiguration&&draft.columns.length" class="configured-columns" data-configured-columns :inert="editing!==undefined">
+  <div class="column-controls"><button type="button" class="button-secondary" data-generate-tables :disabled="loading||!!error||!data?.activities.length||editing!==undefined" @click="generateTables()">{{t('生成推荐表格')}}</button><button type="button" class="button-primary" data-add-column :disabled="loading||!!error||!data?.activities.length||editing!==undefined||draft.columns.length>=60" @click="beginColumn(null)">{{t('添加列')}}</button><button v-if="draft.columns.length" type="button" class="button-quiet" data-toggle-column-config :aria-expanded="showConfiguration" @click="showConfiguration=!showConfiguration">{{t(showConfiguration?'收起列配置':'配置列')}} ({{draft.columns.length}})</button></div>
+  <p v-if="draft.columns.length" class="settings-note" data-suggestion-summary>{{t('当前表格：{columns} 列，{compounds} 个 Compound。',{columns:draft.columns.length,compounds:table.rows.length})}}</p>
+  <div v-show="showConfiguration" v-if="draft.columns.length" class="configured-columns" data-configured-columns :inert="editing!==undefined">
    <div v-for="(column,index) in draft.columns" :key="column.id" class="configured-column" data-configured-column draggable="true" @dragstart="dragId=column.id; $event.dataTransfer?.setData('text/plain',column.id)" @dragend="dragId=undefined" @dragover.prevent @drop.prevent="dropColumn(index)">
     <div><strong>{{index+1}}. {{column.label}}</strong><small>{{column.assay}} · {{column.metric}} · {{column.unit||t('未记录单位')}}</small><small>{{t(column.activityIds===null?'全部记录（包含后续新增）':'仅选中记录')}} · {{table.matches.get(column.id)?.length??0}} {{t('条记录')}}</small></div>
     <div class="editor-actions"><button type="button" class="button-quiet" data-column-edit @click="beginColumn(column)">{{t('编辑列')}}</button><button type="button" class="button-quiet" data-column-move-left :disabled="index===0" :aria-label="t('左移列：{name}',{name:column.label})" @click="moveColumn(column.id,index-1)">←</button><button type="button" class="button-quiet" data-column-move-right :disabled="index===draft.columns.length-1" :aria-label="t('右移列：{name}',{name:column.label})" @click="moveColumn(column.id,index+1)">→</button><button type="button" class="button-quiet" data-column-remove @click="draft.columns.splice(index,1)">{{t('移除')}}</button></div>

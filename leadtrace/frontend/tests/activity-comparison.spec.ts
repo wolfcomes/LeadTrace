@@ -9,7 +9,7 @@ const third={...first,id:'30000000-0000-4000-8000-000000000093',assay_name:'Assa
 const payload=(version=1)=>({workspace_id:ids.workspace,workspace_version:version,compounds,activities:[first,second,third]});
 function install(data=payload()) {const fetcher=vi.fn(async()=>response(data));vi.stubGlobal('fetch',fetcher);return fetcher;}
 const props=()=>({workspace:workspace() as any,active:true});
-beforeEach(()=>{installReviewer();localStorage.clear();});
+beforeEach(()=>{installReviewer();localStorage.clear();localStorage.setItem(tableStorageKey('reviewer',ids.workspace),JSON.stringify({version:1,tables:[],activeId:null}));});
 afterEach(()=>vi.unstubAllGlobals());
 
 it('starts with an explicit column choice and renames without changing measurement identity',async()=>{

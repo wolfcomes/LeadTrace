@@ -54,3 +54,45 @@ export function recommendMeasurements(activities: Activity[], columns: Compariso
     return {...group,sharedCompounds,similarity};
   }).sort((a,b) => b.similarity - a.similarity || b.compoundCount - a.compoundCount || a.key.localeCompare(b.key));
 }
+
+// Layout suggestions compare availability, never measurement values or condition semantics.
+// Exact coverage profiles are kept together before complete-link similarity merging.
+export function suggestTableColumns(activities: Activity[]): ComparisonColumn[][] {
+  const groups = new Map<string, {column: ComparisonColumn; coverage: Set<string>}>();
+  for (const a of activities) {
+    const key = JSON.stringify([a.assay_name,a.metric,a.unit]);
+    let group = groups.get(key);
+    if (!group) {
+      group = {column: {id:crypto.randomUUID(),label:`${a.assay_name} · ${a.metric}`.slice(0,160),assay:a.assay_name,metric:a.metric,unit:a.unit,activityIds:null},coverage:new Set()};
+      groups.set(key,group);
+    }
+    group.coverage.add(a.compound_id);
+  }
+  const collator = new Intl.Collator('en',{numeric:true,sensitivity:'base'});
+  const compareText = (a:string,b:string) => collator.compare(a,b) || (a<b?-1:a>b?1:0);
+  const ordered = [...groups.entries()].sort(([ka,a],[kb,b])=>b.coverage.size-a.coverage.size || compareText(ka,kb));
+  const profiles = new Map<string, typeof ordered>();
+  for (const entry of ordered) {
+    const signature = JSON.stringify([...entry[1].coverage].sort());
+    const profile = profiles.get(signature) ?? [];profile.push(entry);profiles.set(signature,profile);
+  }
+  const similarity = (a:Set<string>,b:Set<string>) => {
+    let shared=0;for (const id of a) if (b.has(id)) shared++;
+    return shared/(a.size+b.size-shared);
+  };
+  const clusters: Array<Array<typeof ordered>> = [];
+  for (const profile of profiles.values()) {
+    let best: typeof clusters[number] | undefined, score = -1;
+    for (const cluster of clusters) {
+      const minimum = Math.min(...cluster.map(other=>similarity(profile[0]![1].coverage,other[0]![1].coverage)));
+      if (minimum >= 0.8 && minimum > score) {best=cluster;score=minimum;}
+    }
+    if (best) best.push(profile);else clusters.push([profile]);
+  }
+  const result: ComparisonColumn[][] = [];
+  for (const cluster of clusters) {
+    const columns=cluster.flat().map(([,group])=>group.column);
+    for (let index=0;index<columns.length;index+=6) result.push(columns.slice(index,index+6));
+  }
+  return result;
+}

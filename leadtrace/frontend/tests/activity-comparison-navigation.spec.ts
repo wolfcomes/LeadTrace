@@ -1,8 +1,9 @@
+import {tableStorageKey} from '../src/review/paper/activityTableBuilder';
 import { flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { activities, compounds, ids, installReviewer, mountWorkspace, response, workspace, addComparisonColumn } from './paper-science-v2-fixtures';
 
-beforeEach(()=>{installReviewer();localStorage.clear();});
+beforeEach(()=>{installReviewer();localStorage.clear();localStorage.setItem(tableStorageKey('reviewer',ids.workspace),JSON.stringify({version:1,tables:[],activeId:null}));});
 afterEach(() => vi.unstubAllGlobals());
 
 it('opens the exact Activity without scanning other compounds and retains comparison state on return', async () => {

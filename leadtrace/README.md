@@ -294,7 +294,16 @@ The complete pilot procedure and evidence checklist are in
 
 ## Reviewer workbench
 
-Activity comparison is a read-only column builder. Each column binds an exact
+Activity comparison is a read-only column builder. On first load without stored
+settings, it generates and saves initial tables from exact assay/metric/unit
+coverage profiles, using complete-link Jaccard similarity >= 0.8, exact profiles
+first, at most six columns per suggested table. Coverage uses distinct Compound
+IDs, not values or condition semantics. Small subsets and incompatible bridge
+profiles stay separate. Existing configurations (even an intentionally empty
+list) suppress initialization. Explicit generation appends only measurements not
+represented in saved tables or the current draft; it preserves edits and reports
+partial results at the fifty-table storage limit. Generated layouts remain fully
+editable; refresh updates values without regrouping. Table choices show counts. Each column binds an exact
 assay/metric/unit and either all matching records or an explicit set of Activity
 IDs; its editable display title never changes matching. Literal condition and
 Compound search previews candidates before the reviewer explicitly selects them.

@@ -1,5 +1,13 @@
 // UI text only. Scientific content and user-entered records remain unchanged.
 export const enReview: Record<string, string> = {
+  "{columns} 列 / {compounds} 个 Compound": "{columns} columns / {compounds} Compounds",
+  "生成推荐表格": "Generate suggested tables",
+  "推荐表 {number}": "Suggested table {number}",
+  "当前表格：{columns} 列，{compounds} 个 Compound。": "Current table: {columns} columns, {compounds} Compounds.",
+  "没有新的测定列可生成；已有表格保持不变。": "No new measurement columns to suggest. Existing tables are unchanged.",
+  "已生成并保存 {count} 张推荐表，可继续编辑。": "Generated and saved {count} suggested tables. You can edit them further.",
+  "已生成并保存 {count} 张推荐表；另有 {remaining} 列未生成，请检查配置或清理已保存表格后重试。": "Generated and saved {count} suggested tables; {remaining} columns remain. Check configuration limits or remove unused saved tables, then retry.",
+
   "配置对比列": "Configure comparison column",
   "编辑列": "Edit column",
   "添加列": "Add column",

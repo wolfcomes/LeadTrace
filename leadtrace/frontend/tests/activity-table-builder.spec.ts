@@ -47,3 +47,41 @@ it('recommends measurements sharing Compound coverage while leaving selection to
  expect(list.find(g=>g.assay==='Assay A')?.sharedCompounds).toBe(2);
  expect(col().activityIds).toBeNull();
 });
+
+function coverageRecords(profiles:Record<string,number[]>) {
+ return Object.entries(profiles).flatMap(([assay,ids])=>ids.map(id=>({...base,id:`${assay}-${id}`,assay_name:assay,compound_id:`c${id}`}))) as Activity[];
+}
+const range=(n:number,start=1)=>Array.from({length:n},(_,i)=>i+start);
+const layout=(records:Activity[])=>builder.suggestTableColumns(records).map(cols=>cols.map(c=>c.assay));
+it('suggests tables for exact/near coverage while separating small subsets and retaining isolated measurements',()=>{
+ const records=coverageRecords({A:range(30),B:range(29),C:range(26),D:[8,15,23,30],E:[8,15,23,30],F:[99]});
+ expect(layout(records)).toEqual([['A','B','C'],['D','E'],['F']]);
+ expect(layout([...records].reverse())).toEqual(layout(records));
+ const columns=builder.suggestTableColumns(records).flat();
+ expect(columns).toHaveLength(6);expect(columns.every(c=>c.activityIds===null)).toBe(true);
+ expect(new Set(columns.map(c=>c.id)).size).toBe(6);
+});
+it('rejects chaining when endpoints have insufficient coverage overlap',()=>{
+ const tables=layout(coverageRecords({A:range(10),B:range(10,2),C:range(10,3)}));
+ // A/B=9/11, B/C=9/11, A/C=8/12. B cannot bridge incompatible endpoints.
+ expect(tables).toHaveLength(2);
+ expect(tables.some(cols=>cols.includes('A')&&cols.includes('C'))).toBe(false);
+});
+it('groups identical coverage first, splits wide groups and preserves every measurement once',()=>{
+ const records=coverageRecords(Object.fromEntries(range(14).map(n=>[`Assay ${n}`,range(5)])));
+ const tables=builder.suggestTableColumns(records);
+ expect(tables.map(t=>t.length)).toEqual([6,6,2]);
+ expect(new Set(tables.flat().map(t=>t.assay)).size).toBe(14);
+ const exactFirst=layout(coverageRecords({A:range(5),B:range(4),C:range(4)}));
+ expect(exactFirst).toEqual([['A','B','C']]);
+});
+it('ignores repeated observations for coverage but keeps exact units and all values in generated cells',()=>{
+ const records=coverageRecords({A:range(5),B:range(4)});
+ records.push({...records[0]!,id:'repeat',value:'999',context:'another condition'});
+ records.push({...records[0]!,id:'other-unit',unit:'μM'});
+ const tables=builder.suggestTableColumns(records);
+ expect(tables).toHaveLength(2);
+ const flat=tables.flat();expect(flat).toHaveLength(3);
+ expect(builder.matchingActivities(flat.find(c=>c.assay==='A'&&c.unit==='nM')!,records)).toHaveLength(6);
+ expect(builder.suggestTableColumns([])).toEqual([]);
+});
