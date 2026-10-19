@@ -1,174 +1,192 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { t } from '../../i18n';
+import { useAuthStore } from '../../auth/store';
 import { getActivityComparison } from '../../v2/api';
-import type { Activity, ActivityComparison, PaperWorkspace } from '../../v2/types';
-import { activityMatrix, measurementGroups, orderByMeasurementSimilarity, type MeasurementGroup } from './activityComparison';
+import type { ActivityComparison, PaperWorkspace } from '../../v2/types';
+import { buildComparisonTable, parseSavedTables, tableSchema, tableStorageKey, type ComparisonColumn, type ComparisonTable, type SavedTables } from './activityTableBuilder';
+import ActivityColumnEditor from './ActivityColumnEditor.vue';
 import ReviewHint from './ReviewHint.vue';
-
-const props = defineProps<{workspace: PaperWorkspace; active: boolean; blocked?: boolean}>();
-const emit = defineEmits<{open: [compoundId: string, activityId?: string]}>();
-const data = ref<ActivityComparison>();
-const loading = ref(false), error = ref('');
-const search = ref('');
-const sort = ref<'similarity' | 'default' | 'label'>('similarity');
-const selectedGroups = ref<string[] | null>(null);
-const showEmpty = ref(false);
-const selectedColumns = ref<string[] | null>(null);
-const viewport = ref<HTMLElement>();
-let sequence = 0;
-let position = {top: 0, left: 0};
-const matrix = computed(() => activityMatrix(data.value?.activities ?? []));
-const groups = computed(() => measurementGroups(data.value?.activities ?? []));
-const activeGroups = computed(() => groups.value.filter(g => selectedGroups.value?.includes(g.key)));
-const availableColumns = computed(() => activeGroups.value.flatMap(g => g.columns));
-const columns = computed(() => availableColumns.value.filter(c => selectedColumns.value?.includes(c.key)));
-// Free-text conditions can be unique to every Compound. Preserve each condition
-// beside its observation instead of expanding a sparse column for every record.
-const usesPerRecordConditions = (group: MeasurementGroup) => group.compoundCount > 1 && group.columns.every(c => c.compoundCount === 1);
-const defaultConditions = (group: MeasurementGroup) => usesPerRecordConditions(group) ? group.columns.map(c => c.key) : group.columns.slice(0, 1).map(c => c.key);
-const displayColumns = computed(() => activeGroups.value.flatMap(group => {
-  const chosen = group.columns.filter(c => selectedColumns.value?.includes(c.key));
-  if (chosen.length > 1 && usesPerRecordConditions(group)) return [{...chosen[0]!, key: group.key, context: null, memberKeys: chosen.map(c => c.key), perRecordContext: true}];
-  return chosen.map(c => ({...c, memberKeys: [c.key], perRecordContext: false}));
-}));
-const displayCells = computed(() => {
-  const result = new Map<string, Map<string, Activity[]>>();
-  for (const [compoundId, cells] of matrix.value.cells) {
-    const row = new Map<string, Activity[]>();
-    for (const column of displayColumns.value) {
-      const observations = column.memberKeys.flatMap(key => cells.get(key) ?? []);
-      if (observations.length) row.set(column.key, observations);
-    }
-    result.set(compoundId, row);
+const props=defineProps<{workspace:PaperWorkspace;active:boolean;blocked?:boolean}>();
+const emit=defineEmits<{open:[compoundId:string,activityId?:string]}>();
+const auth=useAuthStore();
+const data=ref<ActivityComparison>();
+const loading=ref(false),error=ref(''),search=ref(''),storageError=ref(''),notice=ref('');
+const emptyTable=():ComparisonTable=>({id:crypto.randomUUID(),name:'',columns:[],mode:'any',sort:'label'});
+const draft=ref<ComparisonTable>(emptyTable()),saved=ref<ComparisonTable[]>([]),baseline=ref('');
+const activeSavedId=ref<string|null>(null),settingsBusy=ref(false);
+let settingsEpoch=0;
+const editing=ref<ComparisonColumn|null|undefined>(undefined),editorEpoch=ref(0),showConfiguration=ref(true);
+const pending=ref<{kind:'new'|'switch'|'delete';id?:string}>();
+const dragId=ref<string>();
+const viewport=ref<HTMLElement>();
+let sequence=0,position={top:0,left:0};
+const storageKey=computed(()=>tableStorageKey(auth.user?.username??'',props.workspace.id));
+const dirty=computed(()=>JSON.stringify(draft.value)!==baseline.value);
+const table=computed(()=>buildComparisonTable(data.value?.compounds??[],data.value?.activities??[],draft.value.columns,draft.value.mode,draft.value.sort));
+const compounds=computed(()=>{const query=search.value.trim().toLocaleLowerCase();return table.value.rows.filter(c=>`${c.compound_label} ${c.display_name??''}`.toLocaleLowerCase().includes(query));});
+const savedOptions=computed(()=>saved.value);
+const copy=<T,>(value:T):T=>JSON.parse(JSON.stringify(value));
+function setDraft(value:ComparisonTable,id:string|null){draft.value=copy(value);activeSavedId.value=id;baseline.value=JSON.stringify(draft.value);editing.value=undefined;pending.value=undefined;notice.value='';}
+function readSettings(){
+ storageError.value='';saved.value=[];setDraft(emptyTable(),null);
+ try {
+  const raw=window.localStorage.getItem(storageKey.value),parsed=parseSavedTables(raw);
+  if(raw&&!parsed){storageError.value='已有表格配置无法读取，为避免覆盖暂不保存；仍可临时制表。';return;}
+  if(parsed){saved.value=parsed.tables;const selected=parsed.tables.find(t=>t.id===parsed.activeId);if(selected)setDraft(selected,selected.id);}
+ }catch{storageError.value='无法读取浏览器中的表格配置，当前仍可制表。';}
+}
+function latestSettings():SavedTables {
+ const raw=window.localStorage.getItem(storageKey.value);
+ const parsed=parseSavedTables(raw);
+ if(raw&&!parsed)throw Error('已有表格配置无法读取，为避免覆盖暂不保存；仍可临时制表。');
+ return parsed??{version:1,activeId:null,tables:[]};
+}
+function writeSettings(tables:ComparisonTable[],activeId:string|null){
+ const record:SavedTables={version:1,activeId,tables};
+ window.localStorage.setItem(storageKey.value,JSON.stringify(record));
+ saved.value=tables;storageError.value='';
+}
+function checkUnchanged(tables:ComparisonTable[],id:string){
+ if(JSON.stringify(tables.find(t=>t.id===id))!==JSON.stringify(saved.value.find(t=>t.id===id)))
+  throw Error('此表格已被其他标签页修改或删除。当前设置仍保留；请重新选择已保存表格后再修改。');
+}
+async function changeSettings(change:()=>void){
+ if(settingsBusy.value)return;
+ const key=storageKey.value,epoch=settingsEpoch;
+ settingsBusy.value=true;
+ const run=()=>{
+  if(key!==storageKey.value||epoch!==settingsEpoch)return;
+  try{change();}
+  catch(e){storageError.value=e instanceof Error&&[
+   '已有同名表格，请使用其他名称。','已达到保存表格数量上限，请先删除不需要的表格。',
+   '已有表格配置无法读取，为避免覆盖暂不保存；仍可临时制表。',
+   '此表格已被其他标签页修改或删除。当前设置仍保留；请重新选择已保存表格后再修改。',
+  ].includes(e.message)?e.message:'未能保存到此浏览器；当前表格仍保留，请重试。';}
+ };
+ try{
+  // Serialize read/merge/write across tabs when the browser provides Web Locks.
+  if(navigator.locks)await navigator.locks.request(key,run);else run();
+ }catch{if(epoch===settingsEpoch)storageError.value='未能保存到此浏览器；当前表格仍保留，请重试。';}
+ finally{if(epoch===settingsEpoch)settingsBusy.value=false;}
+}
+function saveTable(){
+ const parsed=tableSchema.safeParse(draft.value);
+ if(!parsed.success){storageError.value='请填写表格名称，并检查列配置。';return;}
+ void changeSettings(()=>{
+  const latest=latestSettings();checkUnchanged(latest.tables,parsed.data.id);
+  if(latest.tables.some(t=>t.id!==parsed.data.id&&t.name===parsed.data.name))throw Error('已有同名表格，请使用其他名称。');
+  const tables=latest.tables.filter(t=>t.id!==parsed.data.id).concat(parsed.data);
+  if(tables.length>50)throw Error('已达到保存表格数量上限，请先删除不需要的表格。');
+  writeSettings(tables,parsed.data.id);
+  draft.value=parsed.data;activeSavedId.value=parsed.data.id;baseline.value=JSON.stringify(draft.value);pending.value=undefined;notice.value='表格配置已保存在此浏览器。';
+ });
+}
+function perform(action:NonNullable<typeof pending.value>){
+ const resetPosition=()=>{search.value='';position={top:0,left:0};void restoreScroll();};
+ if(action.kind==='new'){setDraft(emptyTable(),null);resetPosition();return;}
+ void changeSettings(()=>{
+  const latest=latestSettings();
+  if(action.kind==='switch'){
+   const target=latest.tables.find(t=>t.id===action.id);
+   if(!target)throw Error('此表格已被其他标签页修改或删除。当前设置仍保留；请重新选择已保存表格后再修改。');
+   writeSettings(latest.tables,target.id);setDraft(target,target.id);
+  }else{
+   checkUnchanged(latest.tables,activeSavedId.value!);
+   const remaining=latest.tables.filter(t=>t.id!==activeSavedId.value);
+   writeSettings(remaining,remaining[0]?.id??null);
+   setDraft(remaining[0]??emptyTable(),remaining[0]?.id??null);
   }
-  return result;
-});
-const collator = new Intl.Collator('en', {numeric: true, sensitivity: 'base'});
-const matchingCompounds = computed(() => {
-  const query = search.value.trim().toLocaleLowerCase();
-  return (data.value?.compounds ?? []).filter(c => `${c.compound_label} ${c.display_name ?? ''}`.toLocaleLowerCase().includes(query));
-});
-const hasSelectedMeasurement = (id: string) => columns.value.some(c => matrix.value.cells.get(id)?.get(c.key)?.length);
-const missingCount = computed(() => matchingCompounds.value.filter(c => !hasSelectedMeasurement(c.id)).length);
-const compounds = computed(() => {
-  if (!columns.value.length) return [];
-  const rows = matchingCompounds.value.filter(c => showEmpty.value || hasSelectedMeasurement(c.id));
-  if (sort.value === 'similarity') return orderByMeasurementSimilarity(rows, displayCells.value, displayColumns.value.map(c => c.key));
-  return sort.value === 'label' ? rows.sort((a,b) => collator.compare(a.compound_label, b.compound_label)) : rows;
-});
-function focusGroup(key: string) {
-  const group = groups.value.find(g => g.key === key);
-  selectedGroups.value = group ? [key] : [];
-  selectedColumns.value = group ? defaultConditions(group) : [];
-  position = {top: 0, left: 0}; void restoreScroll();
+  resetPosition();
+ });
 }
-function toggleGroup(key: string, checked: boolean) {
-  const selected = new Set(selectedGroups.value ?? []);
-  if (checked) selected.add(key); else selected.delete(key);
-  selectedGroups.value = [...selected];
-  const columnKeys = new Set(activeGroups.value.flatMap(g => g.columns.map(c => c.key)));
-  const keep = (selectedColumns.value ?? []).filter(k => columnKeys.has(k));
-  const group = groups.value.find(g => g.key === key);
-  if (checked && group) for (const columnKey of defaultConditions(group)) if (!keep.includes(columnKey)) keep.push(columnKey);
-  selectedColumns.value = keep;
+function request(action:NonNullable<typeof pending.value>){
+ if(editing.value!==undefined)return;
+ if(dirty.value||action.kind==='delete')pending.value=action;else perform(action);
 }
-function toggleColumn(key: string, checked: boolean) {
-  const selected = new Set(selectedColumns.value ?? []);
-  if (checked) selected.add(key); else selected.delete(key);
-  selectedColumns.value = [...selected];
+function beginColumn(column:ComparisonColumn|null){editing.value=column?copy(column):null;editorEpoch.value++;showConfiguration.value=true;notice.value='';}
+function applyColumn(column:ComparisonColumn){
+ const index=draft.value.columns.findIndex(c=>c.id===column.id);
+ if(index<0)draft.value.columns.push(column);else draft.value.columns.splice(index,1,column);
+ editing.value=undefined;
 }
-function rememberScroll() {
-  if (props.active && !loading.value && viewport.value) position = {top: viewport.value.scrollTop, left: viewport.value.scrollLeft};
+function moveColumn(id:string,target:number){
+ const from=draft.value.columns.findIndex(c=>c.id===id);
+ if(from<0||target<0||target>=draft.value.columns.length)return;
+ const [column]=draft.value.columns.splice(from,1);if(column)draft.value.columns.splice(target,0,column);
 }
-async function restoreScroll() {
-  await nextTick();
-  if (props.active && viewport.value) { viewport.value.scrollTop = position.top; viewport.value.scrollLeft = position.left; }
+function dropColumn(index:number){if(dragId.value)moveColumn(dragId.value,index);dragId.value=undefined;}
+function missingRecords(column:ComparisonColumn){return column.activityIds===null?0:column.activityIds.filter(id=>!table.value.matches.get(column.id)?.some(a=>a.id===id)).length;}
+function rememberScroll(){if(props.active&&!loading.value&&viewport.value)position={top:viewport.value.scrollTop,left:viewport.value.scrollLeft};}
+async function restoreScroll(){await nextTick();if(props.active&&viewport.value){viewport.value.scrollTop=position.top;viewport.value.scrollLeft=position.left;}}
+async function load(){
+ const epoch=++sequence,id=props.workspace.id;loading.value=true;error.value='';
+ try{const result=await getActivityComparison(id);if(epoch!==sequence||id!==props.workspace.id)return;
+  if(result.workspace_id!==id||result.workspace_version<props.workspace.version)throw Error('Stale comparison');data.value=result;
+ }catch{if(epoch===sequence)error.value='活性对比暂时无法读取，请重试。';}
+ finally{if(epoch===sequence){loading.value=false;await restoreScroll();}}
 }
-async function load() {
-  const epoch = ++sequence, id = props.workspace.id;
-  loading.value = true; error.value = '';
-  try {
-    const result = await getActivityComparison(id);
-    if (epoch !== sequence || id !== props.workspace.id) return;
-    if (result.workspace_id !== id || result.workspace_version < props.workspace.version) throw new Error('Stale comparison');
-    data.value = result;
-    if (selectedGroups.value === null && groups.value.length) {
-      const first = groups.value[0];
-      selectedGroups.value = first ? [first.key] : [];
-      selectedColumns.value = first ? defaultConditions(first) : [];
-    }
-  } catch {
-    if (epoch === sequence) error.value = '活性对比暂时无法读取，请重试。';
-  } finally {
-    if (epoch === sequence) { loading.value = false; await restoreScroll(); }
-  }
+function open(compoundId:string,activityId?:string){
+ if(props.blocked||loading.value||error.value||!props.active)return;
+ rememberScroll();if(activityId)emit('open',compoundId,activityId);else emit('open',compoundId);
 }
-function open(compoundId: string, activityId?: string) {
-  if (props.blocked || loading.value || error.value || !props.active) return;
-  rememberScroll();
-  if (activityId) emit('open', compoundId, activityId); else emit('open', compoundId);
-}
-watch(() => [props.workspace.id, props.active, props.workspace.version] as const, ([id, active], previous) => {
-  if (previous && previous[0] !== id) {
-    sequence++; data.value = undefined; search.value = ''; sort.value = 'similarity'; selectedGroups.value = null; selectedColumns.value = null; showEmpty.value = false; position = {top:0, left:0};
-  }
-  if (active && (!previous?.[1] || id !== previous[0] || data.value?.workspace_version !== props.workspace.version)) void load();
-}, {immediate:true});
-onBeforeUnmount(() => { sequence++; });
+watch([()=>props.workspace.id,()=>auth.user?.username],()=>{settingsEpoch++;settingsBusy.value=false;sequence++;data.value=undefined;search.value='';position={top:0,left:0};readSettings();},{immediate:true});
+watch(()=>[props.workspace.id,props.active,props.workspace.version,auth.user?.username] as const,([id,active],previous)=>{
+ if(active&&(!previous?.[1]||id!==previous[0]||data.value?.workspace_version!==props.workspace.version))void load();
+},{immediate:true});
+onBeforeUnmount(()=>{settingsEpoch++;sequence++;});
 </script>
 
 <template>
-  <section class="activity-comparison" data-activity-comparison>
-    <header class="comparison-heading"><div><h2>{{ t('活性对比') }}</h2><p>{{ t('只读 · 已保存的活性数据；点击数值查看对应记录。') }}</p></div>
-      <button type="button" class="button-secondary" :disabled="loading" data-comparison-refresh @click="load">{{ t('刷新') }}</button>
-    </header>
-    <div class="comparison-toolbar">
-      <label class="form-field comparison-group-select">{{ t('测定分组') }}<select data-comparison-group :value="activeGroups.length === 1 ? activeGroups[0]!.key : ''" @change="focusGroup(($event.target as HTMLSelectElement).value)"><option value="" disabled>{{ activeGroups.length > 1 ? t('已选择多个测定组') : t('请选择测定分组') }}</option><option v-for="group in groups" :key="group.key" :value="group.key">{{ group.assay }} · {{ group.metric }} · {{ group.unit || t('未记录单位') }} ({{ group.compoundCount }})</option></select></label>
-      <label class="form-field">{{ t('搜索编号或名称') }}<input v-model="search" data-comparison-search type="search" :placeholder="t('搜索编号或名称')"></label>
-      <label class="form-field">{{ t('排序方式') }}<select v-model="sort" data-comparison-sort><option value="similarity">{{ t('相似测定组合') }}</option><option value="label">{{ t('名称排序') }}</option><option value="default">{{ t('默认排序') }}</option></select></label>
-    </div>
-    <div class="comparison-options">
-      <details class="measurement-picker" data-comparison-groups><summary>{{ t('多组对比') }} ({{ activeGroups.length }}/{{ groups.length }})</summary>
-        <div class="measurement-options"><label v-for="group in groups" :key="group.key"><input type="checkbox" data-comparison-group-choice :value="group.key" :checked="selectedGroups?.includes(group.key)" @change="toggleGroup(group.key, ($event.target as HTMLInputElement).checked)"><span>{{ group.assay }} · {{ group.metric }} · {{ group.unit || t('未记录单位') }}<small>{{ t('{count} 个 Compound', {count: group.compoundCount}) }}</small></span></label></div>
-      </details>
-      <details class="measurement-picker" data-comparison-conditions><summary>{{ t('实验条件') }} ({{ columns.length }}/{{ availableColumns.length }})</summary>
-        <div class="measurement-options">
-          <div class="editor-actions"><button type="button" class="button-quiet" data-comparison-all-columns @click="selectedColumns = availableColumns.map(c => c.key)">{{ t('选择全部条件') }}</button><button type="button" class="button-quiet" data-comparison-clear-columns @click="selectedColumns = []">{{ t('清空选择') }}</button></div>
-          <fieldset v-for="group in activeGroups" :key="group.key"><legend>{{ group.assay }} · {{ group.metric }} · {{ group.unit || t('未记录单位') }}</legend><label v-for="column in group.columns" :key="column.key"><input type="checkbox" data-comparison-column-choice :value="column.key" :checked="selectedColumns?.includes(column.key)" @change="toggleColumn(column.key, ($event.target as HTMLInputElement).checked)"><span>{{ column.context || t('未记录实验条件') }}<small>{{ t('{count} 个 Compound', {count: column.compoundCount}) }}</small></span></label></fieldset>
-        </div>
-      </details>
-    </div>
-    <p v-if="blocked" class="inline-feedback is-warning">{{ t('请先保存或取消当前编辑，再打开其他条目。') }}</p>
-    <p v-if="loading" role="status">{{ t('正在读取活性对比…') }}</p>
-    <p v-if="error" role="alert">{{ t(error) }} <button type="button" class="button-quiet" data-comparison-retry @click="load">{{ t('重试') }}</button></p>
-    <template v-if="data && !error">
-      <p v-if="!data.compounds.length && !loading">{{ t('当前文章尚无 Compound。') }}</p>
-      <p v-else-if="!data.activities.length && !loading">{{ t('当前文章尚无活性记录。') }}</p>
-      <p v-else-if="!columns.length && !loading">{{ t('请选择要比较的实验条件。') }}</p>
-      <p v-if="columns.length && data.compounds.length && !compounds.length && !loading">{{ t('没有匹配的 Compound。') }}</p>
-      <div v-if="columns.length && !loading" class="comparison-coverage">
-        <span>{{ t('显示 {shown}/{total} 个 Compound', {shown: compounds.length, total: matchingCompounds.length}) }}</span>
-        <label v-if="missingCount || showEmpty"><input v-model="showEmpty" data-comparison-show-empty type="checkbox"><span data-comparison-hidden-count>{{ t('显示无所选条件记录的 Compound（{count}）', {count: missingCount}) }}</span></label>
-      </div>
-      <div v-show="!loading && compounds.length > 0" ref="viewport" class="comparison-scroll" data-comparison-scroll tabindex="0" role="region" :aria-label="t('Compound 活性对比表')" @scroll="rememberScroll">
-        <table class="comparison-grid">
-          <caption>{{ t('— 表示无对应记录；条件与单位保留，同格多条记录全部列出。') }}</caption>
-          <thead><tr><th scope="col" class="compound-column">Compound</th><th v-for="column in displayColumns" :key="column.key" scope="col" data-comparison-column><span class="measurement-assay" :title="column.assay">{{ column.assay }}</span><small>{{ column.metric }} · {{ column.unit || t('未记录单位') }}</small><small v-if="column.perRecordContext">{{ t('条件逐条列出') }}</small><details v-else-if="column.context" class="measurement-context"><summary :title="column.context">{{ column.context }}</summary><p>{{ column.context }}</p></details><small v-else>{{ t('未记录实验条件') }}</small></th></tr></thead>
-          <tbody><tr v-for="compound in compounds" :key="compound.id" data-comparison-row :data-compound-id="compound.id">
-            <th scope="row" class="compound-column"><button type="button" class="comparison-link" data-comparison-compound :disabled="blocked || loading" @click="open(compound.id)">{{ compound.compound_label }}</button><details v-if="compound.display_name" class="compound-name"><summary :title="compound.display_name">{{ t('名称') }}</summary><small>{{ compound.display_name }}</small></details><ReviewHint :hint="compound.review_hint" /></th>
-            <td v-for="column in displayColumns" :key="column.key">
-              <template v-if="displayCells.get(compound.id)?.get(column.key)?.length">
-                <div v-for="activity in displayCells.get(compound.id)?.get(column.key)" :key="activity.id" class="measurement-value"><button type="button" class="comparison-link" data-comparison-activity :data-activity-id="activity.id" :disabled="blocked || loading" :aria-label="t('查看 {compound} 的活性记录：{value}', {compound: compound.compound_label, value: `${activity.operator} ${activity.value} ${activity.unit ?? ''}`})" @click="open(compound.id, activity.id)">{{ activity.operator }} {{ activity.value }}</button><ReviewHint :hint="activity.review_hint" /><details v-if="column.perRecordContext" class="measurement-context record-context" data-measurement-context><summary :title="activity.context || t('未记录实验条件')">{{ activity.context || t('未记录实验条件') }}</summary><p>{{ activity.context || t('未记录实验条件') }}</p></details></div>
-              </template><span v-else class="missing-measurement">—</span>
-            </td>
-          </tr></tbody>
-        </table>
-      </div>
-    </template>
-  </section>
+ <section class="activity-comparison" data-activity-comparison>
+  <header class="comparison-heading"><div><h2>{{t('活性对比')}}</h2><p>{{t('选择测定列，自动展示有相关数据的 Compound。')}}</p></div><button type="button" class="button-secondary" :disabled="loading" data-comparison-refresh @click="load">{{t('刷新')}}</button></header>
+  <div :inert="settingsBusy" :aria-busy="settingsBusy">
+  <div class="comparison-toolbar saved-toolbar">
+   <label class="form-field">{{t('已保存的表格')}}<select data-saved-table :value="activeSavedId??''" :disabled="editing!==undefined" @change="request({kind:'switch',id:($event.target as HTMLSelectElement).value})"><option value="" disabled>{{t('未保存的表格')}}</option><option v-for="item in savedOptions" :key="item.id" :value="item.id">{{item.name}}</option></select></label>
+   <label class="form-field">{{t('表格名称')}}<input v-model="draft.name" data-table-name maxlength="120" :placeholder="t('例如：主要活性')"></label>
+   <div class="editor-actions"><button type="button" class="button-secondary" data-save-table :disabled="editing!==undefined" @click="saveTable">{{t('保存表格')}}</button><button type="button" class="button-quiet" data-new-table :disabled="editing!==undefined" @click="request({kind:'new'})">{{t('新建表格')}}</button><button v-if="activeSavedId" type="button" class="button-quiet" data-delete-table :disabled="editing!==undefined" @click="request({kind:'delete'})">{{t('删除表格')}}</button></div>
+  </div>
+  <p class="settings-note">{{t('配置仅保存在此浏览器，按账号和文章区分；数据始终读取最新保存记录。')}} <strong v-if="dirty">{{t('表格设置尚未保存。')}}</strong></p>
+  <p v-if="notice" role="status">{{t(notice)}}</p><p v-if="storageError" role="alert" data-table-storage-error>{{t(storageError)}}</p>
+  <div v-if="pending" class="pending-settings" role="alert"><p>{{t(pending.kind==='delete'?'删除这张已保存的表格配置？科学记录不会删除。':'当前表格设置尚未保存，是否放弃设置并继续？')}}</p><button type="button" class="button-secondary" data-discard-table-changes @click="perform(pending!)">{{t(pending.kind==='delete'?'删除表格':'放弃设置并继续')}}</button><button type="button" class="button-quiet" @click="pending=undefined">{{t('取消')}}</button></div>
+  <div class="comparison-toolbar">
+   <label class="form-field">{{t('搜索编号或名称')}}<input v-model="search" data-comparison-search type="search" :placeholder="t('搜索编号或名称')"></label>
+   <label class="form-field">{{t('显示范围')}}<select v-model="draft.mode" data-comparison-row-mode><option value="any">{{t('至少一列有记录')}}</option><option value="all">{{t('每列都有记录')}}</option></select></label>
+   <label class="form-field">{{t('排序方式')}}<select v-model="draft.sort" data-comparison-sort><option value="label">{{t('名称排序')}}</option><option value="similarity">{{t('相似测定组合')}}</option><option value="default">{{t('默认排序')}}</option></select></label>
+  </div>
+  <div class="column-controls"><button type="button" class="button-primary" data-add-column :disabled="loading||!!error||!data?.activities.length||editing!==undefined||draft.columns.length>=60" @click="beginColumn(null)">{{t('添加列')}}</button><button v-if="draft.columns.length" type="button" class="button-quiet" data-toggle-column-config :aria-expanded="showConfiguration" @click="showConfiguration=!showConfiguration">{{t(showConfiguration?'收起列配置':'配置列')}} ({{draft.columns.length}})</button></div>
+  <div v-if="showConfiguration&&draft.columns.length" class="configured-columns" data-configured-columns :inert="editing!==undefined">
+   <div v-for="(column,index) in draft.columns" :key="column.id" class="configured-column" data-configured-column draggable="true" @dragstart="dragId=column.id; $event.dataTransfer?.setData('text/plain',column.id)" @dragend="dragId=undefined" @dragover.prevent @drop.prevent="dropColumn(index)">
+    <div><strong>{{index+1}}. {{column.label}}</strong><small>{{column.assay}} · {{column.metric}} · {{column.unit||t('未记录单位')}}</small><small>{{t(column.activityIds===null?'全部记录（包含后续新增）':'仅选中记录')}} · {{table.matches.get(column.id)?.length??0}} {{t('条记录')}}</small></div>
+    <div class="editor-actions"><button type="button" class="button-quiet" data-column-edit @click="beginColumn(column)">{{t('编辑列')}}</button><button type="button" class="button-quiet" data-column-move-left :disabled="index===0" :aria-label="t('左移列：{name}',{name:column.label})" @click="moveColumn(column.id,index-1)">←</button><button type="button" class="button-quiet" data-column-move-right :disabled="index===draft.columns.length-1" :aria-label="t('右移列：{name}',{name:column.label})" @click="moveColumn(column.id,index+1)">→</button><button type="button" class="button-quiet" data-column-remove @click="draft.columns.splice(index,1)">{{t('移除')}}</button></div>
+   </div>
+  </div>
+  <div :inert="loading"><ActivityColumnEditor v-if="editing!==undefined&&data" :key="editorEpoch" :activities="data.activities" :compounds="data.compounds" :columns="draft.columns" :column="editing" @apply="applyColumn" @cancel="editing=undefined" /></div>
+  <p v-if="blocked" class="inline-feedback is-warning">{{t('请先保存或取消当前编辑，再打开其他条目。')}}</p>
+  <p v-if="loading" role="status">{{t('正在读取活性对比…')}}</p>
+  <p v-if="error" role="alert">{{t(error)}} <button type="button" class="button-quiet" data-comparison-retry @click="load">{{t('重试')}}</button></p>
+  <template v-if="data&&!error">
+   <p v-if="!data.activities.length&&!loading">{{t('当前文章尚无活性记录。')}}</p>
+   <p v-else-if="!draft.columns.length&&!loading" data-comparison-empty>{{t('点击“添加列”，选择要比较的测定和记录。')}}</p>
+   <template v-else-if="!loading">
+    <p v-for="column in draft.columns.filter(c=>missingRecords(c)>0)" :key="column.id" class="inline-feedback is-warning" data-column-stale>{{t('列“{name}”有 {count} 条所选记录已删除或测定发生变化，请检查列设置。',{name:column.label,count:missingRecords(column)})}}</p>
+    <p v-if="!compounds.length">{{t('没有符合当前列配置和显示范围的 Compound。')}}</p>
+    <p class="comparison-coverage">{{t('显示 {shown}/{total} 个 Compound',{shown:compounds.length,total:data.compounds.length})}}</p>
+   </template>
+   <div v-show="!loading&&compounds.length>0" ref="viewport" class="comparison-scroll" data-comparison-scroll tabindex="0" role="region" :aria-label="t('Compound 活性对比表')" @scroll="rememberScroll">
+    <table class="comparison-grid">
+     <caption>{{t('— 表示无对应记录；条件与单位保留，同格多条记录全部列出。')}}</caption>
+     <thead><tr><th scope="col" class="compound-column">Compound</th><th v-for="column in draft.columns" :key="column.id" scope="col" data-comparison-column><span class="measurement-assay">{{column.label}}</span><small>{{column.metric}} · {{column.unit||t('未记录单位')}}</small><details class="measurement-context"><summary>{{t('关联测定')}}</summary><p>{{column.assay}}</p></details></th></tr></thead>
+     <tbody><tr v-for="compound in compounds" :key="compound.id" data-comparison-row :data-compound-id="compound.id">
+      <th scope="row" class="compound-column"><button type="button" class="comparison-link" data-comparison-compound :disabled="blocked||loading" @click="open(compound.id)">{{compound.compound_label}}</button><details v-if="compound.display_name" class="compound-name"><summary :title="compound.display_name">{{t('名称')}}</summary><small>{{compound.display_name}}</small></details><ReviewHint :hint="compound.review_hint" /></th>
+      <td v-for="column in draft.columns" :key="column.id"><template v-if="table.cells.get(compound.id)?.get(column.id)?.length"><div v-for="activity in table.cells.get(compound.id)?.get(column.id)" :key="activity.id" class="measurement-value"><button type="button" class="comparison-link" data-comparison-activity :data-activity-id="activity.id" :disabled="blocked||loading" :aria-label="t('查看 {compound} 的活性记录：{value}',{compound:compound.compound_label,value:`${activity.operator} ${activity.value} ${activity.unit??''}`})" @click="open(compound.id,activity.id)">{{activity.operator}} {{activity.value}}</button><ReviewHint :hint="activity.review_hint" /><details class="measurement-context record-context" data-measurement-context><summary :title="activity.context||t('未记录实验条件')">{{activity.context||t('未记录实验条件')}}</summary><p>{{activity.context||t('未记录实验条件')}}</p></details></div></template><span v-else class="missing-measurement">—</span></td>
+     </tr></tbody>
+    </table>
+   </div>
+  </template>
+  </div>
+ </section>
 </template>
-
 <style scoped>
 .activity-comparison { min-width: 0; }
 .comparison-heading, .comparison-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
@@ -209,4 +227,12 @@ thead .compound-column { z-index: 3; }
 .comparison-link:disabled { cursor: default; opacity: .55; }
 .missing-measurement { color: var(--muted); }
 @media (max-width: 600px) { .comparison-toolbar .form-field { flex: 1 1 140px; } th, td { min-width: 140px; } .compound-column { min-width: 85px; max-width: 110px; } }
+.column-controls { display: flex; gap: 12px; align-items: center; margin: 12px 0; }
+.configured-columns { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.configured-column { flex: 1 1 240px; max-width: 400px; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 4px; overflow-wrap: anywhere; }
+.configured-column .editor-actions { margin-top: 6px; }
+.settings-note { color: var(--muted); font-size: .75rem; }
+.pending-settings { border: 1px solid var(--line); padding: 12px; }
+.saved-toolbar .form-field { flex: 1 1 180px; min-width: 0; }
+.saved-toolbar input, .saved-toolbar select { width: 100%; }
 </style>

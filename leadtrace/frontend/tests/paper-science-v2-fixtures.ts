@@ -142,3 +142,11 @@ export async function mountWorkspace(tab: "activity-comparison" | "compounds" | 
   await flushPromises();
   return { wrapper, router };
 }
+
+export async function addComparisonColumn(wrapper: import('@vue/test-utils').VueWrapper, activity: {assay_name:string;metric:string;unit:string|null}, label='Comparison') {
+  await wrapper.get('[data-add-column]').trigger('click');
+  await wrapper.get('[data-column-measurement]').setValue(JSON.stringify([activity.assay_name,activity.metric,activity.unit]));
+  await wrapper.get('[data-column-label]').setValue(label);
+  await wrapper.get('[data-column-apply]').trigger('click');
+  await flushPromises();
+}

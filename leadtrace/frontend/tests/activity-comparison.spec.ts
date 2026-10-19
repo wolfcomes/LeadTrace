@@ -1,219 +1,133 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import ActivityComparison from '../src/review/paper/ActivityComparison.vue';
-import { activities, compounds, ids, installReviewer, response, workspace } from './paper-science-v2-fixtures';
+import { activities, compounds, ids, installReviewer, response, workspace, addComparisonColumn } from './paper-science-v2-fixtures';
+import { tableStorageKey } from '../src/review/paper/activityTableBuilder';
+const first={...activities[0]!,value:'0.123456789012345678901',context:'100 nM, 24 h',review_hint:'Verify'};
+const second={...first,id:ids.activities[1]!,compound_id:ids.compounds[1]!,context:'1000 nM, 24 h',value:'2'};
+const third={...first,id:'30000000-0000-4000-8000-000000000093',assay_name:'Assay B',unit:'μM',value:'3'};
+const payload=(version=1)=>({workspace_id:ids.workspace,workspace_version:version,compounds,activities:[first,second,third]});
+function install(data=payload()) {const fetcher=vi.fn(async()=>response(data));vi.stubGlobal('fetch',fetcher);return fetcher;}
+const props=()=>({workspace:workspace() as any,active:true});
+beforeEach(()=>{installReviewer();localStorage.clear();});
+afterEach(()=>vi.unstubAllGlobals());
 
-beforeEach(installReviewer);
-afterEach(() => vi.unstubAllGlobals());
-const row = { ...activities[0], value: '0.123456789012345678901', review_hint: 'Check source', context: 'Human enzyme' };
-function data(version = 1) {
-  return { workspace_id: ids.workspace, workspace_version: version, compounds, activities: [
-    row,
-    { ...row, id: ids.activities[1], operator: '<', value: '2' },
-    { ...row, id: '30000000-0000-4000-8000-000000000073', unit: 'μM', value: '3' },
-    { ...row, id: '30000000-0000-4000-8000-000000000074', context: 'Mouse enzyme', value: '4' },
-    { ...row, id: '30000000-0000-4000-8000-000000000075', metric: 'Ki', value: '5' },
-  ] };
-}
-function install(payload = data()) {
-  const fetcher = vi.fn(async (_input: RequestInfo | URL) => response(payload)); vi.stubGlobal('fetch', fetcher); return fetcher;
-}
-const props = () => ({ workspace: workspace() as any, active: true });
-
-it('focuses the most covered group and condition, preserving duplicates and precision', async () => {
-  const fetcher = install();
-  const w = mount(ActivityComparison, {props: props()}); await flushPromises();
-  expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
-  expect(w.findAll('[data-comparison-activity]')).toHaveLength(2);
-  expect(w.text()).toContain('0.123456789012345678901');
-  expect(w.text()).toContain('< 2');
-  expect(w.get('[data-comparison-hidden-count]').text()).toContain('3');
-  await w.findAll('[data-review-hint] button')[0]!.trigger('click');
-  expect(w.text()).toContain('Check source');
-  expect(fetcher).toHaveBeenCalledTimes(1);
-  expect(String(fetcher.mock.calls[0]?.[0])).toContain('/activity-comparison');
-  expect(w.find('input[type=number]').exists()).toBe(false);
-  w.unmount();
+it('starts with an explicit column choice and renames without changing measurement identity',async()=>{
+ const fetcher=install();const w=mount(ActivityComparison,{props:props()});await flushPromises();
+ expect(w.findAll('[data-comparison-row]')).toHaveLength(0);
+ await addComparisonColumn(w,first,'My activity');
+ expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
+ expect(w.findAll('[data-comparison-compound]').map(x=>x.text())).toEqual(['C1','C2']);
+ expect(w.get('[data-comparison-column]').text()).toContain('My activity');
+ expect(w.findAll('[data-comparison-activity]').map(x=>x.text())).toEqual(['= 0.123456789012345678901','= 2']);
+ expect(w.emitted('version')).toBeUndefined();expect(fetcher).toHaveBeenCalledTimes(1);
+ w.unmount();
 });
-
-it('searches compounds, filters columns and emits exact record identities', async () => {
-  install(); const w = mount(ActivityComparison,{props:props()}); await flushPromises();
-  await w.get('[data-comparison-search]').setValue('compound 1');
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
-  await w.get('[data-comparison-clear-columns]').trigger('click');
-  await w.findAll('[data-comparison-column-choice]')[0]!.setValue(true);
-  expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
-  await w.findAll('[data-comparison-activity]')[1]!.trigger('click');
-  expect(w.emitted('open')?.[0]).toEqual([ids.compounds[0], ids.activities[1]]);
-  await w.get('[data-comparison-compound]').trigger('click');
-  expect(w.emitted('open')?.[1]).toEqual([ids.compounds[0]]);
-  w.unmount();
+it('previews literal condition matches and uses only explicitly selected Activity IDs',async()=>{
+ install();const w=mount(ActivityComparison,{props:props()});await flushPromises();
+ await w.get('[data-add-column]').trigger('click');
+ await w.get('[data-column-measurement]').setValue(JSON.stringify([first.assay_name,first.metric,first.unit]));
+ await w.get('[data-column-scope]').setValue('selected');
+ await w.get('[data-column-record-search]').setValue('100 nM');
+ expect(w.findAll('[data-column-record]')).toHaveLength(1);
+ await w.get('[data-column-select-filtered]').trigger('click');
+ await w.get('[data-column-label]').setValue('100 nM');
+ await w.get('[data-column-apply]').trigger('click');await flushPromises();
+ expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
+ expect(w.get('[data-comparison-activity]').attributes('data-activity-id')).toBe(first.id);
+ await w.get('[data-comparison-activity]').trigger('click');
+ expect(w.emitted('open')?.[0]).toEqual([first.compound_id,first.id]);
+ w.unmount();
 });
-
-it('retains filters and scroll while returning and refreshes saved values', async () => {
-  const fetcher = install(); const w = mount(ActivityComparison,{props:props()}); await flushPromises();
-  await w.get('[data-comparison-search]').setValue('C1');
-  await w.get('[data-comparison-sort]').setValue('label');
-  const viewport = w.get('[data-comparison-scroll]').element;
-  viewport.scrollTop = 120; viewport.scrollLeft = 80;
-  await w.get('[data-comparison-scroll]').trigger('scroll');
-  await w.setProps({active:false});
-  fetcher.mockImplementation(async () => response({...data(2), activities:[{...row,value:'9'}]}));
-  await w.setProps({workspace:workspace(2) as any});
-  await w.setProps({active:true}); await flushPromises();
-  expect(w.get('[data-comparison-search]').element).toHaveProperty('value','C1');
-  expect(w.get('[data-comparison-sort]').element).toHaveProperty('value','label');
-  expect(w.text()).toContain('= 9');
-  expect(w.get('[data-comparison-scroll]').element.scrollLeft).toBe(80);
-  expect(w.get('[data-comparison-scroll]').element.scrollTop).toBe(120);
-  w.unmount();
+it('reorders/removes columns and switches between any and all matching rows',async()=>{
+ install();const w=mount(ActivityComparison,{props:props()});await flushPromises();
+ await addComparisonColumn(w,first,'A');await addComparisonColumn(w,third,'B');
+ expect(w.findAll('[data-comparison-row]')).toHaveLength(2);
+ await w.get('[data-comparison-row-mode]').setValue('all');
+ expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
+ await w.findAll('[data-column-move-left]')[1]!.trigger('click');
+ expect(w.findAll('[data-comparison-column]').map(x=>x.text())).toEqual(expect.arrayContaining([expect.stringContaining('B'),expect.stringContaining('A')]));
+ expect(w.findAll('[data-comparison-column]')[0]!.text()).toContain('B');
+ await w.findAll('[data-column-remove]')[0]!.trigger('click');
+ expect(w.findAll('[data-comparison-row]')).toHaveLength(2);
+ w.unmount();
 });
-
-it('shows load failure and retries without presenting missing measurements', async () => {
-  const fetcher = install(); fetcher.mockRejectedValueOnce(new Error('offline'));
-  const w = mount(ActivityComparison,{props:props()}); await flushPromises();
-  expect(w.get('[role=alert]').text()).toContain('活性对比暂时无法读取');
-  expect(w.find('[data-comparison-row]').exists()).toBe(false);
-  await w.get('[data-comparison-retry]').trigger('click');await flushPromises();
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
-  w.unmount();
+it('saves named configs without values and reloads them against current server records',async()=>{
+ const fetcher=install();let w=mount(ActivityComparison,{props:props()});await flushPromises();
+ await addComparisonColumn(w,first,'Primary');await w.get('[data-table-name]').setValue('Potency');
+ await w.get('[data-save-table]').trigger('click');
+ const key=tableStorageKey('reviewer',ids.workspace),saved=localStorage.getItem(key);
+ expect(saved).toContain('Potency');expect(saved).not.toContain(first.value);
+ w.unmount();fetcher.mockImplementation(async()=>response({...payload(2),activities:[{...first,value:'99'},second,third]}));
+ w=mount(ActivityComparison,{props:props()});await flushPromises();
+ expect(w.get('[data-table-name]').element).toHaveProperty('value','Potency');
+ expect(w.findAll('[data-comparison-activity]')[0]!.text()).toBe('= 99');
+ expect(w.emitted('version')).toBeUndefined();w.unmount();
 });
-
-it('blocks detail navigation while another editor has pending changes', async () => {
-  install();const w = mount(ActivityComparison,{props:{...props(),blocked:true}});await flushPromises();
-  expect(w.findAll('[data-comparison-activity]')[0]!.attributes('disabled')).toBeDefined();
-  await w.findAll('[data-comparison-activity]')[0]!.trigger('click');
-  expect(w.emitted('open')).toBeUndefined(); w.unmount();
+it('keeps independent saved tables and requires explicit discard before switching dirty settings',async()=>{
+ install();const w=mount(ActivityComparison,{props:props()});await flushPromises();
+ await addComparisonColumn(w,first,'A');await w.get('[data-table-name]').setValue('One');await w.get('[data-save-table]').trigger('click');
+ const one=(w.get('[data-saved-table]').element as HTMLSelectElement).value;
+ await w.get('[data-new-table]').trigger('click');await addComparisonColumn(w,third,'B');await w.get('[data-table-name]').setValue('Two');await w.get('[data-save-table]').trigger('click');
+ await w.get('[data-table-name]').setValue('Unsaved');await w.get('[data-saved-table]').setValue(one);
+ expect(w.get('[data-table-name]').element).toHaveProperty('value','Unsaved');
+ await w.get('[data-discard-table-changes]').trigger('click');
+ expect(w.get('[data-table-name]').element).toHaveProperty('value','One');
+ expect(w.get('[data-comparison-column]').text()).toContain('A');w.unmount();
 });
-
-
-it('ignores an obsolete response after switching workspaces and resets filters', async () => {
-  let finish!: (response: Response) => void;
-  const fetcher = install(); fetcher.mockImplementationOnce(() => new Promise(resolve => {finish = resolve;}));
-  const w = mount(ActivityComparison,{props:props()});
-  await w.get('[data-comparison-search]').setValue('old');
-  const newId = '30000000-0000-4000-8000-000000000090';
-  fetcher.mockImplementation(async () => response({...data(),workspace_id:newId,compounds:[],activities:[]}));
-  await w.setProps({workspace:{...workspace(),id:newId} as any});await flushPromises();
-  finish(response(data()));await flushPromises();
-  expect(w.get('[data-comparison-search]').element).toHaveProperty('value','');
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(0);
-  expect(w.text()).toContain('当前文章尚无 Compound');w.unmount();
+it('preserves selection, filters and scroll on return and refreshes saved values',async()=>{
+ const fetcher=install();const w=mount(ActivityComparison,{props:props()});await flushPromises();await addComparisonColumn(w,first,'Primary');
+ await w.get('[data-comparison-search]').setValue('C1');const el=w.get('[data-comparison-scroll]').element;el.scrollTop=120;el.scrollLeft=80;await w.get('[data-comparison-scroll]').trigger('scroll');
+ await w.setProps({active:false});fetcher.mockImplementation(async()=>response({...payload(2),activities:[{...first,value:'99'},second]}));
+ await w.setProps({active:true,workspace:workspace(2) as any});await flushPromises();
+ expect(w.get('[data-comparison-search]').element).toHaveProperty('value','C1');expect(w.get('[data-comparison-column]').text()).toContain('Primary');
+ expect(w.get('[data-comparison-activity]').text()).toBe('= 99');expect(w.get('[data-comparison-scroll]').element.scrollLeft).toBe(80);
+ w.unmount();
 });
-
-it('naturally sorts compound identifiers without sorting or averaging measurements', async () => {
-  install({...data(),compounds:[{...compounds[0]!,compound_label:'C10'},{...compounds[1]!,compound_label:'C2'}]});
-  const w = mount(ActivityComparison,{props:props()});await flushPromises();
-  await w.get('[data-comparison-show-empty]').setValue(true);
-  await w.get('[data-comparison-sort]').setValue('label');
-  expect(w.findAll('[data-comparison-compound]').map(x=>x.text())).toEqual(['C2','C10']);
-  expect(w.findAll('[data-comparison-activity]')).toHaveLength(2);w.unmount();
+it('rejects stale workspace responses and does not transfer table configurations',async()=>{
+ let finish!:(r:Response)=>void;const fetcher=install();fetcher.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ const w=mount(ActivityComparison,{props:props()});await w.get('[data-comparison-search]').setValue('old');
+ const newid='30000000-0000-4000-8000-000000000090';fetcher.mockImplementation(async()=>response({...payload(),workspace_id:newid,compounds:[],activities:[]}));
+ await w.setProps({workspace:{...workspace(),id:newid} as any});await flushPromises();finish(response(payload()));await flushPromises();
+ expect(w.findAll('[data-comparison-row]')).toHaveLength(0);expect(w.get('[data-comparison-search]').element).toHaveProperty('value','');w.unmount();
 });
-
-it('does not advance editor versions just by reading a newer comparison', async () => {
-  install(data(2));
-  const w = mount(ActivityComparison,{props:{...props(),blocked:true}});await flushPromises();
-  expect(w.emitted('version')).toBeUndefined();
-  await w.setProps({blocked:false});await flushPromises();
-  expect(w.emitted('version')).toBeUndefined();
-  w.unmount();
+it('shows API errors with retry and blocks detail opening for pending scientific edits',async()=>{
+ const fetcher=install();fetcher.mockRejectedValueOnce(Error('offline'));const w=mount(ActivityComparison,{props:{...props(),blocked:true}});await flushPromises();
+ expect(w.get('[role=alert]').text()).toContain('活性对比暂时无法读取');await w.get('[data-comparison-retry]').trigger('click');await flushPromises();
+ await addComparisonColumn(w,first,'A');expect(w.get('[data-comparison-activity]').attributes('disabled')).toBeDefined();
+ expect(w.emitted('open')).toBeUndefined();w.unmount();
 });
-
-
-it('switches groups and includes only compounds measured in the selected conditions', async () => {
-  const payload=data();payload.activities.push({...row,id:'30000000-0000-4000-8000-000000000091',compound_id:ids.compounds[1]!,metric:'Ki',value:'77'});
-  install(payload);const w=mount(ActivityComparison,{props:props()});await flushPromises();
-  expect(w.findAll('[data-comparison-compound]').map(x=>x.text())).toEqual(['C1','C2']);
-  const ic50=JSON.stringify([row.assay_name,row.metric,row.unit]);
-  await w.get('[data-comparison-group]').setValue(ic50);
-  expect(w.findAll('[data-comparison-compound]').map(x=>x.text())).toEqual(['C1']);
-  expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
-  await w.findAll('[data-comparison-column-choice]')[1]!.setValue(true);
-  expect(w.findAll('[data-comparison-column]')).toHaveLength(2);
-  expect(w.findAll('[data-comparison-activity]')).toHaveLength(3);
-  expect(w.findAll('[data-comparison-column] summary').map(x=>x.text())).toEqual(['Human enzyme','Mouse enzyme']);
-  await w.get('[data-comparison-show-empty]').setValue(true);
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(4);
-  await w.get('[data-comparison-clear-columns]').trigger('click');
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(0);
-  expect(w.text()).toContain('请选择要比较的实验条件');
-  w.unmount();
+it('reports local persistence failures without claiming a saved table or losing current columns',async()=>{
+ install();const w=mount(ActivityComparison,{props:props()});await flushPromises();await addComparisonColumn(w,first,'A');await w.get('[data-table-name]').setValue('One');
+ const spy=vi.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw Error('quota');});
+ await w.get('[data-save-table]').trigger('click');expect(w.get('[data-table-storage-error]').text()).toContain('未能保存');
+ expect(w.findAll('[data-comparison-column]')).toHaveLength(1);spy.mockRestore();w.unmount();
 });
-
-it('preserves selected groups and conditions when coverage changes after returning', async () => {
-  const fetcher=install();const w=mount(ActivityComparison,{props:props()});await flushPromises();
-  await w.findAll('[data-comparison-column-choice]')[1]!.setValue(true);
-  const checked=()=>w.findAll('[data-comparison-column-choice]').filter(x=>(x.element as HTMLInputElement).checked).map(x=>x.attributes('value'));
-  const before=checked();
-  await w.setProps({active:false});
-  fetcher.mockImplementation(async()=>response({...data(2),activities:[...data(2).activities,{...row,id:'30000000-0000-4000-8000-000000000092',compound_id:ids.compounds[1]!,context:'Mouse enzyme'}]}));
-  await w.setProps({workspace:workspace(2) as any,active:true});await flushPromises();
-  expect(new Set(checked())).toEqual(new Set(before));
-  expect(w.findAll('[data-comparison-column]')).toHaveLength(2);
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(2);
-  w.unmount();
-});
-
-it('adds comparison groups without losing selected conditions and removes empty columns on refresh', async () => {
-  const fetcher=install();const w=mount(ActivityComparison,{props:props()});await flushPromises();
-  await w.findAll('[data-comparison-column-choice]')[1]!.setValue(true);
-  const ki=JSON.stringify([row.assay_name,'Ki',row.unit]);
-  const choice=w.findAll('[data-comparison-group-choice]').find(x=>x.attributes('value')===ki)!;
-  await choice.setValue(true);
-  expect(w.findAll('[data-comparison-column]')).toHaveLength(3);
-  fetcher.mockImplementation(async()=>response({...data(2),activities:[]}));
-  await w.get('[data-comparison-refresh]').trigger('click');await flushPromises();
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(0);
-  expect(w.findAll('[data-comparison-activity]')).toHaveLength(0);
-  expect(w.text()).toContain('当前文章尚无活性记录');
-  w.unmount();
-});
-
-
-it('selects a useful default when the first Activity arrives in an initially empty paper', async () => {
-  const fetcher=install({...data(),activities:[]});const w=mount(ActivityComparison,{props:props()});await flushPromises();
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(0);
-  fetcher.mockImplementation(async()=>response(data(2)));
-  await w.get('[data-comparison-refresh]').trigger('click');await flushPromises();
-  expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
-  w.unmount();
-});
-
-it('compares a group with exclusively compound-specific conditions without making a sparse column per record', async () => {
-  install({...data(),activities:[
-    {...row,context:'Human enzyme; compound-specific condition A'},
-    {...row,id:ids.activities[1]!,compound_id:ids.compounds[1]!,context:'Human enzyme; compound-specific condition B',value:'9'},
-  ]});
-  const w=mount(ActivityComparison,{props:props()});await flushPromises();
-  expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(2);
-  expect(w.findAll('[data-comparison-activity]')).toHaveLength(2);
-  expect(w.findAll('[data-measurement-context] summary').map(x=>x.text())).toEqual(['Human enzyme; compound-specific condition A','Human enzyme; compound-specific condition B']);
-  expect(w.findAll('[data-comparison-column-choice]').filter(x=>(x.element as HTMLInputElement).checked)).toHaveLength(2);
-  await w.findAll('[data-comparison-column-choice]')[1]!.setValue(false);
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
-  expect(w.findAll('[data-comparison-activity]')).toHaveLength(1);
-  w.unmount();
-});
-
-it('preserves all IDs, qualifiers and precision when compact conditions contain repeated observations', async () => {
-  const duplicateId='30000000-0000-4000-8000-000000000093';
-  const secondConditionId='30000000-0000-4000-8000-000000000094';
-  install({...data(),activities:[
-    {...row,context:'Condition A'},
-    {...row,id:duplicateId,context:'Condition A',operator:'<',value:'0.00002'},
-    {...row,id:secondConditionId,context:'Condition A2',operator:'>',value:'90'},
-    {...row,id:ids.activities[1]!,compound_id:ids.compounds[1]!,context:'Condition B',value:'9'},
-  ]});
-  const w=mount(ActivityComparison,{props:props()});await flushPromises();
-  expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(2);
-  expect(w.findAll('[data-comparison-activity]').map(x=>x.attributes('data-activity-id'))).toEqual([row.id,duplicateId,secondConditionId,ids.activities[1]]);
-  expect(w.findAll('[data-comparison-activity]').map(x=>x.text())).toEqual(['= 0.123456789012345678901','< 0.00002','> 90','= 9']);
-  expect(w.findAll('[data-measurement-context] summary').map(x=>x.text())).toEqual(['Condition A','Condition A','Condition A2','Condition B']);
-  await w.get(`[data-comparison-activity][data-activity-id="${duplicateId}"]`).trigger('click');
-  expect(w.emitted('open')?.[0]).toEqual([ids.compounds[0],duplicateId]);
-  w.unmount();
+it('merges other tabs tables and rejects changes to the same saved table',async()=>{
+ const lock=vi.fn(async (_key:string,run:()=>void)=>run());vi.stubGlobal('navigator',{locks:{request:lock}});
+ install();const a=mount(ActivityComparison,{props:props()}),b=mount(ActivityComparison,{props:props()});await flushPromises();
+ await a.get('[data-table-name]').setValue('One');await a.get('[data-save-table]').trigger('click');await flushPromises();
+ await b.get('[data-table-name]').setValue('Two');await b.get('[data-save-table]').trigger('click');await flushPromises();
+ const key=tableStorageKey('reviewer',ids.workspace);
+ let stored=JSON.parse(localStorage.getItem(key)!);
+ expect(stored.tables.map((t:any)=>t.name)).toEqual(['One','Two']);
+ const one=stored.tables[0].id,two=stored.tables[1].id;
+ await a.get('[data-saved-table]').setValue(one);await flushPromises();
+ expect(JSON.parse(localStorage.getItem(key)!).tables).toHaveLength(2);
+ // A stale tab must load the latest definition when switching.
+ stored.tables.find((t:any)=>t.id===two).name='Two externally updated';localStorage.setItem(key,JSON.stringify(stored));
+ await a.get('[data-saved-table]').setValue(two);await flushPromises();
+ expect(a.get('[data-table-name]').element).toHaveProperty('value','Two externally updated');
+ await b.get('[data-table-name]').setValue('Local draft');await b.get('[data-save-table]').trigger('click');await flushPromises();
+ expect(b.get('[data-table-storage-error]').text()).toContain('其他标签页');
+ expect(b.get('[data-table-name]').element).toHaveProperty('value','Local draft');
+ await b.get('[data-delete-table]').trigger('click');await b.get('[data-discard-table-changes]').trigger('click');await flushPromises();
+ expect(JSON.parse(localStorage.getItem(key)!).tables).toHaveLength(2);
+ // Deletion elsewhere must not be silently undone by a stale save.
+ stored=JSON.parse(localStorage.getItem(key)!);stored.tables=stored.tables.filter((t:any)=>t.id!==one);stored.activeId=two;localStorage.setItem(key,JSON.stringify(stored));
+ const c=mount(ActivityComparison,{props:props()});await flushPromises();
+ stored.tables=[];stored.activeId=null;localStorage.setItem(key,JSON.stringify(stored));
+ await c.get('[data-save-table]').trigger('click');await flushPromises();
+ expect(c.get('[data-table-storage-error]').text()).toContain('其他标签页');expect(JSON.parse(localStorage.getItem(key)!).tables).toHaveLength(0);
+ expect(lock).toHaveBeenCalled();a.unmount();b.unmount();c.unmount();
 });

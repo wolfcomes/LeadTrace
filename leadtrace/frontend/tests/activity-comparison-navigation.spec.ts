@@ -1,8 +1,8 @@
 import { flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { activities, compounds, ids, installReviewer, mountWorkspace, response, workspace } from './paper-science-v2-fixtures';
+import { activities, compounds, ids, installReviewer, mountWorkspace, response, workspace, addComparisonColumn } from './paper-science-v2-fixtures';
 
-beforeEach(installReviewer);
+beforeEach(()=>{installReviewer();localStorage.clear();});
 afterEach(() => vi.unstubAllGlobals());
 
 it('opens the exact Activity without scanning other compounds and retains comparison state on return', async () => {
@@ -29,7 +29,7 @@ it('opens the exact Activity without scanning other compounds and retains compar
   await wrapper.get('[data-comparison-sort]').setValue('label');
   expect(writes).toEqual([]);
   const target=activities[1]!;
-  await wrapper.get('[data-comparison-group]').setValue(JSON.stringify([target.assay_name,target.metric,target.unit]));
+  await addComparisonColumn(wrapper,target);
   await wrapper.get(`[data-comparison-activity][data-activity-id="${ids.activities[1]}"]`).trigger('click');await flushPromises();
   expect(router.currentRoute.value.query).toMatchObject({tab:'compounds',entity:ids.activities[1]});
   expect(wrapper.get(`[data-activity-row][data-activity-id="${ids.activities[1]}"]`).classes()).toContain('selected');
@@ -83,6 +83,7 @@ it('locks editing until the workspace refresh for opening a comparison record co
     return response({},404);
   }));
   const {wrapper,router}=await mountWorkspace('activity-comparison');
+  await addComparisonColumn(wrapper,activities[0]!);
   await wrapper.findAll('[data-comparison-activity]')[0]!.trigger('click');await flushPromises();
   expect(reads).toBe(2);
   expect(router.currentRoute.value.query.tab).toBe('activity-comparison');
@@ -118,6 +119,7 @@ it('hides previously loaded Compound controls until fresh records arrive after c
   const {wrapper}=await mountWorkspace('compounds');
   expect(wrapper.find('[data-edit-compound]').exists()).toBe(true);
   await wrapper.get('[data-workspace-tab-key="activity-comparison"]').trigger('click');await flushPromises();
+  await addComparisonColumn(wrapper,activities[0]!);
   version=2;
   await wrapper.findAll('[data-comparison-activity]')[0]!.trigger('click');await flushPromises();
   expect(pending.length).toBeGreaterThan(0);

@@ -294,21 +294,26 @@ The complete pilot procedure and evidence checklist are in
 
 ## Reviewer workbench
 
-The read-only Activity comparison tab starts with the most widely recorded
-assay/metric/unit group and condition, hiding Compounds without matching records.
-When every condition belongs to a single Compound, the group instead shows all
-observations in one compact column with each value’s own condition alongside it.
-This does not infer condition equivalence. Groups and conditions remain selectable; missing
-rows can be revealed explicitly. Default ordering keeps identical and similar
-measurement sets adjacent with natural Compound identifiers inside each set.
-It does not cluster numerical activity values or chemical structures. Decimal
-values, qualifiers, review hints and repeated observations are preserved without
-unit conversion or averaging. Names and full conditions expand on demand.
-Search, group/condition selection, sort, missing-row visibility and table scroll
-survive returning from the Compound/Activity editor; saved edits refresh the table.
-Pending edits block opening another record. Viewing the matrix does not write
-viewing receipts or confirmations. Its authorized workspace GET returns a
-consistent version and records in one query; no schema migration is needed.
+Activity comparison is a read-only column builder. Each column binds an exact
+assay/metric/unit and either all matching records or an explicit set of Activity
+IDs; its editable display title never changes matching. Literal condition and
+Compound search previews candidates before the reviewer explicitly selects them.
+All-record columns include future matching additions; selected-record columns
+retain IDs through value/context edits and flag removed or changed measurements.
+Repeated observations, decimal precision, qualifiers, context and hints remain.
+Choose any-column or every-column coverage, reorder columns with drag/drop or
+buttons, and use natural identifier, original or measurement-similarity ordering.
+Named configurations are saved only in the current browser's localStorage, scoped
+by username and workspace. They contain configuration rather than measurement
+values, are schema-validated on load, and do not sync across devices. Unsaved
+configuration switches require explicit discard; storage failures retain drafts.
+Saving merges the latest browser configuration list and rejects changes to a table
+modified in another tab. Web Locks serialize writes where supported. Save before
+leaving the article or closing the browser; unsaved layouts are held in memory.
+Exact editor navigation and return filters/scroll retain existing version and
+pending-edit guards. No viewing receipts, confirmations or scientific writes are
+made by the builder. The existing authorized comparison GET remains unchanged;
+this frontend-only feature requires no database migration.
 
 Saved Reviewer edits support version-checked undo and redo. Unsaved forms and
 in-flight saves disable history actions; restoring an edit reloads the workspace
