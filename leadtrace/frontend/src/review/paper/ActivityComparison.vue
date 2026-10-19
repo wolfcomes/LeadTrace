@@ -2,8 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { t } from '../../i18n';
 import { getActivityComparison } from '../../v2/api';
-import type { ActivityComparison, PaperWorkspace } from '../../v2/types';
-import { activityMatrix, measurementGroups, orderByMeasurementSimilarity } from './activityComparison';
+import type { Activity, ActivityComparison, PaperWorkspace } from '../../v2/types';
+import { activityMatrix, measurementGroups, orderByMeasurementSimilarity, type MeasurementGroup } from './activityComparison';
 import ReviewHint from './ReviewHint.vue';
 
 const props = defineProps<{workspace: PaperWorkspace; active: boolean; blocked?: boolean}>();
@@ -23,6 +23,27 @@ const groups = computed(() => measurementGroups(data.value?.activities ?? []));
 const activeGroups = computed(() => groups.value.filter(g => selectedGroups.value?.includes(g.key)));
 const availableColumns = computed(() => activeGroups.value.flatMap(g => g.columns));
 const columns = computed(() => availableColumns.value.filter(c => selectedColumns.value?.includes(c.key)));
+// Free-text conditions can be unique to every Compound. Preserve each condition
+// beside its observation instead of expanding a sparse column for every record.
+const usesPerRecordConditions = (group: MeasurementGroup) => group.compoundCount > 1 && group.columns.every(c => c.compoundCount === 1);
+const defaultConditions = (group: MeasurementGroup) => usesPerRecordConditions(group) ? group.columns.map(c => c.key) : group.columns.slice(0, 1).map(c => c.key);
+const displayColumns = computed(() => activeGroups.value.flatMap(group => {
+  const chosen = group.columns.filter(c => selectedColumns.value?.includes(c.key));
+  if (chosen.length > 1 && usesPerRecordConditions(group)) return [{...chosen[0]!, key: group.key, context: null, memberKeys: chosen.map(c => c.key), perRecordContext: true}];
+  return chosen.map(c => ({...c, memberKeys: [c.key], perRecordContext: false}));
+}));
+const displayCells = computed(() => {
+  const result = new Map<string, Map<string, Activity[]>>();
+  for (const [compoundId, cells] of matrix.value.cells) {
+    const row = new Map<string, Activity[]>();
+    for (const column of displayColumns.value) {
+      const observations = column.memberKeys.flatMap(key => cells.get(key) ?? []);
+      if (observations.length) row.set(column.key, observations);
+    }
+    result.set(compoundId, row);
+  }
+  return result;
+});
 const collator = new Intl.Collator('en', {numeric: true, sensitivity: 'base'});
 const matchingCompounds = computed(() => {
   const query = search.value.trim().toLocaleLowerCase();
@@ -33,13 +54,13 @@ const missingCount = computed(() => matchingCompounds.value.filter(c => !hasSele
 const compounds = computed(() => {
   if (!columns.value.length) return [];
   const rows = matchingCompounds.value.filter(c => showEmpty.value || hasSelectedMeasurement(c.id));
-  if (sort.value === 'similarity') return orderByMeasurementSimilarity(rows, matrix.value.cells, columns.value.map(c => c.key));
+  if (sort.value === 'similarity') return orderByMeasurementSimilarity(rows, displayCells.value, displayColumns.value.map(c => c.key));
   return sort.value === 'label' ? rows.sort((a,b) => collator.compare(a.compound_label, b.compound_label)) : rows;
 });
 function focusGroup(key: string) {
   const group = groups.value.find(g => g.key === key);
   selectedGroups.value = group ? [key] : [];
-  selectedColumns.value = group?.columns[0] ? [group.columns[0].key] : [];
+  selectedColumns.value = group ? defaultConditions(group) : [];
   position = {top: 0, left: 0}; void restoreScroll();
 }
 function toggleGroup(key: string, checked: boolean) {
@@ -48,8 +69,8 @@ function toggleGroup(key: string, checked: boolean) {
   selectedGroups.value = [...selected];
   const columnKeys = new Set(activeGroups.value.flatMap(g => g.columns.map(c => c.key)));
   const keep = (selectedColumns.value ?? []).filter(k => columnKeys.has(k));
-  const first = groups.value.find(g => g.key === key)?.columns[0];
-  if (checked && first && !keep.includes(first.key)) keep.push(first.key);
+  const group = groups.value.find(g => g.key === key);
+  if (checked && group) for (const columnKey of defaultConditions(group)) if (!keep.includes(columnKey)) keep.push(columnKey);
   selectedColumns.value = keep;
 }
 function toggleColumn(key: string, checked: boolean) {
@@ -75,7 +96,7 @@ async function load() {
     if (selectedGroups.value === null && groups.value.length) {
       const first = groups.value[0];
       selectedGroups.value = first ? [first.key] : [];
-      selectedColumns.value = first?.columns[0] ? [first.columns[0].key] : [];
+      selectedColumns.value = first ? defaultConditions(first) : [];
     }
   } catch {
     if (epoch === sequence) error.value = '活性对比暂时无法读取，请重试。';
@@ -132,13 +153,13 @@ onBeforeUnmount(() => { sequence++; });
       </div>
       <div v-show="!loading && compounds.length > 0" ref="viewport" class="comparison-scroll" data-comparison-scroll tabindex="0" role="region" :aria-label="t('Compound 活性对比表')" @scroll="rememberScroll">
         <table class="comparison-grid">
-          <caption>{{ t('— 表示无对应记录；不同条件或单位分别列出，同格多条记录全部保留。') }}</caption>
-          <thead><tr><th scope="col" class="compound-column">Compound</th><th v-for="column in columns" :key="column.key" scope="col" data-comparison-column><span class="measurement-assay" :title="column.assay">{{ column.assay }}</span><small>{{ column.metric }} · {{ column.unit || t('未记录单位') }}</small><details v-if="column.context" class="measurement-context"><summary :title="column.context">{{ column.context }}</summary><p>{{ column.context }}</p></details><small v-else>{{ t('未记录实验条件') }}</small></th></tr></thead>
+          <caption>{{ t('— 表示无对应记录；条件与单位保留，同格多条记录全部列出。') }}</caption>
+          <thead><tr><th scope="col" class="compound-column">Compound</th><th v-for="column in displayColumns" :key="column.key" scope="col" data-comparison-column><span class="measurement-assay" :title="column.assay">{{ column.assay }}</span><small>{{ column.metric }} · {{ column.unit || t('未记录单位') }}</small><small v-if="column.perRecordContext">{{ t('条件逐条列出') }}</small><details v-else-if="column.context" class="measurement-context"><summary :title="column.context">{{ column.context }}</summary><p>{{ column.context }}</p></details><small v-else>{{ t('未记录实验条件') }}</small></th></tr></thead>
           <tbody><tr v-for="compound in compounds" :key="compound.id" data-comparison-row :data-compound-id="compound.id">
             <th scope="row" class="compound-column"><button type="button" class="comparison-link" data-comparison-compound :disabled="blocked || loading" @click="open(compound.id)">{{ compound.compound_label }}</button><details v-if="compound.display_name" class="compound-name"><summary :title="compound.display_name">{{ t('名称') }}</summary><small>{{ compound.display_name }}</small></details><ReviewHint :hint="compound.review_hint" /></th>
-            <td v-for="column in columns" :key="column.key">
-              <template v-if="matrix.cells.get(compound.id)?.get(column.key)?.length">
-                <div v-for="activity in matrix.cells.get(compound.id)?.get(column.key)" :key="activity.id" class="measurement-value"><button type="button" class="comparison-link" data-comparison-activity :data-activity-id="activity.id" :disabled="blocked || loading" :aria-label="t('查看 {compound} 的活性记录：{value}', {compound: compound.compound_label, value: `${activity.operator} ${activity.value} ${activity.unit ?? ''}`})" @click="open(compound.id, activity.id)">{{ activity.operator }} {{ activity.value }}</button><ReviewHint :hint="activity.review_hint" /></div>
+            <td v-for="column in displayColumns" :key="column.key">
+              <template v-if="displayCells.get(compound.id)?.get(column.key)?.length">
+                <div v-for="activity in displayCells.get(compound.id)?.get(column.key)" :key="activity.id" class="measurement-value"><button type="button" class="comparison-link" data-comparison-activity :data-activity-id="activity.id" :disabled="blocked || loading" :aria-label="t('查看 {compound} 的活性记录：{value}', {compound: compound.compound_label, value: `${activity.operator} ${activity.value} ${activity.unit ?? ''}`})" @click="open(compound.id, activity.id)">{{ activity.operator }} {{ activity.value }}</button><ReviewHint :hint="activity.review_hint" /><details v-if="column.perRecordContext" class="measurement-context record-context" data-measurement-context><summary :title="activity.context || t('未记录实验条件')">{{ activity.context || t('未记录实验条件') }}</summary><p>{{ activity.context || t('未记录实验条件') }}</p></details></div>
               </template><span v-else class="missing-measurement">—</span>
             </td>
           </tr></tbody>
@@ -182,7 +203,8 @@ thead .compound-column { z-index: 3; }
 .measurement-context { font-size: .75rem; font-weight: normal; margin-top: 6px; }
 .measurement-context summary { cursor: pointer; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .measurement-context p { white-space: pre-wrap; }
-.measurement-value { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+.record-context { flex-basis: 100%; min-width: 0; }
+.measurement-value { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-bottom: 4px; }
 .comparison-link { border: 0; background: transparent; padding: 2px 0; color: var(--teal); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; text-align: left; font: inherit; font-variant-numeric: tabular-nums; }
 .comparison-link:disabled { cursor: default; opacity: .55; }
 .missing-measurement { color: var(--muted); }

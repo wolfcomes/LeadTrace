@@ -1,5 +1,7 @@
 // UI text only. Scientific content and user-entered records remain unchanged.
 export const enReview: Record<string, string> = {
+  "条件逐条列出": "Conditions shown per observation",
+  "— 表示无对应记录；条件与单位保留，同格多条记录全部列出。": "— means no matching record; conditions, units and every observation are retained.",
   "测定分组": "Measurement group",
   "已选择多个测定组": "Multiple measurement groups selected",
   "请选择测定分组": "Select a measurement group",

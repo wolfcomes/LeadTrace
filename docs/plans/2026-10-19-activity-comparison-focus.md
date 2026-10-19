@@ -28,3 +28,22 @@
 - Independent review identified indistinguishable collapsed condition headers. Actual context now remains visible as a two-line preview; a regression reproduced the issue before the fix.
 - Exact grouping, duplicate observations, precision, deterministic similarity ordering, empty-to-populated refresh and old workspace response protection verified. Guide generation and whitespace checks passed.
 - Frontend-only release; no backend or database changes required.
+
+
+## Live-data follow-up
+
+Readonly production smoke exposed a group with 26 Compounds and 52 exclusive
+conditions (each condition covered one Compound), so a single-condition default
+still failed the comparison goal. For groups with more than one Compound where
+all conditions are exclusive, select the group's conditions by default and render
+one compact group column with every observation's own condition alongside its
+value. Shared-condition groups retain separate columns. No values or records are
+combined, no equivalence is inferred, and condition filters remain available.
+A failing regression reproduces the one-row problem; synthetic browser coverage
+also checks 30 Compounds / 60 exclusive observations, exact navigation and return.
+
+Final follow-up validation: 421 frontend tests passed, typecheck/build passed,
+2 synthetic browser scenarios passed (shared and exclusive conditions), guide
+and whitespace checks passed. Independent review found no blocker in compact
+per-observation conditions. Explicit regression preserves repeated Activity IDs,
+precision and qualifiers plus exact click targets.

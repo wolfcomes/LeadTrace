@@ -296,7 +296,9 @@ The complete pilot procedure and evidence checklist are in
 
 The read-only Activity comparison tab starts with the most widely recorded
 assay/metric/unit group and condition, hiding Compounds without matching records.
-Groups and exact context columns can be selected for wider comparisons; missing
+When every condition belongs to a single Compound, the group instead shows all
+observations in one compact column with each value’s own condition alongside it.
+This does not infer condition equivalence. Groups and conditions remain selectable; missing
 rows can be revealed explicitly. Default ordering keeps identical and similar
 measurement sets adjacent with natural Compound identifiers inside each set.
 It does not cluster numerical activity values or chemical structures. Decimal

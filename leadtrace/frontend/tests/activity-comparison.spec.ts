@@ -180,3 +180,40 @@ it('selects a useful default when the first Activity arrives in an initially emp
   expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
   w.unmount();
 });
+
+it('compares a group with exclusively compound-specific conditions without making a sparse column per record', async () => {
+  install({...data(),activities:[
+    {...row,context:'Human enzyme; compound-specific condition A'},
+    {...row,id:ids.activities[1]!,compound_id:ids.compounds[1]!,context:'Human enzyme; compound-specific condition B',value:'9'},
+  ]});
+  const w=mount(ActivityComparison,{props:props()});await flushPromises();
+  expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
+  expect(w.findAll('[data-comparison-row]')).toHaveLength(2);
+  expect(w.findAll('[data-comparison-activity]')).toHaveLength(2);
+  expect(w.findAll('[data-measurement-context] summary').map(x=>x.text())).toEqual(['Human enzyme; compound-specific condition A','Human enzyme; compound-specific condition B']);
+  expect(w.findAll('[data-comparison-column-choice]').filter(x=>(x.element as HTMLInputElement).checked)).toHaveLength(2);
+  await w.findAll('[data-comparison-column-choice]')[1]!.setValue(false);
+  expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
+  expect(w.findAll('[data-comparison-activity]')).toHaveLength(1);
+  w.unmount();
+});
+
+it('preserves all IDs, qualifiers and precision when compact conditions contain repeated observations', async () => {
+  const duplicateId='30000000-0000-4000-8000-000000000093';
+  const secondConditionId='30000000-0000-4000-8000-000000000094';
+  install({...data(),activities:[
+    {...row,context:'Condition A'},
+    {...row,id:duplicateId,context:'Condition A',operator:'<',value:'0.00002'},
+    {...row,id:secondConditionId,context:'Condition A2',operator:'>',value:'90'},
+    {...row,id:ids.activities[1]!,compound_id:ids.compounds[1]!,context:'Condition B',value:'9'},
+  ]});
+  const w=mount(ActivityComparison,{props:props()});await flushPromises();
+  expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
+  expect(w.findAll('[data-comparison-row]')).toHaveLength(2);
+  expect(w.findAll('[data-comparison-activity]').map(x=>x.attributes('data-activity-id'))).toEqual([row.id,duplicateId,secondConditionId,ids.activities[1]]);
+  expect(w.findAll('[data-comparison-activity]').map(x=>x.text())).toEqual(['= 0.123456789012345678901','< 0.00002','> 90','= 9']);
+  expect(w.findAll('[data-measurement-context] summary').map(x=>x.text())).toEqual(['Condition A','Condition A','Condition A2','Condition B']);
+  await w.get(`[data-comparison-activity][data-activity-id="${duplicateId}"]`).trigger('click');
+  expect(w.emitted('open')?.[0]).toEqual([ids.compounds[0],duplicateId]);
+  w.unmount();
+});
