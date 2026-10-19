@@ -25,3 +25,19 @@ it('shows frozen before/after table headings and referenced values without live 
  expect(w.get('[data-record-side="before"]').text()).toContain('Original heading');expect(w.get('[data-record-side="after"]').text()).toContain('Corrected heading');
  expect(w.get('[data-record-side="after"]').text()).toContain(String(after.activities[0]!.value));w.unmount();
 });
+
+it('attributes screenshot edits to their linked table and preserves explicit frozen row order',async()=>{
+ const {before,after}=pair();
+ Object.assign(before.activity_tables[0]!,{compound_ids:[before.compounds[1]!.id,before.compounds[0]!.id],evidence_ids:[before.evidence[0]!.id],sort:'default'});
+ Object.assign(after.activity_tables[0]!,structuredClone(before.activity_tables[0]!));after.evidence[0]!.caption='Corrected source region';
+ const result=buildRecordComparison(after,{kind:'reviewer_start',baseline_submission_number:null,baseline_snapshot:before,events:[],warnings:[]});
+ expect(result.tables[0]!.changed).toBe(true);expect(result.tables[0]!.changes.some(c=>c.domain==='evidence')).toBe(true);expect(result.article.changed).toBe(false);
+ const {default:FrozenActivityTable}=await import('../src/approvals/FrozenActivityTable.vue');
+ const w=mount(FrozenActivityTable,{props:{table:after.activity_tables[0]!,snapshot:after,paperId:ids.paper}});
+ expect(w.findAll('tbody th').map(x=>x.text())).toEqual([after.compounds[1]!.compound_label,after.compounds[0]!.compound_label]);w.unmount();
+});
+it('does not invent reviewer changes for absent versus empty optional table defaults',()=>{
+ const {before,after}=pair();Object.assign(after.activity_tables[0]!,structuredClone(before.activity_tables[0]!),{compound_ids:null,evidence_ids:[]});
+ const result=buildRecordComparison(after,{kind:'reviewer_start',baseline_submission_number:null,baseline_snapshot:before,events:[],warnings:[]});
+ expect(result.tables[0]!.changed).toBe(false);
+});

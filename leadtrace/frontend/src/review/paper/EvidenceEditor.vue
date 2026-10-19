@@ -21,7 +21,7 @@ import {
 } from "../../v2/api";
 import type { Evidence, EvidenceLink, LineageEdge, NormalizedBBox, PaperWorkspace } from "../../v2/types";
 
-const props = defineProps<{ workspace: PaperWorkspace; edgeId?: string; evidenceIds?: string[]; activityOnly?: boolean; selectedEntityId?: string; readOnly?: boolean }>();
+const props = defineProps<{ workspace: PaperWorkspace; edgeId?: string; evidenceIds?: string[]; activityOnly?: boolean; tableOnly?: boolean; selectedEntityId?: string; readOnly?: boolean }>();
 const emit = defineEmits<{ select: [entityId: string]; mutated: [workspaceVersion: number]; conflict: [] }>();
 const auth = useAuthStore();
 const evidenceItems = ref<Evidence[]>([]);
@@ -34,7 +34,7 @@ const loading = ref(true);
 const busy = ref(false);
 const showCreate = ref(false);
 const showPdf = ref(false);
-const kind = ref<Evidence["kind"]>("text");
+const kind = ref<Evidence["kind"]>(props.tableOnly ? "table" : "text");
 const pageNumber = ref(1);
 const bbox = ref<NormalizedBBox | null>(null);
 const cropNotice = ref(false);
@@ -46,7 +46,7 @@ const linkRole = ref<EvidenceLink["role"]>("supports");
 const linkingEvidenceId = ref<string>();
 const linkingEdgeId = ref("");
 const editingEvidenceId = ref<string>();
-const editEvidenceKind = ref<Evidence["kind"]>("text");
+const editEvidenceKind = ref<Evidence["kind"]>(props.tableOnly ? "table" : "text");
 const editEvidencePage = ref(1);
 const editEvidenceBBox = ref<NormalizedBBox | null>(null);
 const editCropNotice = ref(false);
@@ -64,10 +64,10 @@ watch(pageNumber, () => {
 watch(editEvidencePage, () => {
   if (editEvidenceBBox.value) { editEvidenceBBox.value = null; editCropNotice.value = true; }
 }, { flush: 'sync' });
-const visibleEvidence = computed(() => evidenceItems.value.filter(item => showLibrary.value || (
+const visibleEvidence = computed(() => evidenceItems.value.filter(item => (!props.tableOnly||item.kind==='table') && (showLibrary.value || (
   props.edgeId ? links.value.some(link => link.edge_id === props.edgeId && link.evidence_id === item.id)
   : props.evidenceIds ? props.evidenceIds.includes(item.id) || item.id === props.selectedEntityId : true
-)));
+))));
 
 const edgeById = computed(() => new Map(edges.value.map((edge) => [edge.id, edge])));
 const evidenceRegions = computed(() => evidenceItems.value.flatMap((item) => item.bbox ? [{
@@ -152,7 +152,7 @@ function captureEditRegion(region: { pageNumber: number; x0: number; y0: number;
 }
 
 function resetForm(): void {
-  kind.value = "text";
+  kind.value = props.tableOnly ? "table" : "text";
   pageNumber.value = 1;
   bbox.value = null;
   cropNotice.value = false;
@@ -339,13 +339,13 @@ usePendingEdit(() => showCreate.value || editingEvidenceId.value || linkingEvide
 
 <template>
   <section class="evidence-editor">
-    <header class="section-heading"><div><p class="eyebrow">{{ activityOnly ? "ACTIVITY EVIDENCE" : "EDGE EVIDENCE" }}</p><h2>{{ t("证据") }}</h2></div><button class="button-primary" data-add-evidence type="button" :disabled="readOnly || busy" @click="showCreate = !showCreate">{{ t("添加 Evidence") }}</button></header>
+    <header class="section-heading"><div><p class="eyebrow">{{ tableOnly ? "TABLE EVIDENCE" : activityOnly ? "ACTIVITY EVIDENCE" : "EDGE EVIDENCE" }}</p><h2>{{ t("证据") }}</h2></div><button class="button-primary" data-add-evidence type="button" :disabled="readOnly || busy" @click="showCreate = !showCreate">{{ t("添加 Evidence") }}</button></header>
     <FieldExample section="evidence" />
     <button v-if="edgeId || evidenceIds" class="button-quiet" data-toggle-evidence-library type="button" @click="showLibrary = !showLibrary">{{ showLibrary ? t("仅显示当前关联证据") : t("从全文证据库选择 / 管理未关联证据") }}</button>
     <p v-if="showLibrary" class="inline-feedback">{{ t("全文证据库：此处包含其他记录的来源，只有已关联的证据才属于当前记录。共享证据的修改会影响所有引用。") }}</p>
     <form v-if="showCreate" class="evidence-create-form" @submit.prevent="save">
       <div class="inline-create-form">
-        <label class="form-field">{{ t("类型") }}<select v-model="kind" :disabled="readOnly || busy"><option value="text">Text</option><option value="table">Table</option><option value="scheme">Scheme</option><option value="image">Image</option></select></label>
+        <label class="form-field">{{ t("类型") }}<select v-model="kind" :disabled="readOnly || busy || tableOnly"><option value="text">Text</option><option value="table">Table</option><option value="scheme">Scheme</option><option value="image">Image</option></select></label>
         <label class="form-field">{{ t("PDF 页码") }}<input v-model.number="pageNumber" data-evidence-page type="number" min="1" :max="workspace.source.page_count" :disabled="readOnly || busy"></label>
         <label class="form-field">Caption<input v-model="caption" :placeholder="t('例如：Table 2，Compound 24 的活性行')" maxlength="10000" :disabled="readOnly || busy"></label>
         <button class="button-secondary" type="button" :disabled="readOnly || busy" @click="showPdf = !showPdf">{{ showPdf ? t("关闭 PDF") : t("从 PDF 框选") }}</button>
@@ -376,7 +376,7 @@ usePendingEdit(() => showCreate.value || editingEvidenceId.value || linkingEvide
       <article v-for="item in visibleEvidence" :key="item.id" data-evidence-card :class="{ selected: item.id === selectedEntityId }" @click="emit('select', item.id)">
         <header><span class="status-chip">{{ item.kind }}</span><strong>p{{ item.page_number }}</strong></header>
         <form v-if="editingEvidenceId === item.id" class="evidence-edit-form" @submit.prevent="saveEvidenceEdit(item)" @click.stop>
-          <label class="form-field">{{ t("类型") }}<select v-model="editEvidenceKind" :disabled="busy"><option value="text">Text</option><option value="table">Table</option><option value="scheme">Scheme</option><option value="image">Image</option></select></label>
+          <label class="form-field">{{ t("类型") }}<select v-model="editEvidenceKind" :disabled="busy || tableOnly"><option value="text">Text</option><option value="table">Table</option><option value="scheme">Scheme</option><option value="image">Image</option></select></label>
           <label class="form-field">{{ t("页码") }}<input v-model.number="editEvidencePage" type="number" min="1" :max="workspace.source.page_count" :disabled="busy"></label>
           <button type="button" class="button-secondary" data-edit-evidence-region :disabled="busy" @click="showEditPdf = !showEditPdf">{{ showEditPdf ? t('关闭 PDF') : t('重新框选证据区域') }}</button>
           <PdfReviewCanvas v-if="showEditPdf" :pdf-url="`/api/v2/papers/${workspace.bibliography.paper_id}/source-pdf`" :page-count="workspace.source.page_count" :page="editEvidencePage" :regions="[]" :selection-mode="true" :allow-rotation="false" :read-only="busy" @create-region="captureEditRegion" />

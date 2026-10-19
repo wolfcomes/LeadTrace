@@ -4,7 +4,7 @@ import ActivityComparison from '../src/review/paper/ActivityComparison.vue';
 import {tableStorageKey} from '../src/review/paper/activityTableBuilder';
 import {activities,compounds,ids,installReviewer,response,workspace} from './paper-science-v2-fixtures';
 const props=()=>({workspace:workspace() as any,active:true});
-function install(){const fetcher=vi.fn(async(input:RequestInfo|URL)=>String(input).endsWith('/activity-tables')?response({workspace_id:ids.workspace,workspace_version:1,tables:[],other_activity_ids:activities.map(a=>a.id)}):response({workspace_id:ids.workspace,workspace_version:1,compounds,activities}));vi.stubGlobal('fetch',fetcher);return fetcher;}
+function install(){const fetcher=vi.fn(async(input:RequestInfo|URL)=>String(input).endsWith('/evidence')?response({workspace_id:ids.workspace,workspace_version:1,items:[],total:0}):String(input).endsWith('/activity-tables')?response({workspace_id:ids.workspace,workspace_version:1,tables:[],other_activity_ids:activities.map(a=>a.id)}):response({workspace_id:ids.workspace,workspace_version:1,compounds,activities}));vi.stubGlobal('fetch',fetcher);return fetcher;}
 beforeEach(()=>{installReviewer();localStorage.clear();});afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
 it('shows all unassigned observations in Other with no automatic persistence or guessed source labels',async()=>{
  const fetcher=install();const w=mount(ActivityComparison,{props:props()});await flushPromises();

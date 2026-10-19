@@ -491,6 +491,7 @@ export const activityTableSchema = z.object({
   id:uuidSchema,paper_id:uuidSchema,workspace_id:uuidSchema,name:z.string(),kind:z.enum(['source','custom']),
   source_label:z.string().nullable(),source_title:z.string().nullable(),page_number:z.number().int().nullable(),
   review_hint:z.string().nullable(),review_status:z.enum(['draft','reviewer_confirmed','unresolved']),created_by_kind:z.string(),
+  compound_ids:z.array(uuidSchema).nullable().optional(),evidence_ids:z.array(uuidSchema).optional(),
   columns:z.array(activityTableColumnSchema),mode:z.enum(['any','all']),sort:z.enum(['label','similarity','default']),
 });
 export const activityTableListSchema=z.object({workspace_id:uuidSchema,workspace_version:z.number().int(),tables:z.array(activityTableSchema),other_activity_ids:z.array(uuidSchema)});
@@ -498,7 +499,7 @@ export const activityTableMutationSchema=z.object({workspace_version:z.number().
 export const activityTableDeleteSchema=z.object({workspace_version:z.number().int(),deleted_table_id:uuidSchema});
 export type ActivityTable=z.infer<typeof activityTableSchema>;
 export type ActivityTableList=z.infer<typeof activityTableListSchema>;
-export type ActivityTableWrite=Pick<ActivityTable,'name'|'kind'|'source_label'|'source_title'|'page_number'|'review_hint'|'columns'|'mode'|'sort'>;
+export type ActivityTableWrite=Pick<ActivityTable,'name'|'kind'|'source_label'|'source_title'|'page_number'|'review_hint'|'columns'|'mode'|'sort'|'compound_ids'|'evidence_ids'>;
 
 export const frozenPaperSnapshotSchema = z.object({
   activity_tables:z.array(activityTableSchema).optional(),

@@ -212,7 +212,7 @@ export function buildRecordComparison(
         };
       },
     );
-  const tables = records<Row>('activity_tables',(snapshot,id)=>rows(snapshot,'activity_tables').find(row=>row.id===id)??null,(record,change)=>record?.id===change.id&&change.domain==='activity_tables');
+  const tables = records<Row>('activity_tables',(snapshot,id)=>rows(snapshot,'activity_tables').find(row=>row.id===id)??null,(record,change)=>(record?.id===change.id&&change.domain==='activity_tables')||(change.domain==='evidence'&&Array.isArray(record?.evidence_ids)&&record.evidence_ids.includes(change.id)));
   const covered = new Set(
     [...compounds, ...lineages, ...tables].flatMap((r) => r.changes),
   );
@@ -376,6 +376,8 @@ export function issueTarget(
         recordId: String(edge.lineage_id),
         selection: String(edge.id),
       };
+    const table=rows(snapshot,'activity_tables').find(x=>Array.isArray(x.evidence_ids)&&x.evidence_ids.includes(row.id));
+    if(table)return {tab:'tables',recordId:String(table.id),selection:String(table.id)};
     const owner =
       rows(snapshot, "activities").find((x) => x.evidence_id === row.id) ??
       rows(snapshot, "compound_highlights").find(

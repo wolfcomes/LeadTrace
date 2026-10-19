@@ -122,7 +122,7 @@ export function buildComparison(current: Record<string, unknown>, comparison?: C
     for (const id of new Set([...oldRows.keys(), ...newRows.keys()])) {
       const old = oldRows.get(id) ?? null, next = newRows.get(id) ?? null;
       const fields = [...new Set([...Object.keys(old ?? {}), ...Object.keys(next ?? {})])]
-        .filter(key => !ignored.has(key) && !(domain === "structures" && ["smiles", "molfile"].includes(key) && sameChemicalIdentity(old, next)) && fieldValue(key, old?.[key]) !== fieldValue(key, next?.[key]))
+        .filter(key => !ignored.has(key) && !(domain === "structures" && ["smiles", "molfile"].includes(key) && sameChemicalIdentity(old, next)) && fieldValue(key, domain==='activity_tables'&&key==='evidence_ids'?(old?.[key]??[]):old?.[key]) !== fieldValue(key, domain==='activity_tables'&&key==='evidence_ids'?(next?.[key]??[]):next?.[key]))
         .map(key => ({key, before: old?.[key], after: next?.[key]}));
       if (old && next && !fields.length) continue;
       const row = next ?? old!, source = next ? current : before;

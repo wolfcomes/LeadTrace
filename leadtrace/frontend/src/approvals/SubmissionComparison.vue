@@ -389,7 +389,7 @@ function fieldChanged(domain: string, id: unknown, key: string) {
           :available="result.available"
         />
         <div v-else-if="tab === 'tables' && selectedTable" class="paired-article-records" data-frozen-table-pair>
-          <article v-for="side in sides" :key="side" :data-record-side="side"><h3>{{t(side==='before'?'修改前':'本次提交')}}</h3><FrozenActivityTable v-if="selectedTable[side]" :table="selectedTable[side]!" :snapshot="side==='before'?baseline:snapshot" /><p v-else>—</p></article>
+          <article v-for="side in sides" :key="side" :data-record-side="side"><h3>{{t(side==='before'?'修改前':'本次提交')}}</h3><FrozenActivityTable v-if="selectedTable[side]" :table="selectedTable[side]!" :paper-id="paperId" :current-source-sha="sourceSha" :snapshot="side==='before'?baseline:snapshot" /><p v-else>—</p></article>
         </div>
         <div v-else-if="tab === 'article'" ref="compoundPair" data-comparison-pair class="paired-article-records">
           <article v-for="side in sides" :key="side" :data-record-side="side">

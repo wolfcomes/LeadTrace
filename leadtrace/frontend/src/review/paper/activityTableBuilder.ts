@@ -29,7 +29,7 @@ export function matchingActivities(column: ComparisonColumn, activities: Activit
   const ids = column.activityIds === null ? null : new Set(column.activityIds);
   return activities.filter(a => a.assay_name === column.assay && a.metric === column.metric && a.unit === column.unit && (ids === null || ids.has(a.id)));
 }
-export function buildComparisonTable(compounds: Compound[], activities: Activity[], columns: ComparisonColumn[], mode: ComparisonTable['mode'], sort: ComparisonTable['sort']) {
+export function buildComparisonTable(compounds: Compound[], activities: Activity[], columns: ComparisonColumn[], mode: ComparisonTable['mode'], sort: ComparisonTable['sort'], compoundIds?: string[] | null) {
   const cells = new Map<string, Map<string, Activity[]>>();
   const matches = new Map(columns.map(column => [column.id, matchingActivities(column,activities)]));
   for (const column of columns) for (const activity of matches.get(column.id)!) {
@@ -38,7 +38,8 @@ export function buildComparisonTable(compounds: Compound[], activities: Activity
     const observations = row.get(column.id) ?? [];
     observations.push(activity); row.set(column.id,observations);
   }
-  let rows = compounds.filter(c => columns.length && (mode === 'all' ? columns.every(col => cells.get(c.id)?.get(col.id)?.length) : cells.has(c.id)));
+  const byId = new Map(compounds.map(c=>[c.id,c]));
+  let rows = compoundIds != null ? compoundIds.flatMap(id=>byId.has(id)?[byId.get(id)!]:[]) : compounds.filter(c => columns.length && (mode === 'all' ? columns.every(col => cells.get(c.id)?.get(col.id)?.length) : cells.has(c.id)));
   if (sort === 'label') {
     const collator = new Intl.Collator('en',{numeric:true,sensitivity:'base'});
     rows.sort((a,b) => collator.compare(a.compound_label,b.compound_label) || a.id.localeCompare(b.id));
