@@ -238,6 +238,8 @@ def _payload_from_snapshot(
         payload['activity_tables'].append({'ref': table_refs[row['id']],
             **fields(row, ('name','kind','source_label','source_title','page_number','mode','sort')),
             'review_hint': row.get('review_hint'),
+            'compound_refs': [reference(compound_refs, c, 'activity_tables') for c in row['compound_ids']] if row.get('compound_ids') is not None else None,
+            'evidence_refs': [reference(evidence_refs, e, 'activity_tables') for e in row.get('evidence_ids', [])],
             'columns': [{**{k:v for k,v in c.items() if k!='activity_ids'},
                          'activity_refs':[reference(activity_refs,a,'activity_tables') for a in c['activity_ids']]} for c in row['columns']]})
         review_metadata.append({'path':f"activity_tables/{table_refs[row['id']]}",'review_status':row['review_status']})

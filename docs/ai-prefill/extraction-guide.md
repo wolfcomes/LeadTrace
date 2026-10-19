@@ -634,3 +634,34 @@ Do not claim reviewer confirmation: imported or changed tables are draft and
 changed claims/dependents require Reviewer reconfirmation. AI provenance remains
 in audit history and is excluded from Reviewer-only approval differences; later
 human corrections remain reviewable. Submitted snapshots are never rewritten.
+
+
+### Ordered Compound rows and original Table screenshots
+
+For source tables, set `compound_refs` to the exact ordered existing Compound
+refs represented by this table. An explicit empty list means no selected rows;
+omitting it (or null) preserves legacy derived membership. Every referenced
+Activity must belong to a selected Compound. Preserve exact observations,
+including repeated conditions; never manufacture a value for a blank cell.
+Removing a row unlinks its Activities only from that table; unassigned records
+return to derived Other. Do not delete Compound or Activity records to reshape a
+table. Preserve reviewer row order and choices outside the authorized repair.
+
+Link each original source table to one or more existing `kind: "table"` Evidence
+records using ordered `evidence_refs`. Each must use the same source PDF,
+physical page number and a valid normalized bbox. Reuse an existing suitable
+Evidence instead of duplicating it; a caption or Activity-level link alone does
+not establish whole-table screenshot coverage. The scientific runtime must
+check that the crop includes the table number, headings/units, relevant rows and
+footnotes. Use multiple Evidence crops for tables spanning pages. Never invent
+coordinates or use an unrelated table image. If a valid crop cannot be located,
+leave the table draft, explain the missing screenshot in `review_hint` and
+report it as unresolved. Legacy candidates may omit this field; missing images
+do not become fabricated evidence. Original source tables require a valid
+screenshot before Reviewer confirmation; Other/custom tables do not.
+
+A row/order/link change or linked Evidence revision requires fresh Reviewer
+confirmation. AI repairs preserve unchanged human edits and remain excluded
+from human approval differences through audited deltas; do not mark AI output
+as Reviewer work. A table-only repair must not change measurements/structures
+unless that dependency is explicitly authorized.

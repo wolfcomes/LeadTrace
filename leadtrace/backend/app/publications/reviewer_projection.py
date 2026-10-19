@@ -115,6 +115,10 @@ def _apply_table_columns(target, before, after):
 def _apply_delta(target, before, after, *, table_columns=False):
     """Apply only changed dictionary paths, retaining other human baseline values."""
     for key in before.keys() | after.keys():
+        if (table_columns and key in {'compound_ids', 'evidence_ids'}
+                and before.get(key) != after.get(key)
+                and target.get(key) != before.get(key)):
+            raise _IncompleteHistory('AI and Reviewer edits overlap Activity table rows or Evidence')
         if key not in after:
             target.pop(key, None)
         elif key not in before:

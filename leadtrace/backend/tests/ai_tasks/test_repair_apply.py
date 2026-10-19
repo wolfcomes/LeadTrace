@@ -311,3 +311,67 @@ def test_ai_table_roundtrip_then_activity_change_invalidates_table(ai_context,tm
         assert result['counts']['activity_tables']['updated']==0
         assert table.review_status=='draft'
         assert session.scalar(select(ChangeEvent).where(ChangeEvent.action=='activity_table.repair_invalidate'))
+
+
+def test_ai_table_rows_evidence_roundtrip_and_screenshot_dependency(ai_context,tmp_path):
+    from app.activity_tables.models import ActivityTable
+    from tests.ai_prefill.test_activity_tables import row_evidence_payload
+    from app.publications.reviewer_projection import reviewer_only_baseline
+    with ai_context.session_factory.begin() as session:
+        raw = row_evidence_payload()
+        before,snapshot,refs = baseline(ai_context,session,raw)
+        table = session.scalar(select(ActivityTable))
+        assert before.activity_tables[0].compound_refs == raw['activity_tables'][0]['compound_refs']
+        assert before.activity_tables[0].evidence_refs == raw['activity_tables'][0]['evidence_refs']
+        table.review_status = 'reviewer_confirmed'
+        session.flush()
+        snapshot = build_paper_snapshot(session,ai_context.workspace_id)
+        prior_events = {e.id for e in session.scalars(select(ChangeEvent))}
+        data = before.model_dump(mode='json')
+        data['evidence'][0]['bbox']['x0'] = '0.16'
+        apply_delta(session,automatic_revision=True,after=AiPrefillPayload.model_validate(data),**args(ai_context,session,tmp_path,before,snapshot,refs))
+        assert table.review_status == 'draft'
+        after = build_paper_snapshot(session,ai_context.workspace_id)
+        for key in ('compounds','structures','activities','lineages','lineage_edges'):
+            assert after[key] == snapshot[key]
+        events = [e for e in session.scalars(select(ChangeEvent).order_by(ChangeEvent.occurred_at,ChangeEvent.id)) if e.id not in prior_events]
+        projected, warnings = reviewer_only_baseline(after,events,verified_repair_ids={e.id for e in events})
+        assert not warnings
+        assert projected['activity_tables'] == after['activity_tables']
+        assert projected['evidence'] == after['evidence']
+
+
+def test_ai_table_row_removal_preserves_measurements_and_returns_other(ai_context,tmp_path):
+    from app.activity_tables.models import ActivityTable
+    from tests.ai_prefill.test_activity_tables import row_evidence_payload
+    with ai_context.session_factory.begin() as session:
+        before,snapshot,refs = baseline(ai_context,session,row_evidence_payload())
+        data = before.model_dump(mode='json')
+        data['activity_tables'][0]['compound_refs'] = []
+        data['activity_tables'][0]['columns'][0]['activity_refs'] = []
+        data['activity_tables'][0]['evidence_refs'] = []
+        result = apply_delta(session,after=AiPrefillPayload.model_validate(data),**args(ai_context,session,tmp_path,before,snapshot,refs))
+        assert result['counts']['activity_tables']['updated'] == 1
+        table = session.scalar(select(ActivityTable))
+        assert table.compound_ids == [] and table.evidence_ids == []
+        assert table.columns[0]['activity_ids'] == []
+        after = build_paper_snapshot(session,ai_context.workspace_id)
+        assert after['activities'] == snapshot['activities']
+        assert after['compounds'] == snapshot['compounds']
+        parent = SimpleNamespace(payload=AiPrefillPayload.model_validate(data),source=SimpleNamespace(source_sha256='a'*64))
+        exported,_,_ = _payload_from_snapshot(parent,after,result['entity_map'],after['paper'])
+        assert exported.activity_tables[0].compound_refs == []
+        assert exported.activity_tables[0].evidence_refs == []
+
+
+@pytest.mark.parametrize('omitted', ['compound_refs', 'evidence_refs'])
+def test_repair_rejects_baseline_omitting_existing_table_links(ai_context,tmp_path,omitted):
+    from tests.ai_prefill.test_activity_tables import row_evidence_payload
+    with ai_context.session_factory.begin() as session:
+        before,snapshot,refs = baseline(ai_context,session,row_evidence_payload())
+        raw = before.model_dump(mode='json')
+        del raw['activity_tables'][0][omitted]
+        incomplete = AiPrefillPayload.model_validate(raw)
+        raw['activity_tables'][0]['name'] = 'Unrelated rename'
+        with pytest.raises(RepairApplyConflict, match='Baseline activity_tables'):
+            apply_delta(session,after=AiPrefillPayload.model_validate(raw),**args(ai_context,session,tmp_path,incomplete,snapshot,refs))

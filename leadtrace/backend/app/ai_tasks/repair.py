@@ -68,6 +68,14 @@ def require_explicit_collections(before, raw_payload):
         raise TaskError('REPAIR_INCOMPLETE','Repair omitted bibliography')
     if any(a.ref is not None for a in before.activities) and any(not a.get('ref') for a in raw_payload.get('activities', [])):
         raise TaskError('REPAIR_INCOMPLETE','Preserve stable Activity refs; new Activities require new refs')
+    previous_tables = {table.ref: table for table in before.activity_tables}
+    for table in raw_payload.get('activity_tables', []):
+        old = previous_tables.get(table.get('ref'))
+        if old is not None:
+            if old.compound_refs is not None and 'compound_refs' not in table:
+                raise TaskError('REPAIR_INCOMPLETE', 'Repair omitted existing table compound_refs; preserve or explicitly clear them')
+            if old.evidence_refs and 'evidence_refs' not in table:
+                raise TaskError('REPAIR_INCOMPLETE', 'Repair omitted existing table evidence_refs; preserve or explicitly clear them')
     previous={g.ref:g for g in before.lineages}
     for group in raw_payload.get('lineages',[]):
         old=previous.get(group.get('ref'))

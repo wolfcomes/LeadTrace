@@ -149,6 +149,9 @@ def _json_value(value):
 
 
 def _row_snapshot(row):
+    if isinstance(row, ActivityTable):
+        from app.activity_tables.service import table_snapshot
+        return table_snapshot(row)
     return {col.name:_json_value(getattr(row,col.name)) for col in row.__table__.columns
             if col.name not in {'created_at','updated_at'}}
 
@@ -194,10 +197,22 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
         if domain=='bibliography':continue
         for ref,item in items.items():
             row=bound[domain][ref]
+            if domain == 'activity_tables':
+                # Omitted legacy defaults still bind the candidate to the frozen
+                # row. Do not add them to _flat: that changes old diff hashes.
+                for field, target, default in (
+                    ('compound_refs', 'compounds', None), ('evidence_refs', 'evidence', [])
+                ):
+                    identifiers = getattr(row, field.replace('_refs', '_ids'))
+                    actual = [reverse_refs[target][str(identifier)] for identifier in identifiers] if identifiers is not None else None
+                    if actual != item.get(field, default):
+                        raise RepairApplyConflict(f'Baseline activity_tables field {field} differs from workspace')
             for field,expected in item.items():
                 if domain=='activities' and field=='ref':continue
                 if domain=='activity_tables' and field=='columns':
                     expected=[{**{k:v for k,v in c.items() if k!='activity_refs'},'activity_ids':[activity_refs[a] for a in c['activity_refs']]} for c in expected]
+                if domain=='activity_tables' and field in {'compound_refs','evidence_refs'}:
+                    continue
                 if field=='bbox':
                     for coordinate in ('x0','y0','x1','y1'):
                         actual=getattr(row,coordinate)
@@ -256,6 +271,9 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
         data=deepcopy(item)
         if domain=='activities':data.pop('ref',None)
         if domain=='activity_tables':
+            compounds = data.pop('compound_refs', None)
+            data['compound_ids'] = [str(bound['compounds'][c].id) for c in compounds] if compounds is not None else None
+            data['evidence_ids'] = [str(bound['evidence'][e].id) for e in data.pop('evidence_refs', [])]
             refs={item.get('ref'):bound['activities'][key].id for key,item in new['activities'].items() if item.get('ref')}
             data['columns']=[{**{k:v for k,v in c.items() if k!='activity_refs'},'activity_ids':[str(refs[a]) for a in c['activity_refs']]} for c in data['columns']]
         for name,target in (('compound_ref','compounds'),('lineage_ref','lineages'),('parent_compound_ref','compounds'),('child_compound_ref','compounds'),('edge_ref','edges'),('evidence_ref','evidence')):
@@ -340,7 +358,11 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
     changed_activity_refs={value.get('ref') for change in diff['changes'] if change['domain']=='activities' for value in (change['before'],change['after']) if value}
     for ref,item in new['activity_tables'].items():
         row=bound['activity_tables'][ref]
-        if row.review_status!='draft' and any(changed_activity_refs.intersection(c['activity_refs']) for c in item['columns']):
+        if row.review_status!='draft' and (
+            any(changed_activity_refs.intersection(c['activity_refs']) for c in item['columns'])
+            or affected_evidence.intersection(item.get('evidence_refs', []))
+            or affected_compounds.intersection(item.get('compound_refs') or [])
+        ):
             prior=_row_snapshot(row);row.review_status='draft';record('activity_tables',row,prior,'invalidate')
     image_service=StructureSourceImageService(settings.asset_root,source_roots=settings.source_roots)
     for domain,row,prior,action in records:

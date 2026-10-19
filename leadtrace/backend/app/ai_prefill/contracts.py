@@ -194,9 +194,22 @@ class AiActivityTable(ReviewHintModel):
     source_label: str | None = Field(default=None, max_length=512)
     source_title: str | None = Field(default=None, max_length=10000)
     page_number: int | None = Field(default=None, gt=0)
+    compound_refs: list[str] | None = Field(default=None, max_length=10000)
+    evidence_refs: list[str] = Field(default_factory=list, max_length=1000)
     columns: list[AiActivityTableColumn] = Field(max_length=200)
     mode: Literal["any", "all"] = "any"
     sort: Literal["label", "similarity", "default"] = "label"
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_serialization(self, handler):
+        data = handler(self)
+        if self.review_hint is None:
+            data.pop("review_hint", None)
+        if self.compound_refs is None:
+            data.pop("compound_refs", None)
+        if not self.evidence_refs:
+            data.pop("evidence_refs", None)
+        return data
 
     @field_validator("name")
     @classmethod
@@ -214,6 +227,8 @@ class AiActivityTable(ReviewHintModel):
     def validate_table(self):
         if self.kind == "source" and not (self.source_label or "").strip():
             raise ValueError("Source Activity table requires source_label")
+        _require_unique(self.compound_refs or [], "Compound ref in table rows")
+        _require_unique(self.evidence_refs, "Evidence ref in table")
         _require_unique([c.id for c in self.columns], "Activity table column id")
         for column in self.columns:
             _require_unique(column.activity_refs, "Activity ref in table column")
@@ -319,12 +334,23 @@ class AiPrefillPayload(StrictModel):
         _require_unique([a.ref for a in self.activities if a.ref is not None], "Activity ref")
         _require_unique([t.ref for t in self.activity_tables], "Activity table ref")
         by_ref = {a.ref: a for a in self.activities if a.ref is not None}
+        evidence_by_ref = {e.ref: e for e in self.evidence}
         for table in self.activity_tables:
+            if table.compound_refs is not None and not set(table.compound_refs) <= compounds:
+                raise ValueError("Activity table references unknown Compound")
+            for ref in table.evidence_refs:
+                item = evidence_by_ref.get(ref)
+                if item is None:
+                    raise ValueError("Activity table references unknown Evidence")
+                if item.kind != "table" or item.bbox is None:
+                    raise ValueError("Activity table Evidence requires table kind and screenshot bbox")
             for column in table.columns:
                 for ref in column.activity_refs:
                     activity = by_ref.get(ref)
                     if activity is None:
                         raise ValueError(f"Activity table references unknown Activity: {ref}")
+                    if table.compound_refs is not None and activity.compound_ref not in table.compound_refs:
+                        raise ValueError("Activity table Activity is outside selected Compound rows")
                     if (activity.assay_name, activity.metric, activity.unit) != (column.assay, column.metric, column.unit):
                         raise ValueError("Activity table column measurement differs from Activity")
         for activity in self.activities:

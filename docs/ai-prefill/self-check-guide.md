@@ -142,3 +142,14 @@ not an AI-emitted table. This check does not replace the full Compound inventory
 For table-only revisions, compare before/after scientific records and human
 fields and explain every changed dependency; stable refs and unchanged records
 must survive. No AI check or repair grants reviewer confirmation.
+
+
+For each Activity Table, verify explicit `compound_refs` membership/order against
+the source and ensure all column Activities belong to those rows. Inspect each
+linked `evidence_refs` crop as the scientific runtime: same PDF/page, table-kind,
+full relevant table coverage including heading/units/footnotes, multiple crops
+where needed. Existing Activity Evidence may be reused only after coverage is
+checked. Preserve reviewer choices in a scoped repair; removing a row never
+removes scientific records. Missing screenshots remain draft with a review hint;
+do not claim Reviewer confirmation. Report screenshot/row gaps separately from
+unrepresented Activity content and the full Compound inventory.

@@ -136,3 +136,13 @@ rounded. Review unassigned Activities (derived Other) and distinguish confirmed
 text/figure provenance from unresolved Table attribution. Verify a scoped table
 repair preserves unrelated human content and all Activity values/refs. Record
 remaining attribution uncertainty instead of inventing a table or a measurement.
+
+
+For Activity Table review, check ordered `compound_refs`, exact Activity row
+membership, and explicit `evidence_refs`. Independently inspect original Table
+screenshots for correct source/page, labels, units, relevant rows and footnotes;
+verify multipage coverage and flag missing/partial or unrelated images. A valid
+bbox is a technical check, not proof of scientific coverage. Ensure scoped
+repairs preserve human row/evidence choices, science and stable refs; unlinked
+Activities return to Other rather than being deleted. New/revised AI output
+remains pending Reviewer confirmation and outside human approval differences.

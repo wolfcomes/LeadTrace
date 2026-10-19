@@ -77,3 +77,67 @@ def test_receipt_table_and_explicit_activity_ref_paths_are_verified():
     assert _entity_model('/activities/0') is Activity
     assert _entity_model('/activity_refs/0') is Activity
     assert _entity_model('/activity_tables/table1') is ActivityTable
+
+
+def row_evidence_payload():
+    raw = table_payload()
+    raw['evidence'][0]['kind'] = 'table'
+    table = raw['activity_tables'][0]
+    table['compound_refs'] = [c['ref'] for c in reversed(raw['compounds'])]
+    table['evidence_refs'] = [raw['evidence'][0]['ref']]
+    return raw
+
+
+def test_table_rows_and_evidence_roundtrip_preserves_explicit_order_and_empty_rows():
+    raw = row_evidence_payload()
+    result = AiPrefillPayload.model_validate(raw).model_dump(mode='json')
+    assert result['activity_tables'][0]['compound_refs'] == raw['activity_tables'][0]['compound_refs']
+    assert result['activity_tables'][0]['evidence_refs'] == raw['activity_tables'][0]['evidence_refs']
+    raw['activity_tables'][0]['compound_refs'] = []
+    raw['activity_tables'][0]['columns'] = []
+    assert AiPrefillPayload.model_validate(raw).model_dump(mode='json')['activity_tables'][0]['compound_refs'] == []
+
+
+def test_legacy_table_serialization_omits_new_default_fields():
+    before = AiPrefillPayload.model_validate(table_payload()).model_dump(mode='json')
+    assert 'compound_refs' not in before['activity_tables'][0]
+    assert 'evidence_refs' not in before['activity_tables'][0]
+    raw = table_payload()
+    raw['activity_tables'][0].update(compound_refs=None, evidence_refs=[])
+    assert AiPrefillPayload.model_validate(raw).model_dump(mode='json') == before
+
+
+@pytest.mark.parametrize('invalid', ['unknown_compound', 'duplicate_compound', 'outside_rows', 'unknown_evidence', 'duplicate_evidence', 'wrong_kind', 'missing_bbox'])
+def test_table_rejects_invalid_rows_and_source_evidence(invalid):
+    raw = row_evidence_payload()
+    table = raw['activity_tables'][0]
+    if invalid == 'unknown_compound': table['compound_refs'].append('missing')
+    if invalid == 'duplicate_compound': table['compound_refs'] *= 2
+    if invalid == 'outside_rows': table['compound_refs'] = []
+    if invalid == 'unknown_evidence': table['evidence_refs'] = ['missing']
+    if invalid == 'duplicate_evidence': table['evidence_refs'] *= 2
+    if invalid == 'wrong_kind': raw['evidence'][0]['kind'] = 'scheme'
+    if invalid == 'missing_bbox': raw['evidence'][0]['bbox'] = None
+    with pytest.raises(ValidationError):
+        AiPrefillPayload.model_validate(raw)
+
+
+def test_row_and_evidence_only_revision_does_not_change_scientific_records():
+    raw = table_payload()
+    raw['evidence'][0]['kind'] = 'table'
+    before = AiPrefillPayload.model_validate(raw)
+    raw['activity_tables'][0].update(compound_refs=[raw['activities'][0]['compound_ref']], evidence_refs=[raw['evidence'][0]['ref']])
+    diff = design_diff(before, AiPrefillPayload.model_validate(raw))
+    assert [(c['domain'], c['action']) for c in diff['changes']] == [('activity_tables', 'update')]
+
+
+@pytest.mark.parametrize('field', ['compound_refs', 'evidence_refs'])
+def test_repair_must_explicitly_preserve_or_clear_existing_table_scope(field):
+    from app.ai_tasks.repair import require_explicit_collections
+    raw = row_evidence_payload()
+    before = AiPrefillPayload.model_validate(raw)
+    del raw['activity_tables'][0][field]
+    with pytest.raises(ValueError, match='table'):
+        require_explicit_collections(before, raw)
+    raw['activity_tables'][0][field] = None if field == 'compound_refs' else []
+    require_explicit_collections(before, raw)

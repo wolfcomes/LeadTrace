@@ -779,7 +779,11 @@ class AiPrefillService:
             data=item.model_dump(mode='json');ref=data.pop('ref')
             data['columns']=[{**{k:v for k,v in c.items() if k!='activity_refs'},
                               'activity_ids':[str(activity_refs[a].id) for a in c['activity_refs']]} for c in data['columns']]
-            validate_table_references(session,workspace.id,data['columns'],run.paper_id)
+            compound_refs = data.pop('compound_refs', None)
+            data['compound_ids'] = [str(compounds[c].id) for c in compound_refs] if compound_refs is not None else None
+            data['evidence_ids'] = [str(evidence_by_ref[e].id) for e in data.pop('evidence_refs', [])]
+            validate_table_references(session,workspace.id,data['columns'],run.paper_id,
+                                      compound_ids=data['compound_ids'],evidence_ids=data['evidence_ids'])
             row=ActivityTable(paper_id=run.paper_id,workspace_id=workspace.id,created_by_kind=ChangeActorKind.AI,review_status='draft',**data)
             session.add(row);session.flush();tables[ref]=row
             session.add(self._event(run,entity_type='activity_table',entity_id=row.id,action='activity_table.create',after_value=table_snapshot(row)))
