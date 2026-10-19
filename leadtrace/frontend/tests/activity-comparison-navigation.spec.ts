@@ -28,6 +28,8 @@ it('opens the exact Activity without scanning other compounds and retains compar
   await wrapper.get('[data-comparison-search]').setValue('Compound 1');
   await wrapper.get('[data-comparison-sort]').setValue('label');
   expect(writes).toEqual([]);
+  const target=activities[1]!;
+  await wrapper.get('[data-comparison-group]').setValue(JSON.stringify([target.assay_name,target.metric,target.unit]));
   await wrapper.get(`[data-comparison-activity][data-activity-id="${ids.activities[1]}"]`).trigger('click');await flushPromises();
   expect(router.currentRoute.value.query).toMatchObject({tab:'compounds',entity:ids.activities[1]});
   expect(wrapper.get(`[data-activity-row][data-activity-id="${ids.activities[1]}"]`).classes()).toContain('selected');

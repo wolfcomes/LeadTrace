@@ -19,3 +19,12 @@
 2. Extend `src/review/paper/activityComparison.ts` with group derivation and deterministic row ordering; update `ActivityComparison.vue` controls and compact layout. Add bilingual strings. Run focused tests, adapt existing navigation tests only where the approved defaults changed.
 3. Update synthetic Playwright flow for focused defaults, multiple groups/conditions, hidden counts, exact edit/return state and mobile scrolling. Update guide source and regenerate documents. Run full frontend tests, typecheck/build, guide check and diff check; inspect desktop/mobile screenshots.
 4. Independent review, address findings, commit. Preserve unrelated root work when merging, push and deploy the tested frontend under existing delivery authorization. This frontend-only change needs no migration or backend restart. Verify live read-only behavior and preserve rollback artifacts.
+
+## Verification outcome
+
+- Baseline comparison/navigation suites: 12 passed. New defaults and grouping tests reproduced the previous behavior before implementation.
+- Final frontend suite: 419 passed across 68 files; typecheck and production build passed.
+- Synthetic Playwright: sparse 40-Compound/7-condition data defaults to 24 relevant Compounds and 1 condition. Explicit hidden-row reveal, multi-group/condition selection, exact Activity edit/return, selection persistence and mobile overflow checks passed.
+- Independent review identified indistinguishable collapsed condition headers. Actual context now remains visible as a two-line preview; a regression reproduced the issue before the fix.
+- Exact grouping, duplicate observations, precision, deterministic similarity ordering, empty-to-populated refresh and old workspace response protection verified. Guide generation and whitespace checks passed.
+- Frontend-only release; no backend or database changes required.

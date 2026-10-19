@@ -20,15 +20,15 @@ function install(payload = data()) {
 }
 const props = () => ({ workspace: workspace() as any, active: true });
 
-it('separates measurement conditions and units, preserving duplicates, precision and missing rows', async () => {
+it('focuses the most covered group and condition, preserving duplicates and precision', async () => {
   const fetcher = install();
   const w = mount(ActivityComparison, {props: props()}); await flushPromises();
-  expect(w.findAll('[data-comparison-column]')).toHaveLength(4);
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(4);
-  expect(w.findAll('[data-comparison-activity]')).toHaveLength(5);
+  expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
+  expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
+  expect(w.findAll('[data-comparison-activity]')).toHaveLength(2);
   expect(w.text()).toContain('0.123456789012345678901');
   expect(w.text()).toContain('< 2');
-  expect(w.findAll('[data-comparison-row]')[1]!.text()).toContain('—');
+  expect(w.get('[data-comparison-hidden-count]').text()).toContain('3');
   await w.findAll('[data-review-hint] button')[0]!.trigger('click');
   expect(w.text()).toContain('Check source');
   expect(fetcher).toHaveBeenCalledTimes(1);
@@ -76,7 +76,7 @@ it('shows load failure and retries without presenting missing measurements', asy
   expect(w.get('[role=alert]').text()).toContain('活性对比暂时无法读取');
   expect(w.find('[data-comparison-row]').exists()).toBe(false);
   await w.get('[data-comparison-retry]').trigger('click');await flushPromises();
-  expect(w.findAll('[data-comparison-row]')).toHaveLength(4);
+  expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
   w.unmount();
 });
 
@@ -105,9 +105,10 @@ it('ignores an obsolete response after switching workspaces and resets filters',
 it('naturally sorts compound identifiers without sorting or averaging measurements', async () => {
   install({...data(),compounds:[{...compounds[0]!,compound_label:'C10'},{...compounds[1]!,compound_label:'C2'}]});
   const w = mount(ActivityComparison,{props:props()});await flushPromises();
+  await w.get('[data-comparison-show-empty]').setValue(true);
   await w.get('[data-comparison-sort]').setValue('label');
   expect(w.findAll('[data-comparison-compound]').map(x=>x.text())).toEqual(['C2','C10']);
-  expect(w.findAll('[data-comparison-activity]')).toHaveLength(5);w.unmount();
+  expect(w.findAll('[data-comparison-activity]')).toHaveLength(2);w.unmount();
 });
 
 it('does not advance editor versions just by reading a newer comparison', async () => {
@@ -116,5 +117,66 @@ it('does not advance editor versions just by reading a newer comparison', async 
   expect(w.emitted('version')).toBeUndefined();
   await w.setProps({blocked:false});await flushPromises();
   expect(w.emitted('version')).toBeUndefined();
+  w.unmount();
+});
+
+
+it('switches groups and includes only compounds measured in the selected conditions', async () => {
+  const payload=data();payload.activities.push({...row,id:'30000000-0000-4000-8000-000000000091',compound_id:ids.compounds[1]!,metric:'Ki',value:'77'});
+  install(payload);const w=mount(ActivityComparison,{props:props()});await flushPromises();
+  expect(w.findAll('[data-comparison-compound]').map(x=>x.text())).toEqual(['C1','C2']);
+  const ic50=JSON.stringify([row.assay_name,row.metric,row.unit]);
+  await w.get('[data-comparison-group]').setValue(ic50);
+  expect(w.findAll('[data-comparison-compound]').map(x=>x.text())).toEqual(['C1']);
+  expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
+  await w.findAll('[data-comparison-column-choice]')[1]!.setValue(true);
+  expect(w.findAll('[data-comparison-column]')).toHaveLength(2);
+  expect(w.findAll('[data-comparison-activity]')).toHaveLength(3);
+  expect(w.findAll('[data-comparison-column] summary').map(x=>x.text())).toEqual(['Human enzyme','Mouse enzyme']);
+  await w.get('[data-comparison-show-empty]').setValue(true);
+  expect(w.findAll('[data-comparison-row]')).toHaveLength(4);
+  await w.get('[data-comparison-clear-columns]').trigger('click');
+  expect(w.findAll('[data-comparison-row]')).toHaveLength(0);
+  expect(w.text()).toContain('请选择要比较的实验条件');
+  w.unmount();
+});
+
+it('preserves selected groups and conditions when coverage changes after returning', async () => {
+  const fetcher=install();const w=mount(ActivityComparison,{props:props()});await flushPromises();
+  await w.findAll('[data-comparison-column-choice]')[1]!.setValue(true);
+  const checked=()=>w.findAll('[data-comparison-column-choice]').filter(x=>(x.element as HTMLInputElement).checked).map(x=>x.attributes('value'));
+  const before=checked();
+  await w.setProps({active:false});
+  fetcher.mockImplementation(async()=>response({...data(2),activities:[...data(2).activities,{...row,id:'30000000-0000-4000-8000-000000000092',compound_id:ids.compounds[1]!,context:'Mouse enzyme'}]}));
+  await w.setProps({workspace:workspace(2) as any,active:true});await flushPromises();
+  expect(new Set(checked())).toEqual(new Set(before));
+  expect(w.findAll('[data-comparison-column]')).toHaveLength(2);
+  expect(w.findAll('[data-comparison-row]')).toHaveLength(2);
+  w.unmount();
+});
+
+it('adds comparison groups without losing selected conditions and removes empty columns on refresh', async () => {
+  const fetcher=install();const w=mount(ActivityComparison,{props:props()});await flushPromises();
+  await w.findAll('[data-comparison-column-choice]')[1]!.setValue(true);
+  const ki=JSON.stringify([row.assay_name,'Ki',row.unit]);
+  const choice=w.findAll('[data-comparison-group-choice]').find(x=>x.attributes('value')===ki)!;
+  await choice.setValue(true);
+  expect(w.findAll('[data-comparison-column]')).toHaveLength(3);
+  fetcher.mockImplementation(async()=>response({...data(2),activities:[]}));
+  await w.get('[data-comparison-refresh]').trigger('click');await flushPromises();
+  expect(w.findAll('[data-comparison-row]')).toHaveLength(0);
+  expect(w.findAll('[data-comparison-activity]')).toHaveLength(0);
+  expect(w.text()).toContain('当前文章尚无活性记录');
+  w.unmount();
+});
+
+
+it('selects a useful default when the first Activity arrives in an initially empty paper', async () => {
+  const fetcher=install({...data(),activities:[]});const w=mount(ActivityComparison,{props:props()});await flushPromises();
+  expect(w.findAll('[data-comparison-row]')).toHaveLength(0);
+  fetcher.mockImplementation(async()=>response(data(2)));
+  await w.get('[data-comparison-refresh]').trigger('click');await flushPromises();
+  expect(w.findAll('[data-comparison-column]')).toHaveLength(1);
+  expect(w.findAll('[data-comparison-row]')).toHaveLength(1);
   w.unmount();
 });

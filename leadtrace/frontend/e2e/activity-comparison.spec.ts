@@ -3,7 +3,7 @@ const id = (n:number) => '92000000-0000-4000-8000-'+String(n).padStart(12,'0');
 async function fixture(page:Page) {
   const wid=id(2),paper=id(1);let version=1;
   const compounds=Array.from({length:40},(_,i)=>({id:id(100+i),paper_id:paper,workspace_id:wid,compound_label:'C'+(i+1),display_name:'Synthetic compound '+(i+1),description:null,sort_order:i,created_by_kind:'reviewer'}));
-  const activities=compounds.flatMap((c,i)=>Array.from({length:6},(_,j)=>({id:id(1000+i*10+j),paper_id:paper,workspace_id:wid,compound_id:c.id,evidence_id:null,assay_name:'Synthetic assay '+(j+1),metric:'IC50',operator:j===1?'>':'=',value:String(i+j+1),unit:'nM',context:j===2?'Mouse enzyme':'Human enzyme',review_hint:j===0?'Verify this measurement':null,sort_order:j})));
+  const activities=compounds.slice(0,30).flatMap((c,i)=>Array.from({length:6},(_,j)=>({id:id(1000+i*10+j),paper_id:paper,workspace_id:wid,compound_id:c.id,evidence_id:null,assay_name:'Synthetic assay '+(j+1),metric:'IC50',operator:j===1?'>':'=',value:String(i+j+1),unit:'nM',context:j===0&&i>=24?'Mouse enzyme':'Human enzyme',review_hint:j===0?'Verify this measurement':null,sort_order:j})).filter(a=>a.assay_name!=='Synthetic assay 2'||i<20));
   const ws=()=>({id:wid,review_task_id:id(3),assigned_reviewer_id:id(4),state:'editing',version,task_status:'assigned',bibliography:{paper_id:paper,paper_key:'SYNTHETIC-COMPARISON',title:'Synthetic activity comparison',journal:'Fixtures',publication_year:2026,volume:'1',issue:'1',doi:null},source:{asset_id:id(5),source_root_key:'source_pdfs',source_key:'synthetic.pdf',sha256:'a'.repeat(64),page_count:1},sections:['bibliography','compounds','structures','lineages','edge_evidence','activities'].map(section_key=>({section_key,state:'pending',note:null}))});
   const writes:{path:string;body:any}[]=[];
   await page.route('**/api/**',async route=>{
@@ -31,13 +31,24 @@ async function fixture(page:Page) {
 test('compare, edit the selected Activity, and return to current saved data on desktop and mobile',async({page})=>{
   const f=await fixture(page);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`/review/papers/${f.paper}?workspace=${f.wid}&tab=activity-comparison`);
+  await expect(page.locator('[data-comparison-row]')).toHaveCount(24);
+  await expect(page.locator('[data-comparison-column]')).toHaveCount(1);
+  await page.locator('[data-comparison-show-empty]').check();
   await expect(page.locator('[data-comparison-row]')).toHaveCount(40);
-  await expect(page.locator('[data-comparison-column]')).toHaveCount(6);
+  await page.locator('[data-comparison-show-empty]').uncheck();
+  await page.locator('[data-comparison-groups] > summary').click();
+  for(const choice of await page.locator('[data-comparison-group-choice]').all())await choice.check();
+  await page.locator('[data-comparison-groups] > summary').click();
+  await expect(page.locator('[data-comparison-row]')).toHaveCount(30);
+  await page.locator('[data-comparison-conditions] > summary').click();
+  await page.locator('[data-comparison-all-columns]').click();
+  await page.locator('[data-comparison-conditions] > summary').click();
+  await expect(page.locator('[data-comparison-column]')).toHaveCount(7);
   await page.locator('[data-comparison-search]').fill('compound 2');
   await page.locator('[data-comparison-sort]').selectOption('label');
   await expect(page.locator('[data-comparison-row]')).toHaveCount(11);
   await page.locator('[data-comparison-scroll]').evaluate(el=>{el.scrollLeft=120;el.scrollTop=60;});
-  const target=f.activities[11]!;
+  const target=f.activities.find(a=>a.compound_id===f.compounds[1]!.id&&a.assay_name==='Synthetic assay 6')!;
   expect(f.writes).toHaveLength(0);
   await page.locator(`[data-comparison-activity][data-activity-id="${target.id}"]`).click();
   const focused=page.locator(`[data-activity-row][data-activity-id="${target.id}"]`);
@@ -52,6 +63,7 @@ test('compare, edit the selected Activity, and return to current saved data on d
   await expect(page.locator('[data-comparison-search]')).toHaveValue('compound 2');
   await expect(page.locator('[data-comparison-sort]')).toHaveValue('label');
   await expect(page.locator(`[data-comparison-activity][data-activity-id="${target.id}"]`)).toContainText('0.125');
+  await expect(page.locator('[data-comparison-column]')).toHaveCount(7);
   expect(f.writes).toHaveLength(1);
   expect(f.writes[0]!.path).toBe('/api/v2/activities/'+target.id);
   await page.locator('[data-comparison-scroll]').evaluate(el=>{el.scrollLeft=0;el.scrollTop=0;});
@@ -64,5 +76,12 @@ test('compare, edit the selected Activity, and return to current saved data on d
   await page.locator('[data-activity-comparison]').screenshot({path:'test-results/activity-comparison-mobile.png'});
   await page.locator('[data-comparison-scroll]').evaluate(el=>el.scrollLeft=300);
   expect(await page.locator('[data-comparison-scroll]').evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);
+  await page.locator('[data-comparison-group]').selectOption(JSON.stringify(['Synthetic assay 1','IC50','nM']));
+  await page.locator('[data-comparison-search]').fill('');
+  await expect(page.locator('[data-comparison-row]')).toHaveCount(24);
+  await expect(page.locator('[data-comparison-column]')).toHaveCount(1);
+  await page.locator('[data-activity-comparison]').screenshot({path:'test-results/activity-comparison-focused-mobile.png'});
+  await page.setViewportSize({width:1440,height:1000});
+  await page.locator('[data-activity-comparison]').screenshot({path:'test-results/activity-comparison-focused-desktop.png'});
   expect(errors).toEqual([]);
 });

@@ -294,15 +294,19 @@ The complete pilot procedure and evidence checklist are in
 
 ## Reviewer workbench
 
-The read-only Activity comparison tab shows one row per Compound and columns keyed
-by exact assay, metric, unit and context. It preserves decimal values, qualifiers,
-review hints and every repeated observation; no unit conversion or averaging is
-performed. Empty cells mean no corresponding saved record. Search, measurement
-selection, natural identifier sorting and table scroll survive returning from the
-Compound/Activity editor; saved edits refresh the table. Pending edits block opening
-another record. Viewing the matrix does not write viewing receipts or confirmations.
-Its authorized workspace GET returns a consistent version and records in one query;
-no schema migration is needed.
+The read-only Activity comparison tab starts with the most widely recorded
+assay/metric/unit group and condition, hiding Compounds without matching records.
+Groups and exact context columns can be selected for wider comparisons; missing
+rows can be revealed explicitly. Default ordering keeps identical and similar
+measurement sets adjacent with natural Compound identifiers inside each set.
+It does not cluster numerical activity values or chemical structures. Decimal
+values, qualifiers, review hints and repeated observations are preserved without
+unit conversion or averaging. Names and full conditions expand on demand.
+Search, group/condition selection, sort, missing-row visibility and table scroll
+survive returning from the Compound/Activity editor; saved edits refresh the table.
+Pending edits block opening another record. Viewing the matrix does not write
+viewing receipts or confirmations. Its authorized workspace GET returns a
+consistent version and records in one query; no schema migration is needed.
 
 Saved Reviewer edits support version-checked undo and redo. Unsaved forms and
 in-flight saves disable history actions; restoring an edit reloads the workspace

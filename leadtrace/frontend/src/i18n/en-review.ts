@@ -1,5 +1,16 @@
 // UI text only. Scientific content and user-entered records remain unchanged.
 export const enReview: Record<string, string> = {
+  "测定分组": "Measurement group",
+  "已选择多个测定组": "Multiple measurement groups selected",
+  "请选择测定分组": "Select a measurement group",
+  "相似测定组合": "Similar measurement sets",
+  "多组对比": "Compare groups",
+  "实验条件": "Conditions",
+  "选择全部条件": "Select all conditions",
+  "{count} 个 Compound": "{count} Compounds",
+  "显示 {shown}/{total} 个 Compound": "Showing {shown}/{total} Compounds",
+  "显示无所选条件记录的 Compound（{count}）": "Show Compounds without selected measurements ({count})",
+  "请选择要比较的实验条件。": "Select the conditions to compare.",
   "活性对比": "Activity comparison",
   "只读 · 已保存的活性数据；点击数值查看对应记录。": "Read only \u00b7 Saved activity data; click a value to open its record.",
   "测定项目": "Measurements",
