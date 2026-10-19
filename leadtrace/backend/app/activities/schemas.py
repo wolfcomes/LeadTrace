@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.activities.models import ActivityOperator
+from app.compounds.schemas import CompoundResponse
 
 
 class WorkspaceVersionRequest(BaseModel):
@@ -90,6 +91,14 @@ class ActivityResponse(BaseModel):
     context: str | None
     review_hint: str | None = None
     sort_order: int
+
+
+class ActivityComparisonResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    workspace_id: UUID
+    workspace_version: int
+    compounds: list[CompoundResponse]
+    activities: list[ActivityResponse]
 
 
 class ActivityMutationResponse(BaseModel):

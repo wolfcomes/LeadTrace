@@ -32,6 +32,13 @@ class ActivityList:
 
 
 @dataclass(frozen=True, slots=True)
+class ActivityComparison:
+    workspace_version: int
+    compounds: list[Compound]
+    activities: list[Activity]
+
+
+@dataclass(frozen=True, slots=True)
 class ActivityMutation:
     workspace: PaperWorkspace
     activity: Activity
@@ -113,6 +120,27 @@ class ActivityService:
             )
         )
         return ActivityList(aggregate.workspace, compound_id, rows)
+
+    def compare_activities(
+        self, session: Session, *, workspace_id: UUID, actor: Principal,
+    ) -> ActivityComparison:
+        self.workspace_service.get_workspace(session, workspace_id=workspace_id, actor=actor)
+        # One statement gives the version and all rows the same PostgreSQL snapshot.
+        # Outer joins retain compounds without measurements and empty workspaces.
+        rows = session.execute(
+            select(PaperWorkspace.version, Compound, Activity)
+            .select_from(PaperWorkspace)
+            .outerjoin(Compound, Compound.workspace_id == PaperWorkspace.id)
+            .outerjoin(Activity, (Activity.compound_id == Compound.id)
+                       & (Activity.workspace_id == PaperWorkspace.id))
+            .where(PaperWorkspace.id == workspace_id)
+            .order_by(Compound.sort_order, Compound.id, Activity.sort_order, Activity.id)
+        ).all()
+        if not rows:
+            raise WorkspaceNotFoundError("Resource not found")
+        compounds = {compound.id: compound for _, compound, _ in rows if compound is not None}
+        return ActivityComparison(rows[0][0], list(compounds.values()),
+                                  [activity for _, _, activity in rows if activity is not None])
 
     def create_activity(
         self,

@@ -1,4 +1,6 @@
 :root {
+  --overlay-backdrop: #10233488;
+  --removal-danger: #a12626;
   color: #172b3c;
   background: #f3f0e9;
   font-family: "Noto Sans SC Variable", Manrope, "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;

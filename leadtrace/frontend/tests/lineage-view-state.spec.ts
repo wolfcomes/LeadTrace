@@ -41,7 +41,7 @@ it('preserves an unsaved Edge draft when returning after another tab changes the
   await wrapper.get(summary).setValue('Unsaved source comparison');
   await wrapper.findAll('[data-workspace-tab]')[0]!.trigger('click');await flushPromises();
   await wrapper.get('[data-section-key="bibliography"] [data-section-choice="not_reported"]').trigger('click');await flushPromises();
-  await wrapper.findAll('[data-workspace-tab]')[2]!.trigger('click');await flushPromises();
+  await wrapper.findAll('[data-workspace-tab]')[3]!.trigger('click');await flushPromises();
   expect((wrapper.get(summary).element as HTMLInputElement).value).toBe('Unsaved source comparison');
   wrapper.unmount();
 });

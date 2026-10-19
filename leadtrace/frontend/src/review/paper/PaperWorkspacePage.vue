@@ -12,6 +12,7 @@ import BibliographyEditor from "./BibliographyEditor.vue";
 import { provideHighlights } from "./useHighlights";
 import HighlightEditor from "./HighlightEditor.vue";
 import ReviewerHelp from "./ReviewerHelp.vue";
+import ActivityComparison from "./ActivityComparison.vue";
 import CompoundList from "./CompoundList.vue";
 import LineageEditor from "./LineageEditor.vue";
 import SectionStatusControl from "./SectionStatusControl.vue";
@@ -24,6 +25,7 @@ import { providePendingEdits } from "./usePendingEdits";
 const tabs = [
   { key: "bibliography", label: "文章信息" },
   { key: "compounds", label: "化合物与结构" },
+  { key: "activity-comparison", label: "活性对比" },
   { key: "lineages", label: "Lineage" },
   { key: "submit", label: "检查与提交" },
 ] as const;
@@ -57,7 +59,25 @@ function selectTab(tab: TabKey): void {
 }
 
 function selectCompound(compoundId: string): void {
-  void router.replace({ path: route.path, query: { ...route.query, entity: compoundId } });
+  void router.replace({ path: route.path, query: { ...route.query, comparison_compound: undefined, entity: compoundId } });
+}
+
+async function openComparisonRecord(compoundId: string, activityId?: string): Promise<void> {
+  if (pendingEdits.blocked.value || historyBusy.value || historyReloading.value || workspaceState.savingSection.value) return;
+  const target = workspaceState.workspace.value;
+  if (!target) return;
+  // Do not advance an existing draft's version just by reading the comparison.
+  // Freeze editing for the whole refresh, including a manual tab switch mid-flight.
+  historyReloading.value = true;
+  try {
+    const latest = await workspaceState.reload(target);
+    // Remount previously visited editors so old fields cannot be edited at the
+    // freshly loaded version while their individual data requests are pending.
+    if (latest?.id === target.id) historyEpoch.value++;
+    if (latest?.id === target.id && activeTab.value === 'activity-comparison') {
+      await router.push({path: route.path, query: {...route.query, tab: 'compounds', entity: activityId ?? compoundId, comparison_compound: compoundId, from_comparison: '1'}});
+    }
+  } finally { historyReloading.value = false; }
 }
 
 function selectEntity(entityId: string | undefined, group?: LineageType): void {
@@ -156,10 +176,17 @@ watch(
       </section>
 
       <nav class="workspace-tabs paper-workspace-tabs" data-workspace-tabs aria-label="Paper Workspace">
-        <button v-for="tab in tabs" :key="tab.key" type="button" data-workspace-tab :aria-current="activeTab === tab.key ? 'page' : undefined" @click="selectTab(tab.key)">{{ t(tab.label) }}</button>
+        <button v-for="tab in tabs" :key="tab.key" type="button" data-workspace-tab :data-workspace-tab-key="tab.key" :aria-current="activeTab === tab.key ? 'page' : undefined" @click="selectTab(tab.key)">{{ t(tab.label) }}</button>
       </nav>
 
-      <section :key="`${workspaceState.workspace.value.id}:editors:${historyEpoch}`" class="workspace-editor-surface panel" :inert="historyBusy || historyReloading">
+      <section v-if="visitedTabs.has('activity-comparison')" v-show="activeTab === 'activity-comparison'" class="workspace-editor-surface panel">
+        <ActivityComparison :key="workspaceState.workspace.value.id" :workspace="workspaceState.workspace.value" :active="activeTab === 'activity-comparison'" :blocked="pendingEdits.blocked.value || historyBusy || historyReloading || !!workspaceState.savingSection.value" @open="openComparisonRecord" />
+      </section>
+      <p v-if="activeTab === 'compounds' && route.query.from_comparison === '1'">
+        <button type="button" class="button-secondary" data-return-comparison :disabled="pendingEdits.blocked.value || historyBusy || historyReloading" @click="selectTab('activity-comparison')">{{ t('← 返回活性对比') }}</button>
+      </p>
+
+      <section v-show="activeTab !== 'activity-comparison'" :key="`${workspaceState.workspace.value.id}:editors:${historyEpoch}`" class="workspace-editor-surface panel" :inert="historyBusy || historyReloading">
         <div v-if="visitedTabs.has('bibliography')" v-show="activeTab === 'bibliography'">
         <BibliographyEditor :workspace="workspaceState.workspace.value" :read-only="readOnly" @mutated="refreshWorkspace" @conflict="workspaceState.handleConflict()" />
         <HighlightEditor :workspace="workspaceState.workspace.value" :read-only="readOnly" @mutated="refreshWorkspace" @conflict="workspaceState.handleConflict()" />
@@ -168,6 +195,7 @@ watch(
           <CompoundList :active="activeTab === 'compounds'"
             :key="`${workspaceState.workspace.value.id}:${workspaceState.refreshEpoch.value}`"
             :workspace="workspaceState.workspace.value"
+            :owner-compound-id="typeof route.query.comparison_compound === 'string' ? route.query.comparison_compound : undefined"
             :selected-compound-id="typeof route.query.entity === 'string' ? route.query.entity : undefined"
             :read-only="readOnly"
             @select="selectCompound"

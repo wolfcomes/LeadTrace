@@ -16,9 +16,9 @@ Your task is to turn paper content into traceable, checked records. AI prefill i
 
 > Screenshots show the real workbench with fictional teaching data. Values, labels and research statements illustrate operation only. Screenshots match each guide’s interface language; common field names are retained for comparison.
 
-![Find the four main tabs. Section status, viewing progress and scientific review status serve different purposes, explained below.](../../leadtrace/frontend/public/reviewer-guide/images/overview.en.png)
+![Find the five main tabs: Article information, Compounds and structures, Activity comparison, Lineage, and Check and submit. Section status, viewing progress and scientific review status serve different purposes, explained below.](../../leadtrace/frontend/public/reviewer-guide/images/overview.en.png)
 
-Find the four main tabs. Section status, viewing progress and scientific review status serve different purposes, explained below.
+Find the five main tabs: Article information, Compounds and structures, Activity comparison, Lineage, and Check and submit. Section status, viewing progress and scientific review status serve different purposes, explained below.
 
 Undo / redo restores saved edits and appends history. Save or cancel pending local edits first. Other sessions, AI updates, submissions and workflow changes stop the older undo chain to protect newer content.
 
@@ -111,6 +111,8 @@ Enter an IUPAC name to convert locally with OPSIN. Check the result in the edito
 ## 06 · Activity: entering a measurement
 
 Fictional example: Assay = human MAO-B inhibition; Metric = IC50; Operator = <; Value = 10; Unit = nM; Context records assay conditions. Do not put <10 nM entirely in Value or combine different assays. Preserve units and qualifiers.
+
+Activity comparison is a read-only matrix of this paper’s saved data. Each row is a Compound; a column groups only records with identical assay, metric, unit and conditions. All observations are retained without averaging or conversion. Search identifiers or names, select measurements, and sort identifiers naturally. — means no corresponding record, not inactivity. Click an identifier to open its Compound or a value to locate its Activity. Save or cancel edits before returning to your filters and table position. Browsing the matrix does not mark all records viewed or confirm scientific content.
 
 | Field | Fictional example | How to read it |
 |---|---|---|

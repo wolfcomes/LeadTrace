@@ -20,3 +20,12 @@
 4. Add synthetic Playwright scenario for matrix -> edit -> return and mobile layout.
    Run frontend suite, typecheck/build, targeted backend suites, guide generation/check
    and git diff --check. Review changes, commit tested implementation, retain worktrees.
+
+## Verification outcome
+
+- Backend comparison, permission matrix, Activity API and reviewer-workbench suites: 25 passed on an isolated disposable PostgreSQL cluster.
+- Frontend: 413 tests passed; typecheck and production build passed.
+- Synthetic browser flow passed at desktop and 390px mobile widths: exact Activity navigation, saved edit, return state, no comparison writes, and contained horizontal scrolling.
+- Independent review found a stale-editor concurrency window. Reading comparisons no longer advances editor versions; entering details locks editing, refreshes Workspace and remounts editor children before unlocking. Regression reproduced the old failure and passes with the fix.
+- Bilingual guide generation/check and git diff whitespace checks passed.
+- No schema migration required.

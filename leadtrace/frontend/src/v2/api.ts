@@ -4,6 +4,8 @@ import {
   adminSubmissionDetailSchema,
   adminSubmissionListSchema,
   aiPrefillStatusSchema,
+  activityComparisonSchema,
+  type ActivityComparison,
   activityDeleteSchema,
   activityListSchema,
   activityMutationSchema,
@@ -443,6 +445,10 @@ export function createEvidenceLink(
 
 export function deleteEvidenceLink(linkId: string, expectedWorkspaceVersion: number, csrfToken: string | null): Promise<DeletedRecord> {
   return apiRequest(`/api/v2/edge-evidence-links/${encodeURIComponent(linkId)}`, deletedRecordSchema, { method: "DELETE", csrfToken, body: { expected_workspace_version: expectedWorkspaceVersion } });
+}
+
+export function getActivityComparison(workspaceId: string): Promise<ActivityComparison> {
+  return apiRequest(`/api/v2/workspaces/${encodeURIComponent(workspaceId)}/activity-comparison`, activityComparisonSchema);
 }
 
 export function listActivities(compoundId: string): Promise<ActivityList> {

@@ -126,6 +126,7 @@ describe("paper-centric Admin approval", () => {
     const { wrapper } = await mountAt('/admin/submissions');
     expect(wrapper.find('[data-submission-row]').exists()).toBe(false);
     await wrapper.get('[data-all-review-submissions]').trigger('click');
+    await flushPromises();
     expect(wrapper.get('[data-submission-row]').text()).toContain('待 Reviewer 核对补填');
     expect(wrapper.get('[data-submission-row]').text()).toContain('第 1 次提交');
     expect(wrapper.get('[data-open-submission]').attributes('href')).toBe(`/admin/submissions/${technicalId}`);
@@ -162,6 +163,7 @@ describe("paper-centric Admin approval", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input), "http://leadtrace.test").pathname;
       requests.push(path);
+      if (path === "/api/v2/admin/papers/filter-options") return jsonResponse({journals:[],years:[],volumes:[],issues:[]});
       if (path === "/api/v2/admin/submissions") return jsonResponse(adminSubmissionList);
       if (path === `/api/v2/admin/submissions/${publicationIds.submission}`) {
         return jsonResponse(adminSubmissionDetail);
@@ -207,6 +209,7 @@ describe("paper-centric Admin approval", () => {
     expect(wrapper.get("[data-reviewer-diff]").text()).toContain("AI 预填");
     expect(requests).toEqual([
       "/api/v2/admin/submissions",
+      "/api/v2/admin/papers/filter-options",
       `/api/v2/admin/submissions/${publicationIds.submission}`,
     ]);
   });

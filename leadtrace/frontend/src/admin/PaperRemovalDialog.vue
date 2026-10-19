@@ -72,5 +72,5 @@ onBeforeUnmount(()=>{disposed=true;previousFocus?.focus();});
   </div>
 </template>
 <style scoped>
-.removal-backdrop{position:fixed;inset:0;z-index:1000;background:#10233488;display:flex;align-items:center;justify-content:center;padding:20px}.removal-dialog{width:min(580px,100%);max-height:90vh;overflow:auto;padding:24px}.removal-dialog p{overflow-wrap:anywhere}.removal-dialog form{display:grid;gap:16px}.removal-dialog footer{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}.removal-confirm{color:#a12626;border-color:#a12626}.form-field{display:grid;gap:8px}
+.removal-backdrop{position:fixed;inset:0;z-index:1000;background:var(--overlay-backdrop);display:flex;align-items:center;justify-content:center;padding:20px}.removal-dialog{width:min(580px,100%);max-height:90vh;overflow:auto;padding:24px}.removal-dialog p{overflow-wrap:anywhere}.removal-dialog form{display:grid;gap:16px}.removal-dialog footer{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}.removal-confirm{color:var(--removal-danger);border-color:var(--removal-danger)}.form-field{display:grid;gap:8px}
 </style>

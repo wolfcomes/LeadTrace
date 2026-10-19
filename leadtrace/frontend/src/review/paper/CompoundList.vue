@@ -19,6 +19,7 @@ import CompoundStructureEditor from "./CompoundStructureEditor.vue";
 const props = defineProps<{
   workspace: PaperWorkspace;
   selectedCompoundId?: string;
+  ownerCompoundId?: string;
   active?: boolean; readOnly?: boolean;
 }>();
 const emit = defineEmits<{
@@ -73,6 +74,11 @@ function selectActivity(entityId: string): void {
 async function resolveOwner(id: string): Promise<Compound | undefined> {
   const direct = compounds.value.find(item => item.id === id || item.id === nestedEntityOwner.get(id));
   if (direct) return direct;
+  // The comparison already knows the owner; avoid scanning every Compound.
+  if (id === props.selectedCompoundId && props.ownerCompoundId) {
+    const owner = compounds.value.find(item => item.id === props.ownerCompoundId);
+    if (owner) { nestedEntityOwner.set(id, owner.id); return owner; }
+  }
   const activities = await Promise.allSettled(compounds.value.map(async item => ({ item, result: await listActivities(item.id) })));
   for (const result of activities) {
     if (result.status === "fulfilled" && result.value.result.items.some(a => a.id === id || a.evidence_id === id)) return result.value.item;

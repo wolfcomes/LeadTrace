@@ -471,6 +471,14 @@ export const activitySchema = z.object({
   sort_order: z.number().int(),
 }).strict();
 
+export const activityComparisonSchema = z.object({
+  workspace_id: uuidSchema,
+  workspace_version: z.number().int().positive(),
+  compounds: z.array(compoundSchema),
+  activities: z.array(activitySchema),
+}).strict();
+export type ActivityComparison = z.infer<typeof activityComparisonSchema>;
+
 export const problemReportSchema = z.object({
   reason: z.string().min(1).max(10000),
   blockers: z.array(z.object({code: z.string(), message: z.string(), entity_type: z.string(), entity_id: uuidSchema.nullable(), section_key: sectionKeySchema.nullable()}).strict()),

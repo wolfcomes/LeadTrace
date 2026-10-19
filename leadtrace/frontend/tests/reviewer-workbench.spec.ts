@@ -52,7 +52,7 @@ it('records a Compound selection without separate structure receipts, including 
   }));
   const {wrapper}=await mountWorkspace('compounds');
   const details=wrapper.get('.compound-detail-panel > details');(details.element as HTMLDetailsElement).open=true;await details.trigger('toggle');
-  await wrapper.findAll('[data-workspace-tab]')[2]!.trigger('click');await flushPromises();
+  await wrapper.findAll('[data-workspace-tab]')[3]!.trigger('click');await flushPromises();
   finish!(response({workspace_version:1,structure:null}));await flushPromises();
   expect(writes).toHaveLength(0);
   await wrapper.findAll('[data-workspace-tab]')[1]!.trigger('click');await flushPromises();

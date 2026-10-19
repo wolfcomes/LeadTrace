@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.activities.models import Activity
 from app.activities.schemas import (
+    ActivityComparisonResponse,
     ActivityCreateRequest,
     ActivityDeleteResponse,
     ActivityListResponse,
@@ -23,6 +24,7 @@ from app.activities.service import (
     ActivityValidationError,
 )
 from app.api.errors import APIError
+from app.compounds.schemas import CompoundResponse
 from app.config import Settings
 from app.database import get_db_session
 from app.security.permissions import (
@@ -113,6 +115,27 @@ def create_activities_router(settings: Settings) -> APIRouter:
     router = APIRouter(tags=["activities"])
     service = ActivityService()
     secret = settings.session_secret.get_secret_value()
+
+    @router.get(
+        "/api/v2/workspaces/{workspace_id}/activity-comparison",
+        response_model=ActivityComparisonResponse,
+    )
+    @declare_route_access(RouteAccess.PERMISSION, Action.READ_DRAFT)
+    def compare_activities(
+        workspace_id: UUID,
+        session: Session = Depends(get_db_session),
+        principal: Principal = Depends(get_authenticated_principal),
+    ) -> ActivityComparisonResponse:
+        try:
+            with session.begin():
+                result = service.compare_activities(session, workspace_id=workspace_id, actor=principal)
+                return ActivityComparisonResponse(
+                    workspace_id=workspace_id, workspace_version=result.workspace_version,
+                    compounds=[CompoundResponse.model_validate(row, from_attributes=True) for row in result.compounds],
+                    activities=[_activity_response(row) for row in result.activities],
+                )
+        except _WORKSPACE_ERRORS as error:
+            raise _workspace_error(error) from error
 
     @router.get(
         "/api/v2/compounds/{compound_id}/activities",

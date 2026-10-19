@@ -294,6 +294,16 @@ The complete pilot procedure and evidence checklist are in
 
 ## Reviewer workbench
 
+The read-only Activity comparison tab shows one row per Compound and columns keyed
+by exact assay, metric, unit and context. It preserves decimal values, qualifiers,
+review hints and every repeated observation; no unit conversion or averaging is
+performed. Empty cells mean no corresponding saved record. Search, measurement
+selection, natural identifier sorting and table scroll survive returning from the
+Compound/Activity editor; saved edits refresh the table. Pending edits block opening
+another record. Viewing the matrix does not write viewing receipts or confirmations.
+Its authorized workspace GET returns a consistent version and records in one query;
+no schema migration is needed.
+
 Saved Reviewer edits support version-checked undo and redo. Unsaved forms and
 in-flight saves disable history actions; restoring an edit reloads the workspace
 and invalidates viewing receipts for changed groups. New edits discard redo, and

@@ -71,7 +71,11 @@ watch(() => props.workspace.version, (version) => {
   if (version > localVersion.value) localVersion.value = version;
   if (initialized && props.active !== false && version !== activityVersion.value) void load();
 });
-watch(() => props.active,active => { if (active && activityVersion.value !== props.workspace.version) void load(); });
+watch(() => props.active, active => {
+  if (!active) return;
+  if (activityVersion.value !== props.workspace.version) void load();
+  else void revealActivity(props.selectedEntityId);
+});
 watch([() => props.workspace.id, () => props.compound?.id], () => {
   filterCompoundId.value = "";
   page.value = 1;
@@ -90,9 +94,11 @@ async function revealActivity(id?: string): Promise<void> {
   if (filterCompoundId.value && filterCompoundId.value !== activity.compound_id) filterCompoundId.value = "";
   page.value = Math.floor(filteredActivities.value.findIndex((item) => item.id === activity.id) / pageSize) + 1;
   await nextTick();
+  if (props.active === false) return;
   const row = Array.from(editor.value?.querySelectorAll<HTMLElement>("[data-activity-row]") ?? [])
     .find((item) => item.dataset.activityId === id);
   row?.scrollIntoView?.({ block: "center" });
+  row?.focus({ preventScroll: true });
 }
 
 function mutationError(reason: unknown, fallback: string): void {
