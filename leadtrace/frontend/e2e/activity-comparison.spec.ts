@@ -9,9 +9,10 @@ async function fixture(page:Page, uniqueConditions=false, source=false) {
     activities.push(...activities.filter(a=>a.assay_name==='Synthetic assay 1').map((a,i)=>({...a,id:id(9000+i),context:'Second condition for '+a.compound_id,operator:'<',value:'0.25'})));
   }
   const ws=()=>({id:wid,review_task_id:id(3),assigned_reviewer_id:id(4),state:'editing',version,task_status:'assigned',bibliography:{paper_id:paper,paper_key:'SYNTHETIC-COMPARISON',title:'Synthetic activity comparison',journal:'Fixtures',publication_year:2026,volume:'1',issue:'1',doi:null},source:{asset_id:id(5),source_root_key:'source_pdfs',source_key:'synthetic.pdf',sha256:'a'.repeat(64),page_count:1},sections:['bibliography','compounds','structures','lineages','edge_evidence','activities'].map(section_key=>({section_key,state:'pending',note:null}))});
-  let tables:any[]=source?[{id:id(80),paper_id:paper,workspace_id:wid,name:'Table 1',kind:'source',source_label:'Table 1',source_title:'Synthetic activity table',page_number:1,review_hint:null,review_status:'draft',created_by_kind:'ai',columns:[{id:'source-a',label:'Primary potency',assay:'Synthetic assay 1',metric:'IC50',unit:'nM',activity_ids:activities.filter(a=>a.assay_name==='Synthetic assay 1').map(a=>a.id)}],mode:'any',sort:'label'}]:[];
+  let tables:any[]=source?[{id:id(80),paper_id:paper,workspace_id:wid,name:'Table 1',kind:'source',source_label:'Table 1',source_title:'Synthetic activity table',page_number:1,review_hint:null,review_status:'draft',created_by_kind:'ai',evidence_ids:[id(81)],columns:[{id:'source-a',label:'Primary potency',assay:'Synthetic assay 1',metric:'IC50',unit:'nM',activity_ids:activities.filter(a=>a.assay_name==='Synthetic assay 1').map(a=>a.id)}],mode:'any',sort:'label'}]:[];
+  const evidence={id:id(81),paper_id:paper,workspace_id:wid,kind:'table',source_sha256:'a'.repeat(64),page_number:1,bbox:{x0:0.1,y0:0.1,x1:0.9,y1:0.9},quoted_text:null,caption:'Synthetic Table 1',crop_asset_id:null,reviewer_note:null};
   const writes:{path:string;body:any}[]=[];
-  await page.route('**/api/**',async route=>{
+  await page.route('**/api/v*/**',async route=>{
     const req=route.request(),path=new URL(req.url()).pathname;
     const reply=(body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
     if(req.method()!=='GET')writes.push({path,body:req.postDataJSON()});
@@ -34,7 +35,8 @@ async function fixture(page:Page, uniqueConditions=false, source=false) {
     if(path.endsWith('/structure'))return reply({workspace_version:version,structure:null});
     if(path.endsWith('/activities')){const cid=path.split('/').at(-2),items=activities.filter(a=>a.compound_id===cid);return reply({compound_id:cid,workspace_version:version,items,total:items.length});}
     if(path.endsWith('/source-images'))return reply({compound_id:path.split('/').at(-2),workspace_version:version,items:[],total:0});
-    if(path.endsWith('/evidence')||path.endsWith('/compound-highlights'))return reply({workspace_id:wid,workspace_version:version,items:[],total:0});
+    if(path.endsWith('/evidence'))return reply({workspace_id:wid,workspace_version:version,items:source?[evidence]:[],total:source?1:0});
+    if(path.endsWith('/compound-highlights'))return reply({workspace_id:wid,workspace_version:version,items:[],total:0});
     if(path==='/api/v2/workspaces/'+wid)return reply(ws());
     return reply({},404);
   });
@@ -75,7 +77,7 @@ test('build, save, reorder, edit an exact Activity and return on desktop and mob
  await expect(page.locator('[data-comparison-column]').first()).toContainText('Assay 2');
  await page.locator('[data-table-name]').fill('Primary comparison');
  await page.locator('[data-save-table]').click();
- await expect(page.getByRole('status')).toContainText('表格已保存到文章工作区');
+ await expect(page.getByRole('status').filter({hasText:'表格已保存到文章工作区'})).toBeVisible();
  await page.reload();
  await expect(page.locator('[data-table-name]')).toHaveValue('Primary comparison');
  await expect(page.locator('[data-comparison-row]')).toHaveCount(24);
@@ -120,10 +122,13 @@ test('keeps repeated observations and per-Compound conditions with explicit reco
  await page.locator('[data-column-apply]').click();
  await expect(page.locator('[data-comparison-row]')).toHaveCount(30);
  await expect(page.locator('[data-comparison-activity]')).toHaveCount(30);
+ await page.locator('[data-table-name]').fill('Selected observations');
+ await page.locator('[data-save-table]').click();
+ await expect(page.getByRole('status').filter({hasText:'表格已保存到文章工作区'})).toBeVisible();
  const selected=page.locator('[data-comparison-activity]').first(),selectedId=await selected.getAttribute('data-activity-id');
  await selected.click();await expect(page.locator(`[data-activity-row][data-activity-id="${selectedId}"]`)).toHaveClass(/selected/);
  await page.locator('[data-return-comparison]').click();await expect(page.locator('[data-comparison-activity]')).toHaveCount(30);
- expect(f.writes).toHaveLength(0);
+ expect(f.writes).toHaveLength(1);
 });
 
 

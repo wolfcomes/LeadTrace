@@ -1,3 +1,4 @@
+import { structureCountsSchema } from "../v2/types";
 import { withPaperQuery, type PaperFilterParams } from "./paperFilters";
 import { z } from "zod";
 import { apiRequest } from "../api/client";
@@ -188,6 +189,7 @@ const reviewFindingSchema = z.object({
   field_results: z.unknown().optional(),
 });
 export const aiOverviewSchema = z.object({
+  structure_availability: structureCountsSchema.optional(),
   schema_version: z.literal(1),
   basis: z.enum(['producer', 'independent_review']),
   entities: z.array(z.object({domain: z.string(), total: z.number(), supported: z.number().nullable(), incorrect: z.number().nullable(), uncertain: z.number().nullable(), unreviewed: z.number(), flagged: z.number()})),

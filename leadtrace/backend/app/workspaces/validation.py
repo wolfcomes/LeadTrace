@@ -13,6 +13,7 @@ from app.evidence.models import EdgeEvidenceLink, Evidence
 from app.lineages.models import Lineage, LineageEdge, LineageMember, LineageEdgeReviewStatus, LineageMemberRole
 from app.structure_images.models import StructureSourceImage
 from app.structures.models import Structure, StructureStatus
+from app.structures.availability import UNAVAILABLE, valid_unavailable
 from app.workspaces.models import (
     PaperSection,
     PaperSectionReview,
@@ -169,8 +170,9 @@ def validate_submission(session: Session, workspace_id: UUID) -> SubmissionValid
                     PaperSection.STRUCTURES,
                 )
             )
-        elif structure.status is StructureStatus.DRAFT or (
+        elif (structure.availability in UNAVAILABLE and not valid_unavailable(structure)) or structure.status is StructureStatus.DRAFT or (
             structure.status is StructureStatus.REVIEWER_CONFIRMED
+            and structure.availability not in {"not_reported", "not_checked", "unresolved"}
             and (
                 structure.canonical_smiles is None
                 or not structure.canonical_smiles.strip()

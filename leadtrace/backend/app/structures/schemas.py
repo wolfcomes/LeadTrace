@@ -7,7 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.structures.models import StructureInputMethod, StructureStatus
 
 
-class StructureUpsertRequest(BaseModel):
+from app.structures.availability import AvailabilityFields
+
+
+class StructureUpsertRequest(AvailabilityFields):
     model_config = ConfigDict(extra="forbid")
 
     expected_workspace_version: int = Field(ge=1)
@@ -17,7 +20,7 @@ class StructureUpsertRequest(BaseModel):
     molfile: str | None = Field(default=None, max_length=200_000)
 
 
-class StructureResponse(BaseModel):
+class StructureResponse(AvailabilityFields):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID

@@ -42,6 +42,7 @@ class Structure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             ondelete="CASCADE",
         ),
         UniqueConstraint("compound_id", name="uq_structures_compound"),
+        CheckConstraint("availability IS NULL OR availability IN ('available', 'not_reported', 'not_checked', 'unresolved')", name="ck_structures_availability"),
         CheckConstraint(
             "status IN ('draft', 'reviewer_confirmed', 'unresolved', 'not_reported')",
             name="ck_structures_status",
@@ -67,6 +68,10 @@ class Structure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     compound_id: Mapped[UUID] = mapped_column(
         PostgreSQLUUID(as_uuid=True), nullable=False
     )
+    availability: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    availability_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    identity_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    checked_sources: Mapped[str | None] = mapped_column(Text, nullable=True)
     smiles: Mapped[str | None] = mapped_column(Text, nullable=True)
     canonical_smiles: Mapped[str | None] = mapped_column(Text, nullable=True)
     molfile: Mapped[str | None] = mapped_column(Text, nullable=True)

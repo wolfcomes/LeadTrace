@@ -78,7 +78,8 @@ After changing a locator, recheck all Activities sharing that Evidence.
 ## Compound catalogue scope
 
 The default catalogue covers every source-identifiable numbered or labelled
-compound with a defined structure in the available article and supplied SI:
+specific compound in the available article and supplied SI, including an identifiable
+compound for which no complete structure is available:
 starting materials, intermediates, protected forms and final products, whether
 or not assayed and regardless of section. Named assay controls/reference ligands
 also belong; classify their actual source role, not name alone. Pure background
@@ -98,9 +99,19 @@ ineligible; do not turn them into guessed complete molecules. This differs from
 an identifiable complete compound whose structure remains unresolved.
 
 Eligible identities for which no complete structure can be found or reasonably
-reconstructed stay required in the source inventory and absent from candidate
-compounds, with known measurements in existing unresolved-items/omissions.
-The required structure never permits placeholder or unsupported guessed SMILES.
+reconstructed stay required in the source inventory AND are included in candidate
+compounds. Use an explicit unavailable `structure` object with null `smiles` and
+`molfile`; set `availability` to `not_reported` (absent in actually checked sources),
+`not_checked` (source checking incomplete, including missing SI), or `unresolved`
+(ambiguous/conflicting identity-to-structure mapping). Include all three nonempty
+fields: `availability_note` (why), `identity_source` (the observed label and source
+locator establishing this specific identity), and `checked_sources` (actual checked
+scope and unavailable sources). Never infer checked SI or supply placeholder SMILES.
+Retain source-supported Activities, Table rows and relations referencing the same
+Compound. AI creates Draft dispositions, including absence assertions. A later
+structure completion updates the same Compound and requires human review again.
+Report entry counts separately from usable structure counts; absent chemistry cannot
+support structure similarity, deduplication or invented structural transformations.
 No drawing, missing SI, no Activity or Methods-only/route-local status justifies
 excluding a real control or labelled compound. An otherwise eligible identity can
 be excluded only by explicit user scope; record the authorization and reason.
@@ -114,7 +125,7 @@ a Compound does not justify inventing an Activity or Edge.
 
 ## Source-supported inference and simple review hints
 
-A Compound needs a complete structure supported by the paper: a direct drawing,
+An available structure must be supported by the paper: a direct drawing,
 a shared core plus R-group definitions, or a reasonable reconstruction from source
 reaction relationships. A separate individual drawing or unique proof is not
 required for a draft candidate when the evidence supports a defensible complete
@@ -131,10 +142,11 @@ not generic warnings on every item. Blank/absent text means no hint, not approva
 Series order may support a proposed individual pairing when a shared core,
 substituent definitions and a compatible family reaction support that mapping.
 State the pairing assumption in review_hint. Number order or a collective range
-alone is insufficient: if no complete graph is defensibly reconstructable, omit
-the Compound; never insert an empty identity card, fake SMILES, or dangling
-Activity/Edge references. Preserve the missing identity/observations in the
-existing inventory and omissions so the coverage gap remains visible.
+alone is insufficient to infer chemistry. If a specific identity is supported but
+its graph is not reconstructable, include its explicit sourced unavailable structure
+as described above. Never invent SMILES, unsupported labels or dangling references.
+Generic scaffolds and unspecified series remain inventory exclusions, not specific
+Compound entries. Report identity coverage and structure availability separately.
 
 A hint cannot legitimize an invalid graph, known wrong connectivity, contradicted
 pairing or fabricated observation. Correct known errors first; omit an unsupported
@@ -285,8 +297,11 @@ Collective label ranges alone do not establish individual R-group assignments or
 precursor/product pairings. Apply the source-supported inference rule above:
 a defensible complete reconstruction can be retained with a specific review_hint;
 an unsupported guess cannot. Preserve the required identity and known observations
-in existing unresolved records when no complete structure can be supported. For an existing workspace, surface this as a blocking proposed
-reconciliation; do not silently delete records or overwrite human edits. A named
+in explicit sourced unavailable Compound entries when no complete structure can be
+supported. Preserve existing human records and unchanged dispositions in scoped
+revisions; never silently delete records or overwrite human edits. Legacy incomplete
+records may be carried unchanged only through bound preservation markers supplied
+by the frozen baseline, never invented in first prefill. A named
 structure must retain its actual identity basis and unresolved attributes; a
 name-derived structure is not a visually confirmed source drawing.
 

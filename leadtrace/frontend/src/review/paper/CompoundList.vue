@@ -11,7 +11,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { ApiError } from "../../api/client";
 import { useAuthStore } from "../../auth/store";
 import { createCompound, deleteCompound, getCompoundStructure, listActivities, listCompounds, updateCompound } from "../../v2/api";
-import type { Compound, PaperWorkspace } from "../../v2/types";
+import type { Compound, CompoundList, PaperWorkspace } from "../../v2/types";
 import ReviewHint from "./ReviewHint.vue";
 import ActivityEditor from "./ActivityEditor.vue";
 import CompoundStructureEditor from "./CompoundStructureEditor.vue";
@@ -29,6 +29,7 @@ const emit = defineEmits<{
 }>();
 const auth = useAuthStore();
 const compounds = ref<Compound[]>([]);
+const structureCounts = ref<CompoundList["structure_counts"]>();
 const sortMode = ref<"default" | "name">("default");
 const nameCollator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 const displayedCompounds = computed(() => sortMode.value === "name"
@@ -119,6 +120,7 @@ async function load(): Promise<void> {
   try {
     const result = await listCompounds(props.workspace.id);
     compounds.value = result.items;
+    structureCounts.value = result.structure_counts;
     loadedVersion = result.workspace_version; initialized = true;
     localVersion.value = result.workspace_version; loadedVersion = result.workspace_version;
     const requested = props.selectedCompoundId ? await resolveOwner(props.selectedCompoundId) : undefined;
@@ -151,6 +153,7 @@ async function create(): Promise<void> {
     displayName.value = "";
     reviewHint.value = "";
     showCreate.value = false;
+    void load();
     select(result.compound);
     emit("mutated", result.workspace_version);
   } catch (reason) {
@@ -208,6 +211,7 @@ async function remove(compound: Compound): Promise<void> {
     if (editingId.value === compound.id) cancelEdit();
     localVersion.value = result.workspace_version; loadedVersion = result.workspace_version;
     selectedId.value = compounds.value[0]?.id;
+    void load();
     if (selectedId.value) emit("select", selectedId.value);
     emit("mutated", result.workspace_version);
   } catch (reason) {
@@ -226,6 +230,7 @@ async function remove(compound: Compound): Promise<void> {
 
 function nestedMutation(version: number): void {
   localVersion.value = version; loadedVersion = version;
+  void load();
   emit("mutated", version);
 }
 
@@ -249,6 +254,7 @@ usePendingEdit(() => showCreate.value || editingId.value || busy.value);
       <div><p class="eyebrow">COMPOUNDS & STRUCTURES</p><h2>{{ t("化合物与结构") }}</h2></div>
       <button class="button-primary" data-add-compound type="button" :disabled="readOnly || busy" @click="showCreate = !showCreate">{{ t("添加 Compound") }}</button>
     </header>
+    <p v-if="structureCounts" data-structure-counts>{{ t('条目 {total} · 可用结构 {available} · 未报告 {not_reported} · 检查未完成 {not_checked} · 无法判定 {unresolved}', structureCounts) }}</p>
     <FieldExample section="compounds" />
     <RecordClipboard kind="compound" :workspace-id="workspace.id" :workspace-version="localVersion" :source="selected ? { id: selected.id, label: selected.compound_label } : undefined" :records="compounds.map(item => ({ label: item.compound_label, name: item.display_name }))" :disabled="readOnly || busy || refreshing || loading" @pasted="pasted" @conflict="emit('conflict')" />
     <form v-if="showCreate" class="inline-create-form" @submit.prevent="create">

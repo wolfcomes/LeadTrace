@@ -67,6 +67,23 @@ describe("paper-centric published pages", () => {
     expect(requests.some((path) => path.includes("workspaces"))).toBe(false);
   });
 
+  it("retains confirmed absence explanations in the published snapshot", async () => {
+    const detail = JSON.parse(JSON.stringify(publishedDetail));
+    Object.assign(detail.snapshot.structures[0], { smiles:null, molfile:null, canonical_smiles:null, inchi:null, inchikey:null,
+      depiction_asset_id:null, availability:'not_reported', availability_note:'No diagram in checked sources',
+      identity_source:'Table 2 row 1', checked_sources:'Article and supplied SI', status:'reviewer_confirmed' });
+    vi.stubGlobal('fetch',vi.fn(async () => jsonResponse(detail)));
+    const router = publishedRouter();
+    await router.push(`/papers/${publicationIds.paper}`);await router.isReady();
+    const wrapper = mount(PaperDetailPage,{global:{plugins:[router]}});await flushPromises();
+    expect(wrapper.text()).toContain('No diagram in checked sources');
+    expect(wrapper.text()).toContain('Table 2 row 1');
+    expect(wrapper.text()).toContain('Article and supplied SI');
+    expect(wrapper.get('[data-structure-counts]').text()).toContain('未报告 1');
+    expect(wrapper.text()).toContain('12.5 nM');
+    wrapper.unmount();
+  });
+
   it("conceals an unpublished Paper as not found", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
       code: "RESOURCE_NOT_FOUND",

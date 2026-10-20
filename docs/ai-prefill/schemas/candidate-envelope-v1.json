@@ -16,6 +16,20 @@
           "default": null,
           "title": "Review Hint"
         },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        },
         "compound_ref": {
           "maxLength": 255,
           "minLength": 1,
@@ -97,20 +111,6 @@
           ],
           "default": null,
           "title": "Context"
-        },
-        "ref": {
-          "anyOf": [
-            {
-              "maxLength": 255,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Ref"
         }
       },
       "required": [
@@ -121,6 +121,200 @@
         "value"
       ],
       "title": "AiActivity",
+      "type": "object"
+    },
+    "AiActivityTable": {
+      "additionalProperties": false,
+      "properties": {
+        "review_hint": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Hint"
+        },
+        "ref": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "default": "source",
+          "enum": [
+            "source",
+            "custom"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source_label": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Label"
+        },
+        "source_title": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Title"
+        },
+        "page_number": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Number"
+        },
+        "compound_refs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10000,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compound Refs"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/AiActivityTableColumn"
+          },
+          "maxItems": 200,
+          "title": "Columns",
+          "type": "array"
+        },
+        "mode": {
+          "default": "any",
+          "enum": [
+            "any",
+            "all"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "sort": {
+          "default": "label",
+          "enum": [
+            "label",
+            "similarity",
+            "default"
+          ],
+          "title": "Sort",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "name",
+        "columns"
+      ],
+      "title": "AiActivityTable",
+      "type": "object"
+    },
+    "AiActivityTableColumn": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "assay": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Assay",
+          "type": "string"
+        },
+        "metric": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Metric",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "activity_refs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Activity Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "assay",
+        "metric"
+      ],
+      "title": "AiActivityTableColumn",
       "type": "object"
     },
     "AiCompound": {
@@ -435,6 +629,19 @@
           "default": null,
           "title": "Review Hint"
         },
+        "preserve_unresolved": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preserve Unresolved"
+        },
         "ref": {
           "maxLength": 255,
           "minLength": 1,
@@ -586,6 +793,76 @@
     "AiStructure": {
       "additionalProperties": false,
       "properties": {
+        "availability": {
+          "anyOf": [
+            {
+              "enum": [
+                "available",
+                "not_reported",
+                "not_checked",
+                "unresolved"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Availability"
+        },
+        "availability_note": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Availability Note"
+        },
+        "identity_source": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Identity Source"
+        },
+        "checked_sources": {
+          "anyOf": [
+            {
+              "maxLength": 10000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Checked Sources"
+        },
+        "preserve_unresolved": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preserve Unresolved"
+        },
         "smiles": {
           "anyOf": [
             {
@@ -673,6 +950,133 @@
         "bbox"
       ],
       "title": "AiStructureLocator",
+      "type": "object"
+    },
+    "ArticleEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "source_kind": {
+          "enum": [
+            "main_pdf",
+            "supplement",
+            "external"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "quoted_text": {
+          "maxLength": 6000,
+          "minLength": 1,
+          "title": "Quoted Text",
+          "type": "string"
+        },
+        "page_number": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Number"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locator"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Url"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArticleEvidenceBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Sha256"
+        }
+      },
+      "required": [
+        "source_kind",
+        "quoted_text"
+      ],
+      "title": "ArticleEvidence",
+      "type": "object"
+    },
+    "ArticleEvidenceBox": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Y",
+          "type": "number"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Width",
+          "type": "number"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Height",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "title": "ArticleEvidenceBox",
       "type": "object"
     },
     "BibliographyCorrection": {
@@ -1039,6 +1443,14 @@
     "PdbReference": {
       "additionalProperties": false,
       "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ArticleEvidence"
+          },
+          "maxItems": 30,
+          "title": "Evidence",
+          "type": "array"
+        },
         "pdb_id": {
           "maxLength": 12,
           "title": "Pdb Id",
@@ -1105,14 +1517,6 @@
           ],
           "default": null,
           "title": "Review Hint"
-        },
-        "evidence": {
-          "items": {
-            "$ref": "#/$defs/ArticleEvidence"
-          },
-          "maxItems": 30,
-          "title": "Evidence",
-          "type": "array"
         }
       },
       "required": [
@@ -1219,6 +1623,14 @@
     "ResearchTarget": {
       "additionalProperties": false,
       "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ArticleEvidence"
+          },
+          "maxItems": 30,
+          "title": "Evidence",
+          "type": "array"
+        },
         "name": {
           "maxLength": 500,
           "minLength": 1,
@@ -1310,14 +1722,6 @@
           ],
           "default": null,
           "title": "Review Hint"
-        },
-        "evidence": {
-          "items": {
-            "$ref": "#/$defs/ArticleEvidence"
-          },
-          "maxItems": 30,
-          "title": "Evidence",
-          "type": "array"
         }
       },
       "required": [
@@ -1330,6 +1734,14 @@
     "SourceBackedLabel": {
       "additionalProperties": false,
       "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ArticleEvidence"
+          },
+          "maxItems": 30,
+          "title": "Evidence",
+          "type": "array"
+        },
         "label": {
           "maxLength": 500,
           "minLength": 1,
@@ -1354,14 +1766,6 @@
           ],
           "default": null,
           "title": "Review Hint"
-        },
-        "evidence": {
-          "items": {
-            "$ref": "#/$defs/ArticleEvidence"
-          },
-          "maxItems": 30,
-          "title": "Evidence",
-          "type": "array"
         }
       },
       "required": [
@@ -1418,327 +1822,6 @@
         "page_count"
       ],
       "title": "SourceIdentity",
-      "type": "object"
-    },
-    "ArticleEvidence": {
-      "additionalProperties": false,
-      "properties": {
-        "bbox": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ArticleEvidenceBox"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "locator": {
-          "anyOf": [
-            {
-              "maxLength": 1000,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Locator"
-        },
-        "page_number": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Page Number"
-        },
-        "quoted_text": {
-          "maxLength": 6000,
-          "minLength": 1,
-          "title": "Quoted Text",
-          "type": "string"
-        },
-        "source_kind": {
-          "enum": [
-            "main_pdf",
-            "supplement",
-            "external"
-          ],
-          "title": "Source Kind",
-          "type": "string"
-        },
-        "source_sha256": {
-          "anyOf": [
-            {
-              "pattern": "^[0-9a-f]{64}$",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Sha256"
-        },
-        "source_url": {
-          "anyOf": [
-            {
-              "maxLength": 2000,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Url"
-        }
-      },
-      "required": [
-        "source_kind",
-        "quoted_text"
-      ],
-      "title": "ArticleEvidence",
-      "type": "object"
-    },
-    "ArticleEvidenceBox": {
-      "additionalProperties": false,
-      "properties": {
-        "height": {
-          "exclusiveMinimum": 0,
-          "maximum": 1,
-          "title": "Height",
-          "type": "number"
-        },
-        "width": {
-          "exclusiveMinimum": 0,
-          "maximum": 1,
-          "title": "Width",
-          "type": "number"
-        },
-        "x": {
-          "exclusiveMaximum": 1,
-          "minimum": 0,
-          "title": "X",
-          "type": "number"
-        },
-        "y": {
-          "exclusiveMaximum": 1,
-          "minimum": 0,
-          "title": "Y",
-          "type": "number"
-        }
-      },
-      "required": [
-        "x",
-        "y",
-        "width",
-        "height"
-      ],
-      "title": "ArticleEvidenceBox",
-      "type": "object"
-    },
-    "AiActivityTable": {
-      "additionalProperties": false,
-      "properties": {
-        "review_hint": {
-          "anyOf": [
-            {
-              "maxLength": 1000,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Review Hint"
-        },
-        "ref": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Ref",
-          "type": "string"
-        },
-        "name": {
-          "maxLength": 512,
-          "minLength": 1,
-          "title": "Name",
-          "type": "string"
-        },
-        "kind": {
-          "default": "source",
-          "enum": [
-            "source",
-            "custom"
-          ],
-          "title": "Kind",
-          "type": "string"
-        },
-        "source_label": {
-          "anyOf": [
-            {
-              "maxLength": 512,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Label"
-        },
-        "source_title": {
-          "anyOf": [
-            {
-              "maxLength": 10000,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Title"
-        },
-        "page_number": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Page Number"
-        },
-        "columns": {
-          "items": {
-            "$ref": "#/$defs/AiActivityTableColumn"
-          },
-          "maxItems": 200,
-          "title": "Columns",
-          "type": "array"
-        },
-        "mode": {
-          "default": "any",
-          "enum": [
-            "any",
-            "all"
-          ],
-          "title": "Mode",
-          "type": "string"
-        },
-        "sort": {
-          "default": "label",
-          "enum": [
-            "label",
-            "similarity",
-            "default"
-          ],
-          "title": "Sort",
-          "type": "string"
-        },
-        "compound_refs": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "maxItems": 10000,
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Compound Refs"
-        },
-        "evidence_refs": {
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 1000,
-          "title": "Evidence Refs",
-          "type": "array"
-        }
-      },
-      "required": [
-        "ref",
-        "name",
-        "columns"
-      ],
-      "title": "AiActivityTable",
-      "type": "object"
-    },
-    "AiActivityTableColumn": {
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "maxLength": 128,
-          "minLength": 1,
-          "title": "Id",
-          "type": "string"
-        },
-        "label": {
-          "maxLength": 512,
-          "minLength": 1,
-          "title": "Label",
-          "type": "string"
-        },
-        "assay": {
-          "maxLength": 512,
-          "minLength": 1,
-          "title": "Assay",
-          "type": "string"
-        },
-        "metric": {
-          "maxLength": 128,
-          "minLength": 1,
-          "title": "Metric",
-          "type": "string"
-        },
-        "unit": {
-          "anyOf": [
-            {
-              "maxLength": 128,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Unit"
-        },
-        "activity_refs": {
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 10000,
-          "title": "Activity Refs",
-          "type": "array"
-        }
-      },
-      "required": [
-        "id",
-        "label",
-        "assay",
-        "metric"
-      ],
-      "title": "AiActivityTableColumn",
       "type": "object"
     }
   },

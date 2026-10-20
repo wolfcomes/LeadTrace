@@ -52,13 +52,29 @@ class NormalizedBBox(StrictModel):
         return self
 
 
-class AiStructure(StrictModel):
+from app.structures.availability import AvailabilityFields, AVAILABILITY_FIELDS, UNAVAILABLE, validate_availability
+
+
+class AiStructure(AvailabilityFields, StrictModel):
+    # Revision-only context for an existing incomplete/uncertain structure.
+    preserve_unresolved: Literal[True] | None = None
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_serialization(self, handler):
+        data = handler(self)
+        if self.preserve_unresolved is None:
+            data.pop("preserve_unresolved", None)
+        for key in AVAILABILITY_FIELDS:
+            if data.get(key) is None: data.pop(key, None)
+        return data
+
     smiles: str | None = Field(default=None, min_length=1)
     molfile: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def has_one_representation(self) -> "AiStructure":
-        if not self.smiles and not self.molfile:
+        validate_availability(self, self.smiles, self.molfile)
+        if not self.smiles and not self.molfile and not self.preserve_unresolved and self.availability not in UNAVAILABLE:
             raise ValueError("Structure requires SMILES or Molfile")
         return self
 
@@ -102,6 +118,17 @@ class AiLineageMember(StrictModel):
 
 
 class AiLineageEdge(ReviewHintModel):
+    preserve_unresolved: Literal[True] | None = None
+
+    @model_serializer(mode="wrap")
+    def preserve_legacy_serialization(self, handler):
+        data = super().preserve_legacy_serialization(handler)
+        if self.preserve_unresolved is None:
+            data.pop("preserve_unresolved", None)
+        for key in AVAILABILITY_FIELDS:
+            if data.get(key) is None: data.pop(key, None)
+        return data
+
     ref: str = Field(min_length=1, max_length=255)
     parent_compound_ref: str = Field(min_length=1, max_length=255)
     child_compound_ref: str = Field(min_length=1, max_length=255)

@@ -63,8 +63,14 @@ endpoint, conditions and source, retaining both indices; aggregated compound dif
 alone cannot prove row-level closure. Verify all variants of a changed core and
 all dependents of a final crop. Update identity-dependent Activity/Edge verdicts,
 not only the representative structure or a summary. Recompute closure counts.
-Eligible unresolved identities stay required and absent from candidate compounds;
-never guess SMILES because the schema requires structure. Run final checks with
+Eligible unresolved specific identities stay required AND belong in candidate
+compounds with explicit availability (not_reported/not_checked/unresolved),
+availability_note, identity_source and checked_sources; retain Activities and Table
+rows. Missing SI means not_checked, never an assertion that checked sources lack a
+structure. No invented SMILES, generic scaffold identities or numbering gaps.
+Count entries separately from usable chemistry. Keep all AI changes Draft. For
+legacy incomplete records use only the supplied bound preservation markers unchanged;
+never add, drop, retarget or rewrite their protected structure. Run final checks with
 self-review bound to the file SHA256, not canonical hash. At most two corrections;
 unresolved required scope prevents checked even when caveats appear in notes.
 

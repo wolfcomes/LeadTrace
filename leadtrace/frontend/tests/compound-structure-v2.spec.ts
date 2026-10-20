@@ -91,8 +91,9 @@ describe("Compound and single-Structure editor", () => {
       if (url.pathname === `/api/v2/compounds/${ids.compound}/structure`) {
         if (init?.method === "PUT") {
           currentVersion += 1;
-          const body = JSON.parse(String(init.body));
-          return response({ structure: structure({ ...body, input_method: body.input_method, status: body.status }), workspace_version: currentVersion });
+          const { expected_workspace_version: _, ...body } = JSON.parse(String(init.body));
+          initialStructure = structure({ ...body, ...(body.smiles === null && body.molfile === null ? {canonical_smiles:null,inchi:null,inchikey:null,depiction_asset_id:null}: {}) });
+          return response({ structure: initialStructure, workspace_version: currentVersion });
         }
         return response({ structure: initialStructure, workspace_version: currentVersion });
       }
@@ -177,6 +178,7 @@ describe("Compound and single-Structure editor", () => {
       input_method: "manual_smiles",
       smiles: "CCN",
       molfile: null,
+      availability: "available", availability_note: null, identity_source: null, checked_sources: null,
     });
   });
 
@@ -307,21 +309,49 @@ describe("Compound and single-Structure editor", () => {
     expect(wrapper.text()).not.toContain("修改历史");
   });
 
-  it("marks a Compound Structure as not reported without creating a placeholder", async () => {
+  it("saves sourced absence as Draft and requires a separate confirmation", async () => {
     const calls = mockApi();
     const wrapper = await mountWorkspace();
-
     await wrapper.get("[data-mark-structure='not_reported']").trigger("click");
+    expect(calls.filter(call => call.init?.method === "PUT")).toHaveLength(0);
+    expect(wrapper.get('[data-save-absence]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-availability-note]').setValue('Only assay identity is reported');
+    await wrapper.get('[data-identity-source]').setValue('Table 2, row 7a');
+    await wrapper.get('[data-checked-sources]').setValue('Main text and supplied SI');
+    expect(wrapper.get('[data-confirm-absence]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-save-absence]').trigger('click');
     await flushPromises();
-
-    const write = calls.find((call) => call.init?.method === "PUT");
-    expect(JSON.parse(String(write?.init?.body))).toEqual({
-      expected_workspace_version: 1,
-      status: "not_reported",
-      input_method: "manual_smiles",
-      smiles: null,
-      molfile: null,
+    const writes = () => calls.filter(call => call.init?.method === 'PUT');
+    expect(JSON.parse(String(writes()[0]?.init?.body))).toEqual({
+      expected_workspace_version:1, status:'draft', input_method:'manual_smiles', smiles:null, molfile:null,
+      availability:'not_reported', availability_note:'Only assay identity is reported',
+      identity_source:'Table 2, row 7a', checked_sources:'Main text and supplied SI',
     });
+    expect(wrapper.get('[data-structure-status]').text()).toContain('Draft');
+    expect(wrapper.get('[data-confirm-structure]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-confirm-absence]').trigger('click');
+    await flushPromises();
+    expect(JSON.parse(String(writes()[1]?.init?.body))).toMatchObject({status:'reviewer_confirmed',availability:'not_reported'});
+    expect(writes()[1]?.url.pathname).toBe(`/api/v2/compounds/${ids.compound}/structure`);
+    wrapper.unmount();
+  });
+
+  it("loads AI absence pending review and later fills the same Compound structure", async () => {
+    const calls = mockApi(structure({smiles:null,molfile:null,canonical_smiles:null,inchi:null,inchikey:null,depiction_asset_id:null,
+      availability:'not_checked',availability_note:'SI unavailable',identity_source:'Table 2',checked_sources:'Main article only'}));
+    const wrapper = await mountWorkspace();
+    expect(wrapper.get('[data-structure-availability]').text()).toContain('待 Reviewer 确认');
+    expect(wrapper.get('[data-availability-note]').element).toHaveProperty('value','SI unavailable');
+    expect(wrapper.get('[data-confirm-absence]').attributes('disabled')).toBeUndefined();
+    await wrapper.get('[data-identity-source]').setValue('Table 2, row 7a');
+    expect(wrapper.get('[data-confirm-absence]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-smiles-input]').setValue('CCN');
+    await wrapper.get('[data-save-structure]').trigger('click');
+    await flushPromises();
+    const write = calls.find(call => call.init?.method === 'PUT');
+    expect(write?.url.pathname).toBe(`/api/v2/compounds/${ids.compound}/structure`);
+    expect(JSON.parse(String(write?.init?.body))).toMatchObject({availability:'available',status:'draft',smiles:'CCN',availability_note:null,identity_source:null,checked_sources:null});
+    wrapper.unmount();
   });
 
   it("keeps the selected Compound when an older Structure read finishes late", async () => {

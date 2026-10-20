@@ -21,11 +21,13 @@ not the current runbook. Read the latest run's `HANDOFF.md` before resuming.
   paper/stage and separate fresh reviewer calls. Producer session continuity does
   not make its self-check independent review; record actual session metadata and
   use a structured handoff when native resume is unavailable.
-- Include every source-identifiable numbered/labelled compound with a defined
-  structure, including starting materials and intermediates without Activity or
-  appearing only in Methods. Route-local descriptions do not replace Compound
-  entries. Keep unresolved identities in the required inventory; never invent
-  structures. Report full inventory gaps as well as any user-limited scope.
+- Include every source-identifiable numbered/labelled specific compound, including starting materials and intermediates without Activity
+  or appearing only in Methods. Identifiable compounds without a resolvable structure
+  also belong, with explicit structure availability, reason, identity source and
+  checked-source scope. Keep their supported Activities/Table rows; never invent
+  structures. Separate entry counts, usable structures and human confirmation.
+  Route-local descriptions do not replace Compound entries; generic scaffolds do
+  not establish specific identities. Report full inventory gaps as well as any user-limited scope.
 - Use the current guide bundle and role-specific reading list; copy/hash the
   actual files into each new task bundle, but do not require every role to read
   all operator material. Never rewrite a historical bundle. A scoped repair must

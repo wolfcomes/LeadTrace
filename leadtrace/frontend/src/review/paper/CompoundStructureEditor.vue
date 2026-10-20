@@ -9,6 +9,7 @@ import { getCompoundStructure, putCompoundStructure } from "../../v2/api";
 import type { Compound, PaperWorkspace, Structure } from "../../v2/types";
 import KetcherEditor from "./KetcherEditor.vue";
 import { resolveIupac, iupacText } from "./iupac";
+import { availabilityOf, availabilityLabels, unavailableDetailsValid, type Availability } from "./structureAvailability";
 import StructureSourceImages from "./StructureSourceImages.vue";
 
 const props = defineProps<{
@@ -25,6 +26,16 @@ const smiles = ref("");
 const molfile = ref("");
 const loadedSmiles = ref("");
 const loadedMolfile = ref("");
+const absenceOpen = ref(false);
+const availability = ref<Availability>('not_checked');
+const availabilityNote = ref('');
+const identitySource = ref('');
+const checkedSources = ref('');
+const loadedAbsence = ref(JSON.stringify({ availability:'not_checked', availability_note:'', identity_source:'', checked_sources:'' }));
+const absenceData = computed(() => ({ availability:availability.value, availability_note:availabilityNote.value, identity_source:identitySource.value, checked_sources:checkedSources.value }));
+const absenceDirty = computed(() => JSON.stringify(absenceData.value) !== loadedAbsence.value);
+const canSaveAbsence = computed(() => unavailableDetailsValid(absenceData.value) && !props.readOnly && !saving.value && !converting.value);
+const canConfirmAbsence = computed(() => canSaveAbsence.value && !dirty.value && !!structure.value?.availability && structure.value.availability !== 'available');
 const localVersion = ref(props.workspaceVersion);
 const showKetcher = ref(false);
 const ketcherOutputReady = ref(false);
@@ -91,7 +102,7 @@ watch(() => [props.viewRequested, loading.value, documentVisible.value, contentV
   }
 }, { flush: 'post' });
 
-const dirty = computed(() => smiles.value !== loadedSmiles.value || molfile.value !== loadedMolfile.value);
+const dirty = computed(() => smiles.value !== loadedSmiles.value || molfile.value !== loadedMolfile.value || absenceDirty.value);
 const canConfirm = computed(() => Boolean(
   structure.value
   && (structure.value.canonical_smiles || structure.value.inchi)
@@ -119,6 +130,12 @@ function apply(result: Structure | null): void {
   molfile.value = result?.molfile ?? "";
   loadedSmiles.value = smiles.value;
   loadedMolfile.value = molfile.value;
+  availability.value = availabilityOf(result) === 'available' ? 'not_checked' : availabilityOf(result);
+  availabilityNote.value = result?.availability_note ?? '';
+  identitySource.value = result?.identity_source ?? '';
+  checkedSources.value = result?.checked_sources ?? '';
+  loadedAbsence.value = JSON.stringify(absenceData.value);
+  absenceOpen.value = !!result && (['not_reported', 'not_checked', 'unresolved'].includes(result.availability ?? '') || ['not_reported', 'unresolved'].includes(result.status));
 }
 
 async function load(): Promise<void> {
@@ -147,6 +164,7 @@ async function save(inputMethod: "manual_smiles" | "structure_editor", status: "
     const result = await putCompoundStructure(props.compound.id, {
       expected_workspace_version: localVersion.value,
       status,
+      availability: 'available', availability_note: null, identity_source: null, checked_sources: null,
       input_method: inputMethod,
       smiles: inputMethod === "manual_smiles" ? smiles.value || null : null,
       molfile: inputMethod === "structure_editor" ? molfile.value || null : null,
@@ -169,32 +187,24 @@ async function save(inputMethod: "manual_smiles" | "structure_editor", status: "
   }
 }
 
-async function markNoStructure(status: "unresolved" | "not_reported"): Promise<void> {
-  if (props.readOnly || saving.value) return;
-  saving.value = true;
-  error.value = "";
+function markNoStructure(value: 'unresolved' | 'not_reported'): void {
+  availability.value = value; absenceOpen.value = true;
+}
+async function saveAbsence(confirm = false): Promise<void> {
+  if (!canSaveAbsence.value || (confirm && !canConfirmAbsence.value)) return;
+  saving.value = true; error.value = '';
   try {
     const result = await putCompoundStructure(props.compound.id, {
       expected_workspace_version: localVersion.value,
-      status,
-      input_method: "manual_smiles",
-      smiles: null,
-      molfile: null,
+      status: confirm ? 'reviewer_confirmed' : 'draft', input_method:'manual_smiles',
+      smiles:null, molfile:null, ...absenceData.value,
     }, auth.csrfToken);
-    localVersion.value = result.workspace_version;
-    contentVersion.value = result.workspace_version;
-    apply(result.structure);
-    emit("mutated", result.workspace_version);
+    localVersion.value = result.workspace_version; contentVersion.value = result.workspace_version;
+    apply(result.structure); emit('mutated',result.workspace_version);
   } catch (reason) {
-    if (reason instanceof ApiError && reason.code === "WORKSPACE_VERSION_CONFLICT") {
-      emit("conflict");
-      error.value = "Workspace 已更新，正在重新载入全部 Compound 数据。";
-    } else {
-      error.value = "Structure 状态未能保存，请重试。";
-    }
-  } finally {
-    saving.value = false;
-  }
+    if (reason instanceof ApiError && reason.code === 'WORKSPACE_VERSION_CONFLICT') emit('conflict');
+    error.value = '结构缺失说明未能保存，请检查来源与原因后重试。';
+  } finally { saving.value = false; }
 }
 
 function handleNestedMutation(version: number): void {
@@ -232,6 +242,18 @@ usePendingEdit(() => dirty.value || showKetcher.value || saving.value || convert
     <p v-if="error" class="inline-feedback is-error" role="alert">{{ t(error) }}</p>
     <p v-if="loading" class="workspace-empty-copy">{{ t("正在读取 Structure…") }}</p>
     <template v-else>
+      <p v-if="structure" data-structure-availability>{{ t(availabilityLabels[availabilityOf(structure)]) }} · {{ t(structure.status === 'draft' ? '待 Reviewer 确认' : '已由 Reviewer 处置') }}</p>
+      <button class="button-quiet" data-edit-absence type="button" @click="absenceOpen = !absenceOpen">{{ t('记录结构缺失原因') }}</button>
+      <section v-if="absenceOpen" class="structure-absence" data-absence-form>
+        <p>{{ t('编号和活性记录会保留。确认缺失说明不等于确认分子结构。') }}</p>
+        <label class="form-field">{{ t('结构可用性') }}<select v-model="availability" data-availability :disabled="readOnly || saving"><option value="not_reported">{{ t('已检查来源中未报告结构') }}</option><option value="not_checked">{{ t('来源检查未完成') }}</option><option value="unresolved">{{ t('结构无法判定') }}</option></select></label>
+        <label class="form-field">{{ t('缺失原因') }}<textarea v-model="availabilityNote" data-availability-note maxlength="10000" :disabled="readOnly || saving" /></label>
+        <label class="form-field">{{ t('编号身份来源（页码、表格或段落）') }}<textarea v-model="identitySource" data-identity-source maxlength="10000" :disabled="readOnly || saving" /></label>
+        <label class="form-field">{{ t('已检查的来源范围与未获取附件') }}<textarea v-model="checkedSources" data-checked-sources maxlength="10000" :disabled="readOnly || saving" /></label>
+        <p v-if="structure?.canonical_smiles">{{ t('保存缺失说明将清空当前结构表示，请先核对。') }}</p>
+        <button type="button" class="button-secondary" data-save-absence :disabled="!canSaveAbsence" @click="saveAbsence()">{{ t('保存缺失说明 Draft') }}</button>
+        <button type="button" class="button-primary" data-confirm-absence :disabled="!canConfirmAbsence" @click="saveAbsence(true)">{{ t('确认当前缺失说明') }}</button>
+      </section>
       <div class="iupac-conversion">
         <label class="form-field">{{ iupacText("IUPAC 名称") }}<input v-model="iupacName" data-iupac-name class="form-control" maxlength="1000" :disabled="readOnly || saving || converting" placeholder="(2R)-2-hydroxypropanoic acid" /></label>
         <button data-convert-iupac class="button-secondary" type="button" :disabled="readOnly || saving || converting || !iupacName.trim()" @click="convertIupac">{{ iupacText(converting ? "正在转换…" : "转换并载入编辑器") }}</button>

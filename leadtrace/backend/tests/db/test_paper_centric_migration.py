@@ -369,6 +369,9 @@ def test_paper_centric_schema_enforces_the_fixed_workflow_contract(
         }
         assert paper_columns == {
             "abstract", "abstract_source", "pdb_references",
+            "pmid", "pmcid", "identifiers_source", "abstract_status",
+            "abstract_note", "research_profile",
+            "removed_at", "removed_by_id", "removal_reason",
             "id",
             "paper_key",
             "source_id",
@@ -388,6 +391,7 @@ def test_paper_centric_schema_enforces_the_fixed_workflow_contract(
             for item in schema.get_foreign_keys("papers")
         } == {
             (("source_id",), "paper_sources"),
+            (("removed_by_id",), "users"),
             (
                 ("current_published_version_id", "id"),
                 "published_paper_versions",

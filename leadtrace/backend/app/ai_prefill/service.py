@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.structures.availability import availability_values, UNAVAILABLE
+
 from app.papers.metadata import ArticleMetadata, ARTICLE_METADATA_FIELDS, metadata_values, validate_article_evidence_sources
 
 from dataclasses import dataclass, field
@@ -249,8 +251,13 @@ class AiPrefillService:
     def _parse_structures(
         payload: AiPrefillPayload,
     ) -> dict[str, ParsedStructure] | None:
+        if any(c.structure.preserve_unresolved for c in payload.compounds) or any(e.preserve_unresolved for g in payload.lineages for e in g.edges):
+            return None  # Only the version-bound revision writer can preserve existing gaps.
         parsed: dict[str, ParsedStructure] = {}
         for item in payload.compounds:
+            if item.structure.availability in UNAVAILABLE:
+                parsed[item.ref] = ParsedStructure(False, None, None, None)
+                continue
             smiles = _clean_optional(item.structure.smiles)
             molfile = item.structure.molfile
             if molfile is not None and not molfile.strip():
@@ -498,6 +505,7 @@ class AiPrefillService:
                     created_by_id=run.requested_by_id,
                 ).asset.id
             structure = Structure(
+                **availability_values(item.structure),
                 paper_id=run.paper_id,
                 workspace_id=workspace.id,
                 compound_id=compound.id,

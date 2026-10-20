@@ -9,7 +9,8 @@ def review_targets(candidate: CandidateEnvelope, inventory: CompoundInventory) -
     return {
         'source_identity': ['source'],
         'bibliography': ['paper'],
-        'structures': [c.ref for c in payload.compounds],
+        'structures': [c.ref for c in payload.compounds if c.structure.availability not in {'not_reported', 'not_checked', 'unresolved'} and not c.structure.preserve_unresolved],
+        **({'compound_identity': [c.ref for c in payload.compounds if c.structure.availability in {'not_reported', 'not_checked', 'unresolved'} or c.structure.preserve_unresolved]} if any(c.structure.availability in {'not_reported', 'not_checked', 'unresolved'} or c.structure.preserve_unresolved for c in payload.compounds) else {}),
         'locators': [c.ref for c in payload.structure_locators],
         'activities': [str(i) for i in range(len(payload.activities))],
         'edges': [e.ref for group in payload.lineages for e in group.edges],

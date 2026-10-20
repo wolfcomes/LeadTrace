@@ -101,6 +101,8 @@ def check_compound_coverage(candidate: CandidateEnvelope, inventory: CompoundInv
         "inventory_count": len(inventory.entries),
         "required_count": sum(entry.required for entry in inventory.entries),
         "covered_count": len(matched),
+        "structure_available_count": sum(bool(c.structure.smiles or c.structure.molfile) and not c.structure.preserve_unresolved and c.structure.availability not in {"not_reported", "not_checked", "unresolved"} for c in candidate.payload.compounds),
+        "structure_unavailable_count": sum(c.structure.availability in {"not_reported", "not_checked", "unresolved"} or bool(c.structure.preserve_unresolved) for c in candidate.payload.compounds),
         "matched": matched,
         "missing_labels": missing,
         "ambiguous_matches": ambiguous,

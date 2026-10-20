@@ -84,6 +84,7 @@ class CompoundListResponse(BaseModel):
     workspace_version: int
     items: list[CompoundResponse]
     total: int
+    structure_counts: dict[str, int] | None = None
 
 
 class CompoundDeleteResponse(BaseModel):

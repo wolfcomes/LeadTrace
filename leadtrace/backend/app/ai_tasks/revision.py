@@ -18,7 +18,7 @@ def export_revision_baseline(parent, snapshot, entity_map=None):
     for collection in ('evidence','structure_source_images'):
         for row in scientific[collection]:
             row['reviewer_note']=None
-    payload,refs,metadata=_payload_from_snapshot(parent,scientific,entity_map or {},snapshot['paper'])
+    payload,refs,metadata=_payload_from_snapshot(parent,scientific,entity_map or {},snapshot['paper'],preserve_unresolved=True)
     notes=[{'kind':collection,'ref':refs[row['id']],'note':row['reviewer_note']}
            for collection in ('evidence','structure_source_images') for row in snapshot[collection]
            if row.get('reviewer_note')]

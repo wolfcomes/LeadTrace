@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-16.2",
+  "version": "2026-10-20.1",
   "sections": [
     {
       "id": "start",
@@ -420,8 +420,8 @@
         },
         {
           "type": "note",
-          "zh": "实际按钮注意：“标记无法解析”和“文章未报告结构”会将当前 SMILES / Molfile 清空并保存为无结构状态。已有完整候选但只是某处存疑时，保留 Draft，在 Compound 核对提示中说明；不要把这两个按钮当作普通警告开关。确需无结构处置时先保留来源与问题记录，并与负责人核对。",
-          "en": "Actual button behavior: Mark unresolved and Structure not reported clear the current SMILES / Molfile and save a no-structure disposition. If a complete candidate has a specific uncertainty, retain the Draft and explain it in the Compound verification hint. These buttons are not simple warning toggles. Preserve sources and an issue record and consult your supervisor before choosing a no-structure disposition."
+          "zh": "“标记无法解析”和“文章未报告结构”打开结构缺失说明，不立即清空结构。选择结构可用性，填写缺失原因、编号身份来源、已检查范围和缺失附件，先“保存缺失说明 Draft”，再“确认当前缺失说明”。保存缺失说明会清空当前 SMILES / Molfile；确认说明不等于确认分子图。原文未报告、来源未查完、结构无法判定必须区分，缺 SI 不能直接当未报告。编号、活性和 Table 行仍保留；后来补齐结构时更新同一个 Compound，并重新确认。旧条目不会自动补造来源说明。已有完整候选但局部存疑时，保留结构 Draft 并填写核对提示。",
+          "en": "Mark unresolved and Structure not reported open an explanation form without immediately clearing chemistry. Choose availability and enter a reason, the identity source, checked sources and missing supplements. Save the explanation as Draft, then Confirm current absence explanation. Saving clears the current SMILES / Molfile; confirming the explanation does not confirm a molecular graph. Distinguish not reported, checking incomplete and unresolved; missing SI is not proof of absence. Labels, Activities and Table rows remain. Later structure completion updates the same Compound and needs confirmation again. Legacy entries do not gain invented provenance. Keep a supported complete candidate as Draft with a verification hint when only a specific detail is uncertain."
         },
         {
           "type": "paragraph",

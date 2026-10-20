@@ -8,7 +8,7 @@ const overview = computed(() => props.report.overview);
 const domainLabels: Record<string, string> = {
   compounds: 'Compound', compound: 'Compound', activities: 'Activity', activity: 'Activity',
   lineages: 'Lineage', lineage_groups: 'Lineage', edges: 'Edge', edge: 'Edge', evidence: 'Evidence',
-  screenshots: '截图', structure_locators: '结构来源截图', structures: '结构',
+  compound_identity: '编号身份与结构缺失依据', screenshots: '截图', structure_locators: '结构来源截图', structures: '结构',
   compound_highlights: '文章级分子标注', highlights: '文章级分子标注',
   lineage_members: 'Lineage 节点', members: 'Lineage 节点', edge_evidence_links: 'Edge 与证据关联',
   locators: '结构来源截图', links: 'Edge 与证据关联', bibliography: '文章信息', groups: 'Lineage',
@@ -62,6 +62,7 @@ const pretty = (input: unknown) => input === undefined || input === null ? '—'
         </table>
       </div>
       <p class="ai-report-context">{{ t('“—”表示没有对应复核数据；需核对与其他状态可能重叠，不应相加。') }}</p>
+      <p v-if="overview.structure_availability" data-structure-counts>{{ t('条目 {total} · 可用结构 {available} · 未报告 {not_reported} · 检查未完成 {not_checked} · 无法判定 {unresolved}', overview.structure_availability) }}</p>
       <dl class="ai-report-metrics">
         <div><dt>{{ t('Compound 清单覆盖率') }}</dt><dd v-if="overview.compound_coverage.known">{{ percentage(overview.compound_coverage.percent) }} <small>{{ overview.compound_coverage.covered }} / {{ overview.compound_coverage.expected }}</small></dd><dd v-else>{{ t('未知') }}</dd></div>
         <div><dt>{{ t('独立复核覆盖率') }}</dt><dd v-if="overview.audit_coverage.known">{{ percentage(overview.audit_coverage.percent) }} <small>{{ overview.audit_coverage.checked }} / {{ overview.audit_coverage.expected }}</small></dd><dd v-else>{{ t('未知') }}</dd></div>

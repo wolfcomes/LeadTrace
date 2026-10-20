@@ -203,6 +203,13 @@ Preview access, external messages, subagents or extra model calls. Work only wit
 this task; frozen inputs/bundle are read-only. Keep raw source extracts in work/.
 Save source expectations and per-record structures, locators, activities, edges,
 groups, participation and omissions reviews as derived JSON under outputs/.
+For compound_identity targets, check identity_source, checked_sources, availability
+and availability_note explicitly; assess the specific source-labelled identity and
+missing-structure reason, not nonexistent connectivity. Their Activity associations
+remain independently reviewable. Existing preserve_unresolved markers are bound
+read-only legacy context: preserve marked structures exactly and marked Edge
+endpoints/disposition, without fabricating source metadata or clearing markers.
+Fresh source-backed absent structures instead use availability plus all provenance fields.
 Each verdict has domain/ref from inputs/review-targets.json (activities and links use zero-based index strings),
 expected/observed, nonempty source_locations, checked_fields, field_results,
 reason, and correct/incorrect/uncertain; list every unreviewed ref and propagate

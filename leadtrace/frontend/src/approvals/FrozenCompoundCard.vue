@@ -276,7 +276,7 @@ function evidenceLabel(row: Row) {
                   ? 0
                   : 10,
               }"
-              :fields="['status']"
+              :fields="['status','availability','availability_note','identity_source','checked_sources']"
             />
             <ReviewDisclosure
               :style="{

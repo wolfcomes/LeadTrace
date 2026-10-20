@@ -231,6 +231,10 @@ export function getCompoundStructure(compoundId: string): Promise<StructureRead>
 export function putCompoundStructure(
   compoundId: string,
   payload: {
+    availability?: 'available' | 'not_reported' | 'not_checked' | 'unresolved' | null;
+    availability_note?: string | null;
+    identity_source?: string | null;
+    checked_sources?: string | null;
     expected_workspace_version: number;
     status: "draft" | "reviewer_confirmed" | "unresolved" | "not_reported";
     input_method: "ai_prefill" | "manual_smiles" | "structure_editor";

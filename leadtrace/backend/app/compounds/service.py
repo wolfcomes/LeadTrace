@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.structures.availability import availability_values
+
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -67,6 +69,7 @@ def compound_snapshot(compound: Compound) -> dict[str, object]:
 
 def structure_snapshot(structure: Structure) -> dict[str, object]:
     return {
+        **availability_values(structure),
         "id": str(structure.id),
         "paper_id": str(structure.paper_id),
         "workspace_id": str(structure.workspace_id),

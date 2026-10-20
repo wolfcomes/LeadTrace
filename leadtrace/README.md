@@ -426,3 +426,23 @@ File filters select files linked to any matching visible article, including deri
 files and historical scientific assets. Unattached files appear with no article
 filters but cannot match article-specific filters. Deleted articles remain excluded.
 These are read-only query/UI changes and require no database migration.
+
+## Structure availability and compound identity
+
+A source-identifiable specific Compound may lack a usable chemical structure.
+Initial AI prefill, review and revision retain its label, supported Activities,
+Table memberships and sourced relationships. `Structure.availability` distinguishes
+`available`, `not_reported`, `not_checked` and `unresolved`; unavailable entries
+require `availability_note`, `identity_source` and `checked_sources`. Missing SI is
+incomplete checking, not proof that no structure was reported. AI assertions remain
+Draft. Reviewers save the explanation then explicitly confirm it; this confirms the
+explanation, not a molecular graph. Completing a structure later retains the Compound
+identity and related records and requires confirmation again.
+
+Compound lists and AI reports separate entry counts from usable structure counts.
+Generic scaffolds do not become specific compounds. Legacy snapshots/candidate hashes
+remain unchanged; old missing metadata is not inferred. Bound baseline preservation
+allows unchanged incomplete human drafts through scoped review/revision, while first
+prefill must provide explicit availability evidence. Deployment requires additive
+migration `0040_structure_availability`; it adds nullable metadata without relabelling
+historical records or importing scientific data.

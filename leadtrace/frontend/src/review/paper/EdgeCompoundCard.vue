@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { availabilityOf, availabilityLabels } from "./structureAvailability";
 import { t } from "../../i18n";
 import ReviewHint from "./ReviewHint.vue";
 import { computed, ref, watch } from 'vue';
@@ -22,6 +23,7 @@ const to = computed(() => ({ path: `/review/papers/${props.paperId}`, query: { w
     <p v-else-if="state.status === 'error'" class="endpoint-placeholder" role="alert">{{ t("结构暂时无法读取。") }}<button class="button-quiet" type="button" @click="emit('retry', compoundId)">{{ t("重试") }}</button></p>
     <img v-else-if="structure?.depiction_asset_id && !imageFailed" data-endpoint-depiction :src="depictionUrl" :alt="t('Compound {p0} 的 RDKit 结构重绘', { p0: compound?.compound_label || '?' })" @error="imageFailed = true">
     <p v-else class="endpoint-placeholder">{{ imageFailed ? t("结构图片暂不可用，可进入化合物详情核对。") : structure ? t("当前结构没有可用的 RDKit 重绘图。") : t("该化合物尚无结构记录。") }}</p>
+    <p v-if="structure" data-endpoint-availability>{{ t(availabilityLabels[availabilityOf(structure)]) }}</p>
     <p v-if="compound?.display_name">{{ compound.display_name }}</p>
     <details v-if="compound?.description || structure?.canonical_smiles || structure?.smiles"><summary>{{ t("化合物说明与 SMILES") }}</summary><p v-if="compound?.description">{{ compound.description }}</p><code>{{ structure?.canonical_smiles || structure?.smiles }}</code></details>
     <RouterLink class="button-secondary" data-endpoint-compound-link :to="to">{{ t("查看化合物、原图与活性 →") }}</RouterLink>

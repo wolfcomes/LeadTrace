@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.structures.availability import availability_values
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
@@ -33,6 +35,7 @@ from app.workspaces.service import (
 
 def _structure_response(structure: Structure) -> StructureResponse:
     return StructureResponse(
+        **availability_values(structure),
         id=structure.id,
         paper_id=structure.paper_id,
         workspace_id=structure.workspace_id,
@@ -133,6 +136,7 @@ def create_structures_router(settings: Settings) -> APIRouter:
                     input_method=payload.input_method,
                     smiles=payload.smiles,
                     molfile=payload.molfile,
+                    **{key: getattr(payload, key) for key in ("availability", "availability_note", "identity_source", "checked_sources")},
                 )
                 return StructureMutationResponse(
                     structure=_structure_response(result.structure),

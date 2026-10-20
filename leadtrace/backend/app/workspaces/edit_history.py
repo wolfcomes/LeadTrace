@@ -70,6 +70,8 @@ def record(session, context, actor_id, action, before, after, previous_version):
 
 def _convert(model, data):
     result={}
+    if model is Structure:
+        data = {'availability': None, 'availability_note': None, 'identity_source': None, 'checked_sources': None, **data}
     if model is ActivityTable:
         data = {'compound_ids': None, 'evidence_ids': [], **data}
     for column in model.__table__.columns:

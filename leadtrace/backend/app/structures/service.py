@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.structures.availability import AvailabilityFields, AVAILABILITY_FIELDS, UNAVAILABLE, validate_availability
+
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from uuid import UUID
@@ -321,6 +323,10 @@ class StructureService:
         input_method: StructureInputMethod,
         smiles: str | None,
         molfile: str | None,
+        availability: str | None = None,
+        availability_note: str | None = None,
+        identity_source: str | None = None,
+        checked_sources: str | None = None,
     ) -> StructureMutation:
         workspace_id = session.scalar(
             select(Compound.workspace_id).where(Compound.id == compound_id)
@@ -343,7 +349,14 @@ class StructureService:
                 raise WorkspaceNotFoundError("Resource not found")
             clean_smiles = _clean_smiles(smiles)
             clean_molfile = _preserve_molfile(molfile)
-            clear_status = status in {
+            try:
+                availability_data = AvailabilityFields(availability=availability, availability_note=availability_note, identity_source=identity_source, checked_sources=checked_sources)
+                validate_availability(availability_data, clean_smiles, clean_molfile)
+                if availability is not None and status in {StructureStatus.UNRESOLVED, StructureStatus.NOT_REPORTED}:
+                    raise ValueError("Explicit availability uses draft or reviewer_confirmed review status")
+            except ValueError as exc:
+                raise StructureValidationError(str(exc)) from exc
+            clear_status = availability in UNAVAILABLE or status in {
                 StructureStatus.UNRESOLVED,
                 StructureStatus.NOT_REPORTED,
             }
@@ -396,9 +409,10 @@ class StructureService:
                 "inchikey": parsed.inchikey,
                 "status": status.value,
                 "input_method": input_method.value,
+                **{key: getattr(availability_data, key) for key in AVAILABILITY_FIELDS},
             }
             if structure is not None and all(
-                before[field] == value for field, value in comparable.items()
+                before.get(field) == value for field, value in comparable.items()
             ):
                 self._harden_depiction_asset(
                     session,
@@ -447,10 +461,12 @@ class StructureService:
                 structure.status = status
                 structure.input_method = input_method
                 action = "structure.update"
+            for key in AVAILABILITY_FIELDS:
+                setattr(structure, key, getattr(availability_data, key))
             after = structure_snapshot(structure)
             if viewed_before is not None and all(
-                before[key] == after[key]
-                for key in before if key not in {'status', 'input_method'}
+                before.get(key) == after.get(key)
+                for key in before.keys() | after.keys() if key not in {'status', 'input_method'}
             ):
                 from app.workspaces.review_progress import review_items
                 from app.workspaces.snapshot import build_paper_snapshot

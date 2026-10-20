@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.structures.availability import availability_values
+
 from app.papers.metadata import ARTICLE_METADATA_FIELDS, ARTICLE_METADATA_DEFAULTS
 
 import hashlib
@@ -205,6 +207,7 @@ def build_paper_snapshot(session: Session, workspace_id: UUID) -> dict[str, Any]
                     "input_method",
                 ),
             )
+            | availability_values(structure)
             for structure in structures
         ],
         "structure_source_images": [

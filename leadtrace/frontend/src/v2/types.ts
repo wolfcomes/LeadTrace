@@ -359,6 +359,10 @@ export const compoundSchema = z.object({
 }).strict();
 
 export const structureSchema = z.object({
+  availability: z.enum(['available','not_reported','not_checked','unresolved']).nullable().optional(),
+  availability_note: z.string().nullable().optional(),
+  identity_source: z.string().nullable().optional(),
+  checked_sources: z.string().nullable().optional(),
   id: uuidSchema,
   paper_id: uuidSchema,
   workspace_id: uuidSchema,
@@ -815,7 +819,14 @@ export const decisionMutationSchema = z.object({
   }
 });
 
+export const structureCountsSchema = z.object({
+  total: z.number().int().nonnegative(), available: z.number().int().nonnegative(),
+  not_reported: z.number().int().nonnegative(), not_checked: z.number().int().nonnegative(),
+  unresolved: z.number().int().nonnegative(), confirmed: z.number().int().nonnegative().optional(),
+});
+
 export const compoundListSchema = z.object({
+  structure_counts: structureCountsSchema.optional(),
   workspace_id: uuidSchema,
   workspace_version: z.number().int().positive(),
   items: z.array(compoundSchema),

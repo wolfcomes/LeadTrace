@@ -26,6 +26,10 @@ export const domainLabels: Record<string, string> = {
   compound_highlights: "关键化合物",
 };
 export const fieldLabels: Record<string, string> = {
+  availability: "结构可用性",
+  availability_note: "缺失原因",
+  identity_source: "编号身份来源",
+  checked_sources: "已检查来源范围",
   compound_label: "化合物编号",
   display_name: "名称",
   description: "说明",

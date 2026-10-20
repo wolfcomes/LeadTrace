@@ -230,7 +230,10 @@ class PublishedCompound(PublishedSnapshotProjection):
     sort_order: int
 
 
-class PublishedStructure(PublishedSnapshotProjection):
+from app.structures.availability import AvailabilityFields
+
+
+class PublishedStructure(AvailabilityFields, PublishedSnapshotProjection):
     id: UUID
     compound_id: UUID
     smiles: str | None

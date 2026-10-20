@@ -19,7 +19,7 @@
 
 ## 2. 覆盖清单
 
-CompoundInventory v1 使用 [已有 schema](schemas/compound-inventory-v1.json)，只写实际 observed labels、aliases、required、role、source_locator、exclusion_reason；不向 schema 加自定义分组字段。完整编号/标签结构包括起始原料、中间体、Methods-only、共享核心＋R 基、参考物/控制。未决完整身份仍 required，不能用猜结构或 required=false 消除缺口。无图不排除真实对照；纯背景引用、泛式、普通试剂按源角色/位置说明不适用，不把所有药名自动当对照。
+CompoundInventory v1 使用 [已有 schema](schemas/compound-inventory-v1.json)，只写实际 observed labels、aliases、required、role、source_locator、exclusion_reason；不向 schema 加自定义分组字段。具体编号/标签身份（包含有来源但无可确定结构的条目）包括起始原料、中间体、Methods-only、共享核心＋R 基、参考物/控制。未决完整身份仍 required，不能用猜结构或 required=false 消除缺口。无图不排除真实对照；纯背景引用、泛式、普通试剂按源角色/位置说明不适用，不把所有药名自动当对照。
 
 运行 `candidate coverage candidate.json --inventory compound-inventory.json`。required 缺失/歧义退出 4；omissions 不让它通过。并列 required 与 all_inventory_coverage、每项 missing/ambiguous/excluded/extra；不以候选自身定义分母，不按连续编号补造清单。标签匹配不证明科学身份，AI 清单不等于人工完整金标准。
 
@@ -44,7 +44,7 @@ CompoundInventory v1 使用 [已有 schema](schemas/compound-inventory-v1.json)�
 - 每张 SAR 图独立核对共同起点/比较基线、优化主题、源支持的关系及拆合理由。同主题并行批次通常合并；独立主题可拆；枢纽成为新批次基线时优先拆；短链通常保留，重要交叉比较/汇合优先同图。表格/Scheme、节点数、目标变化或枢纽标签本身不能单独决定拆分。核查跨图复用 Compound、局部 terminal→root 的衔接，以及拆合是否遗漏失败/未选分支、方向、比较上下文或证据，是否重复同一科学关系。两条 SAR 入边不代表两底物共同合成。
 - 发现矛盾先回源复核 expected，保存审查修订轨迹；原文矛盾与提取错误分开。源未提供 SI 不等于正文 Methods 信息也不存在。
 
-核对 review_hint 与实际源依据和疑点是否一致：完整结构可由共享骨架、R 基或反应关系合理重构，不要求每个分子都单独画出；仅有编号范围而无可推导图仍不收录。提示不能使已知错误或未核项判为 correct；既核查无依据的猜测，也指出有依据候选被过度遗漏。解决疑点可建议清除提示，未决提示须保留；原冻结候选不修改。合并复核任务先保存原候选的独立审查，再在同一会话将支持的修改另存为方案候选并自检；审查的 hash、逐项结论与统计仍绑定原候选，不能用修补后的值改写原审查或宣称再次独立通过。无依据或未完成的修补保留未决，接受由 Admin 显式操作且不调用模型。
+核对 review_hint 与实际源依据和疑点是否一致：完整结构可由共享骨架、R 基或反应关系合理重构，不要求每个分子都单独画出；编号范围不能证明具体结构；可识别的具体身份以有来源的缺结构条目收录，未观察到的编号不能补造。提示不能使已知错误或未核项判为 correct；既核查无依据的猜测，也指出有依据候选被过度遗漏。解决疑点可建议清除提示，未决提示须保留；原冻结候选不修改。合并复核任务先保存原候选的独立审查，再在同一会话将支持的修改另存为方案候选并自检；审查的 hash、逐项结论与统计仍绑定原候选，不能用修补后的值改写原审查或宣称再次独立通过。无依据或未完成的修补保留未决，接受由 Admin 显式操作且不调用模型。
 
 按字段保留结论：结构的连接/区域/立体/化学形式与定位；Activity 的值/单位/算符、条件/统计、来源及分子身份；Edge 的类型/方向/步骤/解释及端点身份。整项有已证实错误就不能 correct，有未核字段也不能声称全字段通过。已知端点结构错必须反映在关联边/Activity 的身份判定中，不能用“标签配对正确”消除该依赖错误。
 
@@ -146,3 +146,10 @@ bbox is a technical check, not proof of scientific coverage. Ensure scoped
 repairs preserve human row/evidence choices, science and stable refs; unlinked
 Activities return to Other rather than being deleted. New/revised AI output
 remains pending Reviewer confirmation and outside human approval differences.
+
+对无可用结构的具体 Compound，使用冻结 review-targets 中的 `compound_identity`
+domain，逐字段核对 `identity_source, checked_sources, availability, availability_note`；
+不要声称核实了不存在的 connectivity/立体结构，不要求虚构结构截图。
+这些条目保留 Activity/Table 归属；身份正确且测量匹配时，缺结构本身不使 Activity
+错误。可用结构仍完整核查分子图。条目清单覆盖、可用结构数量及人工确认分开报告。
+旧工作区的 preservation marker 仅允许按冻结基线原样保留，不补造历史来源说明。

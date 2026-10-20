@@ -48,6 +48,8 @@ def test_compound_crud_reorder_and_delete_preserve_one_event_per_change(
         "workspace_version": 1,
         "items": [],
         "total": 0,
+        "structure_counts": {"total": 0, "available": 0, "not_reported": 0,
+                             "not_checked": 0, "unresolved": 0, "confirmed": 0},
     }
 
     first = _create_compound(

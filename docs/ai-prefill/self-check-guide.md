@@ -25,17 +25,17 @@
 | `measurement_coverage` | 表/图/正文测量 tuple 与 candidate 索引；numeric/censored/ND/qualitative/graph-unresolved 分开，未知分母保持未知；缺失测量与已录入行准确性分开 |
 | `activity_semantics` | compound/target/assay/endpoint/value/operator/unit/raw token/SD或SEM/n/条件；剂量作为条件，ED50/MTD 等真实终点例外；S.I. 无量纲；重复报告不冒充独立实验 |
 | `structure_identity` | 每个最终结构源图与重绘的核心/连接/环/取代/保护基/区域/立体/化学形式；新增参考物单独核对，外部推定结构不称源图已确认 |
-| `source_crops` | 每个 Compound 自身的完整骨架＋编号行＋R 基/连接基定义；检查实际最终 crop、表格首末行、OH/电荷/必要脚注；重绘不是原图 |
+| `source_crops` | 有结构的 Compound 自身的完整骨架＋编号行＋R 基/连接基定义；缺结构项核对身份来源与已查范围，不索要不存在的结构图；检查实际最终 crop、表格首末行、OH/电荷/必要脚注；重绘不是原图 |
 | `sar_reasoning` | 实际端点、结构变化、方向、比较限制、lineage 组织/参与与论文优选依据；无 text evidence 的合理推断允许，不按编号造关系 |
 | `synthesis_paths` | Scheme＋Methods 的真实前体、直接/多步、条件、共同反应物、路线/edge 一致性和 lineage 组织/角色/参与；制备次数与二元边数分开 |
 
-已收录 Compound/Activity/LineageEdge 有具体不确定或冲突时，按提取指南填写可选 review_hint（依据＋疑点）；缺少可找到或合理推导的完整结构仍不写入 Compound。提示不豁免已知错误，也不自动代表 correct；修正后有依据才清除。
+已收录 Compound/Activity/LineageEdge 有具体不确定或冲突时，按提取指南填写可选 review_hint（依据＋疑点）；明确具体身份但缺结构也写入 Compound，按提取指南填写结构可用性、原因、身份来源和实际已查范围；不编造结构。提示不豁免已知错误，也不自动代表 correct；修正后有依据才清除。
 
 详细审计仍用现有 sidecar/notes 中的短记录，不新增其他 Candidate/schema 字段：
 
 | 记录 | 最小字段与判定 |
 |---|---|
-| 身份例外 | label、源角色/位置、eligible、structure_resolved、去向；eligible 未解仍 required，暂缺 candidate，不因结构必填猜 SMILES |
+| 身份例外 | label、源角色/位置、eligible、structure_resolved、去向；eligible 未解仍 required，并写入有来源的缺结构 Compound；保留已知测量，不猜 SMILES |
 | 结构 | core_id、从源确定的连接/稠合/anchor/位置/立体、源、结论；各 variant 的最终结构内容 hash、实际分子图/重绘、映射/差异/分字段结论，代表通过不等于全系列通过 |
 | 原图 | 唯一 source/page/最终 bbox、实际检查产物、完整可识别 labels、依赖 locators；共享裁图只查一次，不以整页或近似裁图替代 |
 | 观察去向 | 源位置、family、kind、expected/matched/unresolved、destination；Activity、计算性质、结构/证据上下文、重复、冲突、图未决分开 |
@@ -153,3 +153,5 @@ checked. Preserve reviewer choices in a scoped repair; removing a row never
 removes scientific records. Missing screenshots remain draft with a review hint;
 do not claim Reviewer confirmation. Report screenshot/row gaps separately from
 unrepresented Activity content and the full Compound inventory.
+
+无结构条目的自检核对 availability、availability_note、identity_source、checked_sources。身份与来源可以得到支持，同时结构仍不可用；不得把缺结构本身当作已正确关联的 Activity 数值错误。具体结构变化结论仍须有结构依据。首次预填和修订均保留这些条目，AI 不产生人工确认。

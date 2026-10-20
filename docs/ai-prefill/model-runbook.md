@@ -151,3 +151,16 @@ Admin 启动首次预填即授权将可安全保存的候选导入待审核草�
 在授权 Preview 中，以 Admin 登录、CSRF 和实例检查向 `POST /api/v2/admin/workspaces/{workspace_id}/ai-provenance` 提交 `{"expected_workspace_version": CURRENT_VERSION, "record": <provenance.json>}`。这是受信操作者的来源登记接口，不自动证明本地文件真实性；模型无凭据也不能自行登记。接口验证源、版本和记录一致性，run_key 重放幂等，冲突拒绝。初次候选 apply 自动登记文件身份，模型/effort 默认为 unknown；可靠运行记录以新条目补充，不能根据候选的 engine 字段声称已核实。
 
 页面任务列表显示最新已导入运行；文章详情分别列预填/自检/修补/独立复核和候选 hash。未导入或失败运行不替换已导入标注；未知历史显示未记录。工作区后续变化时显示提示，不将旧复核推广到当前内容。来源记录只追加，不修改科学内容、版本或审核状态；提交时冻结进入 snapshot，之后追加不会改写既有提交/发布版本。历史回填只使用可靠配置/回执证据，保留未知项。
+
+## Identifiable compounds without available structures
+
+First prefill, review and directed revision retain source-identifiable specific
+Compounds even without a resolvable structure. Follow the current extraction guide:
+use explicit availability and required reason/identity source/checked-source scope,
+retain supported Activities and Table rows, and leave all AI assertions Draft.
+Missing SI means `not_checked`, never proof of absence. Review frozen
+`compound_identity` targets for unavailable structures; do not fabricate chemistry.
+Use baseline-issued preservation markers only for unchanged legacy records in bound
+review/revision/repair; they are not an initial-import escape hatch. Do not rewrite
+historical task bundles, hashes or human confirmations. New jobs freeze the new
+schema and guides. Report compound entry and usable-structure counts separately.

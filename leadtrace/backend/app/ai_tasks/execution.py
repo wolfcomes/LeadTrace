@@ -88,7 +88,7 @@ def prepare_job(session_factory,settings,job_id):
                     from app.ai_tasks.revision import export_revision_baseline
                     payload,refs,review_metadata,notes=export_revision_baseline(empty,snapshot)
                 else:
-                    payload,refs,review_metadata=_payload_from_snapshot(empty,snapshot,{},snapshot['paper'])
+                    payload,refs,review_metadata=_payload_from_snapshot(empty,snapshot,{},snapshot['paper'],preserve_unresolved=True)
             except ValueError:raise TaskError('DRAFT_NOT_REPRESENTABLE','Current draft has unresolved structures/relations or notes that the candidate format cannot preserve; resolve them before this review.') from None
             candidate=empty.model_copy(update={'payload':payload})
             save_json(root/'current-candidate.json',candidate.model_dump(mode='json'))
@@ -100,6 +100,7 @@ def prepare_job(session_factory,settings,job_id):
             kwargs={'candidate_path':root/'current-candidate.json','inventory_path':root/'compound-inventory.json','review_with_repair':job.action=='review'}
             if job.action=='revise':
                 save_json(root/'feedback.json',{'instructions':job.config['instructions'],'protected_reviewer_notes':notes,
+                    'unresolved_preservation':'Existing structure/edge preserve_unresolved=true markers are read-only compatibility context. Preserve their refs and markers. Keep marked structures exactly unchanged, including absent representations; never guess a replacement. Marked edges may be regrouped or annotated but retain endpoints and unresolved disposition. Do not introduce markers on new/resolved records. Report these existing gaps honestly; they do not block scoped Lineage work.',
                     'scope_policy':'Use the frozen current reviewer draft as the sole baseline. Make source-supported changes requested by the user and check affected dependencies. Preserve unchanged refs, list ordering, human edits and notes. Include all populated fields of retained records explicitly; omission must never clear human content. For metadata lists without stable refs, explicitly include the previously populated field keys on each item, using valid null/empty values for unknown or intentionally cleared fields. Protected reviewer notes are read-only context, retained by the server. Return the complete revised candidate and an honest scoped self-check; never claim independent review or full-paper verification from local checks. Do not access the database or apply data.'})
                 kwargs.update(feedback_path=root/'feedback.json',workspace_id=str(workspace.id),workspace_version=workspace.version)
         prepare_task(entry='selfcheck' if job.action in {'repair','revise'} else job.action,input_path=root/'input.json',output=root/'job',adapter=job.adapter,model=job.model,

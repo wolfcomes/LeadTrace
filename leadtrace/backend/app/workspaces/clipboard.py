@@ -72,7 +72,7 @@ def paste_record(session: Session, *, workspace_id: UUID, kind: str, payload: Pa
             session.flush()
             structure = session.scalar(select(Structure).where(Structure.compound_id == source.id))
             if structure is not None:
-                _copy(session, structure, 'smiles canonical_smiles molfile inchi inchikey depiction_asset_id input_method', compound_id=copied_id, status='draft')
+                _copy(session, structure, 'smiles canonical_smiles molfile inchi inchikey depiction_asset_id input_method availability availability_note identity_source checked_sources', compound_id=copied_id, status='draft')
             for image in session.scalars(select(StructureSourceImage).where(StructureSourceImage.compound_id == source.id)):
                 _copy(session, image, 'source_sha256 page_number x0 y0 x1 y1 source_context label reviewer_note crop_status crop_asset_id', compound_id=copied_id)
             for activity in session.scalars(select(Activity).where(Activity.compound_id == source.id)):

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from sqlalchemy import select
+from app.structures.models import Structure
+from app.structures.availability import structure_counts
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -148,6 +152,7 @@ def create_compounds_router(settings: Settings) -> APIRouter:
                     workspace_version=result.workspace.version,
                     items=items,
                     total=len(items),
+                    structure_counts=structure_counts(result.compounds, session.scalars(select(Structure).where(Structure.workspace_id == result.workspace.id))),
                 )
         except (WorkspaceForbiddenError, WorkspaceNotFoundError) as error:
             raise _workspace_error(error) from error
@@ -256,6 +261,7 @@ def create_compounds_router(settings: Settings) -> APIRouter:
                     workspace_version=result.workspace.version,
                     items=items,
                     total=len(items),
+                    structure_counts=structure_counts(result.compounds, session.scalars(select(Structure).where(Structure.workspace_id == result.workspace.id))),
                 )
         except (
             WorkspaceForbiddenError,

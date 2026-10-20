@@ -156,6 +156,47 @@ def _row_snapshot(row):
             if col.name not in {'created_at','updated_at'}}
 
 
+def _preserved_unresolved(before, after, snapshot, entity_refs, *, automatic_revision):
+    """Bind preservation context to real rows; it cannot authorize scientific edits."""
+    from app.ai_prefill.contracts import AiStructure
+    from app.structures.availability import snapshot_requires_preservation, AVAILABILITY_FIELDS
+    old={c.ref:c.structure for c in before.compounds}
+    new={c.ref:c.structure for c in after.compounds}
+    marked={ref for ref,item in old.items() if item.preserve_unresolved}
+    new_marked={ref for ref,item in new.items() if item.preserve_unresolved}
+    old_edges={e.ref:e for g in before.lineages for e in g.edges}
+    new_edges={e.ref:e for g in after.lineages for e in g.edges}
+    marked_edges={ref for ref,item in old_edges.items() if item.preserve_unresolved}
+    new_marked_edges={ref for ref,item in new_edges.items() if item.preserve_unresolved}
+    structures={row['compound_id']:row for row in snapshot['structures']}
+    expected=set(); missing=set()
+    for compound in snapshot['compounds']:
+        row=structures.get(compound['id']);ref=entity_refs.get(compound['id'])
+        incomplete=row is None or not (row['smiles'] or row['molfile'])
+        if snapshot_requires_preservation(row):
+            expected.add(ref)
+            if row is None:missing.add(ref)
+            if ref in marked:
+                representation={'preserve_unresolved':True}
+                if row:
+                    representation.update({key: row[key] for key in AVAILABILITY_FIELDS if row.get(key) is not None})
+                if not incomplete:
+                    key='molfile' if row['input_method']=='structure_editor' or not row['smiles'] else 'smiles'
+                    representation[key]=row[key]
+                if old[ref] != AiStructure.model_validate(representation):
+                    raise RepairApplyConflict('Protected unresolved structure differs from baseline')
+    expected_edges={entity_refs.get(row['id']) for row in snapshot['lineage_edges'] if row['review_status']=='unresolved'}
+    if marked != expected or new_marked != marked or marked_edges != expected_edges or new_marked_edges != marked_edges:
+        raise RepairApplyConflict('Cannot introduce, drop or clear unresolved preservation markers')
+    for ref in marked:
+        if old[ref] != new[ref]:
+            raise RepairApplyConflict('Cannot replace a preserved unresolved structure')
+    for ref in marked_edges:
+        if any(getattr(old_edges[ref],key)!=getattr(new_edges[ref],key) for key in ('parent_compound_ref','child_compound_ref')):
+            raise RepairApplyConflict('Cannot retarget a preserved unresolved relation')
+    return marked,marked_edges,missing
+
+
 def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPrefillPayload,
                 after: AiPrefillPayload, baseline_snapshot: dict, entity_refs: dict[str,str], job_id, automatic_revision: bool = False) -> dict:
     """Apply a proposal atomically inside caller's transaction (never commit)."""
@@ -164,7 +205,11 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
         raise RepairApplyConflict('Workspace changed after review; generate a new review before accepting repairs')
     if not AiPrefillService._source_is_valid(source,after) or current['source']['sha256']!=source.sha256:
         raise RepairApplyConflict('Repair source identity or page range is invalid')
-    parsed=AiPrefillService._parse_structures(after)
+    protected_structures,protected_edges,missing_structures=_preserved_unresolved(
+        before,after,current,entity_refs,automatic_revision=automatic_revision)
+    parsed=AiPrefillService._parse_structures(after.model_copy(update={
+        'compounds':[c for c in after.compounds if c.ref not in protected_structures],
+        'lineages':[]}))
     if parsed is None:raise RepairApplyConflict('Repair contains an invalid structure')
     old,new=_flats(before,after);diff=design_diff(before,after)
     rows={domain:{str(row.id):row for row in session.scalars(select(model).where(model.workspace_id==workspace.id))}
@@ -189,13 +234,15 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
     for index,snapshot in enumerate(activity_rows):bound['activities'][f'activity:{index}']=rows['activities'][snapshot['id']]
     activity_refs={row.get('ref'):str(bound['activities'][key].id) for key,row in old['activities'].items() if row.get('ref')}
     for domain in bound:
-        if set(bound[domain])!=set(old[domain]):raise RepairApplyConflict(f'Baseline {domain} no longer matches the frozen candidate')
+        expected=set(old[domain])-(missing_structures if domain=='structures' else set())
+        if set(bound[domain])!=expected:raise RepairApplyConflict(f'Baseline {domain} no longer matches the frozen candidate')
     # Every editable baseline field must correspond to the frozen DB snapshot;
     # a valid ID map alone does not authorize accepting a different candidate.
     reverse_refs={'compounds':compound_refs,'lineages':lineage_refs,'edges':edge_refs,'evidence':evidence_refs}
     for domain,items in old.items():
         if domain=='bibliography':continue
         for ref,item in items.items():
+            if domain=='structures' and ref in missing_structures:continue
             row=bound[domain][ref]
             if domain == 'activity_tables':
                 # Omitted legacy defaults still bind the candidate to the frozen
@@ -213,6 +260,7 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
                     expected=[{**{k:v for k,v in c.items() if k!='activity_refs'},'activity_ids':[activity_refs[a] for a in c['activity_refs']]} for c in expected]
                 if domain=='activity_tables' and field in {'compound_refs','evidence_refs'}:
                     continue
+                if field=='preserve_unresolved':continue  # Verified against frozen rows above.
                 if field=='bbox':
                     for coordinate in ('x0','y0','x1','y1'):
                         actual=getattr(row,coordinate)
@@ -254,9 +302,12 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
         ArticleMetadata.model_validate(metadata_values(paper) | new['bibliography']['paper'])
     except ValueError as exc:
         raise RepairApplyConflict(str(exc)) from exc
+    # Export normalizes nested optional fields; compare the same representation
+    # without rewriting stored metadata or weakening the frozen snapshot guard.
     current_metadata=ArticleMetadata.model_validate(metadata_values(paper)).model_dump(mode='json')
     for field,expected in old['bibliography']['paper'].items():
-        if current_metadata.get(field,getattr(paper,field))!=expected:
+        actual=current_metadata[field] if field in current_metadata else getattr(paper,field)
+        if actual!=expected:
             raise RepairApplyConflict('Bibliography baseline differs from workspace')
     changed={(change['domain'],change['ref']) for change in diff['changes']}
     removed={domain:set(old[domain])-set(new[domain]) for domain in MODELS}
@@ -276,6 +327,7 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
             data['evidence_ids'] = [str(bound['evidence'][e].id) for e in data.pop('evidence_refs', [])]
             refs={item.get('ref'):bound['activities'][key].id for key,item in new['activities'].items() if item.get('ref')}
             data['columns']=[{**{k:v for k,v in c.items() if k!='activity_refs'},'activity_ids':[str(refs[a]) for a in c['activity_refs']]} for c in data['columns']]
+        data.pop("preserve_unresolved",None)
         for name,target in (('compound_ref','compounds'),('lineage_ref','lineages'),('parent_compound_ref','compounds'),('child_compound_ref','compounds'),('edge_ref','edges'),('evidence_ref','evidence')):
             if name in data:
                 target_ref=data.pop(name);data[name.replace('_ref','_id')]=bound[target][target_ref].id if target_ref is not None else None
@@ -287,8 +339,10 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
             data.update(compound_id=bound['compounds'][ref].id,canonical_smiles=structure.canonical_smiles,
                         inchi=structure.inchi,inchikey=structure.inchikey,status=StructureStatus.DRAFT,
                         input_method=StructureInputMethod.AI_PREFILL,
-                        depiction_asset_id=StructureDrawingService(settings.asset_root).draw(session,smiles=structure.canonical_smiles,created_by_id=actor_id).asset.id)
-        if domain in {'edges','highlights','activity_tables'}:data['review_status']='draft'
+                        depiction_asset_id=StructureDrawingService(settings.asset_root).draw(session,smiles=structure.canonical_smiles,created_by_id=actor_id).asset.id if structure.canonical_smiles else None)
+            for key in ("availability", "availability_note", "identity_source", "checked_sources"):
+                data.setdefault(key, None)
+        if domain in {'edges','highlights','activity_tables'}:data['review_status']='unresolved' if domain=='edges' and ref in protected_edges else 'draft'
         return data
     def upsert(domain):
         for ref,item in new[domain].items():
@@ -345,7 +399,7 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
             for value in (change['before'],change['after']):
                 if value:edge_compounds.add(value['compound_ref'])
     for ref,row in bound['structures'].items():
-        if ref in affected_compounds and row.status!=StructureStatus.DRAFT:
+        if ref in affected_compounds and ref not in protected_structures and row.status!=StructureStatus.DRAFT:
             prior=_row_snapshot(row);row.status=StructureStatus.DRAFT;record('structures',row,prior,'invalidate')
     for domain in ('edges','highlights'):
         for ref,item in new[domain].items():
@@ -353,7 +407,7 @@ def _apply_delta(session, *, settings, workspace, source, actor_id, before: AiPr
                       item.get('compound_ref') in affected_compounds or item.get('parent_compound_ref') in edge_compounds or
                       item.get('child_compound_ref') in edge_compounds or item.get('evidence_ref') in affected_evidence)
             row=bound[domain][ref]
-            if affected and row.review_status!='draft':
+            if affected and row.review_status!='draft' and not (domain=='edges' and ref in protected_edges):
                 prior=_row_snapshot(row);row.review_status='draft';record(domain,row,prior,'invalidate')
     changed_activity_refs={value.get('ref') for change in diff['changes'] if change['domain']=='activities' for value in (change['before'],change['after']) if value}
     for ref,item in new['activity_tables'].items():

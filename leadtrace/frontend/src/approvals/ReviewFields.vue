@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { availabilityLabels, type Availability } from "../review/paper/structureAvailability";
 import { computed } from "vue";
 import type { Row } from "./comparison";
 import { t } from "../i18n";
@@ -23,6 +24,7 @@ const groups = computed(() =>
   })),
 );
 function value(key: string) {
+  if (key === "availability") return t(availabilityLabels[props.row[key] as Availability] ?? "未记录");
   return ["status", "review_status", "state", "role"].includes(key)
     ? reviewState(props.row[key])
     : textValue(props.row[key]);

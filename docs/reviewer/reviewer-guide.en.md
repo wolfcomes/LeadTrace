@@ -1,6 +1,6 @@
 # Reviewer illustrated handbook
 
-Version: 2026-10-16.2
+Version: 2026-10-20.1
 
 > Generated from `leadtrace/frontend/src/review/help/reviewer-guide.json`. Edit that source and run `python leadtrace/ops/reviewer/render_guide.py`.
 
@@ -104,7 +104,7 @@ Both input methods save the same Structure. After drawing in Ketcher, choose Sav
 
 > Ring size, heteroatom position and attachment points are frequent beginner errors. Keep a specific unresolved note if any cannot be checked. A generic scaffold crop also requires the matching substituent row.
 
-> Actual button behavior: Mark unresolved and Structure not reported clear the current SMILES / Molfile and save a no-structure disposition. If a complete candidate has a specific uncertainty, retain the Draft and explain it in the Compound verification hint. These buttons are not simple warning toggles. Preserve sources and an issue record and consult your supervisor before choosing a no-structure disposition.
+> Mark unresolved and Structure not reported open an explanation form without immediately clearing chemistry. Choose availability and enter a reason, the identity source, checked sources and missing supplements. Save the explanation as Draft, then Confirm current absence explanation. Saving clears the current SMILES / Molfile; confirming the explanation does not confirm a molecular graph. Distinguish not reported, checking incomplete and unresolved; missing SI is not proof of absence. Labels, Activities and Table rows remain. Later structure completion updates the same Compound and needs confirmation again. Legacy entries do not gain invented provenance. Keep a supported complete candidate as Draft with a verification hint when only a specific detail is uncertain.
 
 Enter an IUPAC name to convert locally with OPSIN. Check the result in the editor, save a Draft and confirm separately. Failed parsing does not replace the saved structure.
 

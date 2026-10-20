@@ -1,6 +1,8 @@
 """Export scientific Workspace rows and retain review state in a separate snapshot."""
 from __future__ import annotations
 
+from app.structures.availability import snapshot_requires_preservation
+
 from app.papers.metadata import ARTICLE_METADATA_FIELDS, ARTICLE_METADATA_DEFAULTS
 
 from dataclasses import dataclass
@@ -80,6 +82,7 @@ def _payload_from_snapshot(
     snapshot: dict[str, Any],
     entity_map: dict[str, object],
     initial_paper: dict[str, Any],
+    *, preserve_unresolved: bool = False,
 ) -> tuple[AiPrefillPayload, dict[str, str], list[dict[str, Any]]]:
     """Explicit field mapping, never deserialize an internal snapshot as payload."""
     issues: list[dict[str, str]] = []
@@ -177,17 +180,26 @@ def _payload_from_snapshot(
     for compound in compounds:
         structure = structures.get(compound["id"])
         path = f"compounds/{compound_refs[compound['id']]}/structure"
-        if structure is None or not (structure["smiles"] or structure["molfile"]):
+        incomplete = structure is None or not (structure["smiles"] or structure["molfile"])
+        uncertain = structure is not None and structure["status"] in {"unresolved", "not_reported"}
+        explicit = structure is not None and structure.get("availability") is not None
+        if incomplete and not preserve_unresolved and not explicit:
             issue(path, "Candidate v1 requires a resolved SMILES or Molfile for every Compound")
             continue
-        if structure["status"] in {"unresolved", "not_reported"}:
+        if uncertain and not preserve_unresolved and not explicit:
             issue(path, "Unresolved or not-reported Structure cannot be represented as a resolved Candidate Structure")
-        # RDKit stores both derived forms. Keep the actual input, not both.
-        use_molfile = structure["input_method"] == "structure_editor" or not structure["smiles"]
-        representation = {"molfile": structure["molfile"]} if use_molfile else {"smiles": structure["smiles"]}
+        representation = {}
+        if not incomplete:
+            # RDKit stores both derived forms; export the actual input.
+            use_molfile = structure["input_method"] == "structure_editor" or not structure["smiles"]
+            representation = {"molfile": structure["molfile"]} if use_molfile else {"smiles": structure["smiles"]}
+        if explicit:
+            representation.update({key: structure[key] for key in ("availability", "availability_note", "identity_source", "checked_sources") if structure.get(key) is not None})
+        if preserve_unresolved and snapshot_requires_preservation(structure):
+            representation["preserve_unresolved"] = True
         payload["compounds"].append({"ref": compound_refs[compound["id"]],
             **fields(compound, ("compound_label", "display_name", "description")), "review_hint": compound.get("review_hint"), "structure": representation})
-        review_metadata.append({"path": path, **fields(structure, ("status", "input_method"))})
+        review_metadata.append({"path": path, **(fields(structure, ("status", "input_method")) if structure else {"status": "missing"})})
     for image in locators:
         if image["reviewer_note"]:
             issue(f"structure_locators/{locator_refs[image['id']]}/reviewer_note", "Candidate v1 cannot carry a structure locator reviewer note")
@@ -204,10 +216,11 @@ def _payload_from_snapshot(
         for row in ordered("lineage_edges"):
             if row["lineage_id"] != lineage["id"]:
                 continue
-            if row["review_status"] == "unresolved":
+            if row["review_status"] == "unresolved" and not preserve_unresolved:
                 issue(f"lineages/{lineage_refs[lineage['id']]}/edges/{edge_refs[row['id']]}", "Unresolved lineage relation cannot be represented by Candidate v1")
             review_metadata.append({"path": f"edges/{edge_refs[row['id']]}", "review_status": row["review_status"]})
             edges.append({"ref": edge_refs[row["id"]],
+                **({"preserve_unresolved": True} if preserve_unresolved and row["review_status"] == "unresolved" else {}),
                 "parent_compound_ref": reference(compound_refs, row["parent_compound_id"], "lineage_edges"),
                 "child_compound_ref": reference(compound_refs, row["child_compound_id"], "lineage_edges"),
                 **fields(row, ("relation_type", "modification_summary")), "review_hint": row.get("review_hint")})

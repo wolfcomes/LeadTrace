@@ -22,6 +22,7 @@ from leadtrace.ops.ai_prefill.review_coverage import check_review_rows, review_t
 # Explicit field names are intentionally conservative. Free prose, a top-level
 # "correct", or just a numeric value check does not establish a whole-row result.
 _FIELDS = {
+    'compound_identity': [{'identity_source', 'source_identity'}, {'checked_sources'}, {'availability'}, {'availability_note', 'missing_reason'}],
     'structures': [
         {'connectivity', 'atom_connectivity', 'ring_connectivity'},
         {'regiochemistry', 'substitution', 'substitution_positions', 'anchors'},
@@ -238,7 +239,8 @@ def build_overview(candidate: CandidateEnvelope, *, producer_report=None, review
     def state(domain, ref, **kwargs):
         return _row_state(keyed.get((domain, ref)), **kwargs)
 
-    compound_states = {compound.ref: state('structures', compound.ref) for compound in compounds}
+    unknown = {'not_reported', 'not_checked', 'unresolved'}
+    compound_states = {compound.ref: state('compound_identity' if compound.structure.availability in unknown or compound.structure.preserve_unresolved else 'structures', compound.ref) for compound in compounds}
     evidence_states = {item.ref: state('evidence', item.ref, evidence_crop=item.bbox is not None) for item in payload.evidence}
     link_states = {str(index): state('edge_evidence_links', str(index)) for index in range(len(payload.edge_evidence_links))}
     activity_states = []
@@ -317,6 +319,7 @@ def build_overview(candidate: CandidateEnvelope, *, producer_report=None, review
     return {
         'schema_version': 1, 'basis': 'independent_review' if independent else 'producer',
         'scientific_approval': False, 'entities': entities,
+        'structure_availability': {'total': len(compounds), 'available': 0, 'not_reported': 0, 'not_checked': 0, 'unresolved': 0, **dict(Counter((c.structure.availability if c.structure.availability in unknown else 'unresolved' if c.structure.preserve_unresolved else 'available') for c in compounds))},
         'compound_coverage': {'known': coverage is not None,
             'covered': coverage['covered_count'] if coverage else None,
             'expected': coverage['required_count'] if coverage else None,

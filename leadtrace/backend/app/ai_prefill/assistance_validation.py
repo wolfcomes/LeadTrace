@@ -124,6 +124,12 @@ def validate_candidate(
                 issues.append(_issue("EVIDENCE_VISUAL_QUOTE", "needs_review", f"payload.evidence[{index}].quoted_text", "Quote accompanies a visual evidence item; verify both", entity_ref=item.ref))
     for index, compound in enumerate(candidate.payload.compounds):
         structure = compound.structure
+        if structure.preserve_unresolved:
+            issues.append(_issue("PRESERVED_UNRESOLVED_STRUCTURE", "needs_review", f"payload.compounds[{index}].structure", "Existing incomplete/uncertain structure is preserved, not resolved; only a bound review repair or revision may carry it forward", entity_ref=compound.ref))
+            continue
+        if structure.availability in {"not_reported", "not_checked", "unresolved"}:
+            issues.append(_issue("STRUCTURE_UNAVAILABLE", "needs_review", f"payload.compounds[{index}].structure", "Compound identity is retained; structure availability requires human review", entity_ref=compound.ref))
+            continue
         if bool(structure.smiles) == bool(structure.molfile):
             issues.append(_issue("STRUCTURE_REPRESENTATION", "error", f"payload.compounds[{index}].structure", "Exactly one of smiles or molfile is required", entity_ref=compound.ref))
             continue
@@ -136,6 +142,8 @@ def validate_candidate(
     }
     for lineage_index, lineage in enumerate(candidate.payload.lineages):
         for edge_index, edge in enumerate(lineage.edges):
+            if edge.preserve_unresolved:
+                issues.append(_issue("PRESERVED_UNRESOLVED_EDGE", "needs_review", f"payload.lineages[{lineage_index}].edges[{edge_index}]", "Existing relation remains unresolved; preserve its identity and disposition", entity_ref=edge.ref))
             if edge.ref not in supported_edge_refs:
                 issues.append(_issue(
                     "EDGE_WITHOUT_SUPPORTING_EVIDENCE", "needs_review",

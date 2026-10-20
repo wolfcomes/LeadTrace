@@ -27,7 +27,7 @@ _FIELDS = {
     'activity': ('activities', _COMMON + 'compound_id evidence_id assay_name metric operator value unit context sort_order'),
     'compound_highlight': ('compound_highlights', _COMMON + 'compound_id evidence_id role scope rationale review_hint review_status created_by_kind'),
 }
-_OPTIONAL = {'compound': ('review_hint',), 'activity': ('review_hint',),
+_OPTIONAL = {'structure': ('availability', 'availability_note', 'identity_source', 'checked_sources'), 'compound': ('review_hint',), 'activity': ('review_hint',),
              'lineage_edge': ('review_hint',), 'lineage': ('lineage_type',),
              'activity_table': ('compound_ids', 'evidence_ids')}
 _NUMERIC = {'x0', 'y0', 'x1', 'y1', 'value'}

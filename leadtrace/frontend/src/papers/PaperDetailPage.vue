@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { availabilityOf, availabilityLabels, structureCounts } from "../review/paper/structureAvailability";
 import AiProvenance from "../review/paper/AiProvenance.vue";
 import HighlightCards from "../review/paper/HighlightCards.vue";
 import ArticleMetadata from "../review/paper/ArticleMetadata.vue";
@@ -23,6 +24,7 @@ function highlightDepiction(compoundId: string): string | undefined {
   const asset = snapshot.value?.structures.find(s => s.compound_id === compoundId)?.depiction_asset_id;
   return asset ? assetUrl(asset) : undefined;
 }
+const counts = computed(() => snapshot.value ? structureCounts(snapshot.value.compounds.map(c => c.id), snapshot.value.structures) : null);
 const compoundLabels = computed(() => new Map(snapshot.value?.compounds.map((compound) => [compound.id, compound.compound_label]) ?? []));
 const evidenceById = computed(() => new Map(snapshot.value?.evidence.map((item) => [item.id, item]) ?? []));
 
@@ -80,6 +82,7 @@ watch(() => route.params.paperId, load, { immediate: true });
 
       <section class="content-section panel">
         <div class="section-heading"><div><p class="eyebrow">COMPOUNDS & STRUCTURES</p><h2>{{ t("化合物与结构") }}</h2></div><span>{{ snapshot.compounds.length }} compounds</span></div>
+        <p v-if="counts" data-structure-counts>{{ t('条目 {total} · 可用结构 {available} · 未报告 {not_reported} · 检查未完成 {not_checked} · 无法判定 {unresolved}', counts) }}</p>
         <div class="published-compound-grid">
           <article v-for="compound in snapshot.compounds" :key="compound.id">
             <header><strong>{{ compound.compound_label }}</strong><ReviewHint :hint="compound.review_hint" /><span>{{ compound.display_name }}</span></header>
@@ -87,6 +90,12 @@ watch(() => route.params.paperId, load, { immediate: true });
               <img v-if="structure.depiction_asset_id" data-published-depiction :src="assetUrl(structure.depiction_asset_id)" :alt="t('{label} RDKit 结构', { label: compound.compound_label })">
               <code>{{ structure.canonical_smiles ?? structure.smiles ?? "—" }}</code>
               <span class="status-chip">{{ statusLabel(structure.status) }}</span>
+              <p>{{ t(availabilityLabels[availabilityOf(structure)]) }}</p>
+              <dl v-if="structure.availability && structure.availability !== 'available'">
+                <dt>{{ t('缺失原因') }}</dt><dd>{{ structure.availability_note }}</dd>
+                <dt>{{ t('编号身份来源（页码、表格或段落）') }}</dt><dd>{{ structure.identity_source }}</dd>
+                <dt>{{ t('已检查的来源范围与未获取附件') }}</dt><dd>{{ structure.checked_sources }}</dd>
+              </dl>
             </div>
           </article>
         </div>

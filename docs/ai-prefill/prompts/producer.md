@@ -22,9 +22,12 @@ or labelled identities, including starting materials and Methods-only intermedia
 are in scope regardless of Activity. Shared core plus R groups can define a compound;
 generic/open fragments are not complete identities. Real named controls remain
 eligible without drawings; background mentions need source-role classification.
-Unresolved eligible identities stay required but absent from candidate compounds;
-required SMILES is not permission to guess. Preserve their known observations in
-unresolved records. Never derive coverage from a candidate or number sequence.
+Source-identifiable specific compounds remain in the candidate even when their
+structures are unavailable: record explicit availability, its explanation, identity
+source and checked source scope without guessing SMILES. Retain their supported
+observations and Table rows. Identities that cannot yet be tied to a specific source
+compound remain in unresolved inventory records. Never derive coverage from a
+candidate or number sequence.
 
 Within one bounded session: survey all source scope/families; verify cores/high-risk
 variants; expand verified families; save by table/series; run deterministic and source
@@ -101,10 +104,17 @@ budget; do not repeat unsupported repairs or claim unchecked scope is complete.
 Apply the extraction guide's source-supported inference and simple review_hint
 rule. Complete structures may be reasonably reconstructed from shared cores,
 R groups and reaction evidence. A retained Compound/Activity/LineageEdge with a
-specific doubt carries one short basis + doubt hint (UI: ⚠). No complete structure
-that can be found or reasonably reconstructed means no Compound insertion; keep
-the identity/observations in the existing inventory/omissions. Hints never excuse
-known errors or count as scientific confirmation.
+specific doubt carries one short basis + doubt hint (UI: ⚠). A source-identifiable
+specific Compound without a complete structure is still inserted, retaining known
+Activities and Table rows. Its structure uses explicit availability not_reported,
+not_checked, or unresolved plus nonempty availability_note, identity_source and
+checked_sources. Missing SI is not_checked, not proof of absence; never fabricate
+SMILES or identity evidence. Generic scaffolds and unobserved numbering gaps do not
+become compounds. Count entries separately from usable structures. All AI assertions
+are Draft; hints never excuse known errors or count as human confirmation.
+For unavailable structures review compound_identity fields (identity_source,
+checked_sources, availability, availability_note), not nonexistent graph fields.
+Legacy preservation markers come only from the frozen baseline and remain unchanged.
 ```
 
 Article metadata is a required checked scope. Follow extraction-guide.md for original Abstract/text/source/status, explicit absence reasons and omissions, PMID/PMCID identity, and source-backed research_profile with target roles/species. Do not infer missing IDs, genes or disease labels. Preserve human edits during repairs. Empty/omitted metadata never means verified absent.

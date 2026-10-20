@@ -66,7 +66,7 @@
 
 - 科学规则唯一入口：[提取指南](extraction-guide.md)；生产者按阶段读取 [自检指南](self-check-guide.md)，审查者读取 [审查协议](quality-audit-protocol.md)。实际 bundle 完整冻结，角色只读运行指南指定的必要文件，不反复阅读全部操作材料。
 - 默认交付文件。写入 Preview 由受信操作者按 [Preview runbook](../../leadtrace/ops/runbooks/ai_prefill_preview.md) 处理；生产者不持有凭据。已有工作区保留人工修改，版本检查＋快照＋差异 journal，不能清空或重置来绕过 initial apply 的空白限制。
-- 全文编号/标签身份清点；能找到或合理推导完整结构才写入 Compound。有依据但不确定/冲突的已收录项用统一 review_hint（⚠ 需核对），无法推导的留 inventory required＋omissions，不建空结构卡；测量、结构、SAR、合成分别报告。带缺陷草稿经用户授权可显示，但不能标为科学批准。科学数据、资产和数据库不从 Preview 导入生产。
+- 全文编号/标签身份清点；有来源可确认的具体 Compound 即使缺结构也要收录，保留 Activity 与 Table 行。缺结构须明确 availability（not_reported / not_checked / unresolved）、availability_note、identity_source、checked_sources；缺 SI 不得写成已检查后未报告。AI 一律待 Reviewer 确认，确认缺失说明不等于确认结构。泛式不冒充具体分子；条目数、可用结构数、测量、SAR、合成分别报告。带缺陷草稿经用户授权可显示，但不能标为科学批准。科学数据、资产和数据库不从 Preview 导入生产。
 
 本机定位线索：持久根 `/data/home/zhangzhiyong/lead_optimization_collection/leadtrace-data/`，保留 worktree `.worktrees/ai-prefill-tools`，Preview descriptor `ai-prefill-preview-20260920.C191Fl/current-instance.json`。操作前验证当前实例和交接；换机器不执行旧绝对路径，不输出 credentials。
 
