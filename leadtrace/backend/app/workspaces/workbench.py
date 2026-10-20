@@ -33,7 +33,7 @@ class LayoutInput(Strict):
     edge_controls: dict[UUID,EdgeControl] = Field(default_factory=dict,max_length=5000)
 
 class ViewInput(Strict):
-    kind: Literal['compound','lineage']
+    kind: Literal['compound','lineage','edge']
     entity_id: UUID
     signature: str = Field(pattern='^[0-9a-f]{64}$')
     viewed: bool

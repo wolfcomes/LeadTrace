@@ -41,7 +41,7 @@ export const enWorkbench: Record<string,string> = {
 
   '页码已改变，原选区已清除；需要截图时请在新页重新框选。': 'The page changed, so the previous region was cleared. Select a region on the new page if needed.',
   '重新框选证据区域': 'Reselect evidence region',
-  '只在 Compound 和 Lineage 两层记录已查看；组内内容变化后需重新查看，科学审核仍需人工确认。': 'Viewing is recorded only for Compound and Lineage groups. Reopen a group after its content changes; scientific approval still requires human review.',
+  '分别记录 Compound、Lineage 和 Edge 的已查看进度；内容变化后需重新查看，科学审核仍需人工确认。': 'Viewing is recorded separately for Compounds, Lineages and Edges. Reopen records after their content changes; scientific approval still requires human review.',
   '填写示例（不会保存）':'Entry example (never saved)',
   'Evidence 暂时无法读取。':'Evidence could not be loaded.',
   'Lineage 视图':'Lineage views', '关系图':'Graph', 'PDB 引用':'PDB references',
@@ -69,6 +69,7 @@ export const enWorkbench: Record<string,string> = {
   '新增 Edge':'Add Edge', '新增 Node':'Add Node', '添加 Node':'Add Node',
   '未查看条目':'Records not yet viewed', '本文结构':'Structure from this work',
   '条目查看进度':'Record viewing progress', '来源上下文':'Source context',
+  'Lineage 条目':'Lineage records', 'Edge 条目':'Edge records',
   '查看文章信息与摘要':'View article information and abstract', '查看结构与来源':'View structure and sources',
   '查看证据内容':'View evidence content', '标记未读':'Mark as unread', '核对要点':'What to check',
   '没有可添加的 Compound。请先到“化合物与结构”创建记录，或检查是否已加入。':'No available Compound. Create it under Compounds and structures, or check whether it is already a member.',

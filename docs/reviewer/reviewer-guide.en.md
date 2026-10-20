@@ -257,13 +257,15 @@ Root / intermediate / terminal describe local graph position. A root may be an o
 
 | Name | How to decide | Does not mean |
 |---|---|---|
-| root | A local starting point or comparison baseline, either an original start or a subsequent start selected earlier; multiple roots are allowed | Automatically a study starting point |
-| intermediate | An internal node, typically with incoming and outgoing relationships | Automatically a synthetic intermediate in an SAR group |
-| terminal | A local endpoint with no outgoing edge in this graph; optimization may continue in the next graph | Best potency, final medicine or author-prioritized compound |
-| unspecified | Role not yet determined; further review needed | A permanent shortcut around review |
+| root | In a supported directed optimization graph, no incoming optimization edge and at least one outgoing edge; may inherit a hub; multiple roots are allowed | Automatically a study starting point |
+| intermediate | Both incoming and outgoing optimization edges in this graph; explicitly label clear intermediate positions | Automatically a synthetic intermediate in an SAR group |
+| terminal | Incoming optimization edges but no outgoing optimization edge in this graph; unsuccessful or unselected branches can also end here, with continuation in another graph | Best potency, final medicine or author-prioritized compound |
+| unspecified | Use with an explanation for isolated members, comparison-only relationships or unresolved direction; do not leave clear intermediate or terminal positions unlabelled | A permanent shortcut around review |
 | Study starting point | An author-supported starting molecule for this study/series | Every reagent or first material in a synthesis |
 | Paper-prioritized compound | A molecule the authors explicitly choose to advance, with rationale | Every terminal or the reviewer’s lowest-IC50 choice |
 | Hub compound | Source-supported baseline for a further optimization group; compatible with root / intermediate / terminal position | Not every node with an outgoing edge, and not automatically paper-prioritized |
+
+> The optimization-direction rules in the table apply to SAR. For synthesis, use actual reaction directions: root has outgoing but no incoming edges, intermediate has both, terminal has incoming but no outgoing edges, and isolated members are unspecified. Establish optimization direction before assigning local roles; comparison arrows alone do not establish progression, and numbering or potency ranking does not justify new edges. Fictional example A→B→C plus A→D: A is root, B intermediate, and C/D terminal even if D is less active. Recheck roles after edge or grouping changes. Hub and paper-priority annotations require separate support. The website displays saved roles and does not automatically infer SAR roles.
 
 > A hub compound is a molecule the authors select during the study as the baseline for a further optimization group. “Hub” describes its role in the design process, not its number of graph connections. It need not have multiple branches, the best potency or final prioritized status.
 
@@ -346,20 +348,20 @@ If no accession is found, state the actual scope, such as “No explicit PDB acc
 
 ## 14 · Viewed is not confirmed
 
-Viewing is recorded only for Compound and Lineage groups. Explicitly select a Compound or Lineage (including opening its Edge details); background loading or viewing the graph does not mark every group. A Compound includes its fields, structure, source images, activities and linked evidence. A Lineage includes members, their Compound content, edges and linked evidence. Related edits invalidate the affected groups; unrelated groups remain unchanged. Groups can be marked unread. Only these two counts are shown; Structures, Activities, Edges and Evidence have no separate viewing checkmarks. Article information retains its manual section confirmation. Unassigned Evidence remains in the evidence library and is covered by the final whole-paper confirmation. Historical narrow-scope receipts do not establish group viewing: reopen the current group. Text accompanies colors. Viewed is not scientific approval, never clears verification hints, and never confirms Structures or Edges. Empty sections still need an explicit not-reported disposition. Final human confirmation, submission and Admin approval remain required.
+Review status is grouped into four areas: article information, Compounds, activity tables and Lineage. Selecting a Compound or Lineage records that entry as viewed; opening Edge details after evidence loads successfully separately records that Edge as viewed; background loading or viewing the whole graph does not mark every item. A Compound entry includes its fields, structure, source images, individual Activities and linked evidence. A Lineage entry includes members, Edges and linked evidence. Compounds show complete after every entry has been viewed. The Lineage area shows separate Lineage and Edge counts and automatically completes only when both sets are viewed. An empty Edge set shows 0/0 and does not block existing Lineages from completing. Activity tables show complete after every saved table is confirmed or marked unresolved. Related edits invalidate the affected progress; editing a table requires confirming it again. Article information remains explicitly confirmed by the Reviewer. Empty groups need an explicit not-reported disposition. Unassigned Evidence remains in the evidence library and is covered by final whole-paper confirmation. Viewed is not scientific approval, never clears verification hints, and never confirms Structures or Edges. Final human confirmation, submission and Admin approval remain required.
 
 | Signal | Meaning | Your remaining responsibility |
 |---|---|---|
-| Compound / Lineage viewed | You explicitly opened this group at its current content version | Inspect all relevant contents; the automatic receipt does not prove understanding |
+| Compound / Lineage / Edge viewed | You explicitly opened this group at its current content version | Inspect all relevant contents; the automatic receipt does not prove understanding |
 | ⚠ Needs verification | A specific issue is attached; click to expand | Resolve against the source and explicitly clear the hint; viewing/confirmation does not clear it |
 | draft | Scientific disposition is not complete | Decide whether the structure, relationship or annotation is supported |
 | reviewer_confirmed | An explicit scientific judgment by the reviewer | Recheck support after content changes |
 | unresolved | An explicitly recorded open problem | Explain and hand off; this is not confirmation of correctness |
 | Section not reported | Source absence determined through review | Document why; do not use to bypass unfinished work |
 
-Viewing is tracked only at Compound and Lineage level. A Compound group includes structures, source images, Activities and linked evidence; a Lineage group includes members, member content, Edges and evidence. Relevant edits invalidate viewing, while layout changes do not change the science. Do not click through simply to fill the count.
+Viewing is tracked separately for Compounds, Lineages and Edges. Lineages and Edges share one category status control, with separate progress counts. Existing Lineage receipts are retained and do not imply individual Edge viewing. Changes to an Edge, endpoint Compound content or linked evidence require viewing that Edge again; existing Lineage invalidation rules remain. Layout changes do not change the science. Do not click through simply to fill the count.
 
-After checking the current Lineage graph, click “Confirm all Draft Edges” without opening each Edge. Only Draft Edges in this Lineage become confirmed; unresolved statuses and review hints remain. The current Lineage is marked viewed, while Compound structures and member roles stay unchanged. The batch supports one-step undo and redo; changed or restored records need to be viewed again.
+After checking the current Lineage graph, click “Confirm all Draft Edges” to set scientific review status in bulk. This records the current Lineage as viewed but does not replace opening individual Edge details; Edge viewing progress is tracked separately. Only Draft Edges in this Lineage become confirmed; unresolved statuses and review hints remain. The current Lineage is marked viewed, while Compound structures and member roles stay unchanged. The batch supports one-step undo and redo; changed or restored records need to be viewed again.
 
 ## 15 · Before submission: resolve each blocker
 

@@ -5,9 +5,9 @@ from sqlalchemy import select
 from app.workspaces.models import WorkspaceViewReceipt
 from app.workspaces.snapshot import build_paper_snapshot, canonical_snapshot_hash
 
-VIEW_KINDS = ('compound', 'lineage')
+VIEW_KINDS = ('compound', 'lineage', 'edge')
 SECTION_VIEW_GROUP = {
-    'compounds': 'compounds', 'structures': 'compounds', 'activities': 'compounds',
+    'compounds': 'compounds', 'structures': 'compounds', 'activities': 'activities',
     'lineages': 'lineages', 'edge_evidence': 'lineages',
 }
 
@@ -63,6 +63,12 @@ def review_items(snapshot):
             row, members[lid], [compound_signatures.get(x['compound_id']) for x in members[lid]],
             [[edge, links[edge['id']]] for edge in edges[lid]],
         ])
+    labels = {row['id']: row['compound_label'] for row in snapshot['compounds']}
+    for row in snapshot['lineage_edges']:
+        parent, child = row['parent_compound_id'], row['child_compound_id']
+        add('edge', row['id'], 'edge_evidence',
+            f"{labels.get(parent, '?')} → {labels.get(child, '?')}",
+            [row, links[row['id']], compound_signatures.get(parent), compound_signatures.get(child)])
     return items
 
 
@@ -82,9 +88,15 @@ def get_progress(session, workspace_id: UUID, reviewer_id: UUID):
     for section in snapshot['sections']:
         if section['section_key'] not in ('compounds', 'lineages'):
             continue
-        rows = [x for x in items if x['section_key'] == section['section_key']]
+        rows = [x for x in items if SECTION_VIEW_GROUP[x['section_key']] == section['section_key']]
         seen = sum(x['viewed'] for x in rows)
         sections.append({'section_key': section['section_key'], 'total': len(rows), 'viewed': seen,
                          'complete': bool(rows) and seen == len(rows), 'state': section['state'], 'note': section['note']})
+    activity_section = next(x for x in snapshot['sections'] if x['section_key'] == 'activities')
+    tables = snapshot.get('activity_tables', [])
+    reviewed_tables = sum(table['review_status'] != 'draft' for table in tables)
+    sections.append({'section_key': 'activities', 'total': len(tables), 'viewed': reviewed_tables,
+                     'complete': bool(tables) and reviewed_tables == len(tables),
+                     'state': activity_section['state'], 'note': activity_section['note']})
     return {'workspace_id': str(workspace_id), 'workspace_version': snapshot['workspace_version'],
             'items': items, 'sections': sections, 'tracking_started': bool(receipts)}

@@ -2,6 +2,7 @@
 import { usePendingEdit } from "./usePendingEdits";
 import { t } from "../../i18n";
 import ReviewHint from "./ReviewHint.vue";
+import ViewState from "./ViewState.vue";
 import { computed, ref, watch } from "vue";
 
 import type { Compound, Lineage, LineageEdge } from "../../v2/types";
@@ -115,6 +116,7 @@ usePendingEdit(() => createTouched.value || editingId.value || props.busy || mod
     <p v-if="!focusedEdgeId" class="workspace-empty-copy">{{ t("Edge 可以由 AI 根据结构、图示或 SAR 推断，不要求文字 Evidence。请在修改摘要中区分推断理由与原文引用，并人工核对关系。") }}</p>
     <div v-if="lineage.edges.length" class="edge-list">
       <article v-for="edge in lineage.edges" :key="edge.id" class="edge-row" :class="{ editing: editingId === edge.id }" :data-edge-id="edge.id">
+        <ViewState compact kind="edge" :entity-id="edge.id" />
         <template v-if="editingId === edge.id">
           <label class="form-field">Parent<select v-model="editParentId" :disabled="busy"><option v-for="compound in memberCompounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>
           <label class="form-field">Child<select v-model="editChildId" :disabled="busy"><option v-for="compound in memberCompounds" :key="compound.id" :value="compound.id">{{ compound.compound_label }}</option></select></label>

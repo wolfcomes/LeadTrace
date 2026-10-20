@@ -119,19 +119,24 @@ export function usePaperWorkspace(route: RouteLocationNormalizedLoaded, router: 
     }
   }
 
-  async function setSectionState(section: string, nextState: SectionState): Promise<void> {
+  async function setSectionStates(sections: string[], nextState: SectionState): Promise<void> {
     const current = workspace.value;
     if (!current || savingSection.value || current.state !== "editing" || auth.user?.role !== "reviewer") return;
-    savingSection.value = section;
+    savingSection.value = sections[0];
     actionError.value = "";
     concurrencyMessage.value = "";
     try {
-      await updateSection(current.id, section, {
-        expected_workspace_version: current.version,
-        state: nextState,
-        note: current.sections.find((item) => item.section_key === section)?.note ?? null,
-      }, auth.csrfToken);
-      await reload(current);
+      let latest = current;
+      for (const section of sections) {
+        if (latest.sections.find((item) => item.section_key === section)?.state === nextState) continue;
+        latest = await updateSection(latest.id, section, {
+          expected_workspace_version: latest.version,
+          state: nextState,
+          note: latest.sections.find((item) => item.section_key === section)?.note ?? null,
+        }, auth.csrfToken);
+        if (!routeTargets(latest.bibliography.paper_id, latest.id)) return;
+        workspace.value = latest;
+      }
     } catch (error) {
       if (!routeTargets(current.bibliography.paper_id, current.id)) return;
       requestId.value = error instanceof ApiError ? error.requestId : undefined;
@@ -150,5 +155,5 @@ export function usePaperWorkspace(route: RouteLocationNormalizedLoaded, router: 
     }
   }
 
-  return { state, workspace, requestId, actionError, concurrencyMessage, savingSection, refreshEpoch, open, reload, handleConflict, setSectionState };
+  return { state, workspace, requestId, actionError, concurrencyMessage, savingSection, refreshEpoch, open, reload, handleConflict, setSectionStates };
 }

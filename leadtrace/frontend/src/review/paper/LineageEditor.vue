@@ -49,6 +49,7 @@ const filteredLineages = computed(() => lineages.value.filter(item => item.linea
 const lineageType = ref<LineageType>("sar");
 const editLineageType = ref<LineageType>("unspecified");
 const selectedEdgeId = ref<string>();
+const pendingEdgeView = ref<{ id: string; version: number }>();
 const activeView = ref<'graph' | 'compounds' | 'edges'>('graph');
 const graphNodePicker = ref(false);
 const pickerDialog = ref<HTMLDialogElement>();
@@ -103,6 +104,7 @@ const evidenceVersion = ref(props.workspace.version);
 const evidenceLinks = ref<EvidenceLink[]>([]);
 const evidenceError = ref("");
 const evidenceLoading = ref(false);
+const evidenceConsistent = ref(false);
 const managingEdgeId = ref<string>();
 const showEvidenceLibrary = ref(false);
 const evidenceById = computed(() => new Map(evidenceItems.value.map(item => [item.id, item])));
@@ -110,6 +112,7 @@ function linksForEdge(edgeId: string): EvidenceLink[] { return evidenceLinks.val
 function evidenceMutation(version: number): void { localVersion.value = version; loadedVersion = version; void loadEvidence(); emit("mutated", version); }
 async function loadEvidence(): Promise<void> {
   evidenceLoading.value = true;
+  evidenceConsistent.value = false;
   evidenceError.value = "";
   try {
     const [catalog, ...linkResults] = await Promise.all([
@@ -118,6 +121,7 @@ async function loadEvidence(): Promise<void> {
     ]);
     evidenceItems.value = catalog.items;
     evidenceVersion.value = catalog.workspace_version;
+    evidenceConsistent.value = linkResults.every(result => result.workspace_version === catalog.workspace_version);
     evidenceLinks.value = linkResults.flatMap(result => result.items);
     localVersion.value = Math.max(localVersion.value, catalog.workspace_version, ...linkResults.map(result => result.workspace_version));
     const evidenceEdge = evidenceLinks.value.find(link => link.evidence_id === props.selectedEntityId);
@@ -138,9 +142,26 @@ watch(selectedEdgeId, async () => {
   mainPanel.value?.focus({ preventScroll: true });
   mainPanel.value?.scrollIntoView?.({ block: 'start' });
 });
+watch(() => [pendingEdgeView.value, selectedEdgeId.value, activeView.value, props.active, props.readOnly, props.workspace.version,
+  loading.value, refreshing.value, evidenceLoading.value, evidenceError.value, evidenceConsistent.value,
+  progress?.progress.value?.workspace_version], () => {
+  const request = pendingEdgeView.value;
+  if (!request) return;
+  if (props.active === false || activeView.value !== 'edges' || props.readOnly || selectedEdgeId.value !== request.id
+      || props.workspace.version !== request.version || loadedVersion !== request.version) {
+    pendingEdgeView.value = undefined;
+    return;
+  }
+  if (loading.value || refreshing.value || evidenceLoading.value || evidenceError.value
+      || !contentConsistent.value || !evidenceConsistent.value || evidenceVersion.value !== request.version
+      || localVersion.value !== request.version || progress?.progress.value?.workspace_version !== request.version) return;
+  pendingEdgeView.value = undefined;
+  void progress?.view('edge', request.id, true, request.version);
+}, { flush: 'post' });
 function openEdge(edgeId: string): void {
   if (!selectedLineage.value?.edges.some(edge => edge.id === edgeId)) return;
-  if (!refreshing.value) void progress?.view('lineage',selectedLineage.value.id,true,loadedVersion); activeView.value = 'edges'; selectedEdgeId.value = edgeId; emit('select', edgeId);
+  activeView.value = 'edges'; selectedEdgeId.value = edgeId; emit('select', edgeId);
+  pendingEdgeView.value = { id: edgeId, version: loadedVersion };
 }
 function returnToGraph(): void {
   activeView.value = 'graph';
@@ -220,7 +241,9 @@ function selectAddressedRecord(entityId?: string): void {
   if (lineage) {
     selectedLineageId.value = lineage.id;
     selectedGroup.value = lineage.lineage_type;
-    selectedEdgeId.value = lineage.edges.find(edge => edge.id === entityId)?.id;
+    const edgeId = lineage.edges.find(edge => edge.id === entityId)?.id;
+    if (edgeId && edgeId !== selectedEdgeId.value) pendingEdgeView.value = { id: edgeId, version: loadedVersion };
+    selectedEdgeId.value = edgeId;
     if (selectedEdgeId.value) activeView.value = 'edges';
   }
 }
@@ -265,6 +288,7 @@ function mutationError(reason: unknown, fallback: string): void {
 }
 
 async function load(): Promise<void> {
+  pendingEdgeView.value = undefined;
   if (!initialized) loading.value = true;
   refreshing.value = true;
   contentConsistent.value = false;
@@ -556,7 +580,8 @@ usePendingEdit(() => memberDraftTouched.value || showCreate.value || editingLine
           <div><span class="status-chip" data-lineage-type>{{ t(lineageTypeLabels[selectedLineage.lineage_type]) }}</span><p class="eyebrow">{{ activeView === 'edges' && selectedEdge ? 'EDGE DETAIL' : 'LINEAGE' }}</p><h3>{{ activeView === 'edges' && selectedEdge ? `${compoundById.get(selectedEdge.parent_compound_id)?.compound_label || '?'} → ${compoundById.get(selectedEdge.child_compound_id)?.compound_label || '?'}` : selectedLineage.lineage_label }}</h3><p v-if="activeView === 'edges' && selectedEdge">{{ selectedLineage.lineage_label }} · {{ selectedEdge.relation_type }}</p></div>
           <button v-if="activeView === 'edges' && selectedEdge" class="button-secondary" data-return-lineage type="button" @click="returnToGraph">{{ t("← 返回关系图") }}</button>
         </header>
-        <ViewState kind="lineage" :entity-id="selectedLineage.id" />
+        <ViewState v-if="activeView === 'edges' && selectedEdge" kind="edge" :entity-id="selectedEdge.id" />
+        <ViewState v-else kind="lineage" :entity-id="selectedLineage.id" />
         <p v-if="activeView !== 'edges' && selectedLineage.description" class="lineage-description">{{ selectedLineage.description }}</p>
         <nav class="workspace-tabs lineage-view-tabs" role="tablist" :aria-label="t('Lineage 视图')">
           <button v-for="tab in viewTabs" :key="tab.key" type="button" role="tab" :data-lineage-view-tab="tab.key" :aria-selected="activeView === tab.key" @click="activeView = tab.key">{{ t(tab.label) }}</button>

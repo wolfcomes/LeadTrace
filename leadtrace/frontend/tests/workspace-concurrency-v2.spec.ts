@@ -89,12 +89,13 @@ describe("paper Workspace concurrency", () => {
     expect(calls.filter((call) => call.init?.method !== "PUT")).toHaveLength(2);
     expect(wrapper.get("[data-concurrency-alert]").text()).toContain("已重新载入最新版本");
     expect(wrapper.get("[data-workspace-version]").text()).toContain("v2");
-    expect(wrapper.get("[data-section-key='compounds']").attributes("data-state")).toBe("completed");
+    expect(wrapper.get("[data-section-key='compounds']").attributes("data-state")).toBe("pending");
   });
 
   it("invalidates and reloads the aggregate after a successful mutation", async () => {
     const calls: Array<{ url: URL; init?: RequestInit }> = [];
     let reads = 0;
+    let current = workspace(1);
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://leadtrace.test");
       if (url.pathname.endsWith("/edit-history")) return response({workspace_version:1,undo_action:null,redo_action:null});
@@ -102,7 +103,16 @@ describe("paper Workspace concurrency", () => {
       // Supporting lists are tested in their own components; count aggregate navigation here.
       if ((!init?.method||init.method==='GET')&&['/compound-highlights','/evidence','/compounds'].some(x=>url.pathname.endsWith(x))) return response({workspace_id:ids.workspace,workspace_version:1,items:[],total:0});
       calls.push({ url, init });
-      if (init?.method === "PUT") return response(workspace(2));
+      if (init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body));
+        const result = structuredClone(current);
+        result.version += 1;
+        const section = url.pathname.split("/").at(-1);
+        const row = result.sections.find(item => item.section_key === section);
+        if (row) row.state = payload.state;
+        current = result;
+        return response(result);
+      }
       reads += 1;
       return response(reads === 1 ? workspace(1) : workspace(2));
     }));
@@ -112,12 +122,14 @@ describe("paper Workspace concurrency", () => {
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
-    await wrapper.get("[data-section-key='bibliography'] [data-section-choice='completed']").trigger("click");
+    await wrapper.get("[data-section-key='compounds'] [data-section-choice='completed']").trigger("click");
     await flushPromises();
 
-    expect(calls.filter((call) => call.init?.method === "PUT")).toHaveLength(1);
-    expect(calls.filter((call) => call.init?.method !== "PUT")).toHaveLength(2);
-    expect(wrapper.get("[data-workspace-version]").text()).toContain("v2");
+    const writes = calls.filter((call) => call.init?.method === "PUT");
+    expect(writes).toHaveLength(2);
+    expect(writes.map(call => JSON.parse(String(call.init?.body)).expected_workspace_version)).toEqual([1, 2]);
+    expect(wrapper.get("[data-workspace-version]").text()).toContain("v3");
+    expect(wrapper.get("[data-section-key='compounds']").attributes("data-state")).toBe("completed");
   });
 
   it("does not let an in-flight mutation reload replace a newer Workspace navigation", async () => {

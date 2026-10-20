@@ -131,7 +131,7 @@ usePendingEdit(() => saving.value || reviewerNote.value.trim() || problemReason.
   <section class="submission-checklist">
     <header class="section-heading"><div><p class="eyebrow">REVIEW & SUBMIT</p><h2>{{ t("检查与提交") }}</h2></div><button class="button-secondary" type="button" :disabled="loading || saving" @click="loadValidation">{{ t("重新检查") }}</button></header>
     <section v-if="progress?.progress.value" class="review-progress-summary">
-      <h3>{{ t('条目查看进度') }}</h3><p>{{ t('只在 Compound 和 Lineage 两层记录已查看；组内内容变化后需重新查看，科学审核仍需人工确认。') }}</p>
+      <h3>{{ t('条目查看进度') }}</h3><p>{{ t('分别记录 Compound、Lineage 和 Edge 的已查看进度；内容变化后需重新查看，科学审核仍需人工确认。') }}</p>
       <div class="review-progress-sections"><span v-for="section in progress.progress.value.sections" :key="section.section_key" class="view-state" :class="{'is-viewed':section.complete}">{{ t(section.section_key) }} {{ section.viewed }} / {{ section.total }}</span></div>
       <details v-if="progress.unread.value.length"><summary>{{ t('未查看条目') }} ({{ progress.unread.value.length }})</summary><button v-for="item in progress.unread.value" :key="item.kind + item.entity_id" type="button" class="button-secondary" @click="emit('navigate', item.kind === 'compound' ? 'compounds' : 'lineages',item.entity_id)">{{ item.kind }} · {{ item.label }}</button></details>
     </section>
