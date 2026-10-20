@@ -12,7 +12,7 @@ export const articleMetadataFields = {
   abstract: z.string().nullable().optional(), abstract_source: z.string().nullable().optional(),
   pdb_references: z.array(pdbReferenceSchema).optional(),
 };
-export const viewItemSchema = z.object({kind: z.enum(['compound','lineage']),entity_id:z.string().uuid(),section_key:z.string(),label:z.string(),signature:z.string(),viewed:z.boolean()});
+export const viewItemSchema = z.object({kind: z.enum(['compound','lineage','edge']),entity_id:z.string().uuid(),section_key:z.string(),label:z.string(),signature:z.string(),viewed:z.boolean()});
 export type ViewItem = z.infer<typeof viewItemSchema>;
 export const progressSchema = z.object({workspace_id:z.string().uuid(),workspace_version:z.number(),tracking_started:z.boolean(),items:z.array(viewItemSchema),sections:z.array(z.object({section_key:z.string(),total:z.number(),viewed:z.number(),complete:z.boolean(),state:z.string(),note:z.string().nullable()}))});
 export type ReviewProgress = z.infer<typeof progressSchema>;

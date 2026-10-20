@@ -1254,8 +1254,8 @@
     {
       "title_zh": "14 · 已查看 ≠ 已确认：理解页面状态",
       "title_en": "14 · Viewed is not confirmed",
-      "zh": "页面把审核状态归为四类：文章信息、化合物、活性表和 Lineage。主动打开 Compound 或 Lineage（包括 Edge 详情）后记录条目已查看；后台加载和浏览整张图不会批量确认。化合物条目包含基本信息、结构、来源图、单个 Activity 及关联证据；Lineage 条目包含成员、Edge 及关联证据。化合物或 Lineage 大类全部查看后会自动显示完成；活性表大类在所有已保存表格均已确认或标为无法判定后显示完成。相关内容变化会使对应进度失效；活性表修改后需重新确认。文章信息仍由 Reviewer 明确确认。无内容的大类需要明确选择未报告；无归属 Evidence 在证据库查看，由最终整篇确认覆盖。颜色仅辅助，文字为准。已查看不是科学批准，不清空“需核对”，也不自动确认 Structure/Edge。最后仍须人工勾选整篇确认并提交，Admin 再审批。",
-      "en": "Review status is grouped into four areas: article information, Compounds, activity tables and Lineage. Opening a Compound or Lineage (including Edge details) records that entry as viewed; background loading or viewing the whole graph does not mark every item. A Compound entry includes its fields, structure, source images, individual Activities and linked evidence. A Lineage entry includes members, Edges and linked evidence. Compound and Lineage groups show complete after every entry has been viewed. Activity tables show complete after every saved table is confirmed or marked unresolved. Related edits invalidate the affected progress; editing a table requires confirming it again. Article information remains explicitly confirmed by the Reviewer. Empty groups need an explicit not-reported disposition. Unassigned Evidence remains in the evidence library and is covered by final whole-paper confirmation. Viewed is not scientific approval, never clears verification hints, and never confirms Structures or Edges. Final human confirmation, submission and Admin approval remain required.",
+      "zh": "页面把审核状态归为四类：文章信息、化合物、活性表和 Lineage。主动选择 Compound 或 Lineage 后记录对应条目已查看；打开 Edge 详情且证据成功加载后，单独记录该 Edge 已查看；后台加载和浏览整张图不会批量确认。化合物条目包含基本信息、结构、来源图、单个 Activity 及关联证据；Lineage 条目包含成员、Edge 及关联证据。化合物大类全部查看后会自动显示完成。Lineage 大类分别显示 Lineage 条目和 Edge 条目的进度；两类全部查看后才自动显示完成，没有 Edge 时显示 0/0，不阻止已有 Lineage 完成；活性表大类在所有已保存表格均已确认或标为无法判定后显示完成。相关内容变化会使对应进度失效；活性表修改后需重新确认。文章信息仍由 Reviewer 明确确认。无内容的大类需要明确选择未报告；无归属 Evidence 在证据库查看，由最终整篇确认覆盖。颜色仅辅助，文字为准。已查看不是科学批准，不清空“需核对”，也不自动确认 Structure/Edge。最后仍须人工勾选整篇确认并提交，Admin 再审批。",
+      "en": "Review status is grouped into four areas: article information, Compounds, activity tables and Lineage. Selecting a Compound or Lineage records that entry as viewed; opening Edge details after evidence loads successfully separately records that Edge as viewed; background loading or viewing the whole graph does not mark every item. A Compound entry includes its fields, structure, source images, individual Activities and linked evidence. A Lineage entry includes members, Edges and linked evidence. Compounds show complete after every entry has been viewed. The Lineage area shows separate Lineage and Edge counts and automatically completes only when both sets are viewed. An empty Edge set shows 0/0 and does not block existing Lineages from completing. Activity tables show complete after every saved table is confirmed or marked unresolved. Related edits invalidate the affected progress; editing a table requires confirming it again. Article information remains explicitly confirmed by the Reviewer. Empty groups need an explicit not-reported disposition. Unassigned Evidence remains in the evidence library and is covered by final whole-paper confirmation. Viewed is not scientific approval, never clears verification hints, and never confirms Structures or Edges. Final human confirmation, submission and Admin approval remain required.",
       "id": "progress",
       "blocks": [
         {
@@ -1267,7 +1267,7 @@
               "你还需要做什么"
             ],
             [
-              "Compound / Lineage 已查看",
+              "Compound / Lineage / Edge 已查看",
               "系统记录你主动打开过当前版本的这一组",
               "核对组内全部相关内容；自动记录并不证明你已理解"
             ],
@@ -1304,7 +1304,7 @@
               "Your remaining responsibility"
             ],
             [
-              "Compound / Lineage viewed",
+              "Compound / Lineage / Edge viewed",
               "You explicitly opened this group at its current content version",
               "Inspect all relevant contents; the automatic receipt does not prove understanding"
             ],
@@ -1337,13 +1337,13 @@
         },
         {
           "type": "paragraph",
-          "zh": "现在只记录 Compound 和 Lineage 两级已查看。Compound 组包括结构、来源图、Activity 和关联证据；Lineage 组包括成员、成员内容、Edge 和证据。相关内容修改会使相应组需重新查看，布局调整不等于科学修改。不要为把计数刷满而快速逐条点开。",
-          "en": "Viewing is tracked only at Compound and Lineage level. A Compound group includes structures, source images, Activities and linked evidence; a Lineage group includes members, member content, Edges and evidence. Relevant edits invalidate viewing, while layout changes do not change the science. Do not click through simply to fill the count."
+          "zh": "分别记录 Compound、Lineage 和 Edge 的已查看状态。Lineage 与 Edge 共用一个大类的状态按钮，但两项进度独立显示。现有 Lineage 查看记录保留，不自动视为逐条查看过 Edge。Edge 内容、端点化合物或关联证据变化后，对应 Edge 需重新查看；原有 Lineage 内容变化失效规则保持不变。布局调整不等于科学修改。不要为把计数刷满而快速逐条点开。",
+          "en": "Viewing is tracked separately for Compounds, Lineages and Edges. Lineages and Edges share one category status control, with separate progress counts. Existing Lineage receipts are retained and do not imply individual Edge viewing. Changes to an Edge, endpoint Compound content or linked evidence require viewing that Edge again; existing Lineage invalidation rules remain. Layout changes do not change the science. Do not click through simply to fill the count."
         },
         {
           "type": "paragraph",
-          "zh": "核对当前 Lineage 关系图后，可点击“一键确认 Draft Edge”，无需逐条进入 Edge。仅将当前 Lineage 的 Draft Edge 改为已确认，保留“无法判定”和核对提示，并记录当前 Lineage 已查看；不改变 Compound 结构或节点角色。整次操作可一次撤销或重做；内容改变或撤销恢复后，受影响条目需重新查看。",
-          "en": "After checking the current Lineage graph, click “Confirm all Draft Edges” without opening each Edge. Only Draft Edges in this Lineage become confirmed; unresolved statuses and review hints remain. The current Lineage is marked viewed, while Compound structures and member roles stay unchanged. The batch supports one-step undo and redo; changed or restored records need to be viewed again."
+          "zh": "核对当前 Lineage 关系图后，可点击“一键确认 Draft Edge”，批量设置科学审核状态。这个操作仅记录当前 Lineage 已查看，不代替逐条打开 Edge 详情；Edge 查看进度仍单独统计。仅将当前 Lineage 的 Draft Edge 改为已确认，保留“无法判定”和核对提示，并记录当前 Lineage 已查看；不改变 Compound 结构或节点角色。整次操作可一次撤销或重做；内容改变或撤销恢复后，受影响条目需重新查看。",
+          "en": "After checking the current Lineage graph, click “Confirm all Draft Edges” to set scientific review status in bulk. This records the current Lineage as viewed but does not replace opening individual Edge details; Edge viewing progress is tracked separately. Only Draft Edges in this Lineage become confirmed; unresolved statuses and review hints remain. The current Lineage is marked viewed, while Compound structures and member roles stay unchanged. The batch supports one-step undo and redo; changed or restored records need to be viewed again."
         }
       ]
     },
