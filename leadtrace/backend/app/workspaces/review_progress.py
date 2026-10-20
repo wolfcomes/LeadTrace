@@ -7,7 +7,7 @@ from app.workspaces.snapshot import build_paper_snapshot, canonical_snapshot_has
 
 VIEW_KINDS = ('compound', 'lineage')
 SECTION_VIEW_GROUP = {
-    'compounds': 'compounds', 'structures': 'compounds', 'activities': 'compounds',
+    'compounds': 'compounds', 'structures': 'compounds', 'activities': 'activities',
     'lineages': 'lineages', 'edge_evidence': 'lineages',
 }
 
@@ -86,5 +86,11 @@ def get_progress(session, workspace_id: UUID, reviewer_id: UUID):
         seen = sum(x['viewed'] for x in rows)
         sections.append({'section_key': section['section_key'], 'total': len(rows), 'viewed': seen,
                          'complete': bool(rows) and seen == len(rows), 'state': section['state'], 'note': section['note']})
+    activity_section = next(x for x in snapshot['sections'] if x['section_key'] == 'activities')
+    tables = snapshot.get('activity_tables', [])
+    reviewed_tables = sum(table['review_status'] != 'draft' for table in tables)
+    sections.append({'section_key': 'activities', 'total': len(tables), 'viewed': reviewed_tables,
+                     'complete': bool(tables) and reviewed_tables == len(tables),
+                     'state': activity_section['state'], 'note': activity_section['note']})
     return {'workspace_id': str(workspace_id), 'workspace_version': snapshot['workspace_version'],
             'items': items, 'sections': sections, 'tracking_started': bool(receipts)}

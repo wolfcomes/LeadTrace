@@ -900,22 +900,22 @@
             ],
             [
               "root",
-              "当前图的局部起点或比较基准；可为初始起点，也可为上一轮选出的枢纽分子；允许多个 root",
+              "在有依据的定向优化图中，无优化入边且有优化出边；可承接上一轮枢纽分子，允许多个起点",
               "不自动等于整篇研究起点"
             ],
             [
               "intermediate",
-              "当前组中间的节点，通常同时接收和引出关系",
+              "当前图中既有优化入边又有优化出边；清晰的中间位置应明确填写",
               "SAR 中不自动表示合成中间体"
             ],
             [
               "terminal",
-              "当前图的末端，图内没有后续出边；可在下一图继续优化",
+              "当前图中有优化入边、无优化出边；失败或未选分支也可为终点，下一图可继续优化",
               "不自动等于最好活性、最终药物或论文优选"
             ],
             [
               "unspecified",
-              "尚不能确定该组内角色，需继续核对",
+              "孤点、纯比较或优化方向未决等无法确定位置时使用，并说明原因；不能无理由漏标中间节点或终点",
               "不是为了省事永久不标"
             ],
             [
@@ -942,22 +942,22 @@
             ],
             [
               "root",
-              "A local starting point or comparison baseline, either an original start or a subsequent start selected earlier; multiple roots are allowed",
+              "In a supported directed optimization graph, no incoming optimization edge and at least one outgoing edge; may inherit a hub; multiple roots are allowed",
               "Automatically a study starting point"
             ],
             [
               "intermediate",
-              "An internal node, typically with incoming and outgoing relationships",
+              "Both incoming and outgoing optimization edges in this graph; explicitly label clear intermediate positions",
               "Automatically a synthetic intermediate in an SAR group"
             ],
             [
               "terminal",
-              "A local endpoint with no outgoing edge in this graph; optimization may continue in the next graph",
+              "Incoming optimization edges but no outgoing optimization edge in this graph; unsuccessful or unselected branches can also end here, with continuation in another graph",
               "Best potency, final medicine or author-prioritized compound"
             ],
             [
               "unspecified",
-              "Role not yet determined; further review needed",
+              "Use with an explanation for isolated members, comparison-only relationships or unresolved direction; do not leave clear intermediate or terminal positions unlabelled",
               "A permanent shortcut around review"
             ],
             [
@@ -976,6 +976,11 @@
               "Not every node with an outgoing edge, and not automatically paper-prioritized"
             ]
           ]
+        },
+        {
+          "type": "note",
+          "zh": "表中优化方向规则针对 SAR；合成图按真实反应方向判断：无入边且有出边为 root，同时有入边和出边为 intermediate，有入边且无出边为 terminal，孤点为 unspecified。先确认优化方向，再标图内角色；纯比较箭头不能直接当作优化先后，不能按编号或活性排序补边。虚构示例 A→B→C，另有 A→D：A 为 root，B 为 intermediate，C、D 为 terminal，即使 D 活性变差也一样。改边或拆合图后重新核对角色；枢纽分子、论文优选另有依据。网站展示保存的角色，不会自动推导 SAR 角色。",
+          "en": "The optimization-direction rules in the table apply to SAR. For synthesis, use actual reaction directions: root has outgoing but no incoming edges, intermediate has both, terminal has incoming but no outgoing edges, and isolated members are unspecified. Establish optimization direction before assigning local roles; comparison arrows alone do not establish progression, and numbering or potency ranking does not justify new edges. Fictional example A→B→C plus A→D: A is root, B intermediate, and C/D terminal even if D is less active. Recheck roles after edge or grouping changes. Hub and paper-priority annotations require separate support. The website displays saved roles and does not automatically infer SAR roles."
         },
         {
           "type": "note",
@@ -1249,8 +1254,8 @@
     {
       "title_zh": "14 · 已查看 ≠ 已确认：理解页面状态",
       "title_en": "14 · Viewed is not confirmed",
-      "zh": "只在 Compound 和 Lineage 两层记录已查看。主动选择 Compound 或 Lineage（含打开其 Edge 详情）后记录；后台加载和浏览整张图不批量确认所有组。Compound 包含基本信息、结构、来源图、活性及关联证据；Lineage 包含成员、成员化合物内容、Edge 及关联证据。相关内容变化使所属组已读失效，无关组不受影响；可以标记未读。只显示这两类计数，结构、Activity、Edge、Evidence 不再分别打勾。文章信息保留人工区段确认；无归属 Evidence 在证据库查看，由最终整篇确认覆盖。旧细粒度回执不自动升级为整组阅读，需要重新打开当前组。颜色仅辅助，文字为准。已查看不是科学批准，不清空“需核对”，不自动确认 Structure/Edge。无内容区段仍需明确未报告，最后须人工勾选整篇确认并提交，Admin 再审批。",
-      "en": "Viewing is recorded only for Compound and Lineage groups. Explicitly select a Compound or Lineage (including opening its Edge details); background loading or viewing the graph does not mark every group. A Compound includes its fields, structure, source images, activities and linked evidence. A Lineage includes members, their Compound content, edges and linked evidence. Related edits invalidate the affected groups; unrelated groups remain unchanged. Groups can be marked unread. Only these two counts are shown; Structures, Activities, Edges and Evidence have no separate viewing checkmarks. Article information retains its manual section confirmation. Unassigned Evidence remains in the evidence library and is covered by the final whole-paper confirmation. Historical narrow-scope receipts do not establish group viewing: reopen the current group. Text accompanies colors. Viewed is not scientific approval, never clears verification hints, and never confirms Structures or Edges. Empty sections still need an explicit not-reported disposition. Final human confirmation, submission and Admin approval remain required.",
+      "zh": "页面把审核状态归为四类：文章信息、化合物、活性表和 Lineage。主动打开 Compound 或 Lineage（包括 Edge 详情）后记录条目已查看；后台加载和浏览整张图不会批量确认。化合物条目包含基本信息、结构、来源图、单个 Activity 及关联证据；Lineage 条目包含成员、Edge 及关联证据。化合物或 Lineage 大类全部查看后会自动显示完成；活性表大类在所有已保存表格均已确认或标为无法判定后显示完成。相关内容变化会使对应进度失效；活性表修改后需重新确认。文章信息仍由 Reviewer 明确确认。无内容的大类需要明确选择未报告；无归属 Evidence 在证据库查看，由最终整篇确认覆盖。颜色仅辅助，文字为准。已查看不是科学批准，不清空“需核对”，也不自动确认 Structure/Edge。最后仍须人工勾选整篇确认并提交，Admin 再审批。",
+      "en": "Review status is grouped into four areas: article information, Compounds, activity tables and Lineage. Opening a Compound or Lineage (including Edge details) records that entry as viewed; background loading or viewing the whole graph does not mark every item. A Compound entry includes its fields, structure, source images, individual Activities and linked evidence. A Lineage entry includes members, Edges and linked evidence. Compound and Lineage groups show complete after every entry has been viewed. Activity tables show complete after every saved table is confirmed or marked unresolved. Related edits invalidate the affected progress; editing a table requires confirming it again. Article information remains explicitly confirmed by the Reviewer. Empty groups need an explicit not-reported disposition. Unassigned Evidence remains in the evidence library and is covered by final whole-paper confirmation. Viewed is not scientific approval, never clears verification hints, and never confirms Structures or Edges. Final human confirmation, submission and Admin approval remain required.",
       "id": "progress",
       "blocks": [
         {

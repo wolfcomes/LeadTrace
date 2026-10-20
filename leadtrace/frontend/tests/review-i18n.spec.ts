@@ -1,10 +1,12 @@
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { createPinia, setActivePinia } from 'pinia';
+import { defineComponent, h, nextTick } from 'vue';
 import { afterEach, expect, it } from 'vitest';
 import EdgeEditor from '../src/review/paper/EdgeEditor.vue';
 import SectionStatusControl from '../src/review/paper/SectionStatusControl.vue';
 import EvidenceExcerpt from '../src/review/paper/EvidenceExcerpt.vue';
 import { setLocale } from '../src/i18n';
+import { provideReviewProgress } from '../src/review/paper/useReviewProgress';
 import type { Compound, Lineage, Evidence, PaperWorkspace } from '../src/v2/types';
 
 afterEach(() => setLocale('zh-CN'));
@@ -29,12 +31,28 @@ it('switches actions in place while retaining an unsaved relationship and permis
   wrapper.unmount();
 });
 it('switches section labels and accessible names without a workspace mutation', async () => {
-  const wrapper = mount(SectionStatusControl, { props: { section: { section_key: 'compounds', state: 'pending', note: null } } });
+  const wrapper = mount(SectionStatusControl, { props: { groupKey: 'activities', sections: [{ section_key: 'activities', state: 'pending', note: null }] } });
   setLocale('en'); await nextTick();
-  expect(wrapper.text()).toContain('Compounds');
+  expect(wrapper.text()).toContain('Activity tables');
   expect(wrapper.get('[data-section-choice="completed"]').text()).toBe('Complete');
-  expect(wrapper.get('[aria-label]').attributes('aria-label')).toBe('Compounds section status');
+  expect(wrapper.get('[aria-label]').attributes('aria-label')).toBe('Activity tables section status');
   expect(wrapper.emitted('change')).toBeUndefined();
+  wrapper.unmount();
+});
+it('shows automatic completion for a fully reviewed group', () => {
+  setActivePinia(createPinia());
+  const sections = [{ section_key: 'compounds', total: 3, viewed: 3, complete: true, state: 'pending', note: null }];
+  const Host = defineComponent({
+    setup() {
+      const progress = provideReviewProgress(() => undefined, () => true);
+      progress.progress.value = { workspace_id: 'w', workspace_version: 1, tracking_started: true, items: [], sections };
+      return () => h(SectionStatusControl, { groupKey: 'compounds', sections: [{ section_key: 'compounds', state: 'pending', note: null }] });
+    },
+  });
+  const wrapper = mount(Host, { global: { plugins: [createPinia()] } });
+  expect(wrapper.get('[data-section-status]').attributes('data-state')).toBe('completed');
+  expect(wrapper.get('[data-section-choice="completed"]').attributes('aria-pressed')).toBe('true');
+  expect(wrapper.text()).toContain('3 / 3');
   wrapper.unmount();
 });
 it('translates source navigation while preserving scientific content', async () => {

@@ -41,11 +41,17 @@ def test_tables_persist_other_confirm_invalidate_and_undo(workspace_fixture):
     f = workspace_fixture; ids = seed(f)
     csrf = f.login('workspace.reviewer'); headers = {'X-CSRF-Token': csrf}
     base = f'/api/v2/workspaces/{f.workspace_id}/activity-tables'; url = f'{base}/{uuid4()}'
+    progress_url = f'/api/v2/workspaces/{f.workspace_id}/review-progress'
+    empty_progress = f.client.get(progress_url).json()
+    activity_group = next(x for x in empty_progress['sections'] if x['section_key'] == 'activities')
+    assert (activity_group['total'], activity_group['viewed'], activity_group['complete']) == (0, 0, False)
     with f.session_factory() as s:
         assert 'activity_tables' not in build_paper_snapshot(s, f.workspace_id)
     result = f.client.put(url, json=payload(ids[:1]) | {'evidence_ids': [seed_table_evidence(f)]}, headers=headers)
     assert result.status_code == 200, result.text
     assert result.json()['table']['review_status'] == 'draft'
+    draft_group = next(x for x in f.client.get(progress_url).json()['sections'] if x['section_key'] == 'activities')
+    assert (draft_group['total'], draft_group['viewed'], draft_group['complete']) == (1, 0, False)
     listing = f.client.get(base).json()
     assert listing['other_activity_ids'] == [str(ids[1])]
     assert listing['workspace_version'] == 2
@@ -55,9 +61,17 @@ def test_tables_persist_other_confirm_invalidate_and_undo(workspace_fixture):
     result = f.client.post(url + '/confirm', json={'expected_workspace_version': 2}, headers=headers)
     assert result.status_code == 200, result.text
     assert result.json()['table']['review_status'] == 'reviewer_confirmed'
+    confirmed_group = next(x for x in f.client.get(progress_url).json()['sections'] if x['section_key'] == 'activities')
+    assert (confirmed_group['total'], confirmed_group['viewed'], confirmed_group['complete']) == (1, 1, True)
+    from app.workspaces.validation import validate_submission
+    with f.session_factory() as s:
+        assert not any(b.code == 'SECTION_PENDING' and b.section_key.value == 'activities'
+                       for b in validate_submission(s, f.workspace_id).blockers)
     result = f.client.patch(f'/api/v2/activities/{ids[0]}', json={'expected_workspace_version': 3, 'value': '7.00'}, headers=headers)
     assert result.status_code == 200, result.text
     assert f.client.get(base).json()['tables'][0]['review_status'] == 'draft'
+    invalidated_group = next(x for x in f.client.get(progress_url).json()['sections'] if x['section_key'] == 'activities')
+    assert not invalidated_group['complete']
     result = f.client.request('DELETE', f'/api/v2/activities/{ids[0]}', json={'expected_workspace_version': 4}, headers=headers)
     assert result.status_code == 200, result.text
     assert f.client.get(base).json()['tables'][0]['columns'][0]['activity_ids'] == []

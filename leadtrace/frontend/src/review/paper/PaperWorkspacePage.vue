@@ -25,7 +25,7 @@ import { providePendingEdits } from "./usePendingEdits";
 const tabs = [
   { key: "bibliography", label: "文章信息" },
   { key: "compounds", label: "化合物与结构" },
-  { key: "activity-comparison", label: "活性对比" },
+  { key: "activity-comparison", label: "活性表" },
   { key: "lineages", label: "Lineage" },
   { key: "submit", label: "检查与提交" },
 ] as const;
@@ -35,6 +35,15 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const workspaceState = usePaperWorkspace(route, router);
+const sectionGroups = computed(() => {
+  const sections = workspaceState.workspace.value?.sections ?? [];
+  return [
+    { key: "bibliography", sectionKeys: ["bibliography"] },
+    { key: "compounds", sectionKeys: ["compounds", "structures"] },
+    { key: "activities", sectionKeys: ["activities"] },
+    { key: "lineages", sectionKeys: ["lineages", "edge_evidence"] },
+  ].map(group => ({ ...group, sections: sections.filter(section => group.sectionKeys.includes(section.section_key)) }));
+});
 const activeTab = computed<TabKey>(() => {
   const value = route.query.tab;
   if (value === "evidence") return "lineages";
@@ -165,14 +174,15 @@ watch(
       <p v-if="workspaceState.concurrencyMessage.value" class="inline-feedback is-warning" data-concurrency-alert role="alert">{{ t(workspaceState.concurrencyMessage.value) }}</p>
       <p v-if="workspaceState.actionError.value" class="inline-feedback is-error" role="alert">{{ t(workspaceState.actionError.value) }}</p>
 
-      <section class="workspace-section-status" :aria-label='t("六个固定区段状态")'>
+      <section class="workspace-section-status" :aria-label='t("四个审核大类状态")'>
         <SectionStatusControl
-          v-for="section in workspaceState.workspace.value.sections"
-          :key="section.section_key"
-          :section="section"
+          v-for="group in sectionGroups"
+          :key="group.key"
+          :group-key="group.key"
+          :sections="group.sections"
           :disabled="readOnly"
-          :saving="workspaceState.savingSection.value === section.section_key"
-          @change="workspaceState.setSectionState(section.section_key, $event)"
+          :saving="workspaceState.savingSection.value === group.sectionKeys[0]"
+          @change="workspaceState.setSectionStates(group.sectionKeys, $event)"
         />
       </section>
 

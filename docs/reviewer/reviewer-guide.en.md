@@ -257,13 +257,15 @@ Root / intermediate / terminal describe local graph position. A root may be an o
 
 | Name | How to decide | Does not mean |
 |---|---|---|
-| root | A local starting point or comparison baseline, either an original start or a subsequent start selected earlier; multiple roots are allowed | Automatically a study starting point |
-| intermediate | An internal node, typically with incoming and outgoing relationships | Automatically a synthetic intermediate in an SAR group |
-| terminal | A local endpoint with no outgoing edge in this graph; optimization may continue in the next graph | Best potency, final medicine or author-prioritized compound |
-| unspecified | Role not yet determined; further review needed | A permanent shortcut around review |
+| root | In a supported directed optimization graph, no incoming optimization edge and at least one outgoing edge; may inherit a hub; multiple roots are allowed | Automatically a study starting point |
+| intermediate | Both incoming and outgoing optimization edges in this graph; explicitly label clear intermediate positions | Automatically a synthetic intermediate in an SAR group |
+| terminal | Incoming optimization edges but no outgoing optimization edge in this graph; unsuccessful or unselected branches can also end here, with continuation in another graph | Best potency, final medicine or author-prioritized compound |
+| unspecified | Use with an explanation for isolated members, comparison-only relationships or unresolved direction; do not leave clear intermediate or terminal positions unlabelled | A permanent shortcut around review |
 | Study starting point | An author-supported starting molecule for this study/series | Every reagent or first material in a synthesis |
 | Paper-prioritized compound | A molecule the authors explicitly choose to advance, with rationale | Every terminal or the reviewer’s lowest-IC50 choice |
 | Hub compound | Source-supported baseline for a further optimization group; compatible with root / intermediate / terminal position | Not every node with an outgoing edge, and not automatically paper-prioritized |
+
+> The optimization-direction rules in the table apply to SAR. For synthesis, use actual reaction directions: root has outgoing but no incoming edges, intermediate has both, terminal has incoming but no outgoing edges, and isolated members are unspecified. Establish optimization direction before assigning local roles; comparison arrows alone do not establish progression, and numbering or potency ranking does not justify new edges. Fictional example A→B→C plus A→D: A is root, B intermediate, and C/D terminal even if D is less active. Recheck roles after edge or grouping changes. Hub and paper-priority annotations require separate support. The website displays saved roles and does not automatically infer SAR roles.
 
 > A hub compound is a molecule the authors select during the study as the baseline for a further optimization group. “Hub” describes its role in the design process, not its number of graph connections. It need not have multiple branches, the best potency or final prioritized status.
 
